@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import bannerImgSrc from '$lib/assets/home_bg.jpg';
+	import mainLogo from '$lib/assets/1781920082.webp';
 
 	let firefliesContainer: HTMLDivElement;
 	let bannerImg: HTMLImageElement;
-	let animationFrameId: number;
+	let animationFrameId: number | null = null;
 
 	onMount(() => {
 		// 生成萤火虫
 		if (firefliesContainer) {
-			const fireflyCount = 30;
+			const fireflyCount = 33;
 			const fragment = document.createDocumentFragment();
 
 			for (let i = 0; i < fireflyCount; i++) {
@@ -41,65 +42,68 @@
 		}
 
 		// 鼠标视差效果
-		// const handleMouseMove = (e: MouseEvent) => {
-		// 	if (!bannerImg) return;
-		// 	const x = (e.clientX / window.innerWidth - 0.5) * 10;
-		// 	const y = (e.clientY / window.innerHeight - 0.5) * 10;
-		// 	bannerImg.style.transform = `translate(${x}px, ${y}px) scale(1.05)`;
-		// };
+		let mouseX = 0;
+		let mouseY = 0;
 
-    
-		// document.addEventListener('mousemove', handleMouseMove);
+		const handleMouseMove = (e: MouseEvent) => {
+			mouseX = e.clientX;
+			mouseY = e.clientY;
 
-		// return () => {
-		// 	document.removeEventListener('mousemove', handleMouseMove);
-		// 	if (animationFrameId) cancelAnimationFrame(animationFrameId);
-		// };
+			if (animationFrameId === null) {
+				animationFrameId = requestAnimationFrame(updateParallax);
+			}
+		};
+
+		function updateParallax() {
+			if (!bannerImg) return;
+
+			const x = (mouseX / window.innerWidth - 0.5) * 10;
+			const y = (mouseY / window.innerHeight - 0.5) * 10;
+
+			bannerImg.style.transform = `translate(${x}px, ${y}px) scale(1.05)`;
+
+			animationFrameId = null;
+		}
+
+		document.addEventListener('mousemove', handleMouseMove);
+
+		return () => {
+			document.removeEventListener('mousemove', handleMouseMove);
+			if (animationFrameId !== null) {
+				cancelAnimationFrame(animationFrameId);
+			}
+		};
 	});
 </script>
 
-<div class="relative min-h-screen overflow-hidden bg-black text-white font-serif">
+<div class="relative h-svh overflow-auto bg-black text-white font-serif">
 	<!-- Banner Background -->
 	<div class="fixed inset-0 z-0 pointer-events-none">
 		<img
 			bind:this={bannerImg}
 			src={bannerImgSrc}
 			alt="Riftbound Banner"
-			class="w-full h-full object-cover transition-transform duration-300 ease-out"
-			style="transform: scale(1.05);"
+			class="w-full h-full object-cover object-top blur-in"
+			style="transform:scale(1.05)"
 		/>
-		<div class="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-black/80"></div>
+		<div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/10 to-black/100"></div>
 		<div class="absolute inset-0 vignette"></div>
 	</div>
 
 	<!-- Fireflies -->
-	<div bind:this={firefliesContainer} class="fixed inset-0 z-[1] pointer-events-none blur-in"></div>
+	<div bind:this={firefliesContainer} class="fixed inset-0 z-[1] blur-[1.3px]"></div>
 
 	<!-- Main Content -->
 	<div class="relative z-10 min-h-screen flex flex-col">
 		<!-- Center Title -->
-		<div class="flex-1 flex flex-col items-center justify-center pointer-events-none">
-			<h1
-				class="text-5xl md:text-7xl lg:text-8xl font-bold tracking-[0.3em] shimmer-text animate-fade-in-up text-center px-4"
-				style="animation-delay: 0.1s; animation-fill-mode: both;"
-			>
-				符文档案
-			</h1>
-			<p
-				class="mt-4 text-lg md:text-xl tracking-[0.5em] text-cyan-200/70 animate-fade-in-up"
-				style="animation-delay: 0.3s; animation-fill-mode: both;"
-			>
-				RUNE ARCHIEVE
-			</p>
-			<div
-				class="mt-6 w-32 h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse-glow"
-			></div>
+		<div class="flex flex-1 flex-col items-center justify-center px-4 py-2">
+			<img src={mainLogo} alt="Main Logo" class="w-full max-w-lg" />
 		</div>
 
 		<!-- Floating Navigation -->
-		<div class="flex items-center flex-col justify-around gap-6 md:px-12 lg:px-20 py-8 md:pb-10">
-			<!-- Left Navigation -->
-			<!-- <div class="flex flex-col gap-6 md:gap-8"> -->
+		<div
+			class="flex items-center flex-col md:flex-row justify-around gap-6 md:px-12 lg:px-20 py-8 md:pb-10"
+		>
 			<a
 				href="/library"
 				class="group animate-fade-in-left"
@@ -119,7 +123,7 @@
 							/>
 						</svg>
 						<div>
-							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Archive</div>
+							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Library</div>
 							<div class="text-lg md:text-xl font-bold tracking-wider">卡牌库</div>
 						</div>
 						<svg
@@ -139,14 +143,14 @@
 				</div>
 			</a>
 
-			<a
+			<!-- <a
 				href="/faq"
 				class="group animate-fade-in-left"
 				style="animation-delay: 0.8s; animation-fill-mode: both;"
 			>
 				<div
-					class="nav-card bg-black/50 border border-purple-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-purple-100 cursor-pointer"
-					style="color: #c084fc;"
+					class="nav-card bg-black/50 border border-cyan-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-cyan-100 cursor-pointer"
+					style="color: #22d3ee;"
 				>
 					<div class="flex items-center gap-4">
 						<svg class="nav-icon w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -158,7 +162,7 @@
 							/>
 						</svg>
 						<div>
-							<div class="text-xs tracking-[0.3em] text-purple-300/60 uppercase">Wisdom</div>
+							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Wisdom</div>
 							<div class="text-lg md:text-xl font-bold tracking-wider">常见QA</div>
 						</div>
 						<svg
@@ -176,19 +180,16 @@
 						</svg>
 					</div>
 				</div>
-			</a>
-			<!-- </div> -->
+			</a> -->
 
-			<!-- Right Navigation -->
-			<!-- <div class="flex flex-col gap-6 md:gap-8"> -->
-			<a
+			<!-- <a
 				href="/deck-builder"
 				class="group animate-fade-in-left"
 				style="animation-delay: 0.6s; animation-fill-mode: both;"
 			>
 				<div
-					class="nav-card bg-black/50 border border-emerald-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-emerald-100 cursor-pointer"
-					style="color: #34d399;"
+					class="nav-card bg-black/50 border border-cyan-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-cyan-100 cursor-pointer"
+					style="color: #22d3ee;"
 				>
 					<div class="flex items-center gap-4">
 						<svg class="nav-icon w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,7 +201,7 @@
 							/>
 						</svg>
 						<div>
-							<div class="text-xs tracking-[0.3em] text-emerald-300/60 uppercase">Forge</div>
+							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Forge</div>
 							<div class="text-lg md:text-xl font-bold tracking-wider">临时构筑</div>
 						</div>
 
@@ -219,8 +220,7 @@
 						</svg>
 					</div>
 				</div>
-			</a>
-			<!-- </div> -->
+			</a> -->
 		</div>
 
 		<!-- Footer -->
@@ -228,7 +228,7 @@
 			<div class="bg-gradient-to-t from-black via-black/80 to-transparent pt-12 pb-6">
 				<div class="max-w-4xl mx-auto px-6 text-center">
 					<div class="flex items-center justify-center gap-3 mb-3">
-						<div class="w-12 h-[1px] bg-gradient-to-r from-transparent to-cyan-500/50"></div>
+						<!-- <div class="w-12 h-[1px] bg-gradient-to-r from-transparent to-cyan-500/50"></div> -->
 						<!-- <svg
 							class="w-5 h-5 text-cyan-400 animate-pulse-glow"
 							fill="currentColor"
@@ -238,8 +238,11 @@
 								d="M12 2L9.19 8.63L2 9.24l5.46 4.73L5.82 21L12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"
 							/>
 						</svg> -->
-                        <img src="https://assetcdn.rgpub.io/public/live/riot-shared/player-experiences/riot-glyphs/rb/latest/rune_rainbow.svg" alt="">
-						<div class="w-12 h-[1px] bg-gradient-to-l from-transparent to-cyan-500/50"></div>
+						<!-- <img
+							src="https://assetcdn.rgpub.io/public/live/riot-shared/player-experiences/riot-glyphs/rb/latest/rune_rainbow.svg"
+							alt=""
+						/> -->
+						<!-- <div class="w-12 h-[1px] bg-gradient-to-l from-transparent to-cyan-500/50"></div> -->
 					</div>
 					<!-- <p class="text-white/70 text-sm tracking-[0.2em]">符文战场 Riftbound 粉丝网页</p> -->
 					<p class="text-white/40 text-xs mt-2 tracking-wider">
@@ -252,12 +255,6 @@
 </div>
 
 <style>
-	:global(body) {
-		margin: 0;
-		overflow-x: hidden;
-		background: #000;
-	}
-
 	.font-serif {
 		font-family: 'Cinzel', 'Georgia', serif;
 	}
@@ -355,48 +352,14 @@
 		}
 	}
 
-	@keyframes blur-in-animate {
-		0% {
-			backdrop-filter: blur(0);
-		}
-		100% {
-			backdrop-filter: blur(0.8px);
-		}
-	}
-
-	:global(.blur-in) {
-		animation: blur-in-animate 1.5s ease-out forwards;
-	}
-
-	:global(.animate-float-left) {
-		animation: floatLeft 5s ease-in-out infinite;
-	}
-	:global(.animate-float-left-delayed) {
-		animation: floatLeftDelayed 5s ease-in-out infinite 1s;
-	}
-	:global(.animate-float-right) {
-		animation: floatRight 5s ease-in-out infinite 0.5s;
-	}
-	:global(.animate-fade-in-left) {
-		animation: fadeInLeft 1.2s ease-out forwards;
-	}
-	:global(.animate-fade-in-right) {
-		animation: fadeInRight 1.2s ease-out forwards;
-	}
-	:global(.animate-fade-in-up) {
-		animation: fadeInUp 1.5s ease-out forwards;
-	}
-	:global(.animate-pulse-glow) {
-		animation: pulseGlow 3s ease-in-out infinite;
-	}
-
-	:global(.nav-card) {
+	.nav-card {
 		position: relative;
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 		transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 	}
-	:global(.nav-card::before) {
+
+	.nav-card::before {
 		content: '';
 		position: absolute;
 		inset: 0;
@@ -417,18 +380,20 @@
 		transition: opacity 0.4s;
 		pointer-events: none;
 	}
-	:global(.nav-card:hover::before) {
+
+	.nav-card:hover::before {
 		opacity: 1;
 	}
-	:global(.nav-card:hover) {
+
+	.nav-card:hover {
 		transform: scale(1.05);
 	}
 
-	:global(.nav-icon) {
+	.nav-icon {
 		filter: drop-shadow(0 0 6px currentColor);
 	}
 
-	/* :global(.shimmer-text) {
+	/* .shimmer-text) {
 		background: linear-gradient(90deg, #fff 0%, #a5f3fc 25%, #fff 50%, #a5f3fc 75%, #fff 100%);
 		background-size: 200% auto;
 		-webkit-background-clip: text;
@@ -444,7 +409,7 @@
 		animation-delay: var(--delay);
 	}
 
-	:global(.vignette) {
+	.vignette {
 		background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.7) 100%);
 	}
 </style>
