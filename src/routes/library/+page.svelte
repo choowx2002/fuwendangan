@@ -1,9 +1,17 @@
 <script lang="ts">
 	import { getCardFilterOptions, searchCards } from '$lib/database/cards';
-	import type { CardFilterOptions, CardSearchParams, ArrayFilter } from '$lib/types/card';
+	import type {
+		CardFilterOptions,
+		CardSearchParams,
+		ArrayFilter,
+		CardListItem
+	} from '$lib/types/card';
 	import bannerImgSrc from '$lib/assets/home_bg.jpg';
 	import { onMount } from 'svelte';
 	import mainLogo from '$lib/assets/fuwendangan_logo_zn.webp';
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
+	import CardDetailModal from '$lib/components/CardDetailModal.svelte';
 
 	// ================= 状态定义 =================
 	let options = $state<CardFilterOptions | null>(null);
@@ -12,7 +20,7 @@
 
 	// 搜索与分页
 	let searchText = $state('');
-	let searchResults = $state<any[]>([]);
+	let searchResults = $state<CardListItem[]>([]);
 	let totalResults = $state(0);
 	let currentPage = $state(1);
 	let pageSize = $state(20);
@@ -36,6 +44,8 @@
 	let powerRange = $state<[number, number]>([0, 0]);
 	let returnEnergyRange = $state<[number, number]>([0, 0]);
 
+	let selectedCard = $state<CardListItem | null>(null);
+
 	// ================= 生命周期 =================
 	onMount(async () => {
 		try {
@@ -46,6 +56,17 @@
 				returnEnergyRange = [options.return_energy_range.min, options.return_energy_range.max];
 			}
 			await handleSearch(1);
+
+			const searchForm: HTMLElement | null = document.getElementById('searchForm');
+			const searchInput: HTMLElement | null = document.getElementById('searchInput');
+
+			if (searchForm) {
+				searchForm.addEventListener('submit', function (event) {
+					event.preventDefault();
+					handleSearch(1);
+					if (searchInput) searchInput.blur();
+				});
+			}
 		} catch (e) {
 			console.error('Init error:', e);
 		} finally {
@@ -175,6 +196,14 @@
 	function handleImageError(cardId: string) {
 		imageStates[cardId] = 'error';
 	}
+
+	function openCardDetail(card: CardListItem) {
+		selectedCard = card;
+	}
+
+	function closeCardDetail() {
+		selectedCard = null;
+	}
 </script>
 
 <!-- ================= Svelte 5 Snippets ================= -->
@@ -204,7 +233,7 @@
 			>
 		</div>
 		<div class="flex flex-wrap gap-1.5">
-			{#each items as item}
+			{#each items as item, i (i)}
 				{@const mode = filters[item]}
 				{@const buttonClass =
 					mode === 'all'
@@ -299,15 +328,21 @@
 			<div
 				class="px-6 py-4 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md flex justify-between items-center"
 			>
-				<h2
-					class="text-xl font-bold text-cyan-400 tracking-[0.2em] drop-shadow-[0_0_10px_rgba(34,211,238,0.3)]"
-				>
-					DATABASE
-				</h2>
-				<span class="text-cyan-300 text-sm font-mono">
-					{#if isSearching}<span class="animate-pulse">SEARCHING...</span>
-					{:else}{totalResults} RESULTS{/if}
-				</span>
+				<div class="flex items-center gap-5">
+					<a href="/">
+						<img src={mainLogo} alt="main logo" class="h-[64px] object-containe" />
+					</a>
+					<h5>
+						<a
+							aria-current={page.url.pathname === '/library' ? 'page' : undefined}
+							href={resolve('/library')}
+							class="text-lg font-bold tracking-wider hover:text-cyan-300 {page.url.pathname ===
+							'/library'
+								? 'text-cyan-300'
+								: ''}">卡牌库</a
+						>
+					</h5>
+				</div>
 			</div>
 
 			<div class="flex-1 overflow-y-auto p-6">
@@ -318,18 +353,23 @@
 						></div>
 					</div>
 				{:else if searchResults.length > 0}
-					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-						{#each searchResults as card}
+					<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+						{#each searchResults as card, i (card.id)}
 							{@const cardId = card.id}
 							{@const print = card.card_prints?.[0]}
 							{@const imgUrl = print?.img_cdn}
 							{@const state = imageStates[cardId] || 'loading'}
 
 							<!-- 卡牌容器 (固定宽高比防止布局抖动) -->
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<div
-								class="group relative w-full aspect-[744/1040] rounded-lg overflow-hidden
+								role="button"
+								tabindex={i}
+								aria-label={card.card_name_cn}
+								class="group relative w-full aspect-744/1040 rounded-lg overflow-hidden
                             border border-cyan-500/20 hover:border-cyan-400/50
                             hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] transition-all duration-300"
+								onclick={() => openCardDetail(card)}
 							>
 								<!-- 1. 底层：Placeholder (始终存在) -->
 								<!-- 带有微光动画，提示正在加载 -->
@@ -378,9 +418,9 @@
 									{handleImageError(cardId)}
 								{/if}
 
-								<!-- 3. 悬浮时的卡牌信息遮罩 (可选，提升交互体验) -->
+								<!-- 3. 悬浮时的卡牌信息遮罩 (可选，提升交互体验)
 								<div
-									class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent
+									class="absolute inset-x-0 bottom-0 p-3 bg-linear-to-t from-black/90 via-black/50 to-transparent
                                 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
 								>
 									<h3 class="text-cyan-100 font-bold text-sm truncate">
@@ -390,7 +430,7 @@
 										{card.sub_title_cn}{' '}
 										{card.sub_title_en}
 									</p>
-								</div>
+								</div> -->
 							</div>
 						{/each}
 					</div>
@@ -427,7 +467,14 @@
 		<!-- ================= 右侧：筛选控制台 ================= -->
 		<div class="flex-[3] flex flex-col h-full bg-black/60 backdrop-blur-md min-w-[300px]">
 			<div class="px-4 py-4 border-b border-cyan-500/20 flex justify-between items-center">
-				<h2 class="text-lg font-bold text-cyan-400 tracking-[0.2em]">FILTERS</h2>
+				<div>
+					<h2 class="text-lg font-bold text-cyan-400 tracking-[0.2em]">FILTERS</h2>
+
+					<span class="text-cyan-300 text-sm font-mono">
+						{#if isSearching}<span class="animate-pulse">SEARCHING...</span>
+						{:else}{totalResults} RESULTS{/if}
+					</span>
+				</div>
 				<button
 					onclick={clearFilters}
 					class="text-xs text-cyan-500 hover:text-cyan-300 transition tracking-wider"
@@ -437,12 +484,17 @@
 
 			<div class="flex-1 overflow-y-auto p-4 space-y-5">
 				<div class="relative">
-					<input
-						type="text"
-						bind:value={searchText}
-						placeholder="Search name or effect..."
-						class="w-full px-4 py-2.5 pl-10 bg-cyan-950/30 border border-cyan-500/30 rounded-md text-cyan-100 placeholder-cyan-700 focus:outline-none focus:border-cyan-400 transition-all text-sm"
-					/>
+					<form id="searchForm">
+						<input
+							id="searchInput"
+							type="text"
+							bind:value={searchText}
+							placeholder="Search name or effect..."
+							class="w-full px-4 py-2.5 pl-10 bg-cyan-950/30 border border-cyan-500/30 rounded-md text-cyan-100 placeholder-cyan-700 focus:outline-none focus:border-cyan-400 transition-all text-sm"
+						/>
+						<button type="submit" class="hidden">submit</button>
+					</form>
+
 					<svg
 						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-600"
 						fill="none"
@@ -524,6 +576,7 @@
 			</div>
 		</div>
 	</div>
+	<CardDetailModal card={selectedCard} onClose={closeCardDetail} />
 </div>
 
 <style>

@@ -1,4 +1,4 @@
-import type { ArrayFilter, NumberRange } from "$lib/types/card"
+import type { ArrayFilter, NumberRange } from '$lib/types/card';
 
 // 处理数组过滤
 // export function applyArrayFilter(query: any, column: string, filter?: ArrayFilter) {
@@ -14,54 +14,48 @@ import type { ArrayFilter, NumberRange } from "$lib/types/card"
 //     return query
 // }
 
-export function applyArrayFilter(
-    query: any,
-    column: string,
-    filter?: ArrayFilter
-) {
-    if (!filter) return query
+export function applyArrayFilter(query: any, column: string, filter?: ArrayFilter) {
+	if (!filter) return query;
 
-    if (filter.all?.length) {
-        query = query.contains(column, filter.all)
-        // 或 query.cs(column, filter.all)
-    }
+	if (filter.all?.length) {
+		query = query.contains(column, filter.all);
+		// 或 query.cs(column, filter.all)
+	}
 
-    if (filter.any?.length) {
-        const conditions = filter.any
-            .map(v => `${column}.cs.{${v}}`)
-            .join(',')
+	if (filter.any?.length) {
+		const conditions = filter.any.map((v) => `${column}.cs.{${v}}`).join(',');
 
-        query = query.or(conditions)
-    }
+		query = query.or(conditions);
+	}
 
-    if (filter.none?.length) {
-        filter.none.forEach(v => {
-            query = query.not(column, 'cs', `{${v}}`)
-        })
-    }
+	if (filter.none?.length) {
+		filter.none.forEach((v) => {
+			query = query.not(column, 'cs', `{${v}}`);
+		});
+	}
 
-    return query
+	return query;
 }
 
 // 处理文本过滤 (支持单值 eq 和 多值 in)
 export function applyTextFilter(query: any, column: string, value?: string | string[]) {
-    if (!value) return query
-    if (Array.isArray(value)) {
-        if (value.length > 0) query = query.in(column, value)
-    } else {
-        query = query.eq(column, value)
-    }
-    return query
+	if (!value) return query;
+	if (Array.isArray(value)) {
+		if (value.length > 0) query = query.in(column, value);
+	} else {
+		query = query.eq(column, value);
+	}
+	return query;
 }
 
 // 处理数值范围过滤
 export function applyNumberFilter(query: any, column: string, range?: NumberRange) {
-    if (!range) return query
-    if (range.eq !== undefined) {
-        query = query.eq(column, range.eq)
-    } else {
-        if (range.gte !== undefined) query = query.gte(column, range.gte)
-        if (range.lte !== undefined) query = query.lte(column, range.lte)
-    }
-    return query
+	if (!range) return query;
+	if (range.eq !== undefined) {
+		query = query.eq(column, range.eq);
+	} else {
+		if (range.gte !== undefined) query = query.gte(column, range.gte);
+		if (range.lte !== undefined) query = query.lte(column, range.lte);
+	}
+	return query;
 }
