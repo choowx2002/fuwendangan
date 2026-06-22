@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getCardFilterOptions, searchCards } from '$lib/database/cards';
+	import { searchCards } from '$lib/database/cards';
 	import type {
 		CardFilterOptions,
 		CardSearchParams,
@@ -12,6 +12,9 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import CardDetailModal from '$lib/components/CardDetailModal.svelte';
+	import { processFilterConfig } from '$lib/helpers/filterConfig';
+	import { iconMap } from '$lib/constants/icon';
+	import RangeSlider from '$lib/components/RangeSlider.svelte';
 
 	// ================= 状态定义 =================
 	let options = $state<CardFilterOptions | null>(null);
@@ -45,33 +48,54 @@
 	let returnEnergyRange = $state<[number, number]>([0, 0]);
 
 	let selectedCard = $state<CardListItem | null>(null);
+	let isFilterClose = $state(false);
+	let isMobile = $state(false);
 
 	// ================= 生命周期 =================
-	onMount(async () => {
-		try {
-			options = await getCardFilterOptions();
-			if (options) {
-				energyRange = [options.energy_range.min, options.energy_range.max];
-				powerRange = [options.power_range.min, options.power_range.max];
-				returnEnergyRange = [options.return_energy_range.min, options.return_energy_range.max];
-			}
-			await handleSearch(1);
+	onMount(() => {
+		const media = window.matchMedia('(max-width: 640px)');
+		const update = () => {
+			isMobile = media.matches;
+			isFilterClose = media.matches;
+		};
 
-			const searchForm: HTMLElement | null = document.getElementById('searchForm');
-			const searchInput: HTMLElement | null = document.getElementById('searchInput');
+		const init = async () => {
+			try {
+				update(); // 立即执行一次
+				media.addEventListener('change', update);
 
-			if (searchForm) {
-				searchForm.addEventListener('submit', function (event) {
-					event.preventDefault();
-					handleSearch(1);
-					if (searchInput) searchInput.blur();
-				});
+				options = await processFilterConfig();
+				if (options) {
+					energyRange = [options.energy_range.min, options.energy_range.max];
+					powerRange = [options.power_range.min, options.power_range.max];
+					returnEnergyRange = [options.return_energy_range.min, options.return_energy_range.max];
+				}
+				await handleSearch(1);
+
+				const searchForm: HTMLElement | null = document.getElementById('searchForm');
+				const searchInput: HTMLElement | null = document.getElementById('searchInput');
+
+				if (searchForm) {
+					searchForm.addEventListener('submit', function (event) {
+						event.preventDefault();
+						handleSearch(1);
+						if (searchInput) searchInput.blur();
+					});
+				}
+			} catch (e) {
+				console.error('Init error:', e);
+			} finally {
+				loadingOptions = false;
 			}
-		} catch (e) {
-			console.error('Init error:', e);
-		} finally {
-			loadingOptions = false;
-		}
+		};
+
+		// 3. 调用异步函数
+		init();
+
+		// 4. 返回清理函数 (现在 TS 能正确识别 media 和 update 了)
+		return () => {
+			media.removeEventListener('change', update);
+		};
 	});
 
 	// ================= 核心交互逻辑 =================
@@ -218,7 +242,6 @@
 		(v: string): void;
 		(v: string): void;
 		(v: string): void;
-		(arg0: any): any;
 	}
 )}
 	<div class="space-y-2">
@@ -228,13 +251,14 @@
 			>
 				{title}
 			</h3>
-			<span class="text-[9px] text-cyan-700 ml-2 italic hidden md:block"
-				>Click: Include → Must → Exclude</span
+			<span class="text-[10px] text-cyan-700 ml-2 italic hidden md:block"
+				>依次点击：包含 → 必须包含 → 排除</span
 			>
 		</div>
 		<div class="flex flex-wrap gap-1.5">
 			{#each items as item, i (i)}
 				{@const mode = filters[item]}
+				{@const iconUrl = iconMap.get(item)}
 				{@const buttonClass =
 					mode === 'all'
 						? 'bg-cyan-300 text-cyan-950 border-cyan-100 font-bold shadow-[0_0_8px_rgba(165,243,252,0.6)]'
@@ -245,9 +269,18 @@
 								: 'bg-cyan-950/40 text-cyan-400 border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-900/40'}
 				<button
 					onclick={() => toggleFn(item)}
-					class="px-2.5 py-1 text-xs rounded-md transition-all duration-200 border flex items-center gap-1 {buttonClass}"
+					oncontextmenu={(ev) => {
+						ev.preventDefault();
+						delete filters[item];
+					}}
+					class="px-2.5 py-1 text-sm rounded-md transition-all duration-200 border flex items-center gap-1 {buttonClass}"
 				>
-					{item}
+					{#if iconUrl}
+						<!-- 添加 shrink-0 防止图片被挤压变形，w-4 h-4 控制大小 -->
+						<img src={iconUrl} alt={item} class="w-6 h-6 shrink-0 object-contain" />
+					{:else}
+						{item}
+					{/if}
 					{#if mode === 'all'}<span class="text-[10px] font-bold">✓</span>{/if}
 					{#if mode === 'none'}<span class="text-[10px] font-bold">✕</span>{/if}
 				</button>
@@ -259,12 +292,11 @@
 {#snippet simpleFilterSection(
 	title: string,
 	items: string[],
-	selectedItems: string | any[],
+	selectedItems: string | string[],
 	toggleFn: {
 		(v: string): string[];
 		(v: string): string[];
 		(v: string): string[];
-		(arg0: any): any;
 	}
 )}
 	<div class="space-y-2">
@@ -274,45 +306,41 @@
 			{title}
 		</h3>
 		<div class="flex flex-wrap gap-1.5">
-			{#each items as item}
+			{#each items as item, i (i)}
+				{@const iconUrl = iconMap.get(item)}
 				<button
 					onclick={() => toggleFn(item)}
-					class="px-2.5 py-1 text-xs rounded-md transition-all duration-200 border
+					oncontextmenu={(ev) => {
+						ev.preventDefault();
+						toggleFn(item);
+					}}
+					class="px-2.5 py-1 text-sm rounded-md transition-all duration-200 border
 						   {selectedItems.includes(item)
 						? 'bg-cyan-500 text-black border-cyan-400'
 						: 'bg-cyan-950/40 text-cyan-400 border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-900/40'}"
 				>
-					{item}
+					{#if iconUrl}
+						<!-- 添加 shrink-0 防止图片被挤压变形，w-4 h-4 控制大小 -->
+						<img src={iconUrl} alt={item} class="w-6 h-6 shrink-0 object-contain" />
+					{:else}
+						{item}
+					{/if}
 				</button>
 			{/each}
 		</div>
 	</div>
 {/snippet}
 
-{#snippet rangeSection(title: string, range: any[], min: number, max: number)}
+{#snippet rangeSection(title: string, range: [number, number], min: number, max: number)}
 	<div class="space-y-2">
 		<h3
 			class="text-cyan-400 font-semibold text-xs uppercase tracking-wider border-b border-cyan-500/20 pb-1"
 		>
 			{title}
+			{range[0]} - {range[1]}
 		</h3>
-		<div class="flex items-center gap-2">
-			<input
-				type="number"
-				bind:value={range[0]}
-				{min}
-				{max}
-				class="w-full px-3 py-2 bg-cyan-950/30 border border-cyan-500/30 rounded-md text-cyan-100 text-sm focus:outline-none focus:border-cyan-400 transition"
-			/>
-			<span class="text-cyan-500 font-bold">-</span>
-			<input
-				type="number"
-				bind:value={range[1]}
-				{min}
-				{max}
-				class="w-full px-3 py-2 bg-cyan-950/30 border border-cyan-500/30 rounded-md text-cyan-100 text-sm focus:outline-none focus:border-cyan-400 transition"
-			/>
-		</div>
+
+		<RangeSlider {range} {min} {max} />
 	</div>
 {/snippet}
 
@@ -324,13 +352,13 @@
 
 	<div class="relative z-10 flex h-full">
 		<!-- ================= 左侧：卡牌展示区 ================= -->
-		<div class="flex-[7] flex flex-col h-full border-r border-cyan-500/20 bg-black/20">
+		<div class="flex-7 flex flex-col h-full border-r border-cyan-500/20 bg-black/20">
 			<div
 				class="px-6 py-4 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md flex justify-between items-center"
 			>
 				<div class="flex items-center gap-5">
-					<a href="/">
-						<img src={mainLogo} alt="main logo" class="h-[64px] object-containe" />
+					<a href={resolve('/')}>
+						<img src={mainLogo} alt="main logo" class="h-16 object-containe" />
 					</a>
 					<h5>
 						<a
@@ -353,7 +381,7 @@
 						></div>
 					</div>
 				{:else if searchResults.length > 0}
-					<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+					<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
 						{#each searchResults as card, i (card.id)}
 							{@const cardId = card.id}
 							{@const print = card.card_prints?.[0]}
@@ -436,7 +464,7 @@
 					</div>
 				{:else}
 					<div class="flex flex-col items-center justify-center h-full text-cyan-600/50">
-						<p class="text-lg tracking-wider">NO CARDS FOUND</p>
+						<p class="text-lg tracking-wider">抱歉! 没搜索到任何卡牌。QAQ</p>
 					</div>
 				{/if}
 			</div>
@@ -451,9 +479,7 @@
 						class="px-4 py-1.5 bg-cyan-950/50 border border-cyan-500/30 rounded text-cyan-300 text-sm disabled:opacity-30 hover:bg-cyan-900/50 transition"
 						>PREV</button
 					>
-					<span class="text-cyan-400 text-sm font-mono tracking-widest"
-						>{currentPage} / {totalPages}</span
-					>
+					<span class="text-cyan-400 text-sm tracking-widest">{currentPage} / {totalPages}</span>
 					<button
 						onclick={() => handleSearch(currentPage + 1)}
 						disabled={currentPage === totalPages || isSearching}
@@ -465,21 +491,30 @@
 		</div>
 
 		<!-- ================= 右侧：筛选控制台 ================= -->
-		<div class="flex-[3] flex flex-col h-full bg-black/60 backdrop-blur-md min-w-[300px]">
+		<div
+			class="flex-3 flex flex-col h-full bg-black/60 backdrop-blur-md min-w-75 sm:relative fixed {isMobile
+				? isFilterClose
+					? 'hidden'
+					: ''
+				: ''}"
+		>
 			<div class="px-4 py-4 border-b border-cyan-500/20 flex justify-between items-center">
-				<div>
-					<h2 class="text-lg font-bold text-cyan-400 tracking-[0.2em]">FILTERS</h2>
-
-					<span class="text-cyan-300 text-sm font-mono">
-						{#if isSearching}<span class="animate-pulse">SEARCHING...</span>
-						{:else}{totalResults} RESULTS{/if}
-					</span>
+				<h2 class="text-lg font-bold text-cyan-400 tracking-[0.2em]">
+					筛选 <span class="tracking-normal text-xs">{totalResults} 张卡</span>
+				</h2>
+				<div class="flex items-center-safe gap-4">
+					<button
+						onclick={clearFilters}
+						class="text-xs text-cyan-500 hover:text-cyan-300 transition tracking-wider">清除</button
+					>
+					<button
+						onclick={() => {
+							isFilterClose = true;
+						}}
+						class="sm:hidden text-xs text-red-500 hover:text-red-300 transition tracking-wider"
+						>关闭</button
+					>
 				</div>
-				<button
-					onclick={clearFilters}
-					class="text-xs text-cyan-500 hover:text-cyan-300 transition tracking-wider"
-					>CLEAR ALL</button
-				>
 			</div>
 
 			<div class="flex-1 overflow-y-auto p-4 space-y-5">
@@ -489,7 +524,7 @@
 							id="searchInput"
 							type="text"
 							bind:value={searchText}
-							placeholder="Search name or effect..."
+							placeholder="搜索名字或者效果……"
 							class="w-full px-4 py-2.5 pl-10 bg-cyan-950/30 border border-cyan-500/30 rounded-md text-cyan-100 placeholder-cyan-700 focus:outline-none focus:border-cyan-400 transition-all text-sm"
 						/>
 						<button type="submit" class="hidden">submit</button>
@@ -511,71 +546,90 @@
 				</div>
 
 				{#if options}
-					<!-- 数组字段 (3态切换) -->
-					{@render advancedFilterSection('Tags', options.tags, tagFilters, cycleTag)}
-					{@render advancedFilterSection('Regions', options.regions, regionFilters, cycleRegion)}
-					{@render advancedFilterSection('Colors', options.colors, colorFilters, cycleColor)}
-					{@render advancedFilterSection(
-						'Keywords',
-						options.keywords,
-						keywordFilters,
-						cycleKeyword
-					)}
-					{@render advancedFilterSection(
-						'Advanced Tags',
-						options.advanced_tags,
-						advancedTagFilters,
-						cycleAdvTag
-					)}
-
 					<!-- 文本字段 (普通多选) -->
 					{@render simpleFilterSection(
-						'Categories',
+						'卡牌类型',
 						options.categories,
 						selectedCategories,
 						toggleCategory
 					)}
-					{@render simpleFilterSection('Series', options.series, selectedSeries, toggleSeries)}
-					{@render simpleFilterSection(
-						'Rarities',
-						options.rarities,
-						selectedRarities,
-						toggleRarity
-					)}
+					{@render simpleFilterSection('稀有度', options.rarities, selectedRarities, toggleRarity)}
 
 					<!-- 数值范围 -->
 					{@render rangeSection(
-						'Energy',
+						'法力',
 						energyRange,
 						options.energy_range.min,
 						options.energy_range.max
 					)}
 					{@render rangeSection(
-						'Power',
+						'战力',
 						powerRange,
 						options.power_range.min,
 						options.power_range.max
 					)}
 					{@render rangeSection(
-						'Return Energy',
+						'符能',
 						returnEnergyRange,
 						options.return_energy_range.min,
 						options.return_energy_range.max
 					)}
+					<!-- 数组字段 (3态切换) -->
+					{@render advancedFilterSection('符文特性', options.colors, colorFilters, cycleColor)}
+
+					{@render advancedFilterSection('关键词', options.keywords, keywordFilters, cycleKeyword)}
+					{@render advancedFilterSection(
+						'高级标签',
+						options.advanced_tags,
+						advancedTagFilters,
+						cycleAdvTag
+					)}
+
+					{@render simpleFilterSection('系列', options.series, selectedSeries, toggleSeries)}
+					{@render advancedFilterSection('标签', options.tags, tagFilters, cycleTag)}
+					{@render advancedFilterSection('区域', options.regions, regionFilters, cycleRegion)}
 				{/if}
 			</div>
 
 			<div class="p-4 border-t border-cyan-500/20 bg-black/80">
 				<button
-					onclick={() => handleSearch(1)}
+					onclick={() => {
+						handleSearch(1);
+						if (isMobile) isFilterClose = !isFilterClose;
+					}}
 					disabled={isSearching}
 					class="w-full py-3 bg-cyan-500 text-black font-bold rounded hover:bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)] disabled:opacity-50 transition-all duration-300 tracking-widest text-sm"
 				>
-					{isSearching ? 'SEARCHING...' : 'APPLY FILTERS'}
+					{isSearching ? '搜索中...' : '搜索'}
 				</button>
 			</div>
 		</div>
 	</div>
+	<button
+		aria-label="搜索"
+		onclick={() => {
+			isFilterClose = false;
+		}}
+		class="{isMobile
+			? !isFilterClose
+				? 'hidden'
+				: ''
+			: 'hidden'} z-50 fixed right-3 bottom-3 p-5 rounded-full bg-cyan-500 text-black"
+	>
+		<svg
+			class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-black"
+			fill="none"
+			stroke="currentColor"
+			viewBox="0 0 24 24"
+		>
+			<path
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				stroke-width="3"
+				d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+			/>
+		</svg>
+	</button>
 	<CardDetailModal card={selectedCard} onClose={closeCardDetail} />
 </div>
 
@@ -601,5 +655,6 @@
 	}
 	:global(input[type='number']) {
 		-moz-appearance: textfield;
+		appearance: textfield;
 	}
 </style>

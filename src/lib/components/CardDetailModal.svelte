@@ -6,6 +6,7 @@
 	// 1. 按 card_no_extend 对 prints 进行分组
 	let versionGroups = $derived.by(() => {
 		if (!card?.card_prints) return [];
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const groups = new Map<string, CardPrint[]>();
 		for (const print of card.card_prints) {
 			if (!groups.has(print.card_no_extend)) {
@@ -97,7 +98,7 @@
 						/>
 					{:else}
 						<div
-							class="w-full aspect-[3/4] bg-cyan-950/20 border-2 border-dashed border-cyan-500/30 rounded-lg flex items-center justify-center"
+							class="w-full aspect-3/4 bg-cyan-950/20 border-2 border-dashed border-cyan-500/30 rounded-lg flex items-center justify-center"
 						>
 							<span class="text-cyan-700 text-lg tracking-widest">NO IMAGE</span>
 						</div>
@@ -317,14 +318,13 @@
 						Effect
 					</h4>
 					<div class="bg-black/40 border border-cyan-500/20 rounded-lg p-4 space-y-3">
-						<p class="text-cyan-100 text-sm leading-relaxed whitespace-pre-wrap">
-							{card.effect_cn || 'No effect description.'}
+						<p class="text-cyan-100 text-sm leading-relaxed whitespace-pre-line">
+							{card.effect_cn || '无描述。'}
 						</p>
 						{#if card.effect_en}
-							<p
-								class="text-cyan-500/70 text-xs italic leading-relaxed whitespace-pre-wrap border-t border-cyan-500/10 pt-3"
-							>
-								{card.effect_en}
+							<p class="text-cyan-100 text-xs leading-relaxed whitespace-pre-line pt-3">
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+								{@html card.effect_en}
 							</p>
 						{/if}
 					</div>
@@ -338,22 +338,12 @@
 						</h4>
 						<div class="italic text-cyan-400/60 text-sm leading-relaxed space-y-1">
 							{#if card.flavor_text_cn}
-								<p>"{card.flavor_text_cn}"</p>
+								<p>{card.flavor_text_cn}</p>
 							{/if}
 							{#if card.flavor_text_en}
-								<p class="text-xs text-cyan-500/40">"{card.flavor_text_en}"</p>
+								<p class="text-xs text-cyan-500/40">{card.flavor_text_en}</p>
 							{/if}
 						</div>
-					</div>
-				{/if}
-
-				<!-- 当前版本信息 -->
-				{#if currentPrint}
-					<div
-						class="mt-auto pt-4 border-t border-cyan-500/10 text-xs text-cyan-700 flex justify-between font-mono"
-					>
-						<span>Print: {currentPrint.card_no_extend}</span>
-						<span>Lang: {currentPrint.language.toUpperCase()}</span>
 					</div>
 				{/if}
 			</div>
