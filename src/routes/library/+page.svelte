@@ -9,7 +9,7 @@
 	import bannerImgSrc from '$lib/assets/home_bg.jpg';
 	import { onMount } from 'svelte';
 	import mainLogo from '$lib/assets/fuwendangan_logo_zn.webp';
-	import { page } from '$app/state';
+	// import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import CardDetailModal from '$lib/components/CardDetailModal.svelte';
 	import { processFilterConfig } from '$lib/helpers/filterConfig';
@@ -26,7 +26,7 @@
 	let searchResults = $state<CardListItem[]>([]);
 	let totalResults = $state(0);
 	let currentPage = $state(1);
-	let pageSize = $state(20);
+	let pageSize = $state(24);
 	let isSearching = $state(false);
 	let totalPages = $derived(Math.ceil(totalResults / pageSize));
 
@@ -188,6 +188,14 @@
 			const result = await searchCards(params);
 			searchResults = result.data;
 			totalResults = result.total;
+
+			const cardContainer: HTMLElement | null = document.getElementById('card-container');
+			if (cardContainer)
+				cardContainer.scrollTo({
+					top: 0,
+					left: 0,
+					behavior: 'smooth'
+				});
 		} catch (e) {
 			console.error('Search error:', e);
 		} finally {
@@ -333,9 +341,7 @@
 
 {#snippet rangeSection(title: string, range: [number, number], min: number, max: number)}
 	<div class="space-y-2">
-		<h3
-			class="text-cyan-400 font-semibold text-xs uppercase tracking-wider border-b border-cyan-500/20 pb-1"
-		>
+		<h3 class="text-cyan-400 font-semibold text-xs uppercase tracking-wider pb-1">
 			{title}
 			{range[0]} - {range[1]}
 		</h3>
@@ -345,7 +351,7 @@
 {/snippet}
 
 <!-- ================= 主布局 ================= -->
-<div class="relative h-screen w-screen overflow-hidden bg-black text-white font-sans">
+<div class="relative h-screen w-screen overflow-hidden bg-black text-white">
 	<div class="fixed inset-0 z-0">
 		<img src={bannerImgSrc} alt="Bg" class="w-full h-full object-cover blur-xs" />
 	</div>
@@ -354,26 +360,26 @@
 		<!-- ================= 左侧：卡牌展示区 ================= -->
 		<div class="flex-7 flex flex-col h-full border-r border-cyan-500/20 bg-black/20">
 			<div
-				class="px-6 py-4 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md flex justify-between items-center"
+				class="px-6 h-10 sm:h-14 py-2 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md flex justify-between items-center"
 			>
-				<div class="flex items-center gap-5">
-					<a href={resolve('/')}>
-						<img src={mainLogo} alt="main logo" class="h-16 object-containe" />
+				<div class="flex items-center gap-5 h-full">
+					<a href={resolve('/')} class="h-full">
+						<img src={mainLogo} alt="main logo" class="h-full object-cover" />
 					</a>
-					<h5>
+					<!-- <h5>
 						<a
 							aria-current={page.url.pathname === '/library' ? 'page' : undefined}
 							href={resolve('/library')}
-							class="text-lg font-bold tracking-wider hover:text-cyan-300 {page.url.pathname ===
+							class="text-md font-bold tracking-wider hover:text-cyan-300 {page.url.pathname ===
 							'/library'
 								? 'text-cyan-300'
 								: ''}">卡牌库</a
 						>
-					</h5>
+					</h5> -->
 				</div>
 			</div>
 
-			<div class="flex-1 overflow-y-auto p-6">
+			<div class="flex-1 overflow-y-auto p-6" id="card-container">
 				{#if loadingOptions}
 					<div class="flex items-center justify-center h-full">
 						<div
@@ -399,8 +405,6 @@
                             hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] transition-all duration-300"
 								onclick={() => openCardDetail(card)}
 							>
-								<!-- 1. 底层：Placeholder (始终存在) -->
-								<!-- 带有微光动画，提示正在加载 -->
 								<div
 									class="absolute inset-0 w-full h-full bg-cyan-950/30 flex items-center justify-center
                                 transition-opacity duration-500 ease-out
@@ -408,9 +412,6 @@
 										? 'opacity-0 pointer-events-none'
 										: 'opacity-100'}"
 								>
-									<!-- 如果你有具体的 placeholder 图片，用 <img> 替换下面的 span
-									<img src={mainLogo} class="w-full h-full object-cover" alt="" /> -->
-
 									<!-- 这里用文字+图标模拟一个赛博风的占位符 -->
 									<div class="flex flex-col items-center gap-2 animate-pulse">
 										<svg
@@ -434,6 +435,7 @@
 								{#if imgUrl}
 									<img
 										src={imgUrl}
+										loading="lazy"
 										alt={card.card_name_cn || 'Card'}
 										class="absolute inset-0 w-full h-full object-contain
                                    transition-opacity duration-500 ease-out
@@ -562,18 +564,21 @@
 						options.energy_range.min,
 						options.energy_range.max
 					)}
-					{@render rangeSection(
-						'战力',
-						powerRange,
-						options.power_range.min,
-						options.power_range.max
-					)}
+
 					{@render rangeSection(
 						'符能',
 						returnEnergyRange,
 						options.return_energy_range.min,
 						options.return_energy_range.max
 					)}
+
+					{@render rangeSection(
+						'战力',
+						powerRange,
+						options.power_range.min,
+						options.power_range.max
+					)}
+
 					<!-- 数组字段 (3态切换) -->
 					{@render advancedFilterSection('符文特性', options.colors, colorFilters, cycleColor)}
 

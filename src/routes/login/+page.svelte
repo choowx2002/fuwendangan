@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { supabase } from '$lib/database/supabaseClient';
 	import { goto } from '$app/navigation'; // SvelteKit 专属路由跳转
 	import { onMount } from 'svelte';
@@ -22,7 +22,7 @@
 		});
 	});
 
-	async function handleLogin(e) {
+	async function handleLogin(e: SubmitEvent) {
 		e.preventDefault();
 		isLoading = true;
 		errorMsg = '';
@@ -61,9 +61,7 @@
 </div>
 
 <!-- 2. 内容层：居中卡片 -->
-<div
-	class="fadeIn fixed inset-0 z-10 flex justify-center items-center font-['Noto_Serif_SC'] text-cyan-200 p-4"
->
+<div class="fadeIn fixed inset-0 z-10 flex justify-center items-center text-cyan-200 p-4">
 	<div
 		class="relative w-full max-w-md bg-cyan-900/60 backdrop-blur-xl rounded-2xl p-8 md:p-10 shadow-2xl shadow-black/50 text-center"
 	>
@@ -136,11 +134,6 @@
 
 <!-- 仅保留极少量的全局/自定义动画 CSS，其余全部交给 Tailwind -->
 <style>
-	/* 如果你在全局 CSS 中引入了 Google Fonts，这里可以省略。
-     如果没有，可以在这里引入 Cinzel 字体以支持英文副标题 */
-	@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
-	@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap');
-
 	.fadeIn {
 		animation: fadeIn 1.5s ease-in-out;
 	}

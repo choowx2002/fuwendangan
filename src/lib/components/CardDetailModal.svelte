@@ -151,7 +151,12 @@
 									: 'border-cyan-900/50 opacity-50 hover:opacity-80 hover:border-cyan-500/50'}"
 							>
 								{#if firstPrint.img_cdn}
-									<img src={firstPrint.img_cdn} alt={group.version} title={group.version} class="w-full h-full object-cover" />
+									<img
+										src={firstPrint.img_cdn}
+										alt={group.version}
+										title={group.version}
+										class="w-full h-full object-cover"
+									/>
 								{:else}
 									<div class="w-full h-full bg-cyan-950/50"></div>
 								{/if}
@@ -194,21 +199,24 @@
 					{#if card.sub_title_cn || card.sub_title_en}
 						<p class="text-cyan-300 text-sm font-medium">
 							{card.sub_title_cn || ''}
-							{#if card.sub_title_en}<span class="font-normal italic ml-2"
-									>{card.sub_title_en}</span
+							{#if card.sub_title_en}<span class="font-normal italic ml-2">{card.sub_title_en}</span
 								>{/if}
 						</p>
 					{/if}
 
 					<div class="flex flex-wrap gap-2 text-xs text-cyan-400 font-mono">
 						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20"
-							>卡牌编号：{currentPrint?.card_no_extend ||  card.card_no}</span
+							>卡牌编号：{currentPrint?.card_no_extend || card.card_no}</span
 						>
 						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20 flex"
 							>卡牌罕度:
 							{#if iconMap.get(currentPrint?.rarity_name as string)}
-							 <img src={iconMap.get(currentPrint?.rarity_name as string)} alt={currentPrint?.rarity_name} class="mx-1 w-[14px] h-[14px] shrink-0 object-contain" />
-						{currentPrint?.rarity_name}
+								<img
+									src={iconMap.get(currentPrint?.rarity_name as string)}
+									alt={currentPrint?.rarity_name}
+									class="mx-1 w-3.5 h-3.5 shrink-0 object-contain"
+								/>
+								{currentPrint?.rarity_name}
 							{/if}
 						</span>
 					</div>
@@ -228,16 +236,14 @@
 						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">符能</div>
 						<div class="text-2xl font-bold text-cyan-300">{card.return_energy ?? '-'}</div>
 					</div>
-					{#if card.card_category.includes("单位") }
-					<div
-						class="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 text-center hover:border-cyan-400/50 transition"
-					>
-						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">战力</div>
-						<div class="text-2xl font-bold text-cyan-300">{card.power ?? '-'}</div>
-					</div>
-						
+					{#if card.card_category.includes('单位')}
+						<div
+							class="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 text-center hover:border-cyan-400/50 transition"
+						>
+							<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">战力</div>
+							<div class="text-2xl font-bold text-cyan-300">{card.power ?? '-'}</div>
+						</div>
 					{/if}
-					
 				</div>
 
 				<!-- 标签与分类 -->
@@ -310,9 +316,9 @@
 								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">英雄标签</h4>
 								<div class="flex flex-wrap gap-1.5">
 									<span
-											class="px-2 py-0.5 bg-amber-950/50 border border-amber-500/30 text-amber-300 text-xs rounded"
-											>{card.champion_tag}</span
-										>
+										class="px-2 py-0.5 bg-amber-950/50 border border-amber-500/30 text-amber-300 text-xs rounded"
+										>{card.champion_tag}</span
+									>
 								</div>
 							</div>
 						{/if}
@@ -342,9 +348,7 @@
 				<!-- 风味文本 -->
 				{#if card.flavor_text_cn || card.flavor_text_en}
 					<div class="space-y-2 pt-2 border-t border-cyan-500/10 pb-4">
-						<h4 class="text-cyan-600 font-semibold text-xs uppercase tracking-wider">
-							风味文本
-						</h4>
+						<h4 class="text-cyan-600 font-semibold text-xs uppercase tracking-wider">风味文本</h4>
 						<div class="italic text-cyan-400/60 text-sm leading-relaxed space-y-1">
 							{#if card.flavor_text_cn}
 								<p>{card.flavor_text_cn}</p>

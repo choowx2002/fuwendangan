@@ -42,6 +42,7 @@
 				fragment.appendChild(firefly);
 			}
 
+			// eslint-disable-next-line svelte/no-dom-manipulating
 			firefliesContainer.appendChild(fragment);
 		}
 
@@ -88,7 +89,7 @@
 	};
 </script>
 
-<div class="relative h-svh overflow-auto bg-black text-white font-serif">
+<div class="relative h-svh overflow-auto bg-black text-white">
 	<!-- Banner Background -->
 	<div class="fixed inset-0 z-0 pointer-events-none">
 		<img
@@ -103,7 +104,7 @@
 	</div>
 
 	<!-- Fireflies -->
-	<div bind:this={firefliesContainer} class="fixed inset-0 z-[1] blur-[1.3px]"></div>
+	<div bind:this={firefliesContainer} class="fixed inset-0 z-1 blur-[1.3px]"></div>
 
 	<!-- Main Content -->
 	<div class="relative z-10 min-h-screen flex flex-col">
@@ -237,7 +238,7 @@
 
 		<!-- Footer -->
 		<footer class="relative z-10">
-			<div class="bg-gradient-to-t from-black via-black/80 to-transparent pt-12 pb-6">
+			<div class="bg-linear-to-t from-black via-black/80 to-transparent pt-12 pb-6">
 				<div class="max-w-4xl mx-auto px-6 text-center">
 					<div class="flex items-center justify-center gap-3 mb-3">
 						<!-- <div class="w-12 h-[1px] bg-gradient-to-r from-transparent to-cyan-500/50"></div> -->
@@ -266,15 +267,15 @@
 	</div>
 
 	<button onclick={countLogin} class="w-20 h-20 z-20 fixed right-4 bottom-4 group hidden sm:block">
-		<img src={poroGIF} alt="poro gif" class="w-full h-full opacity-0 transition-opacity ease-in-out group-hover:opacity-100" />
+		<img
+			src={poroGIF}
+			alt="poro gif"
+			class="w-full h-full opacity-0 transition-opacity ease-in-out group-hover:opacity-100"
+		/>
 	</button>
 </div>
 
 <style>
-	.font-serif {
-		font-family: 'Cinzel', 'Georgia', serif;
-	}
-
 	/* 漂浮动画 */
 	@keyframes floatLeft {
 		0%,
@@ -388,6 +389,9 @@
 			transparent 70%
 		);
 		-webkit-mask:
+			linear-gradient(#fff 0 0) content-box,
+			linear-gradient(#fff 0 0);
+		mask:
 			linear-gradient(#fff 0 0) content-box,
 			linear-gradient(#fff 0 0);
 		-webkit-mask-composite: xor;

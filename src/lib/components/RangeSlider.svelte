@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import noUiSlider from 'nouislider';
+	import noUiSlider, { type API } from 'nouislider';
 	import 'nouislider/dist/nouislider.css';
 
 	let {
@@ -16,7 +16,7 @@
 	} = $props();
 
 	let container: HTMLDivElement;
-	let slider: noUiSlider.API;
+	let slider: API;
 
 	onMount(() => {
 		slider = noUiSlider.create(container, {
@@ -32,7 +32,7 @@
 		});
 
 		// 当滑块拖动时，同步更新传入的 range 数组
-		slider.on('update', (values: any[]) => {
+		slider.on('update', (values) => {
 			range[0] = Number(values[0]);
 			range[1] = Number(values[1]);
 		});

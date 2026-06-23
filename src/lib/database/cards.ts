@@ -5,7 +5,7 @@ import { supabase } from './supabaseClient';
 export async function searchCards(params: CardSearchParams): Promise<CardSearchResult> {
 	const {
 		page = 1,
-		pageSize = 20,
+		pageSize = 30,
 		searchText,
 		is_banned = false, // 默认不展示禁卡
 		...filters
@@ -13,7 +13,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
 
 	const from = (page - 1) * pageSize;
 	const to = from + pageSize - 1;
-
+	console.log(is_banned);
 	let query = supabase
 		.from('cards_base')
 		.select('*, card_prints(*)', { count: 'exact' })
