@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import bannerImgSrc from '$lib/assets/home_bg.jpg';
+	import poroGIF from '$lib/assets/giphy.gif';
 	import mainLogo from '$lib/assets/1781920082.webp';
+	import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
 
 	let firefliesContainer: HTMLDivElement;
 	let bannerImg: HTMLImageElement;
 	let animationFrameId: number | null = null;
+	let count: number = 0;
 
 	onMount(() => {
 		// 生成萤火虫
@@ -74,6 +78,14 @@
 			}
 		};
 	});
+
+	const countLogin = () => {
+		if (count > 3) {
+			goto(resolve('/login'));
+			count = 0;
+		}
+		count++;
+	};
 </script>
 
 <div class="relative h-svh overflow-auto bg-black text-white font-serif">
@@ -86,7 +98,7 @@
 			class="w-full h-full object-cover object-top blur-in"
 			style="transform:scale(1.05)"
 		/>
-		<div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/10 to-black/100"></div>
+		<div class="absolute inset-0 bg-linear-to-b from-black/10 via-black/10 to-black"></div>
 		<div class="absolute inset-0 vignette"></div>
 	</div>
 
@@ -105,7 +117,7 @@
 			class="flex items-center flex-col md:flex-row justify-around gap-6 md:px-12 lg:px-20 py-8 md:pb-10"
 		>
 			<a
-				href="/library"
+				href={resolve('/library')}
 				class="group animate-fade-in-left"
 				style="animation-delay: 0.5s; animation-fill-mode: both;"
 			>
@@ -252,6 +264,10 @@
 			</div>
 		</footer>
 	</div>
+
+	<button onclick={countLogin} class="w-20 h-20 z-20 fixed right-4 bottom-4 group hidden sm:block">
+		<img src={poroGIF} alt="poro gif" class="w-full h-full opacity-0 transition-opacity ease-in-out group-hover:opacity-100" />
+	</button>
 </div>
 
 <style>
