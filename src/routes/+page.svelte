@@ -80,11 +80,11 @@
 	});
 
 	const countLogin = () => {
-		if (count > 3) {
+		count++;
+		if (count >= 3) {
 			goto(resolve('/login'));
 			count = 0;
 		}
-		count++;
 	};
 </script>
 

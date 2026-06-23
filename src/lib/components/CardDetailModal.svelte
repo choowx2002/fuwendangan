@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { colorDICT } from '$lib/constants/filterConfig';
+	import { iconMap } from '$lib/constants/icon';
 	import type { CardListItem, CardPrint } from '$lib/types/card';
+	import CardText from './CardText.svelte';
 
 	let { card, onClose }: { card: CardListItem | null; onClose: () => void } = $props();
 
@@ -68,12 +71,16 @@
 		role="presentation"
 	>
 		<div
-			class="relative w-full max-w-5xl h-[85vh] flex flex-col md:flex-row bg-gray-950 border border-cyan-500/30 rounded-xl shadow-[0_0_50px_rgba(34,211,238,0.15)] overflow-hidden animate-scale-in"
+			class="relative w-full overflow-y-auto sm:overflow-y-hidden max-w-5xl h-[85vh] flex flex-col md:flex-row bg-gray-950 border border-cyan-500/30 rounded-xl shadow-[0_0_50px_rgba(34,211,238,0.15)] overflow-hidden animate-scale-in"
 		>
 			<!-- 关闭按钮 -->
 			<button
 				aria-label="close modal"
-				onclick={onClose}
+				onclick={() => {
+					selectedLangIdx = 0;
+					selectedVersionIdx = 0;
+					onClose();
+				}}
 				class="absolute top-4 right-4 z-20 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500 hover:text-black transition-all"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -125,7 +132,7 @@
 				<!-- 画师信息 -->
 				{#if currentPrint?.artist}
 					<div class="text-center text-cyan-600 text-xs italic mb-4">
-						Illustrated by <span class="text-cyan-400 not-italic">{currentPrint.artist}</span>
+						画师： <span class="text-cyan-400 not-italic">{currentPrint.artist}</span>
 					</div>
 				{/if}
 
@@ -144,7 +151,7 @@
 									: 'border-cyan-900/50 opacity-50 hover:opacity-80 hover:border-cyan-500/50'}"
 							>
 								{#if firstPrint.img_cdn}
-									<img src={firstPrint.img_cdn} alt="version" class="w-full h-full object-cover" />
+									<img src={firstPrint.img_cdn} alt={group.version} title={group.version} class="w-full h-full object-cover" />
 								{:else}
 									<div class="w-full h-full bg-cyan-950/50"></div>
 								{/if}
@@ -161,7 +168,7 @@
 			</div>
 
 			<!-- ================= 右侧：详细信息区 ================= -->
-			<div class="md:w-3/5 h-full flex flex-col overflow-y-auto custom-scrollbar p-6 space-y-6">
+			<div class="md:w-3/5 h-full flex flex-col sm:overflow-y-auto custom-scrollbar p-6 space-y-6">
 				<!-- 头部：名称与基础标识 -->
 				<header class="space-y-2 border-b border-cyan-500/20 pb-4">
 					<div class="flex items-start justify-between gap-4">
@@ -170,10 +177,10 @@
 								class="text-3xl font-bold text-cyan-100 leading-tight drop-shadow-[0_0_10px_rgba(34,211,238,0.3)]"
 							>
 								{card.card_name_cn}
+								{#if card.card_name_en}
+									<span class="text-sm">{card.card_name_en}</span>
+								{/if}
 							</h2>
-							{#if card.card_name_en}
-								<p class="text-cyan-500 text-sm italic mt-1">{card.card_name_en}</p>
-							{/if}
 						</div>
 						{#if card.is_banned}
 							<span
@@ -187,22 +194,23 @@
 					{#if card.sub_title_cn || card.sub_title_en}
 						<p class="text-cyan-300 text-sm font-medium">
 							{card.sub_title_cn || ''}
-							{#if card.sub_title_en}<span class="text-cyan-600 italic ml-2"
-									>({card.sub_title_en})</span
+							{#if card.sub_title_en}<span class="font-normal italic ml-2"
+									>{card.sub_title_en}</span
 								>{/if}
 						</p>
 					{/if}
 
 					<div class="flex flex-wrap gap-2 text-xs text-cyan-400 font-mono">
 						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20"
-							>ID: {card.card_no}</span
+							>卡牌编号：{currentPrint?.card_no_extend ||  card.card_no}</span
 						>
-						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20"
-							>Series: {card.series_name}</span
-						>
-						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20"
-							>Rarity: {card.rarity_name}</span
-						>
+						<span class="px-2 py-1 bg-cyan-950/50 rounded border border-cyan-500/20 flex"
+							>卡牌罕度:
+							{#if iconMap.get(currentPrint?.rarity_name as string)}
+							 <img src={iconMap.get(currentPrint?.rarity_name as string)} alt={currentPrint?.rarity_name} class="mx-1 w-[14px] h-[14px] shrink-0 object-contain" />
+						{currentPrint?.rarity_name}
+							{/if}
+						</span>
 					</div>
 				</header>
 
@@ -211,39 +219,48 @@
 					<div
 						class="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 text-center hover:border-cyan-400/50 transition"
 					>
-						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">Energy</div>
+						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">法力</div>
 						<div class="text-2xl font-bold text-cyan-300">{card.energy ?? '-'}</div>
 					</div>
 					<div
 						class="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 text-center hover:border-cyan-400/50 transition"
 					>
-						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">Power</div>
-						<div class="text-2xl font-bold text-cyan-300">{card.power ?? '-'}</div>
+						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">符能</div>
+						<div class="text-2xl font-bold text-cyan-300">{card.return_energy ?? '-'}</div>
 					</div>
+					{#if card.card_category.includes("单位") }
 					<div
 						class="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 text-center hover:border-cyan-400/50 transition"
 					>
-						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">Return</div>
-						<div class="text-2xl font-bold text-cyan-300">{card.return_energy ?? '-'}</div>
+						<div class="text-cyan-600 text-xs uppercase tracking-wider mb-1">战力</div>
+						<div class="text-2xl font-bold text-cyan-300">{card.power ?? '-'}</div>
 					</div>
+						
+					{/if}
+					
 				</div>
 
 				<!-- 标签与分类 -->
 				<div class="space-y-4">
-					<div class="flex flex-wrap gap-2">
+					<div class="flex flex-wrap gap-2 items-center">
 						{#if card.card_category}
 							<span
-								class="px-3 py-1 bg-cyan-500/10 border border-cyan-400/50 text-cyan-200 text-xs font-semibold rounded-full"
+								class="px-3 py-1 bg-cyan-500/10 border border-cyan-400/50 text-cyan-400 text-sm font-semibold rounded-full"
 							>
 								{card.card_category}
 							</span>
 						{/if}
 						{#if card.card_color_list?.length}
 							{#each card.card_color_list as color (color)}
+								{@const iconUrl = iconMap.get(color)}
 								<span
-									class="px-3 py-1 bg-cyan-900/30 border border-cyan-500/30 text-cyan-400 text-xs rounded-full"
+									class="px-3 py-1 bg-cyan-500/10 border border-cyan-400/50 text-cyan-400 text-[1.5rem] rounded-full"
 								>
-									{color}
+									{#if iconUrl}
+										<img src={iconUrl} alt={color} class="w-5 h-5 shrink-0 object-contain" />
+									{:else}
+										{colorDICT.get(color) || '无色'}
+									{/if}
 								</span>
 							{/each}
 						{/if}
@@ -252,7 +269,7 @@
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 						{#if card.region?.length}
 							<div>
-								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">Regions</h4>
+								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">区域</h4>
 								<div class="flex flex-wrap gap-1.5">
 									{#each card.region as r (r)}
 										<span class="px-2 py-0.5 bg-cyan-950/50 text-cyan-300 text-xs rounded">{r}</span
@@ -263,7 +280,7 @@
 						{/if}
 						{#if card.tag?.length}
 							<div>
-								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">Tags</h4>
+								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">标签</h4>
 								<div class="flex flex-wrap gap-1.5">
 									{#each card.tag as t (t)}
 										<span class="px-2 py-0.5 bg-cyan-950/50 text-cyan-300 text-xs rounded">{t}</span
@@ -277,7 +294,7 @@
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 						{#if card.keyword?.length}
 							<div>
-								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">Keywords</h4>
+								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">关键词</h4>
 								<div class="flex flex-wrap gap-1.5">
 									{#each card.keyword as k (k)}
 										<span
@@ -288,22 +305,14 @@
 								</div>
 							</div>
 						{/if}
-						{#if card.advanced_tag || card.champion_tag}
+						{#if card.champion_tag}
 							<div>
-								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">Special</h4>
+								<h4 class="text-cyan-500 text-xs uppercase tracking-wider mb-2">英雄标签</h4>
 								<div class="flex flex-wrap gap-1.5">
-									{#if card.advanced_tag}
-										<span
-											class="px-2 py-0.5 bg-purple-950/50 border border-purple-500/30 text-purple-300 text-xs rounded"
-											>{card.advanced_tag}</span
-										>
-									{/if}
-									{#if card.champion_tag}
-										<span
+									<span
 											class="px-2 py-0.5 bg-amber-950/50 border border-amber-500/30 text-amber-300 text-xs rounded"
 											>{card.champion_tag}</span
 										>
-									{/if}
 								</div>
 							</div>
 						{/if}
@@ -315,11 +324,11 @@
 					<h4
 						class="text-cyan-400 font-bold text-sm uppercase tracking-wider border-l-4 border-cyan-500 pl-3"
 					>
-						Effect
+						效果文本
 					</h4>
 					<div class="bg-black/40 border border-cyan-500/20 rounded-lg p-4 space-y-3">
 						<p class="text-cyan-100 text-sm leading-relaxed whitespace-pre-line">
-							{card.effect_cn || '无描述。'}
+							<CardText text={card.effect_cn} />
 						</p>
 						{#if card.effect_en}
 							<p class="text-cyan-100 text-xs leading-relaxed whitespace-pre-line pt-3">
@@ -332,9 +341,9 @@
 
 				<!-- 风味文本 -->
 				{#if card.flavor_text_cn || card.flavor_text_en}
-					<div class="space-y-2 pt-2 border-t border-cyan-500/10">
+					<div class="space-y-2 pt-2 border-t border-cyan-500/10 pb-4">
 						<h4 class="text-cyan-600 font-semibold text-xs uppercase tracking-wider">
-							Flavor Text
+							风味文本
 						</h4>
 						<div class="italic text-cyan-400/60 text-sm leading-relaxed space-y-1">
 							{#if card.flavor_text_cn}
