@@ -128,3 +128,34 @@ export interface CardFilterOptions {
 	power_range: NumberRangeOption;
 	return_energy_range: NumberRangeOption;
 }
+
+// src/lib/types.ts
+export interface CardBase {
+	id: string;
+	card_no: string;
+	card_name_cn: string | null;
+	card_name_en: string | null;
+	sub_title_cn: string | null;
+	sub_title_en: string | null;
+	card_category: string | null;
+	card_color_list: string[] | null;
+	region: string[] | null;
+	tag: string[] | null;
+	keyword: string[] | null;
+	advanced_tag: string[] | null;
+	champion_tag: string | null;
+	effect_cn: string | null;
+	effect_en: string | null;
+	energy: number | null;
+	return_energy: number | null;
+	power: number | null;
+	rarity_name: string | null;
+	series_name: string | null;
+	flavor_text_cn: string | null;
+	flavor_text_en: string | null;
+	is_banned: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export type CardFormData = Omit<CardBase, 'id' | 'created_at' | 'updated_at'>;
