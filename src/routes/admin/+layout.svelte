@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/database/supabaseClient';
+	import { resolve } from '$app/paths';
 
 	let { children } = $props();
 
@@ -13,7 +14,7 @@
 			data: { session }
 		} = await supabase.auth.getSession();
 		if (!session) {
-			goto('/login');
+			goto(resolve('/login'));
 		} else {
 			userEmail = session.user.email!;
 			isLoading = false;
@@ -21,14 +22,14 @@
 
 		supabase.auth.onAuthStateChange((_event, session) => {
 			if (!session) {
-				goto('/login');
+				goto(resolve('/login'));
 			}
 		});
 	});
 
 	async function handleLogout() {
 		await supabase.auth.signOut();
-		goto('/login');
+		goto(resolve('/login'));
 	}
 </script>
 
@@ -39,9 +40,8 @@
 {:else}
 	<div class="admin-layout">
 		<nav class="admin-nav">
-			<span class="user-info">👤 {userEmail}</span>
+			<span class="user-info">{userEmail}</span>
 			<div class="nav-links">
-				<a href="/admin/cards">卡牌管理</a>
 				<button onclick={handleLogout} class="btn-logout">退出</button>
 			</div>
 		</nav>
@@ -76,10 +76,6 @@
 		display: flex;
 		gap: 1rem;
 		align-items: center;
-	}
-	.nav-links a {
-		color: #a0c4ff;
-		text-decoration: none;
 	}
 	.btn-logout {
 		background: #e63946;
