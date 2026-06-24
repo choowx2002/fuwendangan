@@ -1,51 +1,114 @@
-<!-- src/routes/admin/cards/[id]/+page.svelte -->
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, tick } from 'svelte';
 	import { supabase } from '$lib/database/supabaseClient';
 	import type { CardBase } from '$lib/types/card';
 	import TagInput from '$lib/components/TagInput.svelte';
-	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
+	import type { PageProps } from './$types';
 
-	let card: CardBase | null = null;
-	let isLoading = true;
-	let isSaving = false;
-	let error = '';
-	let successMsg = '';
+	// ─── Types ───────────────────────────────────────────────
+	interface FormState {
+		card_no: string;
+		card_name_cn: string;
+		card_name_en: string;
+		sub_title_cn: string;
+		sub_title_en: string;
+		card_category: string;
+		card_color_list: string[];
+		region: string[];
+		tag: string[];
+		keyword: string[];
+		advanced_tag: string[];
+		champion_tag: string;
+		effect_cn: string;
+		effect_en: string;
+		energy: number | null;
+		return_energy: number | null;
+		power: number | null;
+		rarity_name: string;
+		series_name: string;
+		flavor_text_cn: string;
+		flavor_text_en: string;
+		is_banned: boolean;
+	}
 
-	let form = {
-		card_no: '',
-		card_name_cn: '',
-		card_name_en: '',
-		sub_title_cn: '',
-		sub_title_en: '',
-		card_category: '',
-		card_color_list: [] as string[],
-		region: [] as string[],
-		tag: [] as string[],
-		keyword: [] as string[],
-		advanced_tag: [] as string[],
-		champion_tag: '',
-		effect_cn: '',
-		effect_en: '',
-		energy: null as number | null,
-		return_energy: null as number | null,
-		power: null as number | null,
-		rarity_name: '',
-		series_name: '',
-		flavor_text_cn: '',
-		flavor_text_en: '',
-		is_banned: false
-	};
+	// ─── Props ───────────────────────────────────────────────
+	let { params }: PageProps = $props();
+	const cardId = params.id;
 
-	const cardId = $page.params.id;
+	// ─── State ───────────────────────────────────────────────
+	let card = $state<CardBase | null>(null);
+	let isLoading = $state(true);
+	let isSaving = $state(false);
+	let error = $state('');
+	let successMsg = $state('');
 
+	let form = $state<FormState>(createEmptyForm());
+
+	// ─── Factories ───────────────────────────────────────────
+	function createEmptyForm(): FormState {
+		return {
+			card_no: '',
+			card_name_cn: '',
+			card_name_en: '',
+			sub_title_cn: '',
+			sub_title_en: '',
+			card_category: '',
+			card_color_list: [],
+			region: [],
+			tag: [],
+			keyword: [],
+			advanced_tag: [],
+			champion_tag: '',
+			effect_cn: '',
+			effect_en: '',
+			energy: null,
+			return_energy: null,
+			power: null,
+			rarity_name: '',
+			series_name: '',
+			flavor_text_cn: '',
+			flavor_text_en: '',
+			is_banned: false
+		};
+	}
+
+	function formFromData(data: CardBase): FormState {
+		return {
+			card_no: data.card_no ?? '',
+			card_name_cn: data.card_name_cn ?? '',
+			card_name_en: data.card_name_en ?? '',
+			sub_title_cn: data.sub_title_cn ?? '',
+			sub_title_en: data.sub_title_en ?? '',
+			card_category: data.card_category ?? '',
+			card_color_list: data.card_color_list ?? [],
+			region: data.region ?? [],
+			tag: data.tag ?? [],
+			keyword: data.keyword ?? [],
+			advanced_tag: data.advanced_tag ?? [],
+			champion_tag: data.champion_tag ?? '',
+			effect_cn: data.effect_cn ?? '',
+			effect_en: data.effect_en ?? '',
+			energy: data.energy ?? null,
+			return_energy: data.return_energy ?? null,
+			power: data.power ?? null,
+			rarity_name: data.rarity_name ?? '',
+			series_name: data.series_name ?? '',
+			flavor_text_cn: data.flavor_text_cn ?? '',
+			flavor_text_en: data.flavor_text_en ?? '',
+			is_banned: data.is_banned ?? false
+		};
+	}
+
+	// ─── Data Loading ────────────────────────────────────────
 	onMount(async () => {
 		await loadCard();
 	});
 
 	async function loadCard() {
 		isLoading = true;
+		error = '';
+
 		const { data, error: fetchError } = await supabase
 			.from('cards_base')
 			.select('*')
@@ -59,48 +122,43 @@
 		}
 
 		card = data;
-		populateForm(data);
+		// ✅ 整体赋值，触发 Svelte 5 完整响应式更新
+		form = formFromData(data);
 		isLoading = false;
+
+		// 确保 DOM 更新完成
+		await tick();
 	}
 
-	function populateForm(data: CardBase) {
-		form.card_no = data.card_no || '';
-		form.card_name_cn = data.card_name_cn || '';
-		form.card_name_en = data.card_name_en || '';
-		form.sub_title_cn = data.sub_title_cn || '';
-		form.sub_title_en = data.sub_title_en || '';
-		form.card_category = data.card_category || '';
-		form.card_color_list = data.card_color_list || [];
-		form.region = data.region || [];
-		form.tag = data.tag || [];
-		form.keyword = data.keyword || [];
-		form.advanced_tag = data.advanced_tag || [];
-		form.champion_tag = data.champion_tag || '';
-		form.effect_cn = data.effect_cn || '';
-		form.effect_en = data.effect_en || '';
-		form.energy = data.energy;
-		form.return_energy = data.return_energy;
-		form.power = data.power;
-		form.rarity_name = data.rarity_name || '';
-		form.series_name = data.series_name || '';
-		form.flavor_text_cn = data.flavor_text_cn || '';
-		form.flavor_text_en = data.flavor_text_en || '';
-		form.is_banned = data.is_banned || false;
-	}
-
+	// ─── Helpers ─────────────────────────────────────────────
 	function nullIfEmpty(val: string): string | null {
-		return val.trim() === '' ? null : val.trim();
+		const trimmed = val.trim();
+		return trimmed === '' ? null : trimmed;
 	}
 
-	async function handleSubmit() {
+	function dismissMessage() {
+		error = '';
+		successMsg = '';
+	}
+
+	function showSuccess(msg: string) {
+		successMsg = msg;
+		setTimeout(() => {
+			if (successMsg === msg) successMsg = '';
+		}, 3000);
+	}
+
+	// ─── Submit ──────────────────────────────────────────────
+	async function handleSubmit(ev: SubmitEvent) {
+		ev.preventDefault();
+		dismissMessage();
+
 		if (!form.card_no.trim()) {
 			error = '卡牌编号不能为空';
 			return;
 		}
 
 		isSaving = true;
-		error = '';
-		successMsg = '';
 
 		const payload = {
 			card_no: form.card_no.trim(),
@@ -136,320 +194,239 @@
 		if (updateError) {
 			error = updateError.message;
 		} else {
-			successMsg = '✅ 保存成功！';
-			await loadCard(); // Reload to reflect changes
+			showSuccess('✅ 保存成功！');
+			await loadCard();
 		}
+
 		isSaving = false;
 	}
 </script>
 
-<div class="card-detail-page">
-	<div class="page-header">
-		<h1>✏️ 编辑卡牌</h1>
-		<div class="header-actions">
-			<a href="/admin/cards" class="btn btn-outline">← 返回列表</a>
-		</div>
+<div class="max-w-5xl mx-auto px-4 py-8 text-black">
+	<!-- Header -->
+	<div class="flex items-center justify-between mb-6">
+		<h1 class="text-2xl font-bold text-gray-900">✏️ 编辑卡牌</h1>
+		<a
+			href={resolve('/admin/cards')}
+			class="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+		>
+			← 返回列表
+		</a>
 	</div>
 
+	<!-- Messages -->
 	{#if error}
-		<div class="error-banner">❌ {error}</div>
+		<div class="flex items-center justify-between mb-4 px-4 py-3 bg-red-50 text-red-800 border border-red-200 rounded-md">
+			<span>❌ {error}</span>
+			<button onclick={dismissMessage} class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+		</div>
 	{/if}
 	{#if successMsg}
-		<div class="success-banner">{successMsg}</div>
+		<div class="mb-4 px-4 py-3 bg-green-50 text-green-800 border border-green-200 rounded-md animate-fade-in">
+			{successMsg}
+		</div>
 	{/if}
 
+	<!-- Loading -->
 	{#if isLoading}
-		<div class="loading-state">加载中...</div>
+		<div class="flex items-center justify-center py-20">
+			<div class="flex items-center gap-3 text-gray-500">
+				<svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+				</svg>
+				<span>加载中...</span>
+			</div>
+		</div>
+
+	<!-- Form -->
 	{:else if card}
-		<form on:submit|preventDefault={handleSubmit} class="card-form">
-			<!-- Meta Info -->
-			<div class="meta-info">
-				<span>ID: <code>{card.id}</code></span>
+		<form onsubmit={handleSubmit} class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+			<!-- Meta -->
+			<div class="flex flex-wrap gap-6 px-4 py-3 bg-gray-50 rounded-lg text-xs text-gray-500">
+				<span>ID: <code class="px-1.5 py-0.5 bg-gray-200 rounded text-[11px] font-mono">{card.id}</code></span>
 				<span>创建: {new Date(card.created_at).toLocaleString('zh-CN')}</span>
 				<span>更新: {new Date(card.updated_at).toLocaleString('zh-CN')}</span>
 			</div>
 
-			<!-- Basic Info -->
-			<fieldset>
-				<legend>基本信息</legend>
-				<div class="form-grid">
-					<div class="form-group required">
-						<label for="card_no">卡牌编号</label>
-						<input id="card_no" type="text" bind:value={form.card_no} required />
+			<!-- 基本信息 -->
+			<fieldset class="border border-gray-200 rounded-lg p-5">
+				<legend class="px-2 text-sm font-semibold text-gray-700">基本信息</legend>
+				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
+					<div class="flex flex-col gap-1">
+						<label for="card_no" class="text-sm font-medium text-gray-600">
+							卡牌编号 <span class="text-red-500">*</span>
+						</label>
+						<input
+							id="card_no"
+							type="text"
+							bind:value={form.card_no}
+							required
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+						/>
 					</div>
-					<div class="form-group">
-						<label for="card_name_cn">中文名</label>
-						<input id="card_name_cn" type="text" bind:value={form.card_name_cn} />
+					<div class="flex flex-col gap-1">
+						<label for="card_name_cn" class="text-sm font-medium text-gray-600">中文名</label>
+						<input id="card_name_cn" type="text" bind:value={form.card_name_cn} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
-					<div class="form-group">
-						<label for="card_name_en">英文名</label>
-						<input id="card_name_en" type="text" bind:value={form.card_name_en} />
+					<div class="flex flex-col gap-1">
+						<label for="card_name_en" class="text-sm font-medium text-gray-600">英文名</label>
+						<input id="card_name_en" type="text" bind:value={form.card_name_en} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
-					<div class="form-group">
-						<label for="sub_title_cn">副标题(中)</label>
-						<input id="sub_title_cn" type="text" bind:value={form.sub_title_cn} />
+					<div class="flex flex-col gap-1">
+						<label for="sub_title_cn" class="text-sm font-medium text-gray-600">副标题(中)</label>
+						<input id="sub_title_cn" type="text" bind:value={form.sub_title_cn} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
-					<div class="form-group">
-						<label for="sub_title_en">副标题(英)</label>
-						<input id="sub_title_en" type="text" bind:value={form.sub_title_en} />
-					</div>
-				</div>
-			</fieldset>
-
-			<!-- Classification -->
-			<fieldset>
-				<legend>分类</legend>
-				<div class="form-grid">
-					<div class="form-group">
-						<label for="card_category">类别</label>
-						<input id="card_category" type="text" bind:value={form.card_category} />
-					</div>
-					<div class="form-group">
-						<label for="rarity_name">稀有度</label>
-						<input id="rarity_name" type="text" bind:value={form.rarity_name} />
-					</div>
-					<div class="form-group">
-						<label for="series_name">系列</label>
-						<input id="series_name" type="text" bind:value={form.series_name} />
-					</div>
-					<div class="form-group">
-						<label for="champion_tag">冠军标签</label>
-						<input id="champion_tag" type="text" bind:value={form.champion_tag} />
-					</div>
-				</div>
-				<div class="form-grid">
-					<div class="form-group full-width">
-						<label>颜色列表</label>
-						<TagInput bind:tags={form.card_color_list} />
-					</div>
-					<div class="form-group full-width">
-						<label>地区</label>
-						<TagInput bind:tags={form.region} />
-					</div>
-					<div class="form-group full-width">
-						<label>标签</label>
-						<TagInput bind:tags={form.tag} />
-					</div>
-					<div class="form-group full-width">
-						<label>关键词</label>
-						<TagInput bind:tags={form.keyword} />
-					</div>
-					<div class="form-group full-width">
-						<label>高级标签</label>
-						<TagInput bind:tags={form.advanced_tag} />
+					<div class="flex flex-col gap-1">
+						<label for="sub_title_en" class="text-sm font-medium text-gray-600">副标题(英)</label>
+						<input id="sub_title_en" type="text" bind:value={form.sub_title_en} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
 				</div>
 			</fieldset>
 
-			<!-- Stats -->
-			<fieldset>
-				<legend>数值</legend>
-				<div class="form-grid">
-					<div class="form-group">
-						<label for="energy">能量</label>
-						<input id="energy" type="number" bind:value={form.energy} />
+			<!-- 分类 -->
+			<fieldset class="border border-gray-200 rounded-lg p-5">
+				<legend class="px-2 text-sm font-semibold text-gray-700">分类</legend>
+				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+					<div class="flex flex-col gap-1">
+						<label for="card_category" class="text-sm font-medium text-gray-600">类别</label>
+						<input id="card_category" type="text" bind:value={form.card_category} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
-					<div class="form-group">
-						<label for="return_energy">回复能量</label>
-						<input id="return_energy" type="number" bind:value={form.return_energy} />
+					<div class="flex flex-col gap-1">
+						<label for="rarity_name" class="text-sm font-medium text-gray-600">稀有度</label>
+						<input id="rarity_name" type="text" bind:value={form.rarity_name} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
 					</div>
-					<div class="form-group">
-						<label for="power">战力</label>
-						<input id="power" type="number" bind:value={form.power} />
+					<div class="flex flex-col gap-1">
+						<label for="series_name" class="text-sm font-medium text-gray-600">系列</label>
+						<input id="series_name" type="text" bind:value={form.series_name} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="champion_tag" class="text-sm font-medium text-gray-600">冠军标签</label>
+						<input id="champion_tag" type="text" bind:value={form.champion_tag} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+				</div>
+
+				<!-- Tags -->
+				<div class="grid grid-cols-1 gap-4 mt-4">
+					<div class="flex flex-col gap-1">
+						<label class="text-sm font-medium text-gray-600">颜色列表</label>
+						<TagInput bind:tags={form.card_color_list} disabled={isSaving} />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label class="text-sm font-medium text-gray-600">地区</label>
+						<TagInput bind:tags={form.region} disabled={isSaving} />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label class="text-sm font-medium text-gray-600">标签</label>
+						<TagInput bind:tags={form.tag} disabled={isSaving} />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label class="text-sm font-medium text-gray-600">关键词</label>
+						<TagInput bind:tags={form.keyword} disabled={isSaving} />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label class="text-sm font-medium text-gray-600">高级标签</label>
+						<TagInput bind:tags={form.advanced_tag} disabled={isSaving} />
 					</div>
 				</div>
 			</fieldset>
 
-			<!-- Text Fields -->
-			<fieldset>
-				<legend>效果与描述</legend>
-				<div class="form-group">
-					<label for="effect_cn">效果(中)</label>
-					<textarea id="effect_cn" bind:value={form.effect_cn} rows="4"></textarea>
-				</div>
-				<div class="form-group">
-					<label for="effect_en">效果(英)</label>
-					<textarea id="effect_en" bind:value={form.effect_en} rows="4"></textarea>
-				</div>
-				<div class="form-group">
-					<label for="flavor_text_cn">风味文本(中)</label>
-					<textarea id="flavor_text_cn" bind:value={form.flavor_text_cn} rows="3"></textarea>
-				</div>
-				<div class="form-group">
-					<label for="flavor_text_en">风味文本(英)</label>
-					<textarea id="flavor_text_en" bind:value={form.flavor_text_en} rows="3"></textarea>
-				</div>
-			</fieldset>
-
-			<!-- Status -->
-			<fieldset>
-				<legend>状态</legend>
-				<div class="form-group checkbox-group">
-					<label>
-						<input type="checkbox" bind:checked={form.is_banned} />
-						禁用此卡牌
-					</label>
+			<!-- 数值 -->
+			<fieldset class="border border-gray-200 rounded-lg p-5">
+				<legend class="px-2 text-sm font-semibold text-gray-700">数值</legend>
+				<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+					<div class="flex flex-col gap-1">
+						<label for="energy" class="text-sm font-medium text-gray-600">能量</label>
+						<input id="energy" type="number" bind:value={form.energy} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="return_energy" class="text-sm font-medium text-gray-600">回复能量</label>
+						<input id="return_energy" type="number" bind:value={form.return_energy} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="power" class="text-sm font-medium text-gray-600">战力</label>
+						<input id="power" type="number" bind:value={form.power} disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
 				</div>
 			</fieldset>
 
-			<div class="form-actions">
-				<button type="submit" class="btn btn-primary" disabled={isSaving}>
-					{isSaving ? '保存中...' : '💾 保存修改'}
+			<!-- 效果与描述 -->
+			<fieldset class="border border-gray-200 rounded-lg p-5">
+				<legend class="px-2 text-sm font-semibold text-gray-700">效果与描述</legend>
+				<div class="space-y-4 mt-2">
+					<div class="flex flex-col gap-1">
+						<label for="effect_cn" class="text-sm font-medium text-gray-600">效果(中)</label>
+						<textarea id="effect_cn" bind:value={form.effect_cn} rows="4" disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="effect_en" class="text-sm font-medium text-gray-600">效果(英)</label>
+						<textarea id="effect_en" bind:value={form.effect_en} rows="4" disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="flavor_text_cn" class="text-sm font-medium text-gray-600">风味文本(中)</label>
+						<textarea id="flavor_text_cn" bind:value={form.flavor_text_cn} rows="3" disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="flavor_text_en" class="text-sm font-medium text-gray-600">风味文本(英)</label>
+						<textarea id="flavor_text_en" bind:value={form.flavor_text_en} rows="3" disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+					</div>
+				</div>
+			</fieldset>
+
+			<!-- 状态 -->
+			<fieldset class="border border-gray-200 rounded-lg p-5">
+				<legend class="px-2 text-sm font-semibold text-gray-700">状态</legend>
+				<label class="inline-flex items-center gap-2 mt-2 cursor-pointer select-none">
+					<input
+						type="checkbox"
+						bind:checked={form.is_banned}
+						disabled={isSaving}
+						class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+					/>
+					<span class="text-sm text-gray-700">禁用此卡牌</span>
+				</label>
+			</fieldset>
+
+			<!-- Actions -->
+			<div class="flex items-center gap-3 pt-4 border-t border-gray-200">
+				<button
+					type="submit"
+					disabled={isSaving}
+					class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+				>
+					{#if isSaving}
+						<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+						</svg>
+						保存中...
+					{:else}
+						保存修改
+					{/if}
 				</button>
-				<a href="/admin/cards" class="btn btn-outline">取消</a>
+				<a
+					href={resolve('/admin/cards')}
+					class="inline-flex items-center px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+				>
+					取消
+				</a>
 			</div>
 		</form>
 	{/if}
 </div>
-
-<style>
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-	}
-	.header-actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-	.error-banner {
-		background: #ffebee;
-		color: #c62828;
-		padding: 0.75rem 1rem;
-		border-radius: 4px;
-		margin-bottom: 1rem;
-		border: 1px solid #ef9a9a;
-	}
-	.success-banner {
-		background: #e8f5e9;
-		color: #2e7d32;
-		padding: 0.75rem 1rem;
-		border-radius: 4px;
-		margin-bottom: 1rem;
-		border: 1px solid #a5d6a7;
-	}
-	.meta-info {
-		display: flex;
-		gap: 1.5rem;
-		padding: 0.75rem 1rem;
-		background: #f5f5f5;
-		border-radius: 4px;
-		margin-bottom: 1rem;
-		font-size: 0.8rem;
-		color: #666;
-		flex-wrap: wrap;
-	}
-	.meta-info code {
-		font-size: 0.75rem;
-		background: #e0e0e0;
-		padding: 0.1rem 0.3rem;
-		border-radius: 2px;
-	}
-	.loading-state {
-		text-align: center;
-		padding: 2rem;
-		color: #666;
-	}
-	.card-form {
-		background: white;
-		border-radius: 8px;
-		padding: 1.5rem;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-	}
-	fieldset {
-		border: 1px solid #e0e0e0;
-		border-radius: 8px;
-		padding: 1rem 1.5rem;
-		margin-bottom: 1.5rem;
-	}
-	legend {
-		font-weight: 600;
-		padding: 0 0.5rem;
-		color: #333;
-	}
-	.form-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-	.form-group {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-	.form-group.full-width {
-		grid-column: 1 / -1;
-	}
-	.form-group.required label::after {
-		content: ' *';
-		color: #e53935;
-	}
-	label {
-		font-size: 0.85rem;
-		font-weight: 500;
-		color: #555;
-	}
-	input[type='text'],
-	input[type='number'],
-	textarea,
-	select {
-		padding: 0.5rem;
-		border: 1px solid #ddd;
-		border-radius: 4px;
-		font-size: 0.9rem;
-		font-family: inherit;
-	}
-	input:focus,
-	textarea:focus,
-	select:focus {
-		outline: none;
-		border-color: #1976d2;
-		box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-	}
-	.checkbox-group label {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		cursor: pointer;
-	}
-	.form-actions {
-		display: flex;
-		gap: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid #eee;
-	}
-	.btn {
-		display: inline-block;
-		padding: 0.6rem 1.2rem;
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-		text-decoration: none;
-		font-size: 0.9rem;
-	}
-	.btn-primary {
-		background: #1976d2;
-		color: white;
-	}
-	.btn-primary:hover {
-		background: #1565c0;
-	}
-	.btn-primary:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-	.btn-outline {
-		background: white;
-		color: #666;
-		border: 1px solid #ddd;
-	}
-	.btn-outline:hover {
-		background: #f5f5f5;
-	}
-</style>

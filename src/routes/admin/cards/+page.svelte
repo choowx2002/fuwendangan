@@ -3,6 +3,7 @@
 	import { supabase } from '$lib/database/supabaseClient';
 	import type { CardBase } from '$lib/types/card';
 	import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
 
 	let cards: CardBase[] = $state([]);
 	let isLoading = $state(true);
@@ -11,7 +12,7 @@
 	let filterCategory = $state('');
 	let filterBanned = $state('');
 	let currentPage = $state(1);
-	const pageSize = 20;
+	const pageSize = 50;
 	let totalCount = $state(0);
 
 	// Distinct values for filters
@@ -191,7 +192,7 @@
 								{/if}
 							</td>
 							<td>
-								<a href={resolve(`/admin/cards/${card.id}`)} class="btn btn-sm">编辑</a>
+								<button onclick={()=>goto(resolve(`/admin/cards/${card.id}`))} class="btn btn-sm">编辑</button>
 							</td>
 						</tr>
 					{:else}
