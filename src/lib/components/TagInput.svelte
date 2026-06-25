@@ -29,9 +29,15 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center gap-2 p-2 border border-gray-300 rounded-md min-h-[42px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 {disabled ? 'bg-gray-100 opacity-60' : ''}">
+<div
+	class="flex flex-wrap items-center gap-2 p-2 border border-gray-300 rounded-md min-h-[42px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 {disabled
+		? 'bg-gray-100 opacity-60'
+		: ''}"
+>
 	{#each tags as tag, i}
-		<span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-md">
+		<span
+			class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-md"
+		>
 			{tag}
 			{#if !disabled}
 				<button

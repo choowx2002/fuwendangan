@@ -216,13 +216,19 @@
 
 	<!-- Messages -->
 	{#if error}
-		<div class="flex items-center justify-between mb-4 px-4 py-3 bg-red-50 text-red-800 border border-red-200 rounded-md">
+		<div
+			class="flex items-center justify-between mb-4 px-4 py-3 bg-red-50 text-red-800 border border-red-200 rounded-md"
+		>
 			<span>❌ {error}</span>
-			<button onclick={dismissMessage} class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+			<button onclick={dismissMessage} class="text-red-400 hover:text-red-600 text-lg leading-none"
+				>&times;</button
+			>
 		</div>
 	{/if}
 	{#if successMsg}
-		<div class="mb-4 px-4 py-3 bg-green-50 text-green-800 border border-green-200 rounded-md animate-fade-in">
+		<div
+			class="mb-4 px-4 py-3 bg-green-50 text-green-800 border border-green-200 rounded-md animate-fade-in"
+		>
 			{successMsg}
 		</div>
 	{/if}
@@ -232,19 +238,32 @@
 		<div class="flex items-center justify-center py-20">
 			<div class="flex items-center gap-3 text-gray-500">
 				<svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+					<circle
+						class="opacity-25"
+						cx="12"
+						cy="12"
+						r="10"
+						stroke="currentColor"
+						stroke-width="4"
+					/>
 					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
 				</svg>
 				<span>加载中...</span>
 			</div>
 		</div>
 
-	<!-- Form -->
+		<!-- Form -->
 	{:else if card}
-		<form onsubmit={handleSubmit} class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+		<form
+			onsubmit={handleSubmit}
+			class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6"
+		>
 			<!-- Meta -->
 			<div class="flex flex-wrap gap-6 px-4 py-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-				<span>ID: <code class="px-1.5 py-0.5 bg-gray-200 rounded text-[11px] font-mono">{card.id}</code></span>
+				<span
+					>ID: <code class="px-1.5 py-0.5 bg-gray-200 rounded text-[11px] font-mono">{card.id}</code
+					></span
+				>
 				<span>创建: {new Date(card.created_at).toLocaleString('zh-CN')}</span>
 				<span>更新: {new Date(card.updated_at).toLocaleString('zh-CN')}</span>
 			</div>
@@ -268,23 +287,43 @@
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="card_name_cn" class="text-sm font-medium text-gray-600">中文名</label>
-						<input id="card_name_cn" type="text" bind:value={form.card_name_cn} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="card_name_cn"
+							type="text"
+							bind:value={form.card_name_cn}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="card_name_en" class="text-sm font-medium text-gray-600">英文名</label>
-						<input id="card_name_en" type="text" bind:value={form.card_name_en} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="card_name_en"
+							type="text"
+							bind:value={form.card_name_en}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="sub_title_cn" class="text-sm font-medium text-gray-600">副标题(中)</label>
-						<input id="sub_title_cn" type="text" bind:value={form.sub_title_cn} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="sub_title_cn"
+							type="text"
+							bind:value={form.sub_title_cn}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="sub_title_en" class="text-sm font-medium text-gray-600">副标题(英)</label>
-						<input id="sub_title_en" type="text" bind:value={form.sub_title_en} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="sub_title_en"
+							type="text"
+							bind:value={form.sub_title_en}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 				</div>
 			</fieldset>
@@ -295,23 +334,43 @@
 				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
 					<div class="flex flex-col gap-1">
 						<label for="card_category" class="text-sm font-medium text-gray-600">类别</label>
-						<input id="card_category" type="text" bind:value={form.card_category} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="card_category"
+							type="text"
+							bind:value={form.card_category}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="rarity_name" class="text-sm font-medium text-gray-600">稀有度</label>
-						<input id="rarity_name" type="text" bind:value={form.rarity_name} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="rarity_name"
+							type="text"
+							bind:value={form.rarity_name}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="series_name" class="text-sm font-medium text-gray-600">系列</label>
-						<input id="series_name" type="text" bind:value={form.series_name} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="series_name"
+							type="text"
+							bind:value={form.series_name}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="champion_tag" class="text-sm font-medium text-gray-600">冠军标签</label>
-						<input id="champion_tag" type="text" bind:value={form.champion_tag} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="champion_tag"
+							type="text"
+							bind:value={form.champion_tag}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 				</div>
 
@@ -346,18 +405,33 @@
 				<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
 					<div class="flex flex-col gap-1">
 						<label for="energy" class="text-sm font-medium text-gray-600">能量</label>
-						<input id="energy" type="number" bind:value={form.energy} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="energy"
+							type="number"
+							bind:value={form.energy}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="return_energy" class="text-sm font-medium text-gray-600">回复能量</label>
-						<input id="return_energy" type="number" bind:value={form.return_energy} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="return_energy"
+							type="number"
+							bind:value={form.return_energy}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="power" class="text-sm font-medium text-gray-600">战力</label>
-						<input id="power" type="number" bind:value={form.power} disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<input
+							id="power"
+							type="number"
+							bind:value={form.power}
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 				</div>
 			</fieldset>
@@ -368,23 +442,47 @@
 				<div class="space-y-4 mt-2">
 					<div class="flex flex-col gap-1">
 						<label for="effect_cn" class="text-sm font-medium text-gray-600">效果(中)</label>
-						<textarea id="effect_cn" bind:value={form.effect_cn} rows="4" disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<textarea
+							id="effect_cn"
+							bind:value={form.effect_cn}
+							rows="4"
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
 						<label for="effect_en" class="text-sm font-medium text-gray-600">效果(英)</label>
-						<textarea id="effect_en" bind:value={form.effect_en} rows="4" disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<textarea
+							id="effect_en"
+							bind:value={form.effect_en}
+							rows="4"
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="flavor_text_cn" class="text-sm font-medium text-gray-600">风味文本(中)</label>
-						<textarea id="flavor_text_cn" bind:value={form.flavor_text_cn} rows="3" disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<label for="flavor_text_cn" class="text-sm font-medium text-gray-600"
+							>风味文本(中)</label
+						>
+						<textarea
+							id="flavor_text_cn"
+							bind:value={form.flavor_text_cn}
+							rows="3"
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="flavor_text_en" class="text-sm font-medium text-gray-600">风味文本(英)</label>
-						<textarea id="flavor_text_en" bind:value={form.flavor_text_en} rows="3" disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100" />
+						<label for="flavor_text_en" class="text-sm font-medium text-gray-600"
+							>风味文本(英)</label
+						>
+						<textarea
+							id="flavor_text_en"
+							bind:value={form.flavor_text_en}
+							rows="3"
+							disabled={isSaving}
+							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+						/>
 					</div>
 				</div>
 			</fieldset>
@@ -412,8 +510,19 @@
 				>
 					{#if isSaving}
 						<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+							<circle
+								class="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								stroke-width="4"
+							/>
+							<path
+								class="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+							/>
 						</svg>
 						保存中...
 					{:else}

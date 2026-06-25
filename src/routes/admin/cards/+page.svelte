@@ -192,7 +192,9 @@
 								{/if}
 							</td>
 							<td>
-								<button onclick={()=>goto(resolve(`/admin/cards/${card.id}`))} class="btn btn-sm">编辑</button>
+								<button onclick={() => goto(resolve(`/admin/cards/${card.id}`))} class="btn btn-sm"
+									>编辑</button
+								>
 							</td>
 						</tr>
 					{:else}
