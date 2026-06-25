@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/database/supabaseClient';
 	import { resolve } from '$app/paths';
+	import bannerImg from '$lib/assets/home_bg.jpg';
+	import { page } from '$app/state';
 
 	let { children } = $props();
 
@@ -34,60 +36,47 @@
 </script>
 
 {#if isLoading}
-	<div class="loading">
-		<p>验证会话中...</p>
+	<div
+		class="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+		style="background-image: url({bannerImg});"
+	>
+		<div
+			class="gap-3 absolute inset-0 bg-linear-to-b from-black/40 via-black/60 to-black/80 flex justify-center-safe items-center-safe"
+		>
+			<svg class="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+			</svg>
+			<h1 class="text-2xl animate-pulse">加载中</h1>
+		</div>
 	</div>
 {:else}
-	<div class="admin-layout">
-		<nav class="admin-nav">
-			<span class="user-info">{userEmail}</span>
-			<div class="nav-links">
-				<button onclick={handleLogout} class="btn-logout">退出</button>
-			</div>
-		</nav>
-		<main class="admin-main">
+	<div class="relative h-svh overflow-auto bg-black text-white">
+		<div class="fixed inset-0 z-0 pointer-events-none">
+			<img
+				src={bannerImg}
+				alt="Riftbound Banner"
+				class="w-full h-full object-cover object-top blur-sm"
+			/>
+			<div class="absolute inset-0 bg-linear-to-b from-black/10 via-black/10 to-black"></div>
+			<div class="absolute inset-0 vignette"></div>
+		</div>
+		{#if page.url.pathname === '/admin/cards'}
+			<nav class="relative z-10 p-3.5 flex justify-between shadow-cyan-100/50 shadow-2xs">
+				<span class="font-extrabold">当前账号：{userEmail}</span>
+				<div class="nav-links">
+					<button
+						onclick={handleLogout}
+						class="bg-red-700 rounded px-2 py-1 text-sm font-bold cursor-pointer">退出</button
+					>
+				</div>
+			</nav>
+		{/if}
+		<main class="relative z-10 min-h-screen flex flex-col bg-black/35">
 			{@render children?.()}
 		</main>
 	</div>
 {/if}
 
 <style>
-	.loading {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		height: 100vh;
-		font-size: 1.2rem;
-		color: #666;
-	}
-	.admin-layout {
-		min-height: 100vh;
-		background: #f5f7fa;
-	}
-	.admin-nav {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.75rem 1.5rem;
-		background: #1a1a2e;
-		color: white;
-	}
-	.nav-links {
-		display: flex;
-		gap: 1rem;
-		align-items: center;
-	}
-	.btn-logout {
-		background: #e63946;
-		color: white;
-		border: none;
-		padding: 0.4rem 0.8rem;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-	.admin-main {
-		padding: 1.5rem;
-		max-width: 1400px;
-		margin: 0 auto;
-	}
 </style>

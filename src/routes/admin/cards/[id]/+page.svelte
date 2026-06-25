@@ -1,49 +1,27 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { supabase } from '$lib/database/supabaseClient';
-	import type { CardBase } from '$lib/types/card';
+	import type { CardListItem } from '$lib/types/card';
 	import TagInput from '$lib/components/TagInput.svelte';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
-
-	// ─── Types ───────────────────────────────────────────────
-	interface FormState {
-		card_no: string;
-		card_name_cn: string;
-		card_name_en: string;
-		sub_title_cn: string;
-		sub_title_en: string;
-		card_category: string;
-		card_color_list: string[];
-		region: string[];
-		tag: string[];
-		keyword: string[];
-		advanced_tag: string[];
-		champion_tag: string;
-		effect_cn: string;
-		effect_en: string;
-		energy: number | null;
-		return_energy: number | null;
-		power: number | null;
-		rarity_name: string;
-		series_name: string;
-		flavor_text_cn: string;
-		flavor_text_en: string;
-		is_banned: boolean;
-	}
+	import type { FormState } from '$lib/types/form';
+	import { getCardById } from '$lib/database/cards';
+	import CardPrintsForm from '$lib/components/CardPrintsForm.svelte';
 
 	// ─── Props ───────────────────────────────────────────────
 	let { params }: PageProps = $props();
 	const cardId = params.id;
 
 	// ─── State ───────────────────────────────────────────────
-	let card = $state<CardBase | null>(null);
+	let card = $state<CardListItem | null>(null);
 	let isLoading = $state(true);
 	let isSaving = $state(false);
 	let error = $state('');
 	let successMsg = $state('');
 
 	let form = $state<FormState>(createEmptyForm());
+	let printsForm: CardPrintsForm;
 
 	// ─── Factories ───────────────────────────────────────────
 	function createEmptyForm(): FormState {
@@ -73,7 +51,7 @@
 		};
 	}
 
-	function formFromData(data: CardBase): FormState {
+	function formFromData(data: CardListItem): FormState {
 		return {
 			card_no: data.card_no ?? '',
 			card_name_cn: data.card_name_cn ?? '',
@@ -109,24 +87,16 @@
 		isLoading = true;
 		error = '';
 
-		const { data, error: fetchError } = await supabase
-			.from('cards_base')
-			.select('*')
-			.eq('id', cardId)
-			.single();
-
-		if (fetchError || !data) {
+		try {
+			const data = await getCardById(cardId);
+			card = data;
+			form = formFromData(data);
+		} catch (e) {
 			error = '卡牌未找到或加载失败';
-			isLoading = false;
 			return;
+		} finally {
+			setTimeout(() => (isLoading = false), 800);
 		}
-
-		card = data;
-		// ✅ 整体赋值，触发 Svelte 5 完整响应式更新
-		form = formFromData(data);
-		isLoading = false;
-
-		// 确保 DOM 更新完成
 		await tick();
 	}
 
@@ -202,13 +172,13 @@
 	}
 </script>
 
-<div class="max-w-5xl mx-auto px-4 py-8 text-black">
+<div class="max-w-5xl w-full mx-auto px-4 py-8">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-6">
-		<h1 class="text-2xl font-bold text-gray-900">✏️ 编辑卡牌</h1>
+		<h1 class="text-2xl font-bold">编辑卡牌</h1>
 		<a
 			href={resolve('/admin/cards')}
-			class="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+			class="mx-2 px-2 py-1 cursor-pointer hover:text-cyan-500 hover:font-bold"
 		>
 			← 返回列表
 		</a>
@@ -217,26 +187,27 @@
 	<!-- Messages -->
 	{#if error}
 		<div
-			class="flex items-center justify-between mb-4 px-4 py-3 bg-red-50 text-red-800 border border-red-200 rounded-md"
+			class="group flex items-center font-extrabold justify-between mb-4 px-4 py-3 text-white border border-cyan-500 rounded-md bg-cyan-800"
 		>
-			<span>❌ {error}</span>
-			<button onclick={dismissMessage} class="text-red-400 hover:text-red-600 text-lg leading-none"
-				>&times;</button
+			<span>好像有问题！{error || 'Test'}</span>
+			<button
+				onclick={dismissMessage}
+				class="text-red-400 group-hover:text-white text-lg leading-none">&times;</button
 			>
 		</div>
 	{/if}
 	{#if successMsg}
 		<div
-			class="mb-4 px-4 py-3 bg-green-50 text-green-800 border border-green-200 rounded-md animate-fade-in"
+			class="mb-4 px-4 py-3 border border-cyan-500 rounded-md bg-cyan-800 text-white animate-fade-in"
 		>
-			{successMsg}
+			好消息！{successMsg}
 		</div>
 	{/if}
 
 	<!-- Loading -->
 	{#if isLoading}
 		<div class="flex items-center justify-center py-20">
-			<div class="flex items-center gap-3 text-gray-500">
+			<div class="flex items-center gap-3">
 				<svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
 					<circle
 						class="opacity-25"
@@ -256,12 +227,13 @@
 	{:else if card}
 		<form
 			onsubmit={handleSubmit}
-			class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6"
+			class="rounded-xl shadow-sm space-y-3 font-extrabold bg-black/80 p-6"
 		>
 			<!-- Meta -->
-			<div class="flex flex-wrap gap-6 px-4 py-3 bg-gray-50 rounded-lg text-xs text-gray-500">
+			<div class="flex flex-wrap items-center gap-6 px-4 py-3 rounded-lg text-sm text-gray-50">
 				<span
-					>ID: <code class="px-1.5 py-0.5 bg-gray-200 rounded text-[11px] font-mono">{card.id}</code
+					>ID: <code class="px-1.5 py-0.5 bg-cyan-500/80 rounded text-[11px] font-mono cursor-copy"
+						>{card.id}</code
 					></span
 				>
 				<span>创建: {new Date(card.created_at).toLocaleString('zh-CN')}</span>
@@ -269,11 +241,10 @@
 			</div>
 
 			<!-- 基本信息 -->
-			<fieldset class="border border-gray-200 rounded-lg p-5">
-				<legend class="px-2 text-sm font-semibold text-gray-700">基本信息</legend>
+			<fieldset class="rounded-lg p-5">
 				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
 					<div class="flex flex-col gap-1">
-						<label for="card_no" class="text-sm font-medium text-gray-600">
+						<label for="card_no" class="font-medium">
 							卡牌编号 <span class="text-red-500">*</span>
 						</label>
 						<input
@@ -282,94 +253,93 @@
 							bind:value={form.card_no}
 							required
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="card_name_cn" class="text-sm font-medium text-gray-600">中文名</label>
+						<label for="card_name_cn" class="text-md font-medium">中文名</label>
 						<input
 							id="card_name_cn"
 							type="text"
 							bind:value={form.card_name_cn}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="card_name_en" class="text-sm font-medium text-gray-600">英文名</label>
+						<label for="card_name_en" class="text-md font-medium">英文名</label>
 						<input
 							id="card_name_en"
 							type="text"
 							bind:value={form.card_name_en}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="sub_title_cn" class="text-sm font-medium text-gray-600">副标题(中)</label>
+						<label for="sub_title_cn" class="text-md font-medium">副标题(中)</label>
 						<input
 							id="sub_title_cn"
 							type="text"
 							bind:value={form.sub_title_cn}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="sub_title_en" class="text-sm font-medium text-gray-600">副标题(英)</label>
+						<label for="sub_title_en" class="text-md font-medium">副标题(英)</label>
 						<input
 							id="sub_title_en"
 							type="text"
 							bind:value={form.sub_title_en}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 				</div>
 			</fieldset>
 
 			<!-- 分类 -->
-			<fieldset class="border border-gray-200 rounded-lg p-5">
-				<legend class="px-2 text-sm font-semibold text-gray-700">分类</legend>
+			<fieldset class="rounded-lg p-5">
 				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
 					<div class="flex flex-col gap-1">
-						<label for="card_category" class="text-sm font-medium text-gray-600">类别</label>
+						<label for="card_category" class="text-md font-medium">类别</label>
 						<input
 							id="card_category"
 							type="text"
 							bind:value={form.card_category}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="rarity_name" class="text-sm font-medium text-gray-600">稀有度</label>
+						<label for="rarity_name" class="text-md font-medium">稀有度</label>
 						<input
 							id="rarity_name"
 							type="text"
 							bind:value={form.rarity_name}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="series_name" class="text-sm font-medium text-gray-600">系列</label>
+						<label for="series_name" class="text-md font-medium">系列</label>
 						<input
 							id="series_name"
 							type="text"
 							bind:value={form.series_name}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="champion_tag" class="text-sm font-medium text-gray-600">冠军标签</label>
+						<label for="champion_tag" class="text-md font-medium">英雄标签</label>
 						<input
 							id="champion_tag"
 							type="text"
 							bind:value={form.champion_tag}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 				</div>
@@ -377,119 +347,112 @@
 				<!-- Tags -->
 				<div class="grid grid-cols-1 gap-4 mt-4">
 					<div class="flex flex-col gap-1">
-						<label class="text-sm font-medium text-gray-600">颜色列表</label>
+						<label for="color" class="text-md font-medium">颜色列表</label>
 						<TagInput bind:tags={form.card_color_list} disabled={isSaving} />
 					</div>
 					<div class="flex flex-col gap-1">
-						<label class="text-sm font-medium text-gray-600">地区</label>
+						<label for="region" class="text-md font-medium">地区</label>
 						<TagInput bind:tags={form.region} disabled={isSaving} />
 					</div>
 					<div class="flex flex-col gap-1">
-						<label class="text-sm font-medium text-gray-600">标签</label>
+						<label for="tag" class="text-md font-medium">标签</label>
 						<TagInput bind:tags={form.tag} disabled={isSaving} />
 					</div>
 					<div class="flex flex-col gap-1">
-						<label class="text-sm font-medium text-gray-600">关键词</label>
+						<label for="keyword" class="text-md font-medium">关键词</label>
 						<TagInput bind:tags={form.keyword} disabled={isSaving} />
 					</div>
 					<div class="flex flex-col gap-1">
-						<label class="text-sm font-medium text-gray-600">高级标签</label>
+						<label for="advanced_tag" class="text-md font-medium">高级标签</label>
 						<TagInput bind:tags={form.advanced_tag} disabled={isSaving} />
 					</div>
 				</div>
 			</fieldset>
 
 			<!-- 数值 -->
-			<fieldset class="border border-gray-200 rounded-lg p-5">
-				<legend class="px-2 text-sm font-semibold text-gray-700">数值</legend>
+			<fieldset class="rounded-lg p-5">
 				<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
 					<div class="flex flex-col gap-1">
-						<label for="energy" class="text-sm font-medium text-gray-600">能量</label>
+						<label for="energy" class="text-md font-medium">法力</label>
 						<input
 							id="energy"
 							type="number"
 							bind:value={form.energy}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="return_energy" class="text-sm font-medium text-gray-600">回复能量</label>
+						<label for="return_energy" class="text-md font-medium">符能</label>
 						<input
 							id="return_energy"
 							type="number"
 							bind:value={form.return_energy}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="power" class="text-sm font-medium text-gray-600">战力</label>
+						<label for="power" class="text-md font-medium">战力</label>
 						<input
 							id="power"
 							type="number"
 							bind:value={form.power}
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
 						/>
 					</div>
 				</div>
 			</fieldset>
 
 			<!-- 效果与描述 -->
-			<fieldset class="border border-gray-200 rounded-lg p-5">
-				<legend class="px-2 text-sm font-semibold text-gray-700">效果与描述</legend>
+			<fieldset class="rounded-lg p-5">
 				<div class="space-y-4 mt-2">
 					<div class="flex flex-col gap-1">
-						<label for="effect_cn" class="text-sm font-medium text-gray-600">效果(中)</label>
+						<label for="effect_cn" class="text-md font-medium">效果(中)</label>
 						<textarea
 							id="effect_cn"
 							bind:value={form.effect_cn}
 							rows="4"
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-						/>
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
+						></textarea>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="effect_en" class="text-sm font-medium text-gray-600">效果(英)</label>
+						<label for="effect_en" class="text-md font-medium">效果(英)</label>
 						<textarea
 							id="effect_en"
 							bind:value={form.effect_en}
 							rows="4"
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-						/>
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
+						></textarea>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="flavor_text_cn" class="text-sm font-medium text-gray-600"
-							>风味文本(中)</label
-						>
+						<label for="flavor_text_cn" class="text-md font-medium">风味文本(中)</label>
 						<textarea
 							id="flavor_text_cn"
 							bind:value={form.flavor_text_cn}
 							rows="3"
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-						/>
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
+						></textarea>
 					</div>
 					<div class="flex flex-col gap-1">
-						<label for="flavor_text_en" class="text-sm font-medium text-gray-600"
-							>风味文本(英)</label
-						>
+						<label for="flavor_text_en" class="text-md font-medium">风味文本(英)</label>
 						<textarea
 							id="flavor_text_en"
 							bind:value={form.flavor_text_en}
 							rows="3"
 							disabled={isSaving}
-							class="px-3 py-2 border border-gray-300 rounded-md text-sm font-family-inherit resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-						/>
+							class="bg-transparent px-3 py-2 border border-gray-300 rounded-md text-md focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-400"
+						></textarea>
 					</div>
 				</div>
 			</fieldset>
 
 			<!-- 状态 -->
-			<fieldset class="border border-gray-200 rounded-lg p-5">
-				<legend class="px-2 text-sm font-semibold text-gray-700">状态</legend>
+			<fieldset class="rounded-lg p-5">
 				<label class="inline-flex items-center gap-2 mt-2 cursor-pointer select-none">
 					<input
 						type="checkbox"
@@ -497,7 +460,7 @@
 						disabled={isSaving}
 						class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
 					/>
-					<span class="text-sm text-gray-700">禁用此卡牌</span>
+					<span class="text-sm">禁用此卡牌</span>
 				</label>
 			</fieldset>
 
@@ -529,13 +492,13 @@
 						保存修改
 					{/if}
 				</button>
-				<a
-					href={resolve('/admin/cards')}
-					class="inline-flex items-center px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-				>
-					取消
-				</a>
+				<a href={resolve('/admin/cards')} class="text-sm"> 取消 </a>
 			</div>
 		</form>
+
+		<div class="mt-2">
+			<!-- ✅ 绑定组件实例 -->
+			<CardPrintsForm bind:this={printsForm} initialPrints={card?.card_prints || []} {cardId} />
+		</div>
 	{/if}
 </div>

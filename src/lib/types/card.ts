@@ -53,7 +53,7 @@ export interface CardListItem {
 	tag: string[];
 
 	keyword: string[];
-	advanced_tag: string | null;
+	advanced_tag: string[] | null;
 
 	champion_tag: string | null;
 
@@ -103,6 +103,14 @@ export type CardListResponse = CardListItem[];
 
 export interface CardSearchResult {
 	data: CardListItem[];
+	total: number;
+	page: number;
+	pageSize: number;
+	totalPages: number;
+}
+
+export interface AdminCardListResponse {
+	data: CardBase[];
 	total: number;
 	page: number;
 	pageSize: number;

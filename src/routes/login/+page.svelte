@@ -41,18 +41,12 @@
 			isLoading = false;
 		} else {
 			isAuth = true;
-			const {
-				data: { session }
-			} = await supabase.auth.getSession();
-			console.log(session?.user.user_metadata);
-			// 输出: { role: "admin", ...其他你设置的字段 }
-			// 延迟跳转，展示成功动画
 			setTimeout(() => navigateToDashboard(), 800);
 		}
 	}
 
 	function navigateToDashboard() {
-		goto(resolve('/dashboard'));
+		goto(resolve('/admin/cards'));
 	}
 </script>
 

@@ -1,4 +1,10 @@
-import type { CardFilterOptions, CardSearchParams, CardSearchResult } from '$lib/types/card';
+import type {
+	AdminCardListResponse,
+	CardFilterOptions,
+	CardListItem,
+	CardSearchParams,
+	CardSearchResult
+} from '$lib/types/card';
 import { applyArrayFilter, applyTextFilter, applyNumberFilter } from './helpers';
 import { supabase } from './supabaseClient';
 
@@ -81,4 +87,57 @@ export async function getCardFilterOptions(): Promise<CardFilterOptions> {
 
 	// 因为表字段名和前端类型完全一致，直接返回即可
 	return data as unknown as CardFilterOptions;
+}
+
+// 用于admin获取最基本的cardlist
+export async function getAdminCardList(
+	searchQuery: string,
+	filterBanned: string,
+	pageSize: number,
+	currentPage: number
+): Promise<AdminCardListResponse> {
+	let query = supabase.from('cards_base').select('*', { count: 'exact' });
+
+	if (searchQuery) {
+		query = query.or(
+			`card_no.ilike.%${searchQuery}%,card_name_cn.ilike.%${searchQuery}%,card_name_en.ilike.%${searchQuery}%`
+		);
+	}
+
+	if (filterBanned === 'true') {
+		query = query.eq('is_banned', true);
+	} else if (filterBanned === 'false') {
+		query = query.eq('is_banned', false);
+	}
+
+	query = query
+		.order('card_no', { ascending: true })
+		.range((currentPage - 1) * pageSize, currentPage * pageSize - 1);
+
+	const { data, error, count } = await query;
+
+	if (error) throw error;
+
+	return {
+		data: data || [],
+		total: count || 0,
+		page: currentPage,
+		pageSize,
+		totalPages: Math.ceil((count || 0) / pageSize)
+	};
+}
+
+export async function getCardById(id: string): Promise<CardListItem> {
+	const { data, error } = await supabase
+		.from('cards_base')
+		.select('*, card_prints(*)')
+		.eq('id', id)
+		.single();
+
+	if (error) {
+		console.error('Fetch card by id error:', error);
+		throw error;
+	}
+
+	return data as unknown as CardListItem;
 }
