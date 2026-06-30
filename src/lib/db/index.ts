@@ -1,12 +1,11 @@
-// src/lib/db/index.ts
-export { initializeDatabase } from "./sync";
-// 后续可以在此处导出供 UI 层调用的查询方法，例如：
-// export { getCardsFromLocal } from './sqlite';
-
-import { searchCards as searchCardsRemote } from "./supabase"; // 假设你把之前的搜索函数放在这里
+// import { searchCards as searchCardsRemote } from "./supabase"; // 假设你把之前的搜索函数放在这里
 import { searchCardsLocal } from "./sqlite";
 import type { CardSearchParams, CardSearchResult } from "./types";
+import { isTauri } from "./env";
+
 export { isTauri, isWeb } from "./env";
+export { initializeDatabase } from "./sync";
+export { getLocalCardBaseCount, getFilterOptions } from "./sqlite";
 
 /**
  * 统一的卡牌搜索入口
@@ -20,6 +19,7 @@ export async function searchCards(
     return searchCardsLocal(params);
   } else {
     console.log("[DB] 使用 Supabase 进行搜索");
-    return searchCardsRemote(params);
+    throw new Error("Supabase 搜索暂未实现");
+    // return searchCardsRemote(params);
   }
 }

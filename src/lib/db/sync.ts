@@ -53,6 +53,10 @@ async function performSync(remoteVersion: any) {
   await localDb.saveCards(cards);
   await localDb.savePrints(prints);
 
+  //更新Filter Options
+  const db = await localDb.getLocalDb();
+  await localDb.updateFilterOptions(db);
+
   // 更新本地版本号
   await localDb.saveVersion(remoteVersion);
   console.log(

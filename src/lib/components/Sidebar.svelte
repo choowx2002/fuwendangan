@@ -36,12 +36,12 @@
 <aside class="sidebar" class:open={isOpen}>
     <div class="sidebar-header">
         <div class="workspace">
-            <div class="workspace-icon"><img src="/favicon.png" alt="" /></div>
-            <span class="workspace-name">我的卡牌库</span>
+            <div class="workspace-icon"><img src="/icon.png" alt="" /></div>
+            <!-- <span class="workspace-name">我的卡牌库</span> -->
         </div>
-        <button class="icon-btn" aria-label="新建">
+        <!-- <button class="icon-btn" aria-label="新建">
             <Plus size={16} />
-        </button>
+        </button> -->
     </div>
 
     <nav class="nav-section">
@@ -120,8 +120,8 @@
     }
 
     .workspace-icon {
-        width: 22px;
-        height: 22px;
+        width: 100%;
+        /*height: 22px;*/
         /*background: var(--accent-color);*/
         /*color: white;*/
         border-radius: var(--radius-sm);
@@ -135,6 +135,7 @@
         width: 100%;
         height: 100%;
         object-fit: contain;
+        mix-blend-mode: difference;
     }
 
     .icon-btn {
