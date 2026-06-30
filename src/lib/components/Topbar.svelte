@@ -49,6 +49,7 @@
         padding: 0 12px;
         background: var(--bg-primary);
         z-index: 30;
+        padding-top: env(safe-area-inset-top);
     }
 
     .left,

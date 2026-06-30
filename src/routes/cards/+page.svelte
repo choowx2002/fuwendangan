@@ -229,7 +229,6 @@
             width: 100vw;
             z-index: 100;
             transform: translateX(100%);
-            box-shadow: -12px 0 40px rgba(0, 0, 0, 0.2);
             display: flex;
             flex-direction: column;
             padding-top: env(safe-area-inset-top);
@@ -245,7 +244,8 @@
             display: block;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.35);
+            background-color: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(2px);
             opacity: 1;
             z-index: -1;
         }

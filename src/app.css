@@ -1,7 +1,30 @@
-/* src/app.css */
+@font-face {
+    font-family: "Noto Sans SC";
+    src: url("./assets/fonts/NotoSansSC-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Noto Sans SC";
+    src: url("./assets/fonts/NotoSansSC-Medium.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Noto Sans SC";
+    src: url("./assets/fonts/NotoSansSC-Bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     /* Notion 经典配色 */
-    --bg-primary: #ffffff;
+    --bg-primary: #dfefeb;
     --bg-secondary: #f7f7f5; /* 侧边栏背景 */
     --bg-hover: rgba(55, 53, 47, 0.08);
     --bg-active: rgba(55, 53, 47, 0.12);
@@ -19,17 +42,7 @@
     --sidebar-width: 260px;
     --topbar-height: 52px;
 
-    font-family:
-        ui-sans-serif,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Helvetica,
-        "Apple Color Emoji",
-        Arial,
-        sans-serif,
-        "Segoe UI Emoji",
-        "Segoe UI Symbol";
+    font-family: "Noto Sans SC", system-ui, sans-serif;
     color: var(--text-primary);
     background-color: var(--bg-primary);
 }

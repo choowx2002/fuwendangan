@@ -110,7 +110,7 @@
         padding: 16px;
         height: 100%;
         overflow-y: auto;
-        background: #ffffff;
+        background: var(--bg-secondary);
     }
 
     .panel-header {
@@ -195,7 +195,7 @@
 
     @media (max-width: 767.99px) {
         .filter-panel {
-            width: min(86vw, 500px);
+            width: min(70vw, 500px);
         }
     }
 </style>
