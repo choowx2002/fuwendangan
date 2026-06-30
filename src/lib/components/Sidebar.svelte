@@ -27,7 +27,7 @@
     ];
 
     function closeIfMobile() {
-        if (window.innerWidth < 768) {
+        if (window.innerWidth < 767.99) {
             isOpen = false;
         }
     }
@@ -98,7 +98,7 @@
         transform: translateX(0);
     }
 
-    @media (min-width: 768px) {
+    @media (min-width: 767.99px) {
         .sidebar {
             transform: translateX(0);
         }

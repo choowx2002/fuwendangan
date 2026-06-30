@@ -9,9 +9,10 @@
         filterOptions: FilterOptions | null;
         activeFilters: ActiveFilter[];
         onToggle: (type: ActiveFilter["type"], value: string) => void;
+        onRemove: (type: ActiveFilter["type"], value: string) => void;
     }
 
-    let { filterOptions, activeFilters, onToggle }: Props = $props();
+    let { filterOptions, activeFilters, onToggle, onRemove }: Props = $props();
 
     // 将 options 分组映射为 UI 区块
     const sections = $derived.by(() => {
@@ -64,9 +65,18 @@
     function handleToggle(type: string, value: string) {
         onToggle(type as any, value);
     }
+
+    function handleRemove(
+        e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement },
+        type: string,
+        value: string,
+    ) {
+        e.preventDefault();
+        onRemove(type as any, value);
+    }
 </script>
 
-<div class="filter-panel">
+<div class="filter-panel" id="panel">
     <div class="panel-header">
         <h2>筛选条件</h2>
         <span class="count">{activeFilters.length} 项已激活</span>
@@ -84,6 +94,8 @@
                         class:require={mode === "require"}
                         class:exclude={mode === "exclude"}
                         onclick={() => handleToggle(section.type, option)}
+                        oncontextmenu={(e) =>
+                            handleRemove(e, section.type, option)}
                     >
                         {option}
                     </button>
@@ -98,6 +110,7 @@
         padding: 16px;
         height: 100%;
         overflow-y: auto;
+        background: #ffffff;
     }
 
     .panel-header {
@@ -149,7 +162,7 @@
         border: 1px solid var(--border-color);
         border-radius: 4px;
         background: var(--bg-primary);
-        color: var(--text-secondary);
+        color: var(--text-primary);
         cursor: pointer;
         transition: all 0.15s;
         white-space: nowrap;
@@ -178,5 +191,11 @@
         border-color: #f5c6c0;
         color: #c5221f;
         font-weight: 500;
+    }
+
+    @media (max-width: 767.99px) {
+        .filter-panel {
+            width: min(86vw, 500px);
+        }
     }
 </style>

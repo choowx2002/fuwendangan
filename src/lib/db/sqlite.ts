@@ -213,8 +213,6 @@ export async function searchCardsLocal(
   const whereClauses: string[] = [];
   const queryParams: any[] = [];
 
-  console.log("params", params);
-
   // 1. 禁卡过滤
   // whereClauses.push("cards_base.is_banned = ?");
   // queryParams.push(is_banned ? 1 : 0);

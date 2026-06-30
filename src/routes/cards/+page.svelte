@@ -36,11 +36,9 @@
                 activeFilters,
                 currentSearchText,
                 1,
-                60,
+                30,
             );
-            console.log("params 2222", activeFilters, currentSearchText);
             searchResult = await searchCards(params);
-            console.log("searchResult", searchResult);
         } catch (e) {
             console.error("搜索失败:", e);
         } finally {
@@ -71,6 +69,21 @@
                 newFilters[existingIndex] = { ...current, mode: "exclude" };
             else newFilters.splice(existingIndex, 1); // exclude -> 移除
         }
+
+        activeFilters = newFilters;
+        performSearch();
+    }
+
+    function hancleRemoveFilter(type: ActiveFilter["type"], value: string) {
+        const existingIndex = activeFilters.findIndex(
+            (f) => f.type === type && f.value === value,
+        );
+
+        if (existingIndex === -1) return;
+
+        let newFilters = [...activeFilters];
+
+        newFilters.splice(existingIndex, 1);
 
         activeFilters = newFilters;
         performSearch();
@@ -133,6 +146,7 @@
             {filterOptions}
             {activeFilters}
             onToggle={handleToggleFilter}
+            onRemove={hancleRemoveFilter}
         />
         {#if isMobileFilterOpen}
             <div
@@ -164,7 +178,7 @@
         display: flex;
         align-items: center;
         gap: 16px;
-        margin-bottom: 24px;
+        padding-bottom: 12px;
     }
 
     .mobile-filter-btn {
@@ -183,6 +197,7 @@
         flex: 1;
         overflow-y: auto;
         padding-right: 4px;
+        padding-top: 12px;
     }
 
     .card-grid {
@@ -193,46 +208,57 @@
 
     /* 右侧面板容器 */
     .right-filter {
-        width: 280px;
+        width: 300px;
         flex-shrink: 0;
         border-left: 1px solid var(--border-color);
-        background: var(--bg-primary);
         overflow: hidden;
-        transition: transform 0.2s ease;
+        transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: transform;
     }
 
     .mobile-overlay {
         display: none;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 767.99px) {
         .right-filter {
             position: fixed;
             top: 0;
             right: 0;
-            bottom: 0;
-            width: 260px;
+            height: 100vh;
+            width: 100vw;
             z-index: 100;
             transform: translateX(100%);
-            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+            box-shadow: -12px 0 40px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            align-items: flex-end;
         }
+
         .right-filter.mobile-open {
             transform: translateX(0);
         }
+
         .mobile-overlay {
             display: block;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.35);
+            opacity: 1;
             z-index: -1;
         }
+
         .mobile-filter-btn {
             display: flex;
         }
+
         .card-grid {
             grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
             gap: 10px;
         }
+
         .main-content {
             padding: 16px;
         }
@@ -251,6 +277,7 @@
             transform: rotate(360deg);
         }
     }
+
     .animate-spin {
         animation: spin 1s linear infinite;
     }
