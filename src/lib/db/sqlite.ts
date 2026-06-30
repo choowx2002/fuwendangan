@@ -1,6 +1,14 @@
 // src/lib/db/sqlite.ts
 import Database from "@tauri-apps/plugin-sql";
-import type { SqliteCardBase, CardBase, CardPrint, AppVersion } from "./types";
+import type {
+  SqliteCardBase,
+  CardBase,
+  CardPrint,
+  AppVersion,
+  CardSearchResult,
+  CardSearchParams,
+} from "./types";
+import { mapRowToCard } from "./helper";
 
 let dbInstance: Database | null = null;
 
@@ -141,4 +149,151 @@ export async function getLocalCardBaseCount(): Promise<number> {
   const db = await getLocalDb();
   const result = await db.select<number[]>("SELECT COUNT(*) FROM cards_base;");
   return result.length;
+}
+
+/**
+ * 本地 SQLite 卡牌搜索函数 (对标 Supabase 的 searchCards)
+ */
+export async function searchCardsLocal(
+  params: CardSearchParams,
+): Promise<CardSearchResult> {
+  const db = await getLocalDb();
+  const {
+    page = 1,
+    pageSize = 30,
+    searchText,
+    is_banned = false,
+    ...filters
+  } = params;
+
+  const whereClauses: string[] = [];
+  const queryParams: any[] = [];
+
+  // 1. 禁卡过滤
+  whereClauses.push("cards_base.is_banned = ?");
+  queryParams.push(is_banned ? 1 : 0);
+
+  // 2. 模糊搜索 (中英文名称、效果)
+  if (searchText && searchText.trim() !== "") {
+    const safeText = `%${searchText.trim()}%`;
+    whereClauses.push(`(
+      cards_base.card_name_cn LIKE ? OR cards_base.card_name_en LIKE ? OR
+      cards_base.effect_cn LIKE ? OR cards_base.champion_tag LIKE ? OR cards_base.effect_en LIKE ?
+    )`);
+    queryParams.push(safeText, safeText, safeText, safeText, safeText);
+  }
+
+  // 3. 数组字段过滤 (使用 SQLite 的 json_each 函数)
+  const arrayFields = [
+    "region",
+    "tag",
+    "keyword",
+    "advanced_tag",
+    "card_color_list",
+  ];
+  for (const field of arrayFields) {
+    const val = (filters as any)[field];
+    if (val && Array.isArray(val) && val.length > 0) {
+      // 逻辑：包含数组中的任意一个标签 (OR 逻辑)
+      const placeholders = val.map(() => "?").join(",");
+      whereClauses.push(
+        `EXISTS (SELECT 1 FROM json_each(cards_base.${field}) WHERE value IN (${placeholders}))`,
+      );
+      queryParams.push(...val);
+    }
+  }
+
+  // 4. 文本字段精确过滤
+  const textFields = ["card_category", "series_name", "rarity_name"];
+  for (const field of textFields) {
+    const val = (filters as any)[field];
+    if (val && typeof val === "string" && val.trim() !== "") {
+      whereClauses.push(`cards_base.${field} = ?`);
+      queryParams.push(val.trim());
+    }
+  }
+
+  // 5. 数值范围过滤 (支持精确数字或 {min, max} 对象)
+  const numberFields = ["power", "energy", "return_energy"];
+  for (const field of numberFields) {
+    const val = (filters as any)[field];
+    if (val !== undefined && val !== null) {
+      if (typeof val === "number") {
+        whereClauses.push(`cards_base.${field} = ?`);
+        queryParams.push(val);
+      } else if (typeof val === "object") {
+        if (val.min !== undefined) {
+          whereClauses.push(`cards_base.${field} >= ?`);
+          queryParams.push(val.min);
+        }
+        if (val.max !== undefined) {
+          whereClauses.push(`cards_base.${field} <= ?`);
+          queryParams.push(val.max);
+        }
+      }
+    }
+  }
+
+  const whereStr =
+    whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+  // 6. 获取总数 (用于分页)
+  const countSql = `SELECT COUNT(*) as total FROM cards_base ${whereStr}`;
+  const countResult = await db.select<{ total: number }[]>(
+    countSql,
+    queryParams,
+  );
+  const total = countResult[0]?.total || 0;
+
+  // 7. 获取分页数据 (使用 LEFT JOIN 关联默认卡图，以实现按 print_order 排序)
+  const offset = (page - 1) * pageSize;
+  const dataSql = `
+    SELECT cards_base.*
+    FROM cards_base
+    LEFT JOIN card_prints ON cards_base.id = card_prints.card_id AND card_prints.is_default = 1
+    ${whereStr}
+    ORDER BY card_prints.print_order ASC, cards_base.card_no ASC
+    LIMIT ? OFFSET ?
+  `;
+  const dataParams = [...queryParams, pageSize, offset];
+  const rows = await db.select<any[]>(dataSql, dataParams);
+
+  // 反序列化主表数据
+  let cards = rows.map(mapRowToCard);
+
+  // 8. 获取关联的 card_prints (分步查询，JS层组装，避免复杂的 SQL JSON 聚合)
+  if (cards.length > 0) {
+    const idPlaceholders = cards.map(() => "?").join(",");
+    const printsSql = `SELECT * FROM card_prints WHERE card_id IN (${idPlaceholders}) ORDER BY print_order ASC`;
+    const printsRows = await db.select<any[]>(
+      printsSql,
+      cards.map((c) => c.id),
+    );
+
+    // 反序列化卡图数据
+    const prints = printsRows.map((p) => ({
+      ...p,
+      is_default: p.is_default === 1,
+    }));
+
+    // 在 JS 层将卡图挂载到卡牌上
+    const printsMap = new Map<string, CardPrint[]>();
+    for (const p of prints) {
+      if (!printsMap.has(p.card_id!)) printsMap.set(p.card_id!, []);
+      printsMap.get(p.card_id!)!.push(p);
+    }
+
+    cards = cards.map((c) => ({
+      ...c,
+      card_prints: printsMap.get(c.id) || [],
+    }));
+  }
+
+  return {
+    data: cards,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
 }
