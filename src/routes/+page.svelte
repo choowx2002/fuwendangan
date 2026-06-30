@@ -1,435 +1,297 @@
+<!-- src/routes/+page.svelte -->
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import bannerImgSrc from '$lib/assets/home_bg.jpg';
-	import poroGIF from '$lib/assets/giphy.gif';
-	import mainLogo from '$lib/assets/1781920082.webp';
-	import { resolve } from '$app/paths';
-	import { goto } from '$app/navigation';
+  import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte';
 
-	let firefliesContainer: HTMLDivElement;
-	let bannerImg: HTMLImageElement;
-	let animationFrameId: number | null = null;
-	let count: number = 0;
+  // 模拟数据
+  const recentDecks = [
+    { name: '红绿快攻 (RG Aggro)', format: '标准', wins: 12, losses: 4, updated: '2小时前' },
+    { name: '蓝白控制 (WU Control)', format: '薪传', wins: 8, losses: 7, updated: '昨天' },
+    { name: '勇得中速 (Jund Midrange)', format: '摩登', wins: 15, losses: 5, updated: '3天前' },
+  ];
 
-	onMount(() => {
-		// 生成萤火虫
-		if (firefliesContainer) {
-			const fireflyCount = 33;
-			const fragment = document.createDocumentFragment();
-
-			for (let i = 0; i < fireflyCount; i++) {
-				const firefly = document.createElement('div');
-				firefly.className = 'firefly';
-				firefly.style.left = Math.random() * 100 + '%';
-				firefly.style.top = Math.random() * 100 + '%';
-				firefly.style.setProperty('--dx', Math.random() * 100 - 50 + 'px');
-				firefly.style.setProperty('--dy', Math.random() * 100 - 50 + 'px');
-				firefly.style.setProperty('--duration', 4 + Math.random() * 6 + 's');
-				firefly.style.setProperty('--delay', Math.random() * 5 + 's');
-
-				const size = 2 + Math.random() * 3;
-				firefly.style.width = size + 'px';
-				firefly.style.height = size + 'px';
-
-				if (Math.random() > 0.5) {
-					firefly.style.background = '#a7f3d0';
-					firefly.style.boxShadow = '0 0 8px #34d399, 0 0 16px #10b981';
-				} else {
-					firefly.style.background = '#cffafe';
-					firefly.style.boxShadow = '0 0 8px #22d3ee, 0 0 16px #06b6d4';
-				}
-
-				fragment.appendChild(firefly);
-			}
-
-			// eslint-disable-next-line svelte/no-dom-manipulating
-			firefliesContainer.appendChild(fragment);
-		}
-
-		// 鼠标视差效果
-		let mouseX = 0;
-		let mouseY = 0;
-
-		const handleMouseMove = (e: MouseEvent) => {
-			mouseX = e.clientX;
-			mouseY = e.clientY;
-
-			if (animationFrameId === null) {
-				animationFrameId = requestAnimationFrame(updateParallax);
-			}
-		};
-
-		function updateParallax() {
-			if (!bannerImg) return;
-
-			const x = (mouseX / window.innerWidth - 0.5) * 10;
-			const y = (mouseY / window.innerHeight - 0.5) * 10;
-
-			bannerImg.style.transform = `translate(${x}px, ${y}px) scale(1.05)`;
-
-			animationFrameId = null;
-		}
-
-		document.addEventListener('mousemove', handleMouseMove);
-
-		return () => {
-			document.removeEventListener('mousemove', handleMouseMove);
-			if (animationFrameId !== null) {
-				cancelAnimationFrame(animationFrameId);
-			}
-		};
-	});
-
-	const countLogin = () => {
-		count++;
-		if (count >= 3) {
-			goto(resolve('/login'));
-			count = 0;
-		}
-	};
+  const quickTools = [
+    { icon: Dice5, label: '生命计数器', desc: '双人对战计分', color: '#e03e3e' },
+    { icon: Coins, label: '掷币/掷骰', desc: '随机数生成', color: '#d9730d' },
+    { icon: TrendingUp, label: '胜率统计', desc: '查看近期战绩', color: '#0f7b6c' },
+  ];
 </script>
 
-<div class="relative h-svh overflow-auto bg-black text-white">
-	<!-- Banner Background -->
-	<div class="fixed inset-0 z-0 pointer-events-none">
-		<img
-			bind:this={bannerImg}
-			src={bannerImgSrc}
-			alt="Riftbound Banner"
-			class="w-full h-full object-cover object-top blur-in"
-			style="transform:scale(1.05)"
-		/>
-		<div class="absolute inset-0 bg-linear-to-b from-black/10 via-black/10 to-black"></div>
-		<div class="absolute inset-0 vignette"></div>
-	</div>
+<div class="page-container">
+  <header class="page-header">
+    <h1 class="page-title">首页</h1>
+    <p class="page-desc">欢迎回来，天龠wx。今天想玩点什么？</p>
+  </header>
 
-	<!-- Fireflies -->
-	<div bind:this={firefliesContainer} class="fixed inset-0 z-1 blur-[1.3px]"></div>
+  <!-- 快速操作区 -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">快速开始</h2>
+    </div>
+    <div class="quick-actions">
+      <button class="action-card primary">
+        <Plus size={20} />
+        <span>新建卡组</span>
+      </button>
+      <button class="action-card">
+        <Clock size={20} />
+        <span>导入单卡</span>
+      </button>
+    </div>
+  </section>
 
-	<!-- Main Content -->
-	<div class="relative z-10 min-h-screen flex flex-col">
-		<!-- Center Title -->
-		<div class="flex flex-1 flex-col items-center justify-center px-4 py-2">
-			<img src={mainLogo} alt="Main Logo" class="w-full max-w-lg" />
-		</div>
+  <!-- 常用工具 -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">对战工具</h2>
+      <a href="/tools" class="see-all">查看全部 <ChevronRight size={14} /></a>
+    </div>
+    <div class="tools-grid">
+      {#each quickTools as tool}
+        <!-- svelte-ignore a11y_invalid_attribute -->
+        <a href="#" class="tool-card">
+          <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
+            <tool.icon size={22} />
+          </div>
+          <div class="tool-info">
+            <span class="tool-label">{tool.label}</span>
+            <span class="tool-desc">{tool.desc}</span>
+          </div>
+        </a>
+      {/each}
+    </div>
+  </section>
 
-		<!-- Floating Navigation -->
-		<div
-			class="flex items-center flex-col md:flex-row justify-around gap-6 md:px-12 lg:px-20 py-8 md:pb-10"
-		>
-			<a
-				href={resolve('/library')}
-				class="group animate-fade-in-left"
-				style="animation-delay: 0.5s; animation-fill-mode: both;"
-			>
-				<div
-					class="nav-card bg-black/50 border border-cyan-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-cyan-100 cursor-pointer"
-					style="color: #22d3ee;"
-				>
-					<div class="flex items-center gap-4">
-						<svg class="nav-icon w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.5"
-								d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-							/>
-						</svg>
-						<div>
-							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Library</div>
-							<div class="text-lg md:text-xl font-bold tracking-wider">卡牌库</div>
-						</div>
-						<svg
-							class="w-5 h-5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all ml-2"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 5l7 7-7 7"
-							/>
-						</svg>
-					</div>
-				</div>
-			</a>
-
-			<!-- <a
-				href="/faq"
-				class="group animate-fade-in-left"
-				style="animation-delay: 0.8s; animation-fill-mode: both;"
-			>
-				<div
-					class="nav-card bg-black/50 border border-cyan-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-cyan-100 cursor-pointer"
-					style="color: #22d3ee;"
-				>
-					<div class="flex items-center gap-4">
-						<svg class="nav-icon w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.5"
-								d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						<div>
-							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Wisdom</div>
-							<div class="text-lg md:text-xl font-bold tracking-wider">常见QA</div>
-						</div>
-						<svg
-							class="w-5 h-5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all ml-2"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 5l7 7-7 7"
-							/>
-						</svg>
-					</div>
-				</div>
-			</a> -->
-
-			<!-- <a
-				href="/deck-builder"
-				class="group animate-fade-in-left"
-				style="animation-delay: 0.6s; animation-fill-mode: both;"
-			>
-				<div
-					class="nav-card bg-black/50 border border-cyan-500/40 rounded-xl px-6 md:px-8 py-4 md:py-5 text-cyan-100 cursor-pointer"
-					style="color: #22d3ee;"
-				>
-					<div class="flex items-center gap-4">
-						<svg class="nav-icon w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.5"
-								d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-							/>
-						</svg>
-						<div>
-							<div class="text-xs tracking-[0.3em] text-cyan-300/60 uppercase">Forge</div>
-							<div class="text-lg md:text-xl font-bold tracking-wider">临时构筑</div>
-						</div>
-
-						<svg
-							class="w-5 h-5 opacity-0 group-hover:opacity-100 group-hover:-translate-x-1 transition-all ml-2"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 5l7 7-7 7"
-							/>
-						</svg>
-					</div>
-				</div>
-			</a> -->
-		</div>
-
-		<!-- Footer -->
-		<footer class="relative z-10">
-			<div class="bg-linear-to-t from-black via-black/80 to-transparent pt-12 pb-6">
-				<div class="max-w-4xl mx-auto px-6 text-center">
-					<div class="flex items-center justify-center gap-3 mb-3">
-						<!-- <div class="w-12 h-[1px] bg-gradient-to-r from-transparent to-cyan-500/50"></div> -->
-						<!-- <svg
-							class="w-5 h-5 text-cyan-400 animate-pulse-glow"
-							fill="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								d="M12 2L9.19 8.63L2 9.24l5.46 4.73L5.82 21L12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"
-							/>
-						</svg> -->
-						<!-- <img
-							src="https://assetcdn.rgpub.io/public/live/riot-shared/player-experiences/riot-glyphs/rb/latest/rune_rainbow.svg"
-							alt=""
-						/> -->
-						<!-- <div class="w-12 h-[1px] bg-gradient-to-l from-transparent to-cyan-500/50"></div> -->
-					</div>
-					<!-- <p class="text-white/70 text-sm tracking-[0.2em]">符文战场 Riftbound 粉丝网页</p> -->
-					<p class="text-white/40 text-xs mt-2 tracking-wider">
-						非官方网站 · 仅供粉丝交流使用 · © 2026
-					</p>
-				</div>
-			</div>
-		</footer>
-	</div>
-
-	<button onclick={countLogin} class="w-20 h-20 z-20 fixed right-4 bottom-4 group hidden sm:block">
-		<img
-			src={poroGIF}
-			alt="poro gif"
-			class="w-full h-full opacity-0 transition-opacity ease-in-out group-hover:opacity-100"
-		/>
-	</button>
+  <!-- 最近卡组 -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">最近使用的卡组</h2>
+      <a href="/decks" class="see-all">管理卡组 <ChevronRight size={14} /></a>
+    </div>
+    <div class="deck-list">
+      {#each recentDecks as deck}
+        <!-- svelte-ignore a11y_invalid_attribute -->
+        <a href="#" class="deck-item">
+          <div class="deck-main">
+            <span class="deck-name">{deck.name}</span>
+            <span class="deck-format">{deck.format}</span>
+          </div>
+          <div class="deck-stats">
+            <span class="stat win">{deck.wins}胜</span>
+            <span class="stat loss">{deck.losses}负</span>
+            <span class="stat time">{deck.updated}</span>
+          </div>
+        </a>
+      {/each}
+    </div>
+  </section>
 </div>
 
 <style>
-	/* 漂浮动画 */
-	@keyframes floatLeft {
-		0%,
-		100% {
-			transform: translateY(0px) translateX(0px);
-		}
-		50% {
-			transform: translateY(-12px) translateX(-4px);
-		}
-	}
-	@keyframes floatLeftDelayed {
-		0%,
-		100% {
-			transform: translateY(0px) translateX(0px);
-		}
-		50% {
-			transform: translateY(-10px) translateX(4px);
-		}
-	}
-	@keyframes floatRight {
-		0%,
-		100% {
-			transform: translateY(0px) translateX(0px);
-		}
-		50% {
-			transform: translateY(-14px) translateX(4px);
-		}
-	}
-	@keyframes fadeInLeft {
-		from {
-			opacity: 0;
-			transform: translateX(-40px);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(0);
-		}
-	}
-	@keyframes fadeInRight {
-		from {
-			opacity: 0;
-			transform: translateX(40px);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(0);
-		}
-	}
-	@keyframes fadeInUp {
-		from {
-			opacity: 0;
-			transform: translateY(20px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-	@keyframes pulseGlow {
-		0%,
-		100% {
-			opacity: 0.4;
-		}
-		50% {
-			opacity: 0.8;
-		}
-	}
-	@keyframes shimmer {
-		0% {
-			background-position: -200% center;
-		}
-		100% {
-			background-position: 200% center;
-		}
-	}
-	@keyframes firefly {
-		0%,
-		100% {
-			opacity: 0;
-			transform: translate(0, 0);
-		}
-		10% {
-			opacity: 1;
-		}
-		90% {
-			opacity: 1;
-		}
-		100% {
-			opacity: 0;
-			transform: translate(var(--dx), var(--dy));
-		}
-	}
+  .page-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
 
-	.nav-card {
-		position: relative;
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
-		transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-	}
+  @media (max-width: 767px) {
+    .page-container {
+      padding: 24px 16px 80px;
+    }
+  }
 
-	.nav-card::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-		padding: 1px;
-		background: linear-gradient(
-			135deg,
-			transparent 30%,
-			rgba(255, 255, 255, 0.2) 50%,
-			transparent 70%
-		);
-		-webkit-mask:
-			linear-gradient(#fff 0 0) content-box,
-			linear-gradient(#fff 0 0);
-		mask:
-			linear-gradient(#fff 0 0) content-box,
-			linear-gradient(#fff 0 0);
-		-webkit-mask-composite: xor;
-		mask-composite: exclude;
-		opacity: 0;
-		transition: opacity 0.4s;
-		pointer-events: none;
-	}
+  .page-header {
+    margin-bottom: 40px;
+  }
 
-	.nav-card:hover::before {
-		opacity: 1;
-	}
+  .page-title {
+    font-size: 40px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    letter-spacing: -0.5px;
+  }
 
-	.nav-card:hover {
-		transform: scale(1.05);
-	}
+  .page-desc {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
 
-	.nav-icon {
-		filter: drop-shadow(0 0 6px currentColor);
-	}
+  .section {
+    margin-bottom: 36px;
+  }
 
-	/* .shimmer-text) {
-		background: linear-gradient(90deg, #fff 0%, #a5f3fc 25%, #fff 50%, #a5f3fc 75%, #fff 100%);
-		background-size: 200% auto;
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
-		animation: shimmer 4s linear infinite;
-	} */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
 
-	:global(.firefly) {
-		position: absolute;
-		border-radius: 50%;
-		animation: firefly var(--duration) ease-in-out infinite;
-		animation-delay: var(--delay);
-	}
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+  }
 
-	.vignette {
-		background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.7) 100%);
-	}
+  .see-all {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .see-all:hover {
+    color: var(--text-primary);
+  }
+
+  /* 快速操作 */
+  .quick-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .action-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .action-card:hover {
+    background: var(--bg-secondary);
+    border-color: #d3d1cb;
+  }
+  .action-card.primary {
+    background: var(--text-primary);
+    color: white;
+    border-color: var(--text-primary);
+  }
+  .action-card.primary:hover {
+    background: #2f2e29;
+  }
+
+  /* 工具网格 */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+
+  .tool-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.15s;
+  }
+  .tool-card:hover {
+    background: var(--bg-secondary);
+    border-color: #d3d1cb;
+    transform: translateY(-1px);
+  }
+
+  .tool-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .tool-info {
+    display: flex;
+    flex-direction: column;
+  }
+  .tool-label {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .tool-desc {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  /* 卡组列表 */
+  .deck-list {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .deck-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.1s;
+  }
+  .deck-item:last-child {
+    border-bottom: none;
+  }
+  .deck-item:hover {
+    background: var(--bg-secondary);
+  }
+
+  .deck-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .deck-name {
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .deck-format {
+    font-size: 12px;
+    padding: 2px 6px;
+    background: var(--bg-hover);
+    border-radius: 4px;
+    color: var(--text-secondary);
+  }
+
+  .deck-stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+  }
+  .stat {
+    color: var(--text-tertiary);
+  }
+  .stat.win { color: #0f7b6c; font-weight: 500; }
+  .stat.loss { color: #e03e3e; font-weight: 500; }
+
+  @media (max-width: 600px) {
+    .deck-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .deck-stats {
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
 </style>
