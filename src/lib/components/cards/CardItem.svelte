@@ -29,7 +29,6 @@
 
         const img = e.target as HTMLImageElement;
 
-        // 尝试 fallback 到 tts_cdn
         if (
             fallbackCount === 0 &&
             defaultPrint.tts_cdn &&
@@ -38,8 +37,7 @@
             currentSrc = defaultPrint.tts_cdn;
             fallbackCount++;
         } else if (currentSrc !== null) {
-            // 最后才显示 blue.jpg，但不缓存它
-            currentSrc = null; // 设置为 null，让 CachedImage 显示 error 状态
+            currentSrc = null;
             img.onerror = null;
         }
     }
@@ -48,7 +46,7 @@
 <a
     href="/cards/{card.id}"
     class="card-item"
-    title={card.card_name_cn || card.card_name_en}
+    title={`${card.card_name_cn} ${card.sub_title_cn || ""}`}
 >
     {#if currentSrc}
         <CachedImage

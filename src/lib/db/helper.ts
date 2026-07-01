@@ -138,13 +138,15 @@ export function buildSearchParams(
       continue;
     }
 
-    // 处理数组类字段 (tag, keyword, color 等)
     const arrayFields = [
       "tag",
       "keyword",
       "card_color_list",
       "region",
       "advanced_tag",
+      "rarity_name",
+      "series_name",
+      "card_category"
     ];
     if (arrayFields.includes(dbField as string)) {
       if (!params[dbField as keyof CardSearchParams]) {

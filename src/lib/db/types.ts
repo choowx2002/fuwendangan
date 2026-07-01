@@ -98,18 +98,6 @@ export interface ArrayFilterParam {
   exclude?: string[]; // NOT 逻辑
 }
 
-// 页面级 Filter 状态管理结构
-export type CategoryKey =
-  "region" | "tag" | "keyword" | "advanced_tag" | "card_color_list";
-
-export interface FilterState {
-  region: Record<string, FilterStatus>;
-  tag: Record<string, FilterStatus>;
-  keyword: Record<string, FilterStatus>;
-  advanced_tag: Record<string, FilterStatus>;
-  card_color_list: Record<string, FilterStatus>;
-}
-
 export interface FilterOptions {
   id: number; // 固定为 1
   regions: string[];
@@ -141,9 +129,9 @@ export interface CardSearchParams {
   card_color_list?: ArrayFilterParam;
 
   // 文本类精确过滤
-  card_category?: string;
-  series_name?: string;
-  rarity_name?: string;
+  card_category?: ArrayFilterParam;
+  series_name?: ArrayFilterParam;
+  rarity_name?: ArrayFilterParam;
   champion_tag?: string;
 
   // 数值范围过滤

@@ -6,13 +6,16 @@
     let { children } = $props();
     let isSidebarOpen = $state(false);
     let isSidebarMinimized = $state(false);
+    let isMobile = $state(false);
 
     // 监听窗口大小变化，桌面端自动展开侧边栏
     function handleResize() {
-        if (window.innerWidth >= 768) {
+        if (window.innerWidth >= 767.99) {
+            isMobile = false;
             isSidebarOpen = true;
         } else {
             isSidebarOpen = false;
+            isMobile = true;
         }
     }
 
@@ -34,7 +37,7 @@
     />
 
     <div class="main-area">
-        {#if window.innerWidth < 767.99}
+        {#if isMobile}
             <Topbar bind:isSidebarOpen />
         {/if}
         <main class="content">

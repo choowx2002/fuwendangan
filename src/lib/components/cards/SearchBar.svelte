@@ -5,6 +5,7 @@
         ActiveFilter,
         FilterType,
     } from "$lib/db/types";
+    import { onMount } from "svelte";
 
     interface Props {
         filterOptions: FilterOptions | null;
@@ -73,6 +74,8 @@
             if (e.key === "Enter") {
                 e.preventDefault();
                 onTextSearch(searchText);
+            } else if (e.key === "Escape") {
+                inputEl?.blur();
             }
             return;
         }
@@ -96,6 +99,28 @@
         }
     }
 
+    onMount(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (
+                event.ctrlKey &&
+                event.key.toLowerCase() === "k" &&
+                !isFocused
+            ) {
+                event.preventDefault();
+                const searchBarEl = document.getElementById("searchBar");
+                if (searchBarEl) {
+                    searchBarEl.focus();
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    });
+
     // 【关键修复】：传入完整的 suggestion 对象，保留真实的 type
     function selectSuggestion(suggestion: Suggestion) {
         onAddFilter({
@@ -118,6 +143,7 @@
     <div class="search-input-container">
         <Search size={16} class="search-icon" />
         <input
+            id="searchBar"
             bind:this={inputEl}
             type="text"
             bind:value={searchText}
@@ -166,13 +192,14 @@
         padding: 8px 12px;
         border: 1px solid var(--border-color);
         border-radius: var(--radius-md);
-        background: var(--bg-primary);
+        background: var(--bg-secondary);
         transition: all 0.15s;
+        box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.2);
     }
 
     .search-wrapper.focused .search-input-container {
-        border-color: var(--accent-color);
-        box-shadow: 0 0 0 3px rgba(35, 131, 226, 0.1);
+        /* border-color: var(--accent-color); */
+        box-shadow: 0 0 0 3px rgba(19, 205, 171, 0.53);
     }
 
     .search-icon {

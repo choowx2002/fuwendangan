@@ -1,7 +1,6 @@
 // src/lib/db/sqlite.ts
 import Database from "@tauri-apps/plugin-sql";
 import type {
-  SqliteCardBase,
   CardBase,
   CardPrint,
   AppVersion,
@@ -9,7 +8,6 @@ import type {
   CardSearchParams,
   FilterOptions,
   ArrayFilterParam,
-  CategoryKey,
   ArrayFieldKey,
   NumberRange,
 } from "./types";
@@ -272,13 +270,27 @@ export async function searchCardsLocal(
     "card_category",
     "series_name",
     "rarity_name",
-    "champion_tag",
   ];
   for (const field of textFields) {
-    const val = params[field];
-    if (val && typeof val === "string" && val.trim() !== "") {
-      whereClauses.push(`cards_base.${field} = ?`);
-      queryParams.push(val.trim());
+    const filterParam = params[field] as ArrayFilterParam | undefined;
+    if (!filterParam) continue;
+
+    const includeVals = filterParam.include || [];
+    const mustVals = filterParam.must || [];
+    const excludeVals = filterParam.exclude || [];
+
+    const matchVals = [...new Set([...includeVals, ...mustVals])];
+    if (matchVals.length > 0) {
+      const placeholders = matchVals.map(() => "?").join(",");
+      whereClauses.push(`cards_base.${field} IN (${placeholders})`);
+      queryParams.push(...matchVals);
+    }
+
+    // exclude 使用 NOT IN 排除
+    if (excludeVals.length > 0) {
+      const placeholders = excludeVals.map(() => "?").join(",");
+      whereClauses.push(`cards_base.${field} NOT IN (${placeholders})`);
+      queryParams.push(...excludeVals);
     }
   }
 

@@ -77,7 +77,7 @@ export async function loadExternalImage(
     cache.set(fileName, url);
     return url;
   } catch (err) {
-    console.warn("加载图片失败:", fileName, err);
+    console.warn("[Cache] 加载图片失败:", fileName, err);
     return "";
   }
 }
@@ -102,9 +102,9 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string) => {
       baseDir: BaseDirectory.AppLocalData,
     });
 
-    console.log("保存图片到本地缓存成功:", filename);
+    console.log("[Cache] 保存图片到本地缓存成功:", filename);
   } catch (error) {
-    console.error("Error saving image:", error);
+    console.error("[Cache] 保存图片到本地缓存失败:", error);
   }
 };
 
@@ -125,7 +125,8 @@ export const loadImageFromAppFolder = async (
     if (!bytes) return null;
   }
 
-  const blob = new Blob([bytes], { type: "image/*" });
+  const arrayBuffer = bytes.slice().buffer;
+  const blob = new Blob([arrayBuffer], { type: "image/*" });
   return URL.createObjectURL(blob);
 };
 
@@ -139,7 +140,7 @@ export const clearMemoryCache = (): void => {
     URL.revokeObjectURL(url);
   });
   cache.clear();
-  console.log("内存缓存已清除");
+  console.log("[Cache] 内存缓存已清除");
 };
 
 /**
@@ -178,7 +179,7 @@ export const deleteLocalImage = async (filename: string): Promise<boolean> => {
     });
     return true;
   } catch (error) {
-    console.error("删除图片失败:", error);
+    console.error("[Cache] 删除图片失败:", error);
     return false;
   }
 };
@@ -199,12 +200,12 @@ export const clearLocalCache = async (): Promise<boolean> => {
         recursive: true,
       });
       await ensureDir(imagesDir);
-      console.log("本地缓存已清除");
+      console.log("[Cache] 本地缓存已清除");
       return true;
     }
     return false;
   } catch (error) {
-    console.error("清除本地缓存失败:", error);
+    console.error("[Cache] 清除本地缓存失败:", error);
     return false;
   }
 };
@@ -240,7 +241,8 @@ export const preloadImage = async (
   }
 
   if (bytes) {
-    const blob = new Blob([bytes], { type: "image/*" });
+    const arrayBuffer = bytes.slice().buffer;
+    const blob = new Blob([arrayBuffer], { type: "image/*" });
     const objectUrl = URL.createObjectURL(blob);
     cache.set(filename, objectUrl);
     return objectUrl;

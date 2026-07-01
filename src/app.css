@@ -34,13 +34,17 @@
     --text-tertiary: #9b9a97;
 
     --border-color: #e5e5e3;
-    --accent-color: #2383e2; /* Notion 蓝 */
+    --accent-color: #10aa9b; /* Notion 蓝 */
 
     --radius-sm: 4px;
     --radius-md: 6px;
 
-    --sidebar-width: 260px;
+    --sidebar-width: 165px;
     --topbar-height: 52px;
+
+    @media (min-width: 767.99px) {
+        --topbar-height: 0px;
+    }
 
     font-family: "Noto Sans SC", system-ui, sans-serif;
     color: var(--text-primary);

@@ -56,7 +56,7 @@
                 onerror?.(new Event("error")); // 触发父组件回调
             }
         } catch (err) {
-            console.error("加载图片失败:", err);
+            console.error("[Image] 加载图片失败:", err);
             error = true;
             onerror?.(new Event("error")); // 触发父组件回调
         } finally {
@@ -128,7 +128,7 @@
         {:else}
             <div
                 class="loading-placeholder"
-                style="width: 100%; height: 100%; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; display: flex; align-items: center; justify-content: center;"
+                style="width: 100%; height: 100%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
             >
                 <span style="color: #999; font-size: 14px;">加载中...</span>
             </div>
@@ -167,7 +167,7 @@
             alt={alt || name}
             style="width: 100%; height: 100%; {fitStyles[
                 fit
-            ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease;"
+            ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease; overflow: visible;"
             onload={() => {
                 loading = false;
             }}
@@ -177,14 +177,6 @@
 </div>
 
 <style>
-    @keyframes shimmer {
-        0% {
-            background-position: 200% 0;
-        }
-        100% {
-            background-position: -200% 0;
-        }
-    }
     .cache-image-container {
         display: inline-block;
     }
