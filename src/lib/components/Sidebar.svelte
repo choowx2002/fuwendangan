@@ -1,4 +1,3 @@
-<!-- src/lib/components/Sidebar.svelte -->
 <script lang="ts">
     import { page } from "$app/state";
     import {
@@ -10,9 +9,11 @@
         ChevronRight,
         Plus,
         Sparkles,
+        ChevronLeft,
     } from "@lucide/svelte";
+    import { onMount } from "svelte";
 
-    let { isOpen = $bindable() } = $props();
+    let { isOpen = $bindable(), isMinimized = $bindable() } = $props();
 
     const navItems = [
         { icon: LayoutDashboard, label: "首页", href: "/" },
@@ -31,17 +32,44 @@
             isOpen = false;
         }
     }
+
+    onMount(() => {
+        window.addEventListener("resize", () => {
+            if (window.innerWidth < 767.99 && isMinimized) {
+                isMinimized = false;
+            }
+        });
+
+        return () => {
+            window.removeEventListener("resize", () => {
+                if (window.innerWidth < 767.99 && isMinimized) {
+                    isMinimized = false;
+                }
+            });
+        };
+    });
+
+    function toggleMinimize() {
+        isMinimized = !isMinimized;
+    }
 </script>
 
-<aside class="sidebar" class:open={isOpen}>
+<aside class="sidebar" class:open={isOpen} class:isMinimized>
     <div class="sidebar-header">
-        <div class="workspace">
-            <div class="workspace-icon"><img src="/icon.png" alt="" /></div>
+        <div class="workspace willHidden" class:isHidden={isMinimized}>
+            <div class="workspace-icon">
+                <img src="/fuwendangan_logo_zn.webp" alt="logo" />
+            </div>
             <!-- <span class="workspace-name">我的卡牌库</span> -->
         </div>
-        <!-- <button class="icon-btn" aria-label="新建">
-            <Plus size={16} />
-        </button> -->
+
+        <button class="icon-btn" aria-label="最小化" onclick={toggleMinimize}>
+            {#if !isMinimized}
+                <ChevronLeft size={16} />
+            {:else}
+                <ChevronRight class="nav-item" size={18} strokeWidth={2} />
+            {/if}
+        </button>
     </div>
 
     <nav class="nav-section">
@@ -53,19 +81,23 @@
                 onclick={closeIfMobile}
             >
                 <item.icon size={18} strokeWidth={1.75} />
-                <span>{item.label}</span>
+                <span class="willHidden" class:isHidden={isOpen && isMinimized}
+                    >{item.label}</span
+                >
             </a>
         {/each}
     </nav>
 
     <div class="divider"></div>
 
-    <nav class="nav-section">
+    <nav class="nav-section willHidden" class:isHidden={isOpen && isMinimized}>
         <div class="section-title">工具与设置</div>
         {#each toolItems as item}
             <a href={item.href} class="nav-item" onclick={closeIfMobile}>
                 <item.icon size={18} strokeWidth={1.75} />
-                <span>{item.label}</span>
+                <span class="willHidden" class:isHidden={isOpen && isMinimized}
+                    >{item.label}</span
+                >
             </a>
         {/each}
     </nav>
@@ -73,7 +105,9 @@
     <div class="sidebar-footer">
         <div class="user-info">
             <div class="avatar">天</div>
-            <span>天龠wx</span>
+            <span class="willHidden" class:isHidden={isOpen && isMinimized}
+                >天龠wx</span
+            >
         </div>
     </div>
 </aside>
@@ -91,17 +125,19 @@
         flex-direction: column;
         z-index: 50;
         transform: translateX(-100%);
-        transition: transform 0.2s ease;
+        transition:
+            transform 0.2s ease,
+            width 0.2s ease;
+        will-change: transform, width;
     }
 
     .sidebar.open {
         transform: translateX(0);
     }
 
-    @media (min-width: 767.99px) {
-        .sidebar {
-            transform: translateX(0);
-        }
+    .sidebar.isMinimized {
+        width: 64px;
+        text-align: center;
     }
 
     .sidebar-header {
@@ -109,6 +145,10 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+    }
+
+    .sidebar.isMinimized .sidebar-header {
+        justify-content: center;
     }
 
     .workspace {
@@ -121,7 +161,7 @@
 
     .workspace-icon {
         width: 100%;
-        /*height: 22px;*/
+        height: 22px;
         /*background: var(--accent-color);*/
         /*color: white;*/
         border-radius: var(--radius-sm);
@@ -176,6 +216,10 @@
         transition: background 0.1s;
     }
 
+    .sidebar.isMinimized .nav-item {
+        justify-content: center;
+    }
+
     .nav-item:hover {
         background: var(--bg-hover);
         color: var(--text-primary);
@@ -217,5 +261,33 @@
         justify-content: center;
         font-size: 12px;
         color: var(--text-primary);
+    }
+
+    .willHidden {
+        transition:
+            width 0.2s ease,
+            opacity 0.2s ease,
+            display 0s 0.2s ease;
+        opacity: 1;
+        max-width: 999px;
+    }
+
+    .isHidden {
+        opacity: 0;
+        max-width: 0;
+        display: none;
+        overflow: hidden;
+    }
+
+    @media (min-width: 767.99px) {
+        .sidebar {
+            transform: translateX(0);
+        }
+    }
+
+    @media (max-width: 767.99px) {
+        .icon-btn {
+            display: none;
+        }
     }
 </style>

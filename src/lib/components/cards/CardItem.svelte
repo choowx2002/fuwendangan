@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { CardBase, CardPrint } from "$lib/db/types";
+    import CachedImage from "./CachedImage.svelte";
 
     interface Props {
         card: CardBase & { card_prints?: CardPrint[] };
@@ -11,27 +12,34 @@
         card.card_prints?.find((p) => p.is_default) ?? card.card_prints?.[0],
     );
 
-    let currentSrc = $state("/blue.jpg");
+    // 【修复】使用 null 作为初始值，避免缓存 blue.jpg
+    let currentSrc = $state<string | null>(null);
     let fallbackCount = $state(0);
 
     $effect(() => {
-        currentSrc =
-            defaultPrint?.img_cdn ?? defaultPrint?.tts_cdn ?? "/blue.jpg";
-
-        fallbackCount = 0;
+        // 只有当 defaultPrint 存在时才设置 src
+        if (defaultPrint) {
+            currentSrc = defaultPrint.img_cdn ?? defaultPrint.tts_cdn ?? null;
+            fallbackCount = 0;
+        }
     });
 
     function handleError(e: Event) {
+        if (!defaultPrint) return;
+
         const img = e.target as HTMLImageElement;
+
+        // 尝试 fallback 到 tts_cdn
         if (
             fallbackCount === 0 &&
-            defaultPrint?.tts_cdn &&
+            defaultPrint.tts_cdn &&
             currentSrc !== defaultPrint.tts_cdn
         ) {
             currentSrc = defaultPrint.tts_cdn;
             fallbackCount++;
-        } else {
-            currentSrc = "/blue.jpg";
+        } else if (currentSrc !== null) {
+            // 最后才显示 blue.jpg，但不缓存它
+            currentSrc = null; // 设置为 null，让 CachedImage 显示 error 状态
             img.onerror = null;
         }
     }
@@ -42,12 +50,26 @@
     class="card-item"
     title={card.card_name_cn || card.card_name_en}
 >
-    <img
-        src={currentSrc}
-        alt={card.card_name_cn || ""}
-        loading="lazy"
-        onerror={handleError}
-    />
+    {#if currentSrc}
+        <CachedImage
+            src={currentSrc}
+            name={`${card.id}-${defaultPrint?.id || "default"}`}
+            width="100%"
+            height="100%"
+            fit="cover"
+            onerror={handleError}
+        />
+    {:else}
+        <!-- 显示占位符，但不通过 CachedImage 缓存 -->
+        <div
+            class="placeholder"
+            style="width: 100%; height: 100%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
+        >
+            <span style="color: var(--text-muted); font-size: 12px;"
+                >无图片</span
+            >
+        </div>
+    {/if}
 </a>
 
 <style>
@@ -65,13 +87,5 @@
     .card-item:hover {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);
         transform: translateY(-1px);
-    }
-
-    img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-        overflow: visible;
     }
 </style>

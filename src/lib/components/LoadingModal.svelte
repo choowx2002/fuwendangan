@@ -10,30 +10,37 @@
 
     let { status, message, onRetry }: Props = $props();
 
-    const statusConfig = {
-        loading: {
-            text: "正在初始化数据库...",
-            subtext: "首次启动可能需要几秒钟",
-            showGif: true,
-        },
-        syncing: {
-            text: "正在同步卡牌数据...",
-            subtext: "从云端拉取最新卡库",
-            showGif: true,
-        },
-        success: {
-            text: "初始化完成",
-            subtext: "即将进入应用",
-            showGif: false,
-        },
-        error: {
-            text: "初始化失败",
-            subtext: message || "请检查网络连接后重试",
-            showGif: false,
-        },
-    };
+    const config = $derived.by(() => {
+        switch (status) {
+            case "loading":
+                return {
+                    text: "正在初始化数据库...",
+                    subtext: "首次启动可能需要几秒钟",
+                    showGif: true,
+                };
 
-    const config = $derived(statusConfig[status]);
+            case "syncing":
+                return {
+                    text: "正在同步卡牌数据...",
+                    subtext: "从云端拉取最新卡库",
+                    showGif: true,
+                };
+
+            case "success":
+                return {
+                    text: "初始化完成",
+                    subtext: "即将进入应用",
+                    showGif: false,
+                };
+
+            case "error":
+                return {
+                    text: "初始化失败",
+                    subtext: message ?? "请检查网络连接后重试",
+                    showGif: false,
+                };
+        }
+    });
 </script>
 
 <div class="modal-overlay">

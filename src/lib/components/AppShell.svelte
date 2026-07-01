@@ -5,6 +5,7 @@
 
     let { children } = $props();
     let isSidebarOpen = $state(false);
+    let isSidebarMinimized = $state(false);
 
     // 监听窗口大小变化，桌面端自动展开侧边栏
     function handleResize() {
@@ -22,18 +23,27 @@
     });
 </script>
 
-<div class="app-shell" class:sidebar-open={isSidebarOpen}>
-    <Sidebar bind:isOpen={isSidebarOpen} />
+<div
+    class="app-shell"
+    class:sidebar-open={isSidebarOpen}
+    class:isMinimized={isSidebarMinimized}
+>
+    <Sidebar
+        bind:isOpen={isSidebarOpen}
+        bind:isMinimized={isSidebarMinimized}
+    />
 
     <div class="main-area">
-        <Topbar bind:isSidebarOpen />
+        {#if window.innerWidth < 767.99}
+            <Topbar bind:isSidebarOpen />
+        {/if}
         <main class="content">
             {@render children()}
         </main>
     </div>
 
     <!-- 移动端遮罩层 -->
-    {#if isSidebarOpen && window.innerWidth < 768}
+    {#if isSidebarOpen && window.innerWidth < 767.99}
         <div
             class="overlay"
             onclick={() => (isSidebarOpen = false)}
@@ -60,9 +70,13 @@
     }
 
     /* 桌面端布局 */
-    @media (min-width: 768px) {
+    @media (min-width: 767.99px) {
         .sidebar-open .main-area {
             margin-left: var(--sidebar-width);
+        }
+
+        .isMinimized .main-area {
+            margin-left: 64px;
         }
     }
 

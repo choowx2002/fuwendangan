@@ -140,7 +140,7 @@
         padding: 40px 24px 80px;
     }
 
-    @media (max-width: 767px) {
+    @media (max-width: 767.99px) {
         .page-container {
             padding: 24px 16px 80px;
         }
