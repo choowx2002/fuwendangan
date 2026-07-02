@@ -218,7 +218,7 @@
 
   .apply-btn {
     padding: 8px 20px;
-    background: var(--text-primary);
+    background: var(--accent-color);
     color: var(--bg-primary);
     border: none;
     border-radius: var(--radius-md);

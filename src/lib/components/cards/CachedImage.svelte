@@ -15,6 +15,7 @@
     lazy = true,
     className = '',
     style = '',
+    isHover = true,
     // 新增：允许父组件传入错误处理回调
     onerror = undefined as ((e: Event) => void) | undefined,
   } = $props()
@@ -24,7 +25,6 @@
   let error = $state(false)
   let objectUrl = $state<string | null>(null)
 
-  // 【修复】绑定到外层容器，确保无论什么状态下 DOM 都存在
   let containerElement = $state<HTMLDivElement | undefined>(undefined)
   let imgElement = $state<HTMLImageElement | undefined>(undefined)
 
@@ -105,10 +105,10 @@
   }
 </script>
 
-<!-- 【修复】将 bind:this 绑定到外层 div -->
 <div
   bind:this={containerElement}
   class="cache-image-container {className}"
+  class:cache-image-container-hover={isHover}
   style="
         position: relative;
         width: {width || '100%'};
@@ -136,6 +136,17 @@
   {:else if error}
     {#if errorImage}
       <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; object-fit: cover;" />
+    {:else if src}
+      <img
+        {src}
+        alt={alt || name}
+        style="width: 100%; height: 100%; {fitStyles[
+          fit
+        ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease; overflow: visible;"
+        onload={() => {
+          loading = false
+        }}
+      />
     {:else}
       <div
         class="error-placeholder"
@@ -168,8 +179,16 @@
 <style>
   .cache-image-container {
     display: inline-block;
+    aspect-ratio: 744 / 1040;
+    overflow: hidden;
+    transition: all 0.2s ease;
   }
   .cache-image-container img {
     display: block;
+  }
+
+  .cache-image-container-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);
+    transform: translateY(-1px);
   }
 </style>

@@ -34,22 +34,26 @@
   --text-tertiary: #9b9a97;
 
   --border-color: #e5e5e3;
-  --accent-color: #10aa9b; /* Notion 蓝 */
+  --accent-color: #128378; /* Notion 蓝 */
 
   --radius-sm: 4px;
   --radius-md: 6px;
+  --radius-lg: 10px;
 
   --sidebar-width: 165px;
   --topbar-height: 52px;
 
-  @media (min-width: 767.99px) {
-    --topbar-height: 0px;
-  }
-
+   --text-sm: .875rem;
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   color: var(--text-primary);
   background-color: var(--bg-primary);
 }
+
+  @media (min-width: 767.99px) {
+    :root {
+    --topbar-height: 0px;
+    }
+  }
 
 body {
   margin: 0;

@@ -70,8 +70,6 @@
       if (e.key === 'Enter') {
         e.preventDefault()
         onTextSearch(searchText)
-      } else if (e.key === 'Escape') {
-        inputEl?.blur()
       }
       return
     }
@@ -90,7 +88,8 @@
         onTextSearch(searchText)
       }
     } else if (e.key === 'Escape') {
-      inputEl?.blur()
+      activeIndex = -1
+      // inputEl?.blur()
     }
   }
 
@@ -142,6 +141,7 @@
       onfocus={() => (isFocused = true)}
       onblur={() => setTimeout(() => (isFocused = false), 200)}
       onkeydown={handleKeydown}
+      autocomplete="off"
     />
     {#if searchText}
       <button class="clear-btn" onclick={clearSearch} aria-label="清除">
@@ -185,12 +185,12 @@
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
     transition: all 0.15s;
-    box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 8px 0px rgba(0, 0, 0, 0.1);
   }
 
   .search-wrapper.focused .search-input-container {
-    /* border-color: var(--accent-color); */
-    box-shadow: 0 0 0 3px rgba(19, 205, 171, 0.53);
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 8px rgba(19, 205, 171, 0.4);
   }
 
   :global(.search-icon) {

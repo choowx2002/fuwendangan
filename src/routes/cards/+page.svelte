@@ -9,6 +9,7 @@
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount } from 'svelte'
   import SortModal from '$lib/components/cards/SortModal.svelte'
+  import CardModal from '$lib/components/cards/CardModal.svelte'
 
   // --- 基础状态 ---
   let filterOptions = $state<FilterOptions | null>(null)
@@ -22,12 +23,13 @@
   let hasMore = $state(true) // 是否还有更多数据
   let isLoading = $state(true) // 首次加载状态
   let isLoadingMore = $state(false) // 滚动加载状态
+  let pageSize = 36
+  let selectedCard = $state(null)
 
   // --- 排序方式 ---
   let sortList = $state<SortKeyItem[]>([{ id: 1, name: 'card_no', isAsc: true, order: 1 }])
 
   function onChangeSort() {
-    console.log('sort', sortList)
     performSearch()
   }
 
@@ -78,7 +80,13 @@
     }
 
     try {
-      const params = buildSearchParams(activeFilters, currentSearchText, currentPage, 30, sortList)
+      const params = buildSearchParams(
+        activeFilters,
+        currentSearchText,
+        currentPage,
+        pageSize,
+        sortList
+      )
 
       const result = await searchCards(params)
       if (isLoadMore) {
@@ -189,7 +197,9 @@
       {:else if displayedCards.length > 0}
         <div class="card-grid">
           {#each displayedCards as card (card.id)}
-            <CardItem {card} />
+            <div role="presentation" onclick={() => (selectedCard = card)}>
+              <CardItem {card} />
+            </div>
           {/each}
         </div>
 
@@ -217,6 +227,8 @@
       {/if}
     </section>
   </main>
+
+  <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
   <FilterPanel
     isOpen={isFilterOpen}
@@ -255,6 +267,7 @@
     gap: 16px;
     padding-bottom: 12px;
     flex-shrink: 0;
+    flex-wrap: wrap;
   }
 
   .search-wrapper {
@@ -304,7 +317,7 @@
 
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 16px;
   }
 

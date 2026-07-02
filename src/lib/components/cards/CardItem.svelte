@@ -39,17 +39,13 @@
   }
 </script>
 
-<a
-  href="/cards/{card.id}"
-  class="card-item"
-  title={`${card.card_name_cn} ${card.sub_title_cn || ''}`}
->
+<div class="card-item">
   {#if currentSrc}
     <CachedImage
       src={currentSrc}
       name={`${card.id}-${defaultPrint?.id || 'default'}`}
       width="100%"
-      height="100%"
+      borderRadius="6px"
       fit="cover"
       onerror={handleError}
     />
@@ -62,22 +58,18 @@
       <span style="color: var(--text-muted); font-size: 12px;">无图片</span>
     </div>
   {/if}
-</a>
+  <h5 style="color: var(--text-primary) ;margin: 0; text-align: center;">
+    {`${card.card_name_cn} ${card.sub_title_cn || ''}`}
+  </h5>
+</div>
 
 <style>
   .card-item {
     display: block;
     position: relative;
-    aspect-ratio: 744 / 1040;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    background: var(--bg-secondary);
-    transition: all 0.2s ease;
+    /* aspect-ratio: 744 / 1040; */
+    /* border-radius: var(--radius-md); */
+    text-decoration: none;
     cursor: pointer;
-  }
-
-  .card-item:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);
-    transform: translateY(-1px);
   }
 </style>

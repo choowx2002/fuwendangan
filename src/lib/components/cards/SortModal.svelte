@@ -79,7 +79,7 @@
 </script>
 
 <!-- 外部触发按钮 (带 Badge) -->
-<button class="notion-trigger" onclick={openModal}>
+<button class="trigger" onclick={openModal}>
   <svg class="trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M3 6h18M3 12h18M3 18h18" />
   </svg>
@@ -205,7 +205,7 @@
       <!-- Modal Footer -->
       <div class="modal-footer">
         <div>
-          <button class="notion-btn text-btn" onclick={addSort}>
+          <button class="btn text-btn" onclick={addSort}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 5v14M5 12h14" />
             </svg>
@@ -213,7 +213,7 @@
           </button>
         </div>
 
-        <button class="notion-btn primary-btn" onclick={closeModal}> 完成 </button>
+        <button class="btn primary-btn" onclick={closeModal}> 完成 </button>
       </div>
     </div>
   </div>
@@ -224,7 +224,7 @@
     margin: 0;
   }
 
-  .notion-trigger {
+  .trigger {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -239,7 +239,7 @@
     box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.05);
   }
 
-  .notion-trigger:hover {
+  .trigger:hover {
     background: var(--bg-hover);
     border-color: #d3d1cb;
   }
@@ -460,7 +460,7 @@
     gap: 12px;
   }
 
-  .notion-btn {
+  .btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -472,7 +472,7 @@
     cursor: pointer;
     transition: background 0.1s;
   }
-  .notion-btn svg {
+  .btn svg {
     width: 16px;
     height: 16px;
   }
@@ -509,5 +509,21 @@
   }
   .modal-body::-webkit-scrollbar-thumb:hover {
     background: #aeaca6;
+  }
+  .close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 </style>
