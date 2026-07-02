@@ -1,78 +1,78 @@
 @font-face {
-    font-family: "Noto Sans SC";
-    src: url("./assets/fonts/NotoSansSC-Regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
+  font-family: 'Noto Sans SC';
+  src: url('./assets/fonts/NotoSansSC-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-    font-family: "Noto Sans SC";
-    src: url("./assets/fonts/NotoSansSC-Medium.ttf") format("truetype");
-    font-weight: 500;
-    font-style: normal;
-    font-display: swap;
+  font-family: 'Noto Sans SC';
+  src: url('./assets/fonts/NotoSansSC-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-    font-family: "Noto Sans SC";
-    src: url("./assets/fonts/NotoSansSC-Bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
+  font-family: 'Noto Sans SC';
+  src: url('./assets/fonts/NotoSansSC-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 :root {
-    /* Notion 经典配色 */
-    --bg-primary: #dfefeb;
-    --bg-secondary: #f7f7f5; /* 侧边栏背景 */
-    --bg-hover: rgba(55, 53, 47, 0.08);
-    --bg-active: rgba(55, 53, 47, 0.12);
+  /* Notion 经典配色 */
+  --bg-primary: #dfefeb;
+  --bg-secondary: #f7f7f5; /* 侧边栏背景 */
+  --bg-hover: rgba(55, 53, 47, 0.08);
+  --bg-active: rgba(55, 53, 47, 0.12);
 
-    --text-primary: #37352f;
-    --text-secondary: #787774;
-    --text-tertiary: #9b9a97;
+  --text-primary: #37352f;
+  --text-secondary: #787774;
+  --text-tertiary: #9b9a97;
 
-    --border-color: #e5e5e3;
-    --accent-color: #10aa9b; /* Notion 蓝 */
+  --border-color: #e5e5e3;
+  --accent-color: #10aa9b; /* Notion 蓝 */
 
-    --radius-sm: 4px;
-    --radius-md: 6px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
 
-    --sidebar-width: 165px;
-    --topbar-height: 52px;
+  --sidebar-width: 165px;
+  --topbar-height: 52px;
 
-    @media (min-width: 767.99px) {
-        --topbar-height: 0px;
-    }
+  @media (min-width: 767.99px) {
+    --topbar-height: 0px;
+  }
 
-    font-family: "Noto Sans SC", system-ui, sans-serif;
-    color: var(--text-primary);
-    background-color: var(--bg-primary);
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
 }
 
 body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden; /* 防止双滚动条 */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* 防止双滚动条 */
 }
 
 * {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 /* 滚动条美化 (Notion 风格) */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: #d3d1cb;
-    border-radius: 4px;
+  background: #d3d1cb;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #aeaca6;
+  background: #aeaca6;
 }
