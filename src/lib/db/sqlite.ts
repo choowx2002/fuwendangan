@@ -312,9 +312,7 @@ export async function searchCardsLocal(params: CardSearchParams): Promise<CardSe
 
   // 7. 获取分页数据 (使用 LEFT JOIN 关联默认卡图，以实现按 print_order 排序)
   const offset = (page - 1) * pageSize
-  console.log('params.sortByList', [...params.sortByList!])
   const orderBy = buildOrderBy(params.sortByList)
-  console.log('order', orderBy)
   const dataSql = `
     SELECT cards_base.*
     FROM cards_base
