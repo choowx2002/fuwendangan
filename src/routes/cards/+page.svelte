@@ -359,13 +359,13 @@
 
   @media (min-width: 1079.99px) {
     .card-grid {
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     }
   }
 
   @media (min-width: 1919.99px) {
     .card-grid {
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     }
   }
 

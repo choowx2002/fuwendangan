@@ -317,14 +317,15 @@
     flex: 1;
     overflow: hidden;
     height: 100%;
+    padding: 24px;
   }
 
   /* ================= 左侧：图片区 ================= */
   .image-section {
     width: 40vw;
+    padding-right: 24px;
     max-width: 300px;
     flex-shrink: 0;
-    padding: 24px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -340,7 +341,6 @@
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
     margin-bottom: 16px;
     overflow: hidden;
-    overflow-y: auto;
   }
 
   .image-controls {
@@ -414,7 +414,7 @@
   /* ================= 右侧：信息区 ================= */
   .info-section {
     flex: 1;
-    padding: 24px 32px;
+    padding-left: 24px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -542,7 +542,7 @@
     display: none;
   }
   /* ================= 响应式适配 ================= */
-  @media (max-width: 767.99px) {
+  @media (max-width: 600.99px) {
     .modal-content {
       height: 95vh;
       max-height: none;
@@ -590,8 +590,8 @@
     }
 
     .info-section {
-      padding: 20px;
       overflow: visible;
+      padding: 0;
     }
     .card-title {
       font-size: 24px;
@@ -622,5 +622,9 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
   }
 </style>
