@@ -88,7 +88,7 @@ export async function getCardById(id: string): Promise<CardBase | null> {
  */
 export async function getCardCount(): Promise<number> {
   const db = await getDatabase()
-  const results = await db.select<number[]>(`SELECT COUNT(*) as count FROM ${TABLES.CARDS_BASE}`)
+  const results = await db.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM ${TABLES.CARDS_BASE}`)
   return results[0]?.count ?? 0
 }
 

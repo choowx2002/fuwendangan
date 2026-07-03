@@ -1,6 +1,8 @@
 <!-- src/routes/+page.svelte -->
 <script lang="ts">
+  import { getCardCount } from '$lib/db'
   import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
+  import { onMount } from 'svelte'
 
   // 模拟数据
   const recentDecks = [
@@ -47,6 +49,12 @@
       color: '#0f7b6c',
     },
   ]
+
+  onMount(async () => {
+    try {
+      await getCardCount()
+    } catch (error) {}
+  })
 </script>
 
 <div class="page-container">

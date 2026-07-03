@@ -11,5 +11,5 @@ export const TABLES = {
   VERSION: 'version',
 } as const
 
-export const DEFAULT_PAGE_SIZE = 30
+export const DEFAULT_PAGE_SIZE = 36
 export const DEFAULT_PAGE = 1
