@@ -1,6 +1,7 @@
 <script lang="ts">
   import { loadImageFromAppFolder } from '$lib/cards/image-cache'
   import type { ObjectFitType } from '$lib/cards/image-cache'
+  import { LoaderCircle } from '@lucide/svelte'
 
   let {
     src = '',
@@ -128,9 +129,10 @@
     {:else}
       <div
         class="loading-placeholder"
-        style="width: 100%; height: 100%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
+        style="width: 100%; aspect-ratio: 744 / 1040; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
       >
-        <span style="color: #999; font-size: 14px;">加载中...</span>
+        <!-- <span style="color: #999; font-size: 14px;">加载中...</span> -->
+        <LoaderCircle size={24} class="animate-spin" />
       </div>
     {/if}
   {:else if error}
@@ -185,10 +187,11 @@
   }
   .cache-image-container img {
     display: block;
+    image-rendering: optimizeQuality;
   }
 
   .cache-image-container-hover:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);
+    /*box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);*/
     transform: translateY(-1px);
   }
 </style>

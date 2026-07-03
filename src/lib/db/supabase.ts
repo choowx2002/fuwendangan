@@ -38,7 +38,7 @@ export async function fetchAllCards(): Promise<CardBase[]> {
 export async function fetchAllPrints(): Promise<CardPrint[]> {
   const totalData: CardPrint[] = []
   let page = 0
-  const pageSize = 100
+  const pageSize = 300
   let hasMore = true
   while (hasMore) {
     const { data, count, error } = await supabase

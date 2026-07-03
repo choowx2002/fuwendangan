@@ -41,14 +41,16 @@
 
 <div class="card-item">
   {#if currentSrc}
-    <CachedImage
-      src={currentSrc}
-      name={`${card.id}-${defaultPrint?.id || 'default'}`}
-      width="100%"
-      borderRadius="6px"
-      fit="cover"
-      onerror={handleError}
-    />
+    <div style="width: 100%; aspect-ratio: 744/ 1040; margin: 5px;">
+      <CachedImage
+        src={currentSrc}
+        name={`${card.id}-${defaultPrint?.id || 'default'}`}
+        width="100%"
+        borderRadius="6px"
+        fit="cover"
+        onerror={handleError}
+      />
+    </div>
   {:else}
     <!-- 显示占位符，但不通过 CachedImage 缓存 -->
     <div

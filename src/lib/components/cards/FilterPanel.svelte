@@ -156,7 +156,7 @@
     position: absolute;
     z-index: 50;
     flex-direction: column;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    /*box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);*/
     animation: slideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
     overflow: hidden;
   }

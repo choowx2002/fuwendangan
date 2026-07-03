@@ -21,6 +21,10 @@
     return combineCardPrints(sorted)
   })
 
+  const isBattlefield = $derived.by(() => {
+    return card?.card_category === '战场'
+  })
+
   $effect(() => {
     const currentCardId = card?.id
 
@@ -35,7 +39,6 @@
     const firstVersion = firstKey ? sortedMap.get(firstKey) : undefined
 
     if (firstVersion && firstVersion.length > 0) {
-      // 直接赋值，不读取 selectedVersion 进行比较
       selectedVersion = firstVersion
       selectedIndex = 0
     } else {
@@ -61,6 +64,15 @@
       </button>
 
       <div class="modal-body">
+        <div class="title-group-mobile">
+          <h1 class="card-title">
+            {card.card_name_cn}
+            <span class="small-text">{card.card_name_en}</span>
+          </h1>
+          {#if card.sub_title_cn}
+            <h2 class="card-subtitle">{card.sub_title_cn} {card.sub_title_en}</h2>
+          {/if}
+        </div>
         <aside class="image-section">
           <div class="main-image-wrapper">
             {#if selectedVersion[selectedIndex]}
@@ -137,83 +149,103 @@
             </div>
             <div class="meta-tags">
               {#if card.card_no}
-                <span class="meta-tag">编号: {selectedVersion[selectedIndex]?.card_no_extend}</span>
+                <span class="chip">编号: {selectedVersion[selectedIndex]?.card_no_extend}</span>
               {/if}
               {#if card.rarity_name}
-                <span class="meta-tag rarity"
-                  >{selectedVersion[selectedIndex]?.extend_rarity_name}</span
+                <span class="chip rarity"
+                  >{card.rarity_name}（{selectedVersion[selectedIndex]?.extend_rarity_name}）</span
                 >
+              {/if}
+              {#if card.card_color_list && card.card_color_list.length > 0}
+                {#each card.card_color_list as t (t)}
+                  {#if t !== 'colorless'}
+                    <div class="chip">
+                      <img src={`/runes/${t}.svg`} alt={t} width="16" />
+                    </div>
+                  {/if}
+                {/each}
+              {/if}
+              {#if card.card_category}
+                <span class="chip">{card.card_category}</span>
+              {/if}
+
+              {#if card.champion_tag}
+                <span class="chip">{card.champion_tag}</span>
+              {/if}
+
+              {#if card.region && card.region.length > 0}
+                {#each card.region as r (r)}
+                  <span class="chip">{r}</span>
+                {/each}
+              {/if}
+
+              {#if card.tag && card.tag.length > 0}
+                {#each card.tag as t (t)}
+                  <span class="chip">{t}</span>
+                {/each}
               {/if}
             </div>
           </header>
 
           <!-- 核心数值 (Stats) -->
-          <div class="stats-grid">
-            {#if card.energy != null}
-              <div class="stat-box">
-                <span class="stat-label">法力</span>
-                <span class="stat-value">{card.energy}</span>
-              </div>
-            {/if}
-            {#if card.return_energy != null}
-              <div class="stat-box">
-                <span class="stat-label">符能</span>
-                <span class="stat-value">{card.return_energy}</span>
-              </div>
-            {/if}
-            {#if card.power != null}
-              <div class="stat-box">
-                <span class="stat-label">战力</span>
-                <span class="stat-value">{card.power}</span>
-              </div>
-            {/if}
+          {#if !['传奇', '战场', '符文'].includes(card?.card_category ?? '')}
+            <div class="stats-grid">
+              {#if card.energy != null}
+                <div class="stat-box">
+                  <span class="stat-label">法力</span>
+                  <span class="stat-value">{card.energy}</span>
+                </div>
+              {/if}
+              {#if card.return_energy != null}
+                <div class="stat-box">
+                  <span class="stat-label">符能</span>
+                  <span class="stat-value">{card.return_energy}</span>
+                </div>
+              {/if}
+              {#if card.power != null && !card?.card_category?.includes('法术')}
+                <div class="stat-box">
+                  <span class="stat-label">战力</span>
+                  <span class="stat-value">{card.power}</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- 效果文本 -->
+          <div class="effect-section">
+            <div class="effect-text">
+              {#if card.effect_cn}
+                {@html card.effect_cn}
+              {:else}
+                <span class="empty-text">无效果</span>
+              {/if}
+              <br />
+              {#if card.effect_en?.trim()}
+                {@html card.effect_en?.trim()}
+              {/if}
+            </div>
           </div>
 
           <!-- 标签行 (Tags) -->
-          <div class="tags-row">
-            {#if card.card_category}
-              <span class="chip">{card.card_category}</span>
-            {/if}
-            {#if card.region && card.region.length > 0}
-              {#each card.region as r}
-                <span class="chip">{r}</span>
-              {/each}
-            {/if}
-            {#if card.champion_tag}
-              <span class="chip champion">{card.champion_tag}</span>
-            {/if}
-          </div>
-
-          <!-- 效果文本 -->
           <div>
-            <h3 class="section-title">效果文本</h3>
-
-            <div class="effect-section">
-              <div class="effect-text">
-                {#if card.effect_cn}
-                  {@html card.effect_cn}
-                {:else}
-                  <span class="empty-text">无效果</span>
-                {/if}
-
-                {#if card.effect_en}
-                  {@html card.effect_en}
-                {/if}
-              </div>
-            </div>
-          </div>
-
-          <!-- 关键词列表 (可选) -->
-          {#if card.keyword && card.keyword.length > 0}
-            <div class="keywords-section">
-              <h3 class="section-title">关键词</h3>
-              <div class="tags-row">
-                {#each card.keyword as k}
-                  <span class="chip keyword">{k}</span>
+            {#if card.keyword && card.keyword.length > 0}
+              <div class="tags-row" style="margin-bottom: 5px;">
+                <span class="card-subtitle" style="padding: 4px 0px;">关键词：</span>
+                {#each card.keyword as k (k)}
+                  <span class="chip">{k}</span>
                 {/each}
               </div>
-            </div>
-          {/if}
+            {/if}
+
+            {#if card.advanced_tag && card.advanced_tag.length > 0}
+              <div class="tags-row">
+                <span class="card-subtitle" style="padding: 4px 0px;">高级标签：</span>
+                {#each card.advanced_tag as t (t)}
+                  <span class="chip">{t}</span>
+                {/each}
+              </div>
+            {/if}
+          </div>
 
           <!-- 风味文本 -->
           {#if card.flavor_text_cn}
@@ -244,11 +276,11 @@
   }
 
   .modal-content {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     width: 100%;
     max-width: 1000px;
-    height: 90vh;
-    max-height: 800px;
+    height: max-content;
+    max-height: 90vh;
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     display: flex;
@@ -289,7 +321,7 @@
 
   /* ================= 左侧：图片区 ================= */
   .image-section {
-    width: 40%;
+    width: 40vw;
     max-width: 300px;
     flex-shrink: 0;
     padding: 24px;
@@ -304,11 +336,11 @@
   .main-image-wrapper {
     width: 100%;
     aspect-ratio: 744 / 1040;
-    background: #fff;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
     margin-bottom: 16px;
     overflow: hidden;
+    overflow-y: auto;
   }
 
   .image-controls {
@@ -321,7 +353,7 @@
 
   .lang-switcher {
     display: flex;
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     overflow: hidden;
@@ -353,7 +385,6 @@
   }
   .print-thumb {
     width: 48px;
-    border: 2px solid var(--border-color);
     border-radius: var(--radius-md);
     cursor: pointer;
     display: flex;
@@ -363,9 +394,10 @@
     transition: all 0.15s;
     padding: 0;
     opacity: 0.7;
+    border: none;
+    overflow: hidden;
   }
   .print-thumb.active {
-    border-color: var(--accent-color);
     opacity: 1;
   }
   .print-thumb:hover:not(.active) {
@@ -406,7 +438,7 @@
   }
   .card-subtitle {
     font-size: var(--text-sm);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-weight: 500;
     margin: 0;
   }
@@ -416,20 +448,6 @@
     margin-top: 12px;
     flex-wrap: wrap;
   }
-  .meta-tag {
-    font-size: 12px;
-    padding: 2px 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-secondary);
-  }
-  .meta-tag.rarity {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    font-weight: 600;
-  }
-
   /* Stats Grid */
   .stats-grid {
     display: grid;
@@ -462,41 +480,27 @@
   .tags-row {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
   }
   .chip {
     font-size: 13px;
     padding: 4px 10px;
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 99px;
     color: var(--text-primary);
-  }
-  .chip.champion {
-    background: #fff7e6;
-    border-color: #ffd591;
-    color: #d48806;
-    font-weight: 600;
-  }
-  .chip.keyword {
-    background: var(--bg-secondary);
-    font-style: italic;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
   /* Effect Text */
   .effect-section {
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 16px;
-  }
-  .section-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    margin: 0;
-    letter-spacing: 0.5px;
   }
   .effect-text {
     font-size: 15px;
@@ -504,11 +508,16 @@
     color: var(--text-primary);
     white-space: pre-wrap;
   }
+
+  .effect-text :global(p) {
+    margin: 0;
+  }
+
   .effect-text :global(strong) {
     color: var(--text-primary);
     font-weight: 700;
   }
-  /* 简单的关键词高亮模拟 */
+
   .effect-text :global(.keyword-highlight) {
     background: rgba(0, 0, 0, 0.05);
     padding: 0 2px;
@@ -523,35 +532,51 @@
   }
   .flavor-text {
     font-size: 14px;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-style: italic;
     line-height: 1.5;
     margin: 0;
   }
 
+  .title-group-mobile {
+    display: none;
+  }
   /* ================= 响应式适配 ================= */
-  /* @media (max-width: 900px) {
+  @media (max-width: 767.99px) {
     .modal-content {
       height: 95vh;
       max-height: none;
     }
+
     .modal-body {
       flex-direction: column;
       overflow-y: auto;
     }
+
+    .title-group-mobile {
+      display: block;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    .card-header {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
     .image-section {
       width: 100%;
       flex-shrink: 0;
       border-right: none;
       border-bottom: 1px solid var(--border-color);
       padding: 16px;
-      flex-direction: row;
-      align-items: flex-start;
       gap: 16px;
-      max-height: 300px;
+      max-width: none;
     }
     .main-image-wrapper {
-      width: 140px;
+      width: 100%;
+      max-width: 300px;
+      overflow-y: hidden;
       aspect-ratio: 744/1040;
       margin-bottom: 0;
       flex-shrink: 0;
@@ -574,31 +599,9 @@
     .stats-grid {
       grid-template-columns: repeat(3, 1fr);
     }
-  } */
 
-  @media (max-width: 600px) {
-    .image-section {
-      flex-direction: column;
-      align-items: center;
-      max-height: none;
-    }
-    .main-image-wrapper {
-      width: 100%;
-      max-width: 240px;
-    }
-    .stats-grid {
-      grid-template-columns: 1fr;
-    }
-    .stat-box {
-      flex-direction: row;
-      justify-content: space-between;
-      padding: 10px 16px;
-    }
-    .stat-label {
-      font-size: 14px;
-    }
-    .stat-value {
-      font-size: 18px;
+    .title-group {
+      display: none;
     }
   }
 

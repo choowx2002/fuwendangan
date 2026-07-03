@@ -41,7 +41,7 @@
           performSearch(true)
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.5 }
     )
 
     // 元素挂载到 DOM 时开始观察
@@ -319,6 +319,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 16px;
+    scroll-behavior: smooth;
   }
 
   /* ================= 底部状态与哨兵 ================= */
@@ -353,6 +354,18 @@
     .card-grid {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
+    }
+  }
+
+  @media (min-width: 1079.99px) {
+    .card-grid {
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+  }
+
+  @media (min-width: 1919.99px) {
+    .card-grid {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     }
   }
 
