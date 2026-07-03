@@ -1,4 +1,4 @@
-import type { CardPrint } from '$lib/db/types'
+import type { CardPrint } from '../../db/types'
 
 export const combineCardPrints = (prints: CardPrint[]): Map<string, CardPrint[]> => {
   const printsMap = new Map<string, CardPrint[]>()

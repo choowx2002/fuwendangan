@@ -1,23 +1,57 @@
-// import { searchCards as searchCardsRemote } from "./supabase"; // 假设你把之前的搜索函数放在这里
-import { searchCardsLocal } from './sqlite'
-import type { CardSearchParams, CardSearchResult } from './types'
-import { isTauri } from './env'
-
-export { isTauri, isWeb } from './env'
-export { initializeDatabase } from './sync'
-export { getLocalCardBaseCount, getFilterOptions } from './sqlite'
-
 /**
- * 统一的卡牌搜索入口
- * 自动根据运行环境选择 Supabase 或 SQLite
+ * 数据库模块统一导出
  */
-export async function searchCards(params: CardSearchParams): Promise<CardSearchResult> {
-  if (isTauri) {
-    console.log('[DB] 使用本地 SQLite 进行搜索')
-    return searchCardsLocal(params)
-  } else {
-    console.log('[DB] 使用 Supabase 进行搜索')
-    throw new Error('Supabase 搜索暂未实现')
-    // return searchCardsRemote(params);
-  }
-}
+
+// ==================== 类型定义 ====================
+export type {
+  CardBase,
+  CardPrint,
+  AppVersion,
+  SqliteCardBase,
+  SqliteCardPrint,
+  CardSearchResult,
+  FilterOptions,
+  CardSearchParams,
+  FilterStatus,
+  NumberRange,
+  ArrayFilterParam,
+  ActiveFilter,
+  FilterMode,
+  FilterType,
+  ArrayFieldKey,
+  SortKeyItem,
+} from './types'
+
+// ==================== 配置 ====================
+export { DB_NAME, TABLES, DEFAULT_PAGE_SIZE, DEFAULT_PAGE } from './config/constants'
+export { TABLE_DEFINITIONS } from './config/schema'
+
+// ==================== 环境检测 ====================
+export { isTauri, isWeb } from './env'
+
+// ==================== 仓储层 (Repository) ====================
+export { getDatabase, closeDatabase, resetDatabaseInstance } from './repository/database'
+export { saveCard, saveCards, getCardById, getCardCount, deleteCard, clearAllCards } from './repository/card-repository'
+export {
+  saveCardPrint,
+  saveCardPrints,
+  getPrintsByCardId,
+  getPrintCount,
+  deletePrint,
+  deletePrintsByCardId,
+  clearAllPrints,
+} from './repository/print-repository'
+export { saveFilterOptions, getFilterOptions, clearFilterOptions } from './repository/filter-repository'
+export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
+
+// ==================== 服务层 (Service) ====================
+export { searchCards } from './service/search-service'
+export { initializeDatabase } from './service/sync-service'
+export { updateFilterOptions } from './service/filter-service'
+export { fetchLatestVersion, fetchAllCards, fetchAllPrints } from './service/remote-api'
+
+// ==================== 工具函数 ====================
+export { mapRowToCard, mapRowToPrint, toSqliteModel, getBestPrint, buildSearchParams, buildOrderBy } from './helper'
+
+// ==================== 排序常量 ====================
+export { SORT_FIELD_MAP, SORT_FIELD_LIST } from './constants'

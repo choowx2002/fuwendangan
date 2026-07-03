@@ -1,0 +1,50 @@
+/**
+ * 数据库连接管理
+ * 单例模式，确保全局只有一个数据库实例
+ */
+
+import Database from '@tauri-apps/plugin-sql'
+import { DB_NAME } from '../config/constants'
+import { TABLE_DEFINITIONS } from '../config/schema'
+
+let dbInstance: Database | null = null
+
+/**
+ * 获取或创建数据库实例
+ * @returns 数据库实例
+ */
+export async function getDatabase(): Promise<Database> {
+  if (!dbInstance) {
+    dbInstance = await Database.load(DB_NAME)
+    await initializeTables(dbInstance)
+  }
+  return dbInstance
+}
+
+/**
+ * 初始化数据库表
+ * @param db 数据库实例
+ */
+async function initializeTables(db: Database): Promise<void> {
+  await db.execute(TABLE_DEFINITIONS.cards_base)
+  await db.execute(TABLE_DEFINITIONS.card_prints)
+  await db.execute(TABLE_DEFINITIONS.filter_options)
+  await db.execute(TABLE_DEFINITIONS.version)
+}
+
+/**
+ * 关闭数据库连接（用于应用退出时清理）
+ */
+export async function closeDatabase(): Promise<void> {
+  if (dbInstance) {
+    await dbInstance.close()
+    dbInstance = null
+  }
+}
+
+/**
+ * 重置数据库实例（主要用于测试）
+ */
+export function resetDatabaseInstance(): void {
+  dbInstance = null
+}
