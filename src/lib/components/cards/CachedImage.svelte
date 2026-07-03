@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { loadImageFromAppFolder } from '$lib/cards/image-cache'
-  import type { ObjectFitType } from '$lib/cards/image-cache'
+  import { type ObjectFitType, loadImageFromAppFolder } from '$lib/services/image-cache-service'
   import { LoaderCircle } from '@lucide/svelte'
 
   let {

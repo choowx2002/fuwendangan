@@ -2,7 +2,7 @@
   import { X } from '@lucide/svelte'
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint } from '$lib/db/types'
-  import { combineCardPrints, sortCardPrints } from '$lib/cards/helpers'
+  import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
