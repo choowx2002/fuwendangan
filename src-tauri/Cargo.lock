@@ -1362,21 +1362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuwendangan"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-fs",
- "tauri-plugin-http",
- "tauri-plugin-opener",
- "tauri-plugin-prevent-default",
- "tauri-plugin-sql",
-]
-
-[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6368,4 +6353,19 @@ dependencies = [
  "serde",
  "syn 2.0.118",
  "winnow 1.0.3",
+]
+
+[[package]]
+name = "符文档案"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-fs",
+ "tauri-plugin-http",
+ "tauri-plugin-opener",
+ "tauri-plugin-prevent-default",
+ "tauri-plugin-sql",
 ]
