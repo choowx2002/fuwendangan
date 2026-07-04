@@ -10,7 +10,7 @@
     Plus,
     Sparkles,
     ChevronLeft,
-    Gamepad2
+    Gamepad2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 

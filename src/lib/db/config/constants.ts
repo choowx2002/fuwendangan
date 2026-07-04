@@ -10,6 +10,8 @@ export const TABLES = {
   FILTER_OPTIONS: 'filter_options',
   VERSION: 'version',
   ICONS: 'icons',
+  DECKS: 'decks',
+  DECK_CARDS: 'deck_cards',
 } as const
 
 export const DEFAULT_PAGE_SIZE = 36

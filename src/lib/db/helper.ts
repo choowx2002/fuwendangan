@@ -6,8 +6,12 @@ import type {
   CardPrint,
   CardSearchParams,
   IconDB,
+  Deck,
+  DeckCard,
   SortKeyItem,
   SqliteCardBase,
+  SqliteDeck,
+  SqliteDeckCard,
 } from './types'
 
 /**
@@ -192,4 +196,44 @@ export function buildOrderBy(sortByList?: SortKeyItem[]) {
     .filter(Boolean)
 
   return `ORDER BY ${[...dynamic].join(', ')}`
+}
+
+/**
+ * 辅助函数：将 SQLite Deck 行数据反序列化为前端使用的 Deck 模型
+ */
+export function mapRowToDeck(row: any): Deck {
+  return {
+    ...row,
+    is_favorite: row.is_favorite === 1,
+  }
+}
+
+/**
+ * 辅助函数：将 SQLite DeckCard 行数据反序列化为 DeckCard 模型
+ */
+export function mapRowToDeckCard(row: any): DeckCard {
+  return {
+    ...row,
+    is_sideboard: row.is_sideboard === 1,
+  }
+}
+
+/**
+ * 适配器：将 Deck 数据模型转换为 SQLite 存储模型
+ */
+export function toSqliteDeck(deck: Deck): SqliteDeck {
+  return {
+    ...deck,
+    is_favorite: deck.is_favorite ? 1 : 0,
+  }
+}
+
+/**
+ * 适配器：将 DeckCard 数据模型转换为 SQLite 存储模型
+ */
+export function toSqliteDeckCard(deckCard: DeckCard): SqliteDeckCard {
+  return {
+    ...deckCard,
+    is_sideboard: deckCard.is_sideboard ? 1 : 0,
+  }
 }

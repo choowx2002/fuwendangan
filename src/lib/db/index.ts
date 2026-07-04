@@ -20,6 +20,10 @@ export type {
   FilterType,
   ArrayFieldKey,
   SortKeyItem,
+  Deck,
+  DeckCard,
+  SqliteDeck,
+  SqliteDeckCard,
 } from './types'
 
 // ==================== 配置 ====================
@@ -54,7 +58,21 @@ export {
   clearFilterOptions,
 } from './repository/filter-repository'
 export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
-
+export {
+  createDeck,
+  getAllDecks,
+  getDeckById,
+  updateDeck,
+  deleteDeck,
+  getDeckCards,
+  addCardToDeck,
+  removeCardFromDeck,
+  updateCardQuantity,
+  clearDeckCards,
+  duplicateDeck,
+  exportDeck,
+  importCardsToDeck,
+} from './repository/deck-repository'
 // ==================== 服务层 (Service) ====================
 export { searchCards } from './service/search-service'
 export { initializeDatabase } from './service/sync-service'
@@ -65,7 +83,11 @@ export { fetchLatestVersion, fetchAllCards, fetchAllPrints } from './service/rem
 export {
   mapRowToCard,
   mapRowToPrint,
+  mapRowToDeck,
+  mapRowToDeckCard,
   toSqliteModel,
+  toSqliteDeck,
+  toSqliteDeckCard,
   getBestPrint,
   buildSearchParams,
   buildOrderBy,

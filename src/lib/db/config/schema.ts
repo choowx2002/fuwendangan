@@ -73,4 +73,32 @@ export const TABLE_DEFINITIONS = {
       updated_at TEXT
     )
   `,
+
+  decks: `
+    CREATE TABLE IF NOT EXISTS decks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      format TEXT,
+      cover_image TEXT,
+      card_count INTEGER DEFAULT 0,
+      is_favorite INTEGER DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  deck_cards: `
+    CREATE TABLE IF NOT EXISTS deck_cards (
+      id TEXT PRIMARY KEY,
+      deck_id TEXT NOT NULL,
+      card_id TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      is_sideboard INTEGER DEFAULT 0,
+      created_at TEXT,
+      FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+      FOREIGN KEY(card_id) REFERENCES cards_base(id),
+      UNIQUE(deck_id, card_id, is_sideboard)
+    )
+  `,
 } as const
