@@ -9,6 +9,7 @@ export const TABLES = {
   CARD_PRINTS: 'card_prints',
   FILTER_OPTIONS: 'filter_options',
   VERSION: 'version',
+  ICONS: 'icons',
 } as const
 
 export const DEFAULT_PAGE_SIZE = 36

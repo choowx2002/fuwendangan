@@ -32,7 +32,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   const arrayFields = ['region', 'tag', 'keyword', 'advanced_tag', 'card_color_list'] as const
 
   for (const field of arrayFields) {
-    const filterParam = params[field] as { include?: string[]; must?: string[]; exclude?: string[] } | undefined
+    const filterParam = params[field] as
+      { include?: string[]; must?: string[]; exclude?: string[] } | undefined
     if (!filterParam) continue
 
     if (filterParam.include && filterParam.include.length > 0) {
@@ -65,7 +66,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   // 3. 文本字段精确过滤
   const textFields = ['card_category', 'series_name', 'rarity_name'] as const
   for (const field of textFields) {
-    const filterParam = params[field] as { include?: string[]; must?: string[]; exclude?: string[] } | undefined
+    const filterParam = params[field] as
+      { include?: string[]; must?: string[]; exclude?: string[] } | undefined
     if (!filterParam) continue
 
     const includeVals = filterParam.include || []
@@ -89,7 +91,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   // 4. 数值范围过滤
   const numberFields = ['power', 'energy', 'return_energy'] as const
   for (const field of numberFields) {
-    const val = params[field as keyof CardSearchParams] as number | { min?: number; max?: number } | undefined
+    const val = params[field as keyof CardSearchParams] as
+      number | { min?: number; max?: number } | undefined
     if (val !== undefined && val !== null) {
       if (typeof val === 'number') {
         whereClauses.push(`${TABLES.CARDS_BASE}.${field} = ?`)

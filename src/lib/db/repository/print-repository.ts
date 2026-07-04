@@ -73,7 +73,9 @@ export async function getPrintsByCardId(cardId: string): Promise<CardPrint[]> {
  */
 export async function getPrintCount(): Promise<number> {
   const db = await getDatabase()
-  const results = await db.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM ${TABLES.CARD_PRINTS}`)
+  const results = await db.select<{ count: number }[]>(
+    `SELECT COUNT(*) as count FROM ${TABLES.CARD_PRINTS}`
+  )
   return results[0]?.count ?? 0
 }
 

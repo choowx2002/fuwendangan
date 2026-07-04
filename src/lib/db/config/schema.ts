@@ -59,4 +59,16 @@ export const TABLE_DEFINITIONS = {
       updated_at TEXT
     )
   `,
+
+  icons: `
+    CREATE TABLE IF NOT EXISTS icons (
+      id TEXT PRIMARY KEY,
+      name_zh TEXT,
+      name_en TEXT,
+      url TEXT,
+      storage_type TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
 } as const

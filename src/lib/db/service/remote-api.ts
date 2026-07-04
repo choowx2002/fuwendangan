@@ -4,7 +4,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { AppVersion, CardBase, CardPrint } from '../types'
+import type { AppVersion, CardBase, CardPrint, IconDB } from '../types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -79,6 +79,31 @@ export async function fetchAllPrints(): Promise<CardPrint[]> {
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (error) throw new Error(`获取卡图失败：${error.message}`)
+    if (data) totalData.push(...data)
+    if (count && data && data.length < pageSize) hasMore = false
+    page++
+  }
+
+  return totalData
+}
+
+/**
+ * 获取所有图标数据（分页拉取）
+ */
+export async function fetchAllIcons(): Promise<IconDB[]> {
+  const supabase = getSupabaseClient()
+  const totalData: IconDB[] = []
+  let page = 0
+  const pageSize = 100
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, count, error } = await supabase
+      .from('card_icons')
+      .select('*', { count: 'exact' })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (error) throw new Error(`获取图标数据失败：${error.message}`)
     if (data) totalData.push(...data)
     if (count && data && data.length < pageSize) hasMore = false
     page++

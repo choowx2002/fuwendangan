@@ -9,7 +9,9 @@ import { TABLES } from '../config/constants'
 /**
  * 保存或更新筛选选项
  */
-export async function saveFilterOptions(options: Omit<FilterOptions, 'id' | 'updated_at'>): Promise<void> {
+export async function saveFilterOptions(
+  options: Omit<FilterOptions, 'id' | 'updated_at'>
+): Promise<void> {
   const db = await getDatabase()
 
   await db.execute(

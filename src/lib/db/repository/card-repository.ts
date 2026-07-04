@@ -74,10 +74,7 @@ export async function saveCards(cards: CardBase[]): Promise<void> {
  */
 export async function getCardById(id: string): Promise<CardBase | null> {
   const db = await getDatabase()
-  const results = await db.select<any[]>(
-    `SELECT * FROM ${TABLES.CARDS_BASE} WHERE id = $1`,
-    [id]
-  )
+  const results = await db.select<any[]>(`SELECT * FROM ${TABLES.CARDS_BASE} WHERE id = $1`, [id])
 
   if (results.length === 0) return null
   return mapRowToCard(results[0])
@@ -88,7 +85,9 @@ export async function getCardById(id: string): Promise<CardBase | null> {
  */
 export async function getCardCount(): Promise<number> {
   const db = await getDatabase()
-  const results = await db.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM ${TABLES.CARDS_BASE}`)
+  const results = await db.select<{ count: number }[]>(
+    `SELECT COUNT(*) as count FROM ${TABLES.CARDS_BASE}`
+  )
   return results[0]?.count ?? 0
 }
 

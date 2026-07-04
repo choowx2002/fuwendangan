@@ -7,6 +7,7 @@ import { isTauri } from '../env'
 import * as remoteApi from './remote-api'
 import * as cardRepo from '../repository/card-repository'
 import * as printRepo from '../repository/print-repository'
+import * as iconRepo from '../repository/icon-repository'
 import * as versionRepo from '../repository/version-repository'
 import { updateFilterOptions } from './filter-service'
 
@@ -51,11 +52,15 @@ export async function initializeDatabase(): Promise<void> {
 async function performSync(remoteVersion: any): Promise<void> {
   const cards = await remoteApi.fetchAllCards()
   const prints = await remoteApi.fetchAllPrints()
+  const icons = await remoteApi.fetchAllIcons()
 
   await cardRepo.saveCards(cards)
   await printRepo.saveCardPrints(prints)
+  await iconRepo.saveIcons(icons)
   await updateFilterOptions()
   await versionRepo.saveVersion(remoteVersion)
 
-  console.log(`[DB] 同步完成！共更新 ${cards.length} 张卡牌，${prints.length} 个卡图。`)
+  console.log(
+    `[DB] 同步完成！共更新 ${cards.length} 张卡牌，${prints.length} 个卡图，${icons.length}个图标。`
+  )
 }

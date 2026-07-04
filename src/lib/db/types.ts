@@ -51,6 +51,16 @@ export interface AppVersion {
   updated_at: string // ISO 8601 时间字符串
 }
 
+export interface IconDB {
+  id: number
+  name_zh: string
+  name_en: string
+  url: string
+  storage_type: string
+  created_at: string // ISO 8601 时间字符串
+  updated_at: string // ISO 8601 时间字符串
+}
+
 // SQLite 存储模型 (将 PG 的数组转为 JSON 字符串，布尔值转为 0/1)
 export interface SqliteCardBase extends Omit<
   CardBase,
