@@ -1,6 +1,7 @@
 <script lang="ts">
   import { X } from '@lucide/svelte'
   import type { FilterOptions, ActiveFilter, FilterMode } from '$lib/db/types'
+  import { sortOptions } from '$lib/cards/utils/options-utils'
 
   interface Props {
     isOpen: boolean
@@ -83,10 +84,11 @@
         <!-- 内容区：可滚动 -->
         <div class="modal-body">
           {#each sections as section}
+            {@const sortedList = sortOptions(section.type, section.options)}
             <section class="filter-section">
               <h3 class="section-title">{section.title}</h3>
               <div class="options-grid">
-                {#each section.options as option}
+                {#each sortedList as option}
                   {@const mode = getMode(section.type, option)}
                   <button
                     class="option-btn"
@@ -96,7 +98,15 @@
                     onclick={() => handleToggle(section.type, option)}
                     oncontextmenu={(e) => handleRemove(e, section.type, option)}
                   >
-                    {option}
+                    {#if section.type === 'card_color_list'}
+                      {#if option !== 'colorless'}
+                        <img src={`/runes/${option}.svg`} alt={option} width="20" />
+                      {:else}
+                        无色
+                      {/if}
+                    {:else}
+                      {option}
+                    {/if}
                   </button>
                 {/each}
               </div>
