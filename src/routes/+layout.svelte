@@ -3,35 +3,28 @@
   import AppShell from '../lib/components/AppShell.svelte'
   import LoadingModal from '../lib/components/LoadingModal.svelte'
   import { initializeDatabase } from '../lib/db'
+  import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import '../app.css'
 
   let { children } = $props()
 
-  type LoadStatus = 'loading' | 'syncing' | 'success' | 'error'
-  let status = $state<LoadStatus>('loading')
-  let errorMessage = $state<string>('')
-
   async function init() {
-    status = 'loading'
-    errorMessage = ''
+    setLoadStatus('loading') // 使用全局方法更新状态
 
     try {
-      // 模拟分阶段状态（可选）
       setTimeout(() => {
-        if (status === 'loading') status = 'syncing'
+        if (uiState.status === 'loading') setLoadStatus('syncing')
       }, 500)
 
       await initializeDatabase()
 
-      // 成功后短暂显示成功状态
-      // status = "success";
+      // setLoadStatus('success')
       setTimeout(() => {
-        status = 'success' // 保持 success 状态，或者你可以直接隐藏 modal
-      }, 800)
+        setLoadStatus('success')
+      }, 900)
     } catch (error) {
       console.error('[Layout] 初始化失败:', error)
-      status = 'error'
-      errorMessage = error instanceof Error ? error.message : '未知错误'
+      setLoadStatus('error', '初始化失败', error instanceof Error ? error.message : '未知错误')
     }
   }
 
@@ -45,13 +38,19 @@
 </script>
 
 <div class="layout-root">
-  {#if status === 'error'}
-    <LoadingModal {status} message={errorMessage} onRetry={handleRetry} />
-  {:else if status !== 'success'}
-    <LoadingModal {status} />
+  <!-- 直接使用 uiState.status -->
+  {#if uiState.status === 'error'}
+    <LoadingModal
+      status={uiState.status}
+      text={uiState.text}
+      subtext={uiState.subText}
+      onRetry={handleRetry}
+    />
+  {:else if uiState.status !== 'success' && uiState.status !== 'hidden'}
+    <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />
   {/if}
 
-  {#if status === 'success'}
+  {#if uiState.status === 'success' || uiState.status === 'hidden'}
     <AppShell>
       {@render children()}
     </AppShell>

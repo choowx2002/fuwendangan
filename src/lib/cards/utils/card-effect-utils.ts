@@ -1,41 +1,58 @@
+import { getIcon } from '$lib/db/repository/icon-repository'
+
 /**
  * 将卡牌效果文本中的 {{关键字}} 替换成图片或符号。
  * @param {string} text - 原始的 card_effect 文本
  * @returns {string} - 替换后的 HTML 字符串
  */
-function renderCardEffect(text: string) {
+export async function renderCardEffect(text: string) {
   if (!text) return ''
 
-  let urlMap = new Map()
-
   // 替换 {{关键字}}
-  let html = text.replace(/\{\{(.*?)\}\}/g, (match, key) => {
-    key = key.trim()
+  const regex = /\{\{(.*?)\}\}/g
+  const matches = Array.from(text.matchAll(regex))
 
-    const item = urlMap.get(key)
-    if (!item) return match
+  const resolved = await Promise.all(
+    matches.map(async (m) => {
+      const match = m[0]
+      const key = (m[1] || '').trim()
 
-    // 如果是对象结构
-    if (typeof item === 'object' && item.url) {
-      if (item.url.startsWith('blob:') || /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(item.url)) {
-        return `<img src="${item.url}" alt="${item.label || key}" style="height: 16px;vertical-align: text-bottom; margin: 0 2px;">`
-      } else {
+      const item = await getIcon(key)
+      if (!item) return { start: m.index ?? 0, end: (m.index ?? 0) + match.length, value: match }
+
+      // 如果是对象结构
+      if (typeof item === 'object' && item.url) {
+        if (item.url.startsWith('blob:') || /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(item.url)) {
+          return {
+            start: m.index ?? 0,
+            end: (m.index ?? 0) + match.length,
+            value:
+              item.isWhite === 'true'
+                ? `<img src="${item.url}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px; mix-blend-mode: difference">`
+                : `<img src="${item.url}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px;">`,
+          }
+        }
+
         // 若是文本或外链，可选逻辑
-        return `<a href="${item.url}" target="_blank">${item.label || key}</a>`
+        return {
+          start: m.index ?? 0,
+          end: (m.index ?? 0) + match.length,
+          value: `<a href="${item.url}" target="_blank">${item.name_zh || key}</a>`,
+        }
       }
-    }
 
-    // 如果是字符串，可能是纯 URL
-    if (typeof item === 'string') {
-      if (item.startsWith('blob:') || /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(item)) {
-        return `<img src="${item}" alt="${key}" style="height:1em;vertical-align:middle;">`
-      } else {
-        return item
-      }
-    }
+      return { start: m.index ?? 0, end: (m.index ?? 0) + match.length, value: match }
+    })
+  )
 
-    return match
-  })
+  let html = ''
+  let lastIndex = 0
+
+  for (const r of resolved) {
+    html += text.slice(lastIndex, r.start) + r.value
+    lastIndex = r.end
+  }
+  html += text.slice(lastIndex)
 
   // 处理换行符
   html = html.replace(/\\r\\n|\\n|\\r/g, '<br>')

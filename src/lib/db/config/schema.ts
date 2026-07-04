@@ -66,6 +66,8 @@ export const TABLE_DEFINITIONS = {
       name_zh TEXT,
       name_en TEXT,
       url TEXT,
+      url_en TEXT,
+      isWhite INTEGER,
       storage_type TEXT,
       created_at TEXT,
       updated_at TEXT

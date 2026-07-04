@@ -1,6 +1,7 @@
 <!-- src/routes/+page.svelte -->
 <script lang="ts">
   import { getCardCount } from '$lib/db'
+  import { setLoadStatus, hideLoading } from '$lib/stores/ui-store.svelte'
   import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -50,6 +51,17 @@
     },
   ]
 
+  async function testLoading() {
+    try {
+      setLoadStatus('loading', '测试中...')
+      setTimeout(() => {
+        hideLoading()
+      }, 5000)
+    } catch (e) {
+      // 3. 报错时，切换为 error 状态
+      setLoadStatus('error', '同步失败，请检查网络')
+    }
+  }
   onMount(async () => {
     try {
       await getCardCount()
@@ -59,7 +71,7 @@
 
 <div class="page-container">
   <header class="page-header">
-    <h1 class="page-title">首页</h1>
+    <h1 class="page-title">首页 <button onclick={testLoading}>test</button></h1>
     <p class="page-desc">欢迎回来，天龠wx。今天想玩点什么？</p>
   </header>
 

@@ -5,6 +5,7 @@ import type {
   CardBase,
   CardPrint,
   CardSearchParams,
+  IconDB,
   SortKeyItem,
   SqliteCardBase,
 } from './types'
@@ -30,6 +31,14 @@ export function mapRowToPrint(row: any): CardPrint {
     ...row,
     // 将 0/1/null 转回 boolean/null
     is_default: row.is_default === null ? null : row.is_default === 1,
+  }
+}
+
+export function mapRowToIcon(row: any): IconDB {
+  return {
+    ...row,
+    // 将 0/1/null 转回 boolean/null
+    isWhite: row.isWhite === 1,
   }
 }
 

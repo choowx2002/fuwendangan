@@ -3,6 +3,7 @@
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint } from '$lib/db/types'
   import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
+  import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
@@ -23,6 +24,19 @@
 
   const isBattlefield = $derived.by(() => {
     return card?.card_category === '战场'
+  })
+
+  let formatedEffect = $state<string>('')
+
+  $effect(() => {
+    const effectText = card?.effect_cn
+    if (effectText) {
+      renderCardEffect(effectText).then((result) => {
+        formatedEffect = result ?? effectText
+      })
+    } else {
+      formatedEffect = ''
+    }
   })
 
   $effect(() => {
@@ -214,7 +228,9 @@
           <!-- 效果文本 -->
           <div class="effect-section">
             <div class="effect-text">
-              {#if card.effect_cn}
+              {#if formatedEffect}
+                {@html formatedEffect}
+              {:else if card.effect_cn}
                 {@html card.effect_cn}
               {:else}
                 <span class="empty-text">无效果</span>
@@ -519,7 +535,7 @@
   }
 
   .effect-text :global(.keyword-highlight) {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--accent-color);
     padding: 0 2px;
     border-radius: 2px;
   }

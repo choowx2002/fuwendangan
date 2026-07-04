@@ -1,42 +1,43 @@
 <!-- src/lib/components/LoadingModal.svelte -->
 <script lang="ts">
-  import { CheckCircle, AlertCircle, RefreshCw } from '@lucide/svelte'
+  import { CircleCheck, CircleAlert, RefreshCw } from '@lucide/svelte'
 
   interface Props {
     status: 'loading' | 'syncing' | 'success' | 'error'
-    message?: string
+    text?: string
+    subtext?: string
     onRetry?: () => void
   }
 
-  let { status, message, onRetry }: Props = $props()
+  let { status, text, subtext, onRetry }: Props = $props()
 
   const config = $derived.by(() => {
     switch (status) {
       case 'loading':
         return {
-          text: '正在初始化数据库...',
-          subtext: '首次启动可能需要几秒钟',
+          text: text?.trim() ?? '正在初始化数据库...',
+          subtext: subtext?.trim() ?? '首次启动可能需要几秒钟',
           showGif: true,
         }
 
       case 'syncing':
         return {
-          text: '正在同步卡牌数据...',
-          subtext: '从云端拉取最新卡库',
+          text: text?.trim() ?? '正在同步卡牌数据...',
+          subtext: subtext?.trim() ?? '从云端拉取最新卡库',
           showGif: true,
         }
 
       case 'success':
         return {
-          text: '初始化完成',
-          subtext: '即将进入应用',
+          text: text?.trim() ?? '初始化完成',
+          subtext: subtext?.trim() ?? '即将进入应用',
           showGif: false,
         }
 
       case 'error':
         return {
-          text: '初始化失败',
-          subtext: message ?? '请检查网络连接后重试',
+          text: text?.trim() ?? '初始化失败',
+          subtext: subtext?.trim() ?? '请检查网络连接后重试',
           showGif: false,
         }
     }
@@ -52,11 +53,11 @@
       </div>
     {:else if status === 'success'}
       <div class="icon-container success">
-        <CheckCircle size={48} strokeWidth={1.5} />
+        <CircleCheck size={48} strokeWidth={1.5} />
       </div>
     {:else if status === 'error'}
       <div class="icon-container error">
-        <AlertCircle size={48} strokeWidth={1.5} />
+        <CircleAlert size={48} strokeWidth={1.5} />
       </div>
     {/if}
 

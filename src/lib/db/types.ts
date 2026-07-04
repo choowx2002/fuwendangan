@@ -56,6 +56,8 @@ export interface IconDB {
   name_zh: string
   name_en: string
   url: string
+  url_en: string
+  isWhite: string
   storage_type: string
   created_at: string // ISO 8601 时间字符串
   updated_at: string // ISO 8601 时间字符串
