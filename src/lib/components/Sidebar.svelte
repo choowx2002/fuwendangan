@@ -10,6 +10,7 @@
     Plus,
     Sparkles,
     ChevronLeft,
+    Gamepad2
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -20,6 +21,7 @@
     { icon: Library, label: '单卡库', href: '/cards' },
     { icon: Swords, label: '我的卡组', href: '/decks' },
     { icon: Sparkles, label: '收藏与闪卡', href: '/collection' },
+    { icon: Gamepad2, label: '模拟器', href: '/simulator' },
   ]
 
   const toolItems = [
