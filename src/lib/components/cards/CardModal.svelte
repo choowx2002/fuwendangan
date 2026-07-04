@@ -381,7 +381,7 @@
     border: none;
     background: transparent;
     padding: 6px 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
@@ -421,7 +421,7 @@
   }
 
   .artist-credit {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     padding: 16px;
     text-align: center;
@@ -446,7 +446,7 @@
     padding-bottom: 16px;
   }
   .card-title {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
     color: var(--text-primary);
     margin: 0 0 4px 0;
@@ -482,12 +482,12 @@
     gap: 4px;
   }
   .stat-label {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     text-transform: uppercase;
   }
   .stat-value {
-    font-size: 24px;
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--text-primary);
   }
@@ -500,7 +500,7 @@
     gap: 6px;
   }
   .chip {
-    font-size: 13px;
+    font-size: var(--text-sm);
     padding: 4px 10px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -519,7 +519,7 @@
     padding: 16px;
   }
   .effect-text {
-    font-size: 15px;
+    font-size: var(--text-md);
     line-height: 1.6;
     color: var(--text-primary);
     white-space: pre-wrap;
@@ -547,7 +547,7 @@
     border-top: 1px solid var(--border-color);
   }
   .flavor-text {
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     font-style: italic;
     line-height: 1.5;
@@ -610,7 +610,7 @@
       padding: 0;
     }
     .card-title {
-      font-size: 24px;
+      font-size: var(--text-2xl);
     }
     .stats-grid {
       grid-template-columns: repeat(3, 1fr);

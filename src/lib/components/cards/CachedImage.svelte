@@ -130,7 +130,7 @@
         class="loading-placeholder"
         style="width: 100%; aspect-ratio: 744 / 1040; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
       >
-        <!-- <span style="color: #999; font-size: 14px;">加载中...</span> -->
+        <!-- <span style="color: #999; font-size: var(--text-base);">加载中...</span> -->
         <LoaderCircle size={24} class="animate-spin" />
       </div>
     {/if}
@@ -158,7 +158,7 @@
           <circle cx="8.5" cy="8.5" r="1.5" />
           <polyline points="21 15 16 10 5 21" />
         </svg>
-        <span style="color: #999; font-size: 12px;">图片加载失败</span>
+        <span style="color: #999; font-size: var(--text-sm);">图片加载失败</span>
       </div>
     {/if}
   {:else if imageUrl}

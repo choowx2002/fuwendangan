@@ -181,7 +181,7 @@
   }
 
   .modal-header h2 {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
     margin: 0;
     color: var(--text-primary);
@@ -222,7 +222,7 @@
   }
 
   .count {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
 
@@ -232,7 +232,7 @@
     color: var(--bg-primary);
     border: none;
     border-radius: var(--radius-md);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     transition: opacity 0.15s;
@@ -241,7 +241,7 @@
   .clear-btn {
     background: transparent;
     border: none;
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
     color: #c5221f;
@@ -258,7 +258,7 @@
   }
 
   .section-title {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-primary);
     text-transform: uppercase;
@@ -274,7 +274,7 @@
 
   .option-btn {
     padding: 4px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-primary);

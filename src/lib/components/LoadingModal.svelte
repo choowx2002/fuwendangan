@@ -1,4 +1,3 @@
-<!-- src/lib/components/LoadingModal.svelte -->
 <script lang="ts">
   import { CircleCheck, CircleAlert, RefreshCw } from '@lucide/svelte'
 
@@ -150,14 +149,14 @@
   }
 
   .title {
-    font-size: 18px;
+    font-size: var(--text-xl);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0 0 8px 0;
   }
 
   .subtitle {
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.5;
@@ -172,7 +171,7 @@
     color: white;
     border: none;
     border-radius: var(--radius-md);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;

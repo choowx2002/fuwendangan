@@ -82,7 +82,7 @@
   }
 
   .breadcrumb {
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     display: flex;
     align-items: center;
@@ -101,7 +101,7 @@
     border: 1px solid var(--border-color);
     padding: 4px 10px;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--text-tertiary);
     width: 240px;
     justify-content: flex-start;
@@ -115,7 +115,7 @@
   }
   kbd {
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-sm);
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 3px;

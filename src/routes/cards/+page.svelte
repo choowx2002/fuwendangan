@@ -282,7 +282,7 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    font-size: 14px;
+    font-size: var(--text-base);
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s;
@@ -304,7 +304,7 @@
     background: var(--accent-color);
     color: white;
     border-radius: 9px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
 
@@ -336,7 +336,7 @@
     gap: 8px;
     padding: 16px 0;
     color: var(--text-tertiary);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 
   /* 哨兵元素：高度极小，不可见，仅用于被 Observer 监测 */

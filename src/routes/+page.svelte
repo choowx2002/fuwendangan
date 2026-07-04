@@ -157,14 +157,14 @@
   }
 
   .page-title {
-    font-size: 40px;
+    font-size: var(--text-hero);
     font-weight: 700;
     margin: 0 0 8px 0;
     letter-spacing: -0.5px;
   }
 
   .page-desc {
-    font-size: 16px;
+    font-size: var(--text-lg);
     color: var(--text-secondary);
     margin: 0;
   }
@@ -181,7 +181,7 @@
   }
 
   .section-title {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -190,7 +190,7 @@
   }
 
   .see-all {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     text-decoration: none;
     display: flex;
@@ -216,7 +216,7 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--bg-primary);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--text-primary);
     cursor: pointer;
@@ -274,11 +274,11 @@
     flex-direction: column;
   }
   .tool-label {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
   }
   .tool-desc {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     margin-top: 2px;
   }
@@ -313,11 +313,11 @@
     gap: 12px;
   }
   .deck-name {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
   }
   .deck-format {
-    font-size: 12px;
+    font-size: var(--text-sm);
     padding: 2px 6px;
     background: var(--bg-hover);
     border-radius: 4px;
@@ -328,7 +328,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .stat {
     color: var(--text-tertiary);

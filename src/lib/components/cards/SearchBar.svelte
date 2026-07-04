@@ -202,7 +202,7 @@
     flex: 1;
     border: none;
     outline: none;
-    font-size: 14px;
+    font-size: var(--text-base);
     background: transparent;
     color: var(--text-primary);
   }
@@ -258,7 +258,7 @@
     border: none;
     background: none;
     text-align: left;
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--text-primary);
     cursor: pointer;
     transition: background 0.1s;
@@ -274,7 +274,7 @@
   }
 
   .tag-hint {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 </style>

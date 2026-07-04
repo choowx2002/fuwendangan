@@ -152,7 +152,7 @@
     align-items: center;
     gap: 8px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--text-base);
   }
 
   .workspace-icon {
@@ -193,7 +193,7 @@
   }
 
   .section-title {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     padding: 8px 12px 4px;
     font-weight: 500;
@@ -207,7 +207,7 @@
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     text-decoration: none;
-    font-size: 14px;
+    font-size: var(--text-base);
     cursor: pointer;
     transition: background 0.1s;
   }
@@ -243,7 +243,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
   }
 
@@ -255,7 +255,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-primary);
   }
 
