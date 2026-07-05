@@ -11,7 +11,6 @@ import type {
   SortKeyItem,
   SqliteCardBase,
   SqliteDeck,
-  SqliteDeckCard,
 } from './types'
 
 /**
@@ -231,9 +230,8 @@ export function toSqliteDeck(deck: Deck): SqliteDeck {
 /**
  * 适配器：将 DeckCard 数据模型转换为 SQLite 存储模型
  */
-export function toSqliteDeckCard(deckCard: DeckCard): SqliteDeckCard {
+export function toSqliteDeckCard(deckCard: DeckCard): DeckCard {
   return {
-    ...deckCard,
-    is_sideboard: deckCard.is_sideboard ? 1 : 0,
+    ...deckCard
   }
 }

@@ -81,7 +81,6 @@ export const TABLE_DEFINITIONS = {
       description TEXT,
       format TEXT,
       cover_image TEXT,
-      card_count INTEGER DEFAULT 0,
       is_favorite INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT
@@ -94,11 +93,16 @@ export const TABLE_DEFINITIONS = {
       deck_id TEXT NOT NULL,
       card_id TEXT NOT NULL,
       quantity INTEGER DEFAULT 1,
-      is_sideboard INTEGER DEFAULT 0,
+      zone TEXT NOT NULL,
       created_at TEXT,
       FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE,
       FOREIGN KEY(card_id) REFERENCES cards_base(id),
-      UNIQUE(deck_id, card_id, is_sideboard)
+      UNIQUE(deck_id, card_id, zone)
     )
   `,
+
+  DROP: `
+    DROP TABLE IF EXISTS decks;
+    DROP TABLE IF EXISTS deck_cards;
+  `
 } as const

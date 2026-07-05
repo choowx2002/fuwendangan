@@ -1,62 +1,67 @@
 <script lang="ts">
-  import { Plus, Search, Funnel, Ellipse, Copy, Trash2, PenLine, Folder } from '@lucide/svelte'
+  import { Plus, Search, Funnel, EllipsisVertical, Copy, Trash2, PenLine, Folder } from '@lucide/svelte'
 
   // 模拟卡组数据
   const allDecks = [
     {
       id: '1',
       name: '红绿快攻 (RG Aggro)',
-      format: '标准',
+      format: '1v1（比赛）',
       cardCount: 60,
       wins: 12,
       losses: 4,
+      draw: 1,
       updated: '2小时前',
       favorite: true,
     },
     {
       id: '2',
       name: '蓝白控制 (WU Control)',
-      format: '标准',
+      format: '1v1（比赛）',
       cardCount: 75,
       wins: 8,
       losses: 7,
+      draw: 0,
       updated: '昨天',
       favorite: false,
     },
     {
       id: '3',
       name: '勇得中速 (Jund Midrange)',
-      format: '标准',
+      format: '1v1（比赛）',
       cardCount: 60,
       wins: 15,
       losses: 5,
+      draw: 4,
       updated: '3天前',
       favorite: true,
     },
     {
       id: '4',
       name: '精灵组合技 (Elves Combo)',
-      format: '标准',
+      format: '1v1（比赛）',
       cardCount: 60,
       wins: 20,
       losses: 8,
+      draw: 1,
       updated: '1周前',
       favorite: false,
     },
     {
       id: '5',
       name: '黑绿腐化 (BG Midrange)',
-      format: '标准',
+      format: '1v1（决斗）',
       cardCount: 60,
       wins: 10,
       losses: 6,
+      draw: 1,
       updated: '2周前',
       favorite: false,
     },
     {
       id: '6',
       name: '伊捷凤凰 (Izzet Phoenix)',
-      format: '标准',
+      format: '1v1（比赛）',
       cardCount: 60,
       wins: 18,
       losses: 9,
@@ -70,7 +75,13 @@
   let selectedFormat = $state('全部')
   let showFavoritesOnly = $state(false)
 
-  const formats = ['全部', '标准', '摩登', '薪传']
+  export const formats = [
+    "1v1（决斗）",
+    "1v1（比赛）",
+    "3 人乱斗（遭遇战）",
+    "4 人乱斗（全面战争）",
+    "2v2（熔岩大厅）"
+  ];
 
   // 筛选后的卡组列表
   const filteredDecks = $derived(
@@ -98,6 +109,30 @@
   function duplicateDeck(deckId: string) {
     console.log('复制卡组:', deckId)
   }
+  // Calculate difference in days (or any unit: 'second', 'minute', 'hour', 'month', 'year')
+  function getRelativeTime(date: number | Date) {
+    const now = new Date();
+    const diffInMs = date - now;
+    const diffInSecs = Math.round(diffInMs / 1000);
+
+    // Set up formatter
+    const rtf = new Intl.RelativeTimeFormat('zh', { numeric: 'auto' });
+
+    // Define time thresholds in seconds
+    if (Math.abs(diffInSecs) < 60) {
+      return rtf.format(diffInSecs, 'second');
+    } else if (Math.abs(diffInSecs) < 3600) {
+      return rtf.format(Math.round(diffInSecs / 60), 'minute');
+    } else if (Math.abs(diffInSecs) < 86400) {
+      return rtf.format(Math.round(diffInSecs / 3600), 'hour');
+    } else {
+      return rtf.format(Math.round(diffInSecs / 86400), 'day');
+    }
+  }
+
+  const pastDate = new Date('2026-07-05T12:00:00');
+  console.log(getRelativeTime(pastDate));
+
 </script>
 
 <div class="decks-page">
@@ -164,7 +199,7 @@
               <span class="deck-format-badge">{deck.format}</span>
             </div>
             <button class="menu-btn" title="更多操作">
-              <Ellipse size={18} />
+              <EllipsisVertical size={18} />
             </button>
           </div>
 

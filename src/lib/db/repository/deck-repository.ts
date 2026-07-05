@@ -2,7 +2,7 @@
  * 卡组数据仓储层
  */
 
-import type { Deck, DeckCard, SqliteDeck, SqliteDeckCard } from '../types'
+import type { Deck, DeckCard, SqliteDeck } from '../types'
 import { mapRowToDeck, mapRowToDeckCard, toSqliteDeck, toSqliteDeckCard } from '../helper'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
@@ -31,7 +31,6 @@ export async function createDeck(
     description: deck.description || null,
     format: deck.format || null,
     cover_image: deck.cover_image || null,
-    card_count: 0,
     is_favorite: false ? 1 : 0,
     created_at: timestamp,
     updated_at: timestamp,
@@ -39,15 +38,14 @@ export async function createDeck(
 
   await db.execute(
     `INSERT INTO ${TABLES.DECKS}
-     (id, name, description, format, cover_image, card_count, is_favorite, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+     (id, name, description, format, cover_image, is_favorite, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       sqliteDeck.id,
       sqliteDeck.name,
       sqliteDeck.description,
       sqliteDeck.format,
       sqliteDeck.cover_image,
-      sqliteDeck.card_count,
       sqliteDeck.is_favorite,
       sqliteDeck.created_at,
       sqliteDeck.updated_at,
@@ -152,31 +150,31 @@ export async function addCardToDeck(
   deckId: string,
   cardId: string,
   quantity: number = 1,
-  isSideboard: boolean = false
+  zone: string
 ): Promise<void> {
   const db = await getDatabase()
   const id = Snowflake.generate()
   const timestamp = now()
 
-  const sqliteDeckCard: SqliteDeckCard = {
+  const sqliteDeckCard: DeckCard = {
     id,
     deck_id: deckId,
     card_id: cardId,
     quantity,
-    is_sideboard: isSideboard ? 1 : 0,
+    zone: zone,
     created_at: timestamp,
   }
 
   await db.execute(
     `INSERT OR REPLACE INTO ${TABLES.DECK_CARDS}
-     (id, deck_id, card_id, quantity, is_sideboard, created_at)
+     (id, deck_id, card_id, quantity, zone, created_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       sqliteDeckCard.id,
       sqliteDeckCard.deck_id,
       sqliteDeckCard.card_id,
       sqliteDeckCard.quantity,
-      sqliteDeckCard.is_sideboard ? 1 : 0,
+      sqliteDeckCard.zone,
       sqliteDeckCard.created_at,
     ]
   )
@@ -191,12 +189,12 @@ export async function addCardToDeck(
 export async function removeCardFromDeck(
   deckId: string,
   cardId: string,
-  isSideboard: boolean = false
+  zone: string
 ): Promise<void> {
   const db = await getDatabase()
   await db.execute(
-    `DELETE FROM ${TABLES.DECK_CARDS} WHERE deck_id = $1 AND card_id = $2 AND is_sideboard = $3`,
-    [deckId, cardId, isSideboard ? 1 : 0]
+    `DELETE FROM ${TABLES.DECK_CARDS} WHERE deck_id = $1 AND card_id = $2 AND zone = $3`,
+    [deckId, cardId, zone]
   )
 
   // 更新卡组卡牌数量
@@ -210,15 +208,15 @@ export async function updateCardQuantity(
   deckId: string,
   cardId: string,
   quantity: number,
-  isSideboard: boolean = false
+  zone: string
 ): Promise<void> {
   const db = await getDatabase()
   if (quantity <= 0) {
-    await removeCardFromDeck(deckId, cardId, isSideboard)
+    await removeCardFromDeck(deckId, cardId, zone)
   } else {
     await db.execute(
-      `UPDATE ${TABLES.DECK_CARDS} SET quantity = $1 WHERE deck_id = $2 AND card_id = $3 AND is_sideboard = $4`,
-      [quantity, deckId, cardId, isSideboard ? 1 : 0]
+      `UPDATE ${TABLES.DECK_CARDS} SET quantity = $1 WHERE deck_id = $2 AND card_id = $3 AND zone = $4`,
+      [quantity, deckId, cardId, zone]
     )
   }
 }
@@ -291,8 +289,8 @@ export async function exportDeck(deckId: string): Promise<string> {
 
   const cards = await getDeckCards(deckId)
 
-  const mainDeck = cards.filter((c) => !c.is_sideboard)
-  const sideboard = cards.filter((c) => c.is_sideboard)
+  const mainDeck = cards.filter((c) => c.zone !== "sideboard")
+  const sideboard = cards.filter((c) => c.zone === "sideboard")
 
   let output = `# ${deck.name}\n`
   if (deck.description) {
@@ -327,7 +325,7 @@ export async function exportDeck(deckId: string): Promise<string> {
 export async function importCardsToDeck(
   deckId: string,
   importText: string,
-  isSideboard: boolean = false
+  zone: string
 ): Promise<{ success: number; failed: string[] }> {
   const lines = importText.split('\n').filter((line) => line.trim())
   const result = { success: 0, failed: [] as string[] }
@@ -363,7 +361,7 @@ export async function importCardsToDeck(
 
     if (cardId) {
       try {
-        await addCardToDeck(deckId, cardId, quantity, isSideboard)
+        await addCardToDeck(deckId, cardId, quantity, zone)
         result.success++
       } catch (error) {
         result.failed.push(`${trimmedLine} - ${(error as Error).message}`)

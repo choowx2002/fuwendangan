@@ -95,7 +95,6 @@ export interface Deck {
   description: string | null
   format: string | null
   cover_image: string | null
-  card_count: number
   is_favorite: boolean
   created_at: string | null
   updated_at: string | null
@@ -107,7 +106,7 @@ export interface DeckCard {
   deck_id: string
   card_id: string
   quantity: number
-  is_sideboard: boolean
+  zone: string
   created_at: string | null
   // 关联的卡牌数据（可选）
   card?: CardBase
@@ -116,10 +115,6 @@ export interface DeckCard {
 // SQLite 存储模型
 export interface SqliteDeck extends Omit<Deck, 'is_favorite'> {
   is_favorite: number
-}
-
-export interface SqliteDeckCard extends Omit<DeckCard, 'is_sideboard'> {
-  is_sideboard: number
 }
 
 export type FilterStatus = 'unselected' | 'include' | 'must' | 'exclude'

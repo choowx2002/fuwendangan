@@ -1,4 +1,3 @@
-<!-- src/routes/+page.svelte -->
 <script lang="ts">
   import { getCardCount } from '$lib/db'
   import { setLoadStatus, hideLoading } from '$lib/stores/ui-store.svelte'
@@ -141,7 +140,7 @@
 
 <style>
   .page-container {
-    max-width: 900px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 40px 24px 80px;
   }

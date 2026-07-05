@@ -23,7 +23,6 @@ export type {
   Deck,
   DeckCard,
   SqliteDeck,
-  SqliteDeckCard,
 } from './types'
 
 // ==================== 配置 ====================
