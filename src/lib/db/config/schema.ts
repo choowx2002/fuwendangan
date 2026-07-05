@@ -104,5 +104,5 @@ export const TABLE_DEFINITIONS = {
   DROP: `
     DROP TABLE IF EXISTS decks;
     DROP TABLE IF EXISTS deck_cards;
-  `
+  `,
 } as const

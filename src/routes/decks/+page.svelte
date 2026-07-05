@@ -1,5 +1,14 @@
 <script lang="ts">
-  import { Plus, Search, Funnel, EllipsisVertical, Copy, Trash2, PenLine, Folder } from '@lucide/svelte'
+  import {
+    Plus,
+    Search,
+    Funnel,
+    EllipsisVertical,
+    Copy,
+    Trash2,
+    PenLine,
+    Folder,
+  } from '@lucide/svelte'
 
   // 模拟卡组数据
   const allDecks = [
@@ -76,12 +85,12 @@
   let showFavoritesOnly = $state(false)
 
   export const formats = [
-    "1v1（决斗）",
-    "1v1（比赛）",
-    "3 人乱斗（遭遇战）",
-    "4 人乱斗（全面战争）",
-    "2v2（熔岩大厅）"
-  ];
+    '1v1（决斗）',
+    '1v1（比赛）',
+    '3 人乱斗（遭遇战）',
+    '4 人乱斗（全面战争）',
+    '2v2（熔岩大厅）',
+  ]
 
   // 筛选后的卡组列表
   const filteredDecks = $derived(
@@ -111,28 +120,27 @@
   }
   // Calculate difference in days (or any unit: 'second', 'minute', 'hour', 'month', 'year')
   function getRelativeTime(date: number | Date) {
-    const now = new Date();
-    const diffInMs = date - now;
-    const diffInSecs = Math.round(diffInMs / 1000);
+    const now = new Date()
+    const diffInMs = date - now
+    const diffInSecs = Math.round(diffInMs / 1000)
 
     // Set up formatter
-    const rtf = new Intl.RelativeTimeFormat('zh', { numeric: 'auto' });
+    const rtf = new Intl.RelativeTimeFormat('zh', { numeric: 'auto' })
 
     // Define time thresholds in seconds
     if (Math.abs(diffInSecs) < 60) {
-      return rtf.format(diffInSecs, 'second');
+      return rtf.format(diffInSecs, 'second')
     } else if (Math.abs(diffInSecs) < 3600) {
-      return rtf.format(Math.round(diffInSecs / 60), 'minute');
+      return rtf.format(Math.round(diffInSecs / 60), 'minute')
     } else if (Math.abs(diffInSecs) < 86400) {
-      return rtf.format(Math.round(diffInSecs / 3600), 'hour');
+      return rtf.format(Math.round(diffInSecs / 3600), 'hour')
     } else {
-      return rtf.format(Math.round(diffInSecs / 86400), 'day');
+      return rtf.format(Math.round(diffInSecs / 86400), 'day')
     }
   }
 
-  const pastDate = new Date('2026-07-05T12:00:00');
-  console.log(getRelativeTime(pastDate));
-
+  const pastDate = new Date('2026-07-05T12:00:00')
+  console.log(getRelativeTime(pastDate))
 </script>
 
 <div class="decks-page">

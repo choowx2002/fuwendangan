@@ -289,8 +289,8 @@ export async function exportDeck(deckId: string): Promise<string> {
 
   const cards = await getDeckCards(deckId)
 
-  const mainDeck = cards.filter((c) => c.zone !== "sideboard")
-  const sideboard = cards.filter((c) => c.zone === "sideboard")
+  const mainDeck = cards.filter((c) => c.zone !== 'sideboard')
+  const sideboard = cards.filter((c) => c.zone === 'sideboard')
 
   let output = `# ${deck.name}\n`
   if (deck.description) {

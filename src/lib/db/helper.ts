@@ -232,6 +232,6 @@ export function toSqliteDeck(deck: Deck): SqliteDeck {
  */
 export function toSqliteDeckCard(deckCard: DeckCard): DeckCard {
   return {
-    ...deckCard
+    ...deckCard,
   }
 }
