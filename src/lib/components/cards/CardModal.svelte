@@ -4,6 +4,7 @@
   import type { CardBase, CardPrint } from '$lib/db/types'
   import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
   import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
+  import { showForeignCardArt } from '$lib/stores/settings'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
@@ -105,20 +106,22 @@
           </div>
 
           <!-- 底部控制栏：语言切换 + 缩略图 -->
-          <div class="image-controls">
-            {#if selectedVersion && selectedVersion.length > 1}
-              <div class="lang-switcher">
-                {#each selectedVersion as v, index (v.language)}
-                  <button
-                    class:active={selectedIndex === index}
-                    onclick={() => (selectedIndex = index)}
-                  >
-                    {v.language.toUpperCase()}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
+          {#if $showForeignCardArt}
+            <div class="image-controls">
+              {#if selectedVersion && selectedVersion.length > 1}
+                <div class="lang-switcher">
+                  {#each selectedVersion as v, index (v.language)}
+                    <button
+                      class:active={selectedIndex === index}
+                      onclick={() => (selectedIndex = index)}
+                    >
+                      {v.language.toUpperCase()}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           {#if selectedVersion[selectedIndex]?.artist}
             <div class="artist-credit">

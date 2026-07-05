@@ -76,7 +76,13 @@ export async function loadExternalImage(
 
 const saveImageToAppFolder = async (dataUrl: string, filename: string) => {
   try {
-    const response = await fetch(dataUrl)
+    const response = await fetch(dataUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      },
+    })
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }

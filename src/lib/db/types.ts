@@ -204,3 +204,8 @@ export interface SortKeyItem {
   isAsc: boolean
   order: number
 }
+
+export type TableStateRow = {
+  name: string
+  bytes: number
+}

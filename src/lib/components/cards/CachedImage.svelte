@@ -103,6 +103,12 @@
     loading = false
     onerror?.(e)
   }
+
+  let showImgDownloadError = $state(false)
+
+  function showError() {
+    showImgDownloadError = true
+  }
 </script>
 
 <div
@@ -138,16 +144,30 @@
     {#if errorImage}
       <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; object-fit: cover;" />
     {:else if src}
-      <img
-        {src}
-        alt={alt || name}
-        style="width: 100%; height: 100%; {fitStyles[
-          fit
-        ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease; overflow: visible;"
-        onload={() => {
-          loading = false
-        }}
-      />
+      <div class="error-placeholder">
+        <img
+          {src}
+          alt={alt || name}
+          style="width: 100%; height: 100%; {fitStyles[fit]};"
+          onload={() => {
+            loading = false
+          }}
+          onerror={showError}
+        />
+
+        {#if showImgDownloadError}
+          <div class="error-tip">
+            <strong>无法加载图片</strong>
+            <span>可能原因：</span>
+            <ul>
+              <li>网络连接异常</li>
+              <li>图片服务器暂时不可用</li>
+              <li>中国大陆地区可能因网络环境导致无法访问</li>
+              <li>图片资源不存在或已被移除</li>
+            </ul>
+          </div>
+        {/if}
+      </div>
     {:else}
       <div
         class="error-placeholder"
@@ -192,5 +212,37 @@
   .cache-image-container-hover:hover {
     /*box-shadow: 0 4px 12px rgba(0, 0, 0, 0.353);*/
     transform: translateY(-1px);
+  }
+
+  .error-placeholder {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .error-tip {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 12px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: var(--text-sm);
+  }
+
+  .error-tip strong {
+    font-size: var(--text-base);
+  }
+
+  .error-tip ul {
+    margin: 0;
+    padding-left: 1em;
+    text-align: left;
   }
 </style>

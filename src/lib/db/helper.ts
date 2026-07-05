@@ -235,3 +235,16 @@ export function toSqliteDeckCard(deckCard: DeckCard): DeckCard {
     ...deckCard,
   }
 }
+
+export const formatBytes = (bytes: any, fraction = 2) => {
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let size = bytes
+
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024
+    i++
+  }
+
+  return `${size.toFixed(fraction)} ${units[i]}`
+}

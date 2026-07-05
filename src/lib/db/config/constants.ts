@@ -14,5 +14,7 @@ export const TABLES = {
   DECK_CARDS: 'deck_cards',
 } as const
 
+export const TABLE_LIST = Object.values(TABLES) as readonly string[]
+
 export const DEFAULT_PAGE_SIZE = 36
 export const DEFAULT_PAGE = 1

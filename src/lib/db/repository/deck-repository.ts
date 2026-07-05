@@ -272,7 +272,7 @@ export async function duplicateDeck(sourceDeckId: string, newName?: string): Pro
   // 复制卡牌
   const sourceCards = await getDeckCards(sourceDeckId)
   for (const deckCard of sourceCards) {
-    await addCardToDeck(newDeck.id, deckCard.card_id, deckCard.quantity, deckCard.is_sideboard)
+    await addCardToDeck(newDeck.id, deckCard.card_id, deckCard.quantity, deckCard.zone)
   }
 
   return newDeck

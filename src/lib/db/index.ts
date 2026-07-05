@@ -33,7 +33,12 @@ export { TABLE_DEFINITIONS } from './config/schema'
 export { isTauri, isWeb } from './env'
 
 // ==================== 仓储层 (Repository) ====================
-export { getDatabase, closeDatabase, resetDatabaseInstance } from './repository/database'
+export {
+  getDatabase,
+  closeDatabase,
+  resetDatabaseInstance,
+  getTableState,
+} from './repository/database'
 export {
   saveCard,
   saveCards,
@@ -90,6 +95,7 @@ export {
   getBestPrint,
   buildSearchParams,
   buildOrderBy,
+  formatBytes,
 } from './helper'
 
 // ==================== 排序常量 ====================
