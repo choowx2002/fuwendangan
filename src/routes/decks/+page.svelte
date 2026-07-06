@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import {
     Plus,
     Search,
@@ -150,7 +151,7 @@
     <div class="header-content">
       <p class="page-desc">管理你的所有卡组，共 {allDecks.length} 副</p>
     </div>
-    <button class="btn-primary new-deck-btn">
+    <button class="btn-primary new-deck-btn" onclick={()=>goto("/decks/builder")}>
       <Plus size={18} />
       <span>新建卡组</span>
     </button>
