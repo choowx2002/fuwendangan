@@ -4,12 +4,12 @@
   import type { CardBase } from '$lib/db/types'
   import { beforeNavigate } from '$app/navigation'
   import { onMount } from 'svelte'
-  import { LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
+  import { GripVertical, LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
 
   // --- 卡组状态 ---
   let deckCards = $state<CardBase[]>([])
   let deckName = $state('未命名卡组')
-  
+
   // --- 核心：未保存修改标记 (Dirty State) ---
   let isDirty = $state(false)
   let isSaving = $state(false)
@@ -35,12 +35,12 @@
       if (isDirty) {
         event.preventDefault()
         // 现代浏览器会忽略自定义文本，但必须设置 returnValue 才能触发弹窗
-        event.returnValue = '' 
+        event.returnValue = ''
       }
     }
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload)
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
@@ -48,11 +48,11 @@
 
   // --- 卡组操作逻辑 ---
   function handleAddCard(card: CardBase) {
-    const currentCount = deckCards.filter(c => c.id === card.id).length
-    
+    const currentCount = deckCards.filter((c) => c.id === card.id).length
+
     // 简单的规则校验
     if (currentCount >= 4) {
-      alert('根据《符文战场》规则，同名卡牌最多只能加入4张！') 
+      alert('根据《符文战场》规则，同名卡牌最多只能加入4张！')
       return
     }
     if (card.is_banned) {
@@ -61,12 +61,12 @@
     }
 
     deckCards = [...deckCards, card]
-    isDirty = true // ⚠️ 标记为已修改
+    isDirty = true
   }
 
   function handleRemoveCard(index: number) {
     deckCards = deckCards.toSpliced(index, 1)
-    isDirty = true // ⚠️ 标记为已修改
+    isDirty = true
   }
 
   // --- 保存逻辑 (模拟) ---
@@ -75,12 +75,12 @@
     try {
       // TODO: 调用你的后端 API 保存卡组
       // await saveDeckToBackend({ name: deckName, cards: deckCards })
-      
+
       // 模拟网络请求延迟
-      await new Promise(resolve => setTimeout(resolve, 800))
-      
+      await new Promise((resolve) => setTimeout(resolve, 800))
+
       // 保存成功后，重置脏数据标记
-      isDirty = false 
+      isDirty = false
       alert('卡组保存成功！')
     } catch (error) {
       console.error('保存失败:', error)
@@ -92,19 +92,29 @@
 </script>
 
 <div class="deck-builder-layout">
-  <!-- 左侧：卡组面板 -->
+  <!-- 左侧：卡池 -->
+  <main class="card-pool-panel">
+    <CardPool onCardClick={handleAddCard} {deckCards} showDeckCount={true} />
+  </main>
+
+  <!-- 中间：调整比例 -->
+  <button class="grip-button">
+    <GripVertical size={16} />
+  </button>
+
+  <!-- 右侧： 卡组面板-->
   <aside class="deck-panel">
     <div class="deck-header">
-      <input 
-        type="text" 
-        bind:value={deckName} 
+      <input
+        type="text"
+        bind:value={deckName}
         class="deck-name-input"
-        oninput={() => isDirty = true} 
+        oninput={() => (isDirty = true)}
         placeholder="输入卡组名称"
       />
-      <button 
-        class="save-btn" 
-        onclick={handleSave} 
+      <button
+        class="save-btn"
+        onclick={handleSave}
         disabled={isSaving || !isDirty}
         class:is-dirty={isDirty}
       >
@@ -136,29 +146,27 @@
       {/each}
     </ul>
   </aside>
-  
-  <!-- 右侧：卡池 -->
-  <main class="card-pool-panel">
-    <CardPool 
-      onCardClick={handleAddCard}
-      deckCards={deckCards}
-      showDeckCount={true}
-    />
-  </main>
 </div>
 
 <style>
   .deck-builder-layout {
+    margin: 0 auto;
     display: flex;
     height: 100vh;
   }
-  
+
+  @media (max-width: 767.99px) {
+    .deck-builder-layout {
+      padding: 24px 16px;
+    }
+  }
+
   .deck-panel {
     width: 320px;
     border-right: 1px solid var(--border-color, #e5e7eb);
     display: flex;
     flex-direction: column;
-    background: var(--bg-secondary, #f9fafb);
+    background: var(--bg-primary);
   }
 
   .deck-header {
@@ -201,9 +209,15 @@
   }
 
   @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
-    70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    0% {
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    }
   }
 
   .unsaved-warning {
@@ -224,7 +238,7 @@
     font-weight: 600;
     border-bottom: 1px solid var(--border-color, #e5e7eb);
   }
-  
+
   .deck-list {
     list-style: none;
     padding: 0;
@@ -232,7 +246,7 @@
     flex: 1;
     overflow-y: auto;
   }
-  
+
   .deck-item {
     display: flex;
     justify-content: space-between;
@@ -252,18 +266,38 @@
     cursor: pointer;
     font-size: 12px;
   }
-  
+
   .empty-deck {
     color: #6b7280;
     text-align: center;
     padding: 2rem 1rem;
     font-size: 14px;
   }
-  
+
   .card-pool-panel {
+    padding: 12px 24px;
     flex: 1;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .grip-button {
+    border: none;
+    border-inline: 1px solid var(--border-color, #e5e7eb);
+    cursor: col-resize;
+    padding: 1px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .grip-button:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-hover);
+  }
+
+  .grip-button:active {
+    color: var(--text-primary);
+    background-color: var(--bg-active);
   }
 </style>
