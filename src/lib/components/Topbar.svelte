@@ -36,8 +36,8 @@
 
 <style>
   .topbar {
-    height: var(--topbar-height);
-    min-height: var(--topbar-height);
+    height: calc(var(--topbar-height) + env(safe-area-inset-top));
+    min-height: calc(var(--topbar-height) + env(safe-area-inset-top));
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;

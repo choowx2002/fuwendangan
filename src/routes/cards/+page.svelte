@@ -1,10 +1,9 @@
-<!-- src/routes/cards/+page.svelte -->
 <script lang="ts">
   import { searchCards, getFilterOptions } from '$lib/db'
   import SearchBar from '$lib/components/cards/SearchBar.svelte'
   import FilterPanel from '$lib/components/cards/FilterPanel.svelte'
   import CardItem from '$lib/components/cards/CardItem.svelte'
-  import type { ActiveFilter, FilterOptions, SortKeyItem } from '$lib/db/types'
+  import type { ActiveFilter, CardBase, FilterOptions, SortKeyItem } from '$lib/db/types'
   import { LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount } from 'svelte'
@@ -18,13 +17,13 @@
   let isFilterOpen = $state(false)
 
   // --- 无限滚动专属状态 ---
-  let displayedCards = $state<any[]>([]) // 当前页面展示的所有卡牌
+  let displayedCards = $state<CardBase[]>([]) // 当前页面展示的所有卡牌
   let currentPage = $state(1) // 当前请求的页码
   let hasMore = $state(true) // 是否还有更多数据
   let isLoading = $state(true) // 首次加载状态
   let isLoadingMore = $state(false) // 滚动加载状态
   let pageSize = 36
-  let selectedCard = $state(null)
+  let selectedCard = $state<CardBase | null>(null)
 
   // --- 排序方式 ---
   let sortList = $state<SortKeyItem[]>([{ id: 1, name: 'card_no', isAsc: true, order: 1 }])
@@ -197,7 +196,11 @@
       {:else if displayedCards.length > 0}
         <div class="card-grid">
           {#each displayedCards as card (card.id)}
-            <div role="presentation" onclick={() => (selectedCard = card)}>
+            <div
+              class:isBanned={card.is_banned}
+              role="presentation"
+              onclick={() => (selectedCard = card)}
+            >
               <CardItem {card} />
             </div>
           {/each}
@@ -322,6 +325,10 @@
     scroll-behavior: smooth;
   }
 
+  .isBanned {
+    filter: grayscale(80%);
+  }
+
   /* ================= 底部状态与哨兵 ================= */
   .bottom-status {
     margin-top: 24px;
@@ -354,6 +361,10 @@
     .card-grid {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
+    }
+
+    .search-wrapper {
+      flex: 0 0 100%;
     }
   }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CircleCheck, CircleAlert, RefreshCw } from '@lucide/svelte'
+  import { hideLoading, uiState } from '$lib/stores/ui-store.svelte'
+  import { CircleCheck, CircleAlert, RefreshCw, X } from '@lucide/svelte'
 
   interface Props {
     status: 'loading' | 'syncing' | 'success' | 'error'
@@ -69,6 +70,13 @@
       <button class="retry-btn" onclick={onRetry}>
         <RefreshCw size={16} />
         <span>重试</span>
+      </button>
+    {/if}
+
+    {#if status === 'error'}
+      <button class="retry-btn" onclick={hideLoading}>
+        <X size={16} />
+        <span>关闭</span>
       </button>
     {/if}
   </div>

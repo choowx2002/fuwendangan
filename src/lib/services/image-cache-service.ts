@@ -1,5 +1,14 @@
 import { resolveResource, appDataDir, join } from '@tauri-apps/api/path'
-import { exists, readFile, writeFile, mkdir, remove, BaseDirectory } from '@tauri-apps/plugin-fs'
+import {
+  exists,
+  readFile,
+  writeFile,
+  mkdir,
+  remove,
+  BaseDirectory,
+  readDir,
+  stat,
+} from '@tauri-apps/plugin-fs'
 import { fetch } from '@tauri-apps/plugin-http'
 // ==================== 类型定义 ====================
 
@@ -158,6 +167,43 @@ export const getCacheSize = (): number => {
  */
 export const isInCache = (fileName: string): boolean => {
   return cache.has(fileName)
+}
+
+export const getImageDirSize = async (): Promise<number> => {
+  const imagesDir = CARD_IMAGE
+
+  const dirExists = await exists(imagesDir, {
+    baseDir: BaseDirectory.AppLocalData,
+  })
+
+  if (!dirExists) {
+    return 0
+  }
+
+  const getDirSize = async (dir: string): Promise<number> => {
+    let total = 0
+
+    const entries = await readDir(dir, {
+      baseDir: BaseDirectory.AppLocalData,
+    })
+
+    for (const entry of entries) {
+      const path = entry.name ? `${dir}/${entry.name}` : dir
+
+      if (entry.isDirectory) {
+        total += await getDirSize(path)
+      } else {
+        const info = await stat(path, {
+          baseDir: BaseDirectory.AppLocalData,
+        })
+
+        total += info.size ?? 0
+      }
+    }
+
+    return total
+  }
+  return getDirSize(imagesDir)
 }
 
 /**

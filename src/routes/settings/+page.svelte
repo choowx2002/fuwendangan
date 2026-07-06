@@ -1,15 +1,19 @@
 <script lang="ts">
-  import { getDatabase, getTableState, formatBytes } from '$lib/db'
+  import { getTableState, formatBytes, resetDatabase, initializeDatabase } from '$lib/db'
   import { showForeignCardArt as showFCA } from '$lib/stores/settings'
-  import { CARD_IMAGE } from '$lib/services/image-cache-service'
+  import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
   import { appDataDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { onMount } from 'svelte'
+  import { setLoadStatus } from '$lib/stores/ui-store.svelte'
+  import { writeText } from '@tauri-apps/plugin-clipboard-manager'
+  import { openUrl } from '@tauri-apps/plugin-opener'
+  import { getVersion } from '@tauri-apps/api/app'
 
   // import { invoke } from '@tauri-apps/api/core';
   // import { open } from '@tauri-apps/plugin-opener';
 
   // --- 状态管理 ---
-  let appVersion = 'v1.0.0'
+  let appVersion = $state('1.0.0')
   let appUpdateStatus = $state<'idle' | 'checking' | 'available' | 'upToDate' | 'error'>('idle')
   let cardDataUpdateStatus = $state<'idle' | 'checking' | 'available' | 'upToDate' | 'error'>(
     'idle'
@@ -18,12 +22,15 @@
   let dbSize = $state<string>('计算中...')
   let dbPath = $state<string>('加载中...')
   let imagePath = $state<string>('加载中...')
+  let imageCacheSize = $state<string>('加载中...')
 
   // --- 常量 ---
-  const HELP_DOC_URL = 'https://docs.example.com/rune-field/help' // 替换为真实的帮助文档 URL
+  const HELP_DOC_URL =
+    'https://wjp00vpskyvs.jp.larksuite.com/wiki/MeISwlCQeiiOK6kMxrujfVC2pcf?from=from_copylink' // 替换为真实的帮助文档 URL
 
   // --- 生命周期 ---
   onMount(async () => {
+    appVersion = await getVersion()
     await loadDbInfo()
   })
 
@@ -38,7 +45,7 @@
 
       // 1. 计算 DB size
       let total = 0
-      db?.forEach((d) => {
+      db?.forEach((d: any) => {
         total += d.bytes
       })
       dbSize = formatBytes(total)
@@ -46,12 +53,19 @@
       // 2. 图片路径
       imagePath = await join(base, CARD_IMAGE)
 
-      // 3. db 路径（如果你只是要目录）
+      const imageCacheSizeByte = await getImageDirSize()
+      imageCacheSize = formatBytes(imageCacheSizeByte)
+
+      // 3. db 路径
       dbPath = appDir
     } catch (e) {
       dbSize = '获取失败'
+      imageCacheSize = '获取失败'
+      dbPath = '获取失败'
+      console.log('[初始化失败]', e)
     }
   }
+
   async function checkAppUpdate() {
     appUpdateStatus = 'checking'
     try {
@@ -66,33 +80,23 @@
   async function checkCardDataUpdate() {
     cardDataUpdateStatus = 'checking'
     try {
-      // TODO: 替换为卡牌数据检查更新逻辑
-      await new Promise((r) => setTimeout(r, 1500))
-      cardDataUpdateStatus = 'available'
+      setLoadStatus('syncing')
+      await initializeDatabase()
+      setLoadStatus('success')
     } catch (e) {
       cardDataUpdateStatus = 'error'
     }
   }
 
-  async function performOneClickUpdate() {
-    // TODO: 执行一键更新逻辑
-    alert('开始一键更新...')
-  }
-
   async function handleResetDb() {
-    if (
-      confirm(
-        '确定要重置数据库连接吗？\n此操作不会删除您的卡组数据，但会断开并重新初始化数据库连接。'
-      )
-    ) {
-      await getDatabase()
-      alert('数据库连接已成功重置！')
+    if (confirm('确定要重置数据库吗？\n此操作会删除您的卡组数据，并重新初始化数据库连接。')) {
+      await resetDatabase()
+      alert('数据库已成功重置！')
     }
   }
 
   function openHelpDoc() {
-    // open(HELP_DOC_URL); // Tauri 方式
-    window.open(HELP_DOC_URL, '_blank')
+    openUrl(HELP_DOC_URL)
   }
 
   // --- 辅助函数 ---
@@ -108,6 +112,19 @@
         return '检查失败，请重试'
       default:
         return ''
+    }
+  }
+
+  function handleResetImageCache() {
+    if (confirm('确定要重置卡图缓存吗？\n此操作会删除您所有卡图缓存。')) {
+      clearLocalCache()
+        .then(async () => {
+          const imageCacheSizeByte = await getImageDirSize()
+          imageCacheSize = formatBytes(imageCacheSizeByte)
+        })
+        .catch((e) => {
+          setLoadStatus('error', '重置缓存失败', e instanceof Error ? e.message : '未知错误')
+        })
     }
   }
 </script>
@@ -144,7 +161,7 @@
       <span class="version-tag">{appVersion}</span>
     </div>
 
-    <div class="setting-item">
+    <!-- <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">Crabnabula Cloud 应用更新</span>
         <span
@@ -163,7 +180,7 @@
       >
         {appUpdateStatus === 'checking' ? '检查中' : '检查更新'}
       </button>
-    </div>
+    </div> -->
 
     <div class="setting-item">
       <div class="setting-info">
@@ -186,7 +203,7 @@
       </button>
     </div>
 
-    <div class="update-actions">
+    <!-- <div class="update-actions">
       <button
         class="btn btn-primary"
         onclick={performOneClickUpdate}
@@ -194,7 +211,7 @@
       >
         一键更新
       </button>
-    </div>
+    </div> -->
   </section>
 
   <!-- 3. 反馈与帮助 -->
@@ -202,10 +219,10 @@
     <h2 class="card-title">反馈与帮助</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">帮助文档</span>
-        <span class="setting-desc">查阅《符文战场》赛事规则、卡牌FAQ及软件使用指南</span>
+        <span class="setting-label">反馈文档</span>
+        <span class="setting-desc">打开反馈页面，提交 Bug 或功能建议。</span>
       </div>
-      <button class="btn btn-outline" onclick={openHelpDoc}> 打开文档 ↗ </button>
+      <button class="btn btn-outline" onclick={openHelpDoc}> 访问链接 ↗ </button>
     </div>
   </section>
 
@@ -216,7 +233,13 @@
     <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">数据库存储路径</span>
-        <span class="setting-desc file-path">{dbPath}</span>
+        <span
+          role="presentation"
+          class="setting-desc file-path"
+          onclick={async () => {
+            await writeText(dbPath)
+          }}>{dbPath}</span
+        >
       </div>
     </div>
 
@@ -229,7 +252,36 @@
     </div>
 
     <div class="db-actions">
-      <button class="btn btn-danger-outline" onclick={handleResetDb}> 重置数据库连接 </button>
+      <button class="btn btn-danger-outline" onclick={handleResetDb}> 重置数据库 </button>
+    </div>
+  </section>
+
+  <!-- 5. 本地图片 -->
+  <section class="settings-card">
+    <h2 class="card-title">本地卡图缓存</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">卡图缓存路径</span>
+        <span
+          role="presentation"
+          class="setting-desc file-path"
+          onclick={async () => {
+            await writeText(imagePath)
+          }}>{imagePath}</span
+        >
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">卡图缓存占用大小</span>
+      </div>
+      <span class="version-tag">{imageCacheSize}</span>
+    </div>
+
+    <div class="db-actions">
+      <button class="btn btn-danger-outline" onclick={handleResetImageCache}> 重置卡图缓存 </button>
     </div>
   </section>
 </div>
@@ -241,6 +293,12 @@
     margin: 0 auto;
     padding: 24px 32px;
     color: var(--text-primary);
+  }
+
+  @media (max-width: 767.99px) {
+    .settings-container {
+      padding: 24px 16px 80px;
+    }
   }
 
   .page-title {
@@ -306,6 +364,7 @@
     font-size: var(--text-xs); /* 11px */
     color: var(--text-tertiary);
     word-break: break-all;
+    cursor: copy;
   }
 
   .version-tag {

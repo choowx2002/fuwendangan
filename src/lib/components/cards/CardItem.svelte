@@ -41,7 +41,7 @@
 
 <div class="card-item">
   {#if currentSrc}
-    <div style="width: 100%; aspect-ratio: 744/ 1040; margin: 5px;">
+    <div>
       <CachedImage
         src={currentSrc}
         name={`${card.id}-${defaultPrint?.id || 'default'}`}

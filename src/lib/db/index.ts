@@ -38,6 +38,7 @@ export {
   closeDatabase,
   resetDatabaseInstance,
   getTableState,
+  resetDatabase,
 } from './repository/database'
 export {
   saveCard,

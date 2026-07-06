@@ -85,6 +85,7 @@
   let showFavoritesOnly = $state(false)
 
   export const formats = [
+    '全部',
     '1v1（决斗）',
     '1v1（比赛）',
     '3 人乱斗（遭遇战）',
@@ -255,7 +256,7 @@
   .decks-page {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 40px 24px 80px;
+    padding: 24px 32px;
   }
 
   @media (max-width: 767.99px) {

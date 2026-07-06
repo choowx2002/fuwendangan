@@ -142,7 +142,7 @@
   .page-container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 40px 24px 80px;
+    padding: 24px 32px;
   }
 
   @media (max-width: 767.99px) {

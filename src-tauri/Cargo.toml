@@ -1,6 +1,6 @@
 [package]
 name = "符文档案"
-version = "0.3.0"
+version = "0.4.0"
 description = "A Tauri App"
 authors = ["天龠wx"]
 edition = "2021"
@@ -26,4 +26,5 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-prevent-default = "5.0.2"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-http = "2.5.9"
+tauri-plugin-clipboard-manager = "2"
 

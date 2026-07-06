@@ -70,6 +70,12 @@
   }
 }
 
+@media (max-width: 767.99px) {
+  :root {
+    --sidebar-width: 200px;
+  }
+}
+
 body {
   margin: 0;
   padding: 0;

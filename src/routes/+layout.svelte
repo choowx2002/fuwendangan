@@ -18,10 +18,10 @@
 
       await initializeDatabase()
 
-      // setLoadStatus('success')
-      setTimeout(() => {
-        setLoadStatus('success')
-      }, 900)
+      setLoadStatus('success')
+      // setTimeout(() => {
+      //   setLoadStatus('success')
+      // }, 900)
     } catch (error) {
       console.error('[Layout] 初始化失败:', error)
       setLoadStatus('error', '初始化失败', error instanceof Error ? error.message : '未知错误')
@@ -40,12 +40,7 @@
 <div class="layout-root">
   <!-- 直接使用 uiState.status -->
   {#if uiState.status === 'error'}
-    <LoadingModal
-      status={uiState.status}
-      text={uiState.text}
-      subtext={uiState.subText}
-      onRetry={handleRetry}
-    />
+    <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />
   {:else if uiState.status !== 'success' && uiState.status !== 'hidden'}
     <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />
   {/if}

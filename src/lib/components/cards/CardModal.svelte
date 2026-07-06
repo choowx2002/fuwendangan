@@ -274,6 +274,12 @@
             </div>
           {/if}
         </section>
+
+        {#if card.is_banned}
+          <section class="isBanned">
+            <h1>禁用中</h1>
+          </section>
+        {/if}
       </div>
     </div>
   </div>
@@ -560,6 +566,24 @@
   .title-group-mobile {
     display: none;
   }
+
+  .isBanned {
+    position: absolute;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 24px;
+    opacity: 0.5;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .isBanned h1 {
+    margin: 0;
+    color: rgb(214, 21, 21);
+  }
   /* ================= 响应式适配 ================= */
   @media (max-width: 600.99px) {
     .modal-content {
@@ -621,6 +645,10 @@
 
     .title-group {
       display: none;
+    }
+
+    .isBanned {
+      justify-content: center;
     }
   }
 

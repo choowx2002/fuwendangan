@@ -93,7 +93,12 @@
   <nav class="nav-section willHidden" class:isHidden={isOpen && isMinimized}>
     <div class="section-title">工具与设置</div>
     {#each toolItems as item}
-      <a href={item.href} class="nav-item" onclick={closeIfMobile}>
+      <a
+        href={item.href}
+        class="nav-item"
+        class:active={page.url.pathname === item.href}
+        onclick={closeIfMobile}
+      >
         <item.icon size={18} strokeWidth={1.75} />
         <span class="willHidden" class:isHidden={isOpen && isMinimized}>{item.label}</span>
       </a>
@@ -125,6 +130,7 @@
       transform 0.2s ease,
       width 0.2s ease;
     will-change: transform, width;
+    padding-top: env(safe-area-inset-top);
   }
 
   .sidebar.open {
@@ -284,6 +290,13 @@
   @media (max-width: 767.99px) {
     .icon-btn {
       display: none;
+    }
+
+    .sidebar {
+      padding-top: env(safe-area-inset-top);
+    }
+    .nav-item {
+      font-size: var(--text-lg);
     }
   }
 </style>
