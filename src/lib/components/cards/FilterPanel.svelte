@@ -1,7 +1,8 @@
 <script lang="ts">
   import { X } from '@lucide/svelte'
-  import type { FilterOptions, ActiveFilter, FilterMode } from '$lib/db/types'
+  import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
+  import NumberRangeSlider from '../NumberRangeSlider.svelte'
 
   interface Props {
     isOpen: boolean
@@ -11,10 +12,23 @@
     onRemove: (type: ActiveFilter['type'], value: string) => void
     onClear: () => void
     onClose: () => void
+    energy: NumberRange
+    power: NumberRange
+    return_energy: NumberRange
   }
 
-  let { isOpen, filterOptions, activeFilters, onToggle, onRemove, onClear, onClose }: Props =
-    $props()
+  let {
+    isOpen,
+    filterOptions,
+    activeFilters,
+    onToggle,
+    onRemove,
+    onClear,
+    onClose,
+    energy = $bindable(),
+    power = $bindable(),
+    return_energy = $bindable(),
+  }: Props = $props()
 
   const sections = $derived.by(() => {
     if (!filterOptions) return []
@@ -65,6 +79,24 @@
     e.preventDefault()
     onRemove(type as any, value)
   }
+
+  function handleClearAll() {
+    if (filterOptions) {
+      energy = {
+        min: filterOptions.energy_range?.min ?? 0,
+        max: filterOptions.energy_range?.max ?? 12,
+      }
+      power = {
+        min: filterOptions.power_range?.min ?? 0,
+        max: filterOptions.power_range?.max ?? 12,
+      }
+      return_energy = {
+        min: filterOptions.return_energy_range?.min ?? 0,
+        max: filterOptions.return_energy_range?.max ?? 4,
+      }
+    }
+    onClear()
+  }
 </script>
 
 {#if isOpen}
@@ -83,42 +115,103 @@
 
         <!-- 内容区：可滚动 -->
         <div class="modal-body">
-          {#each sections as section}
-            {@const sortedList = sortOptions(section.type, section.options)}
-            <section class="filter-section">
-              <h3 class="section-title">{section.title}</h3>
-              <div class="options-grid">
-                {#each sortedList as option}
-                  {@const mode = getMode(section.type, option)}
-                  <button
-                    class="option-btn"
-                    class:include={mode === 'include'}
-                    class:require={mode === 'require'}
-                    class:exclude={mode === 'exclude'}
-                    onclick={() => handleToggle(section.type, option)}
-                    oncontextmenu={(e) => handleRemove(e, section.type, option)}
-                  >
-                    {#if section.type === 'card_color_list'}
-                      {#if option !== 'colorless'}
-                        <img src={`/runes/${option}.svg`} alt={option} width="20" />
-                      {:else}
-                        无色
-                      {/if}
-                    {:else}
-                      {option}
-                    {/if}
-                  </button>
-                {/each}
+          <section class="filter-section range-section">
+            <h3 class="section-title">数值范围</h3>
+            <div class="range-grid">
+              <div class="range-item">
+                <div class="range-label">
+                  <span>法力</span>
+                  <!-- 🆕 直接显示对象的 min 和 max -->
+                  {#if energy.min === energy.max}
+                    <span class="range-value">{energy.min}</span>
+                  {:else}
+                    <span class="range-value">{energy.min} - {energy.max}</span>
+                  {/if}
+                </div>
+                <!-- 🆕 直接 bind:value 传递对象 -->
+                <NumberRangeSlider
+                  bind:value={energy}
+                  min={filterOptions?.energy_range?.min ?? 0}
+                  max={filterOptions?.energy_range?.max ?? 12}
+                  step={1}
+                />
               </div>
-            </section>
-          {/each}
+
+              <div class="range-item">
+                <div class="range-label">
+                  <span>符能</span>
+                  {#if return_energy.min === return_energy.max}
+                    <span class="range-value">{return_energy.min}</span>
+                  {:else}
+                    <span class="range-value">{return_energy.min} - {return_energy.max}</span>
+                  {/if}
+                </div>
+                <NumberRangeSlider
+                  bind:value={return_energy}
+                  min={filterOptions?.return_energy_range?.min ?? 0}
+                  max={filterOptions?.return_energy_range?.max ?? 4}
+                  step={1}
+                />
+              </div>
+
+              <div class="range-item">
+                <div class="range-label">
+                  <span>战力</span>
+                  {#if power.min === power.max}
+                    <span class="range-value">{power.min}</span>
+                  {:else}
+                    <span class="range-value">{power.min} - {power.max}</span>
+                  {/if}
+                </div>
+                <NumberRangeSlider
+                  bind:value={power}
+                  min={filterOptions?.power_range?.min ?? 0}
+                  max={filterOptions?.power_range?.max ?? 12}
+                  step={1}
+                />
+              </div>
+            </div>
+          </section>
+
+          <!-- 🆕 将原有的离散筛选包裹在 columns-wrapper 中，以维持双列布局 -->
+          <div class="columns-wrapper">
+            {#each sections as section}
+              {@const sortedList = sortOptions(section.type, section.options)}
+              <section class="filter-section">
+                <h3 class="section-title">{section.title}</h3>
+                <div class="options-grid">
+                  {#each sortedList as option}
+                    {@const mode = getMode(section.type, option)}
+                    <button
+                      class="option-btn"
+                      class:include={mode === 'include'}
+                      class:require={mode === 'require'}
+                      class:exclude={mode === 'exclude'}
+                      onclick={() => handleToggle(section.type, option)}
+                      oncontextmenu={(e) => handleRemove(e, section.type, option)}
+                    >
+                      {#if section.type === 'card_color_list'}
+                        {#if option !== 'colorless'}
+                          <img src={`/runes/${option}.svg`} alt={option} width="20" />
+                        {:else}
+                          无色
+                        {/if}
+                      {:else}
+                        {option}
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/each}
+          </div>
         </div>
 
         <!-- 底部操作栏 (移动端极其友好) -->
         <footer class="modal-footer">
           <div>
             <span class="count">{activeFilters.length} 项已激活</span>
-            <button class="clear-btn" onclick={onClear}>重置</button>
+            <button class="clear-btn" onclick={handleClearAll}>重置</button>
           </div>
 
           <button class="apply-btn" onclick={onClose}>完成</button>
@@ -362,5 +455,29 @@
     to {
       transform: translateY(0);
     }
+  }
+  .range-section {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .range-grid {
+    display: grid;
+    gap: 20px;
+  }
+  .range-item {
+    padding: 8px 0;
+  }
+  .range-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .range-value {
+    font-weight: 600;
+    color: var(--accent-color);
+    font-variant-numeric: tabular-nums;
   }
 </style>

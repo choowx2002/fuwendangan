@@ -295,14 +295,8 @@
     color: var(--text-primary);
   }
 
-  @media (max-width: 767.99px) {
-    .settings-container {
-      padding: 24px 16px 80px;
-    }
-  }
-
   .page-title {
-    font-size: var(--text-2xl); /* 24px */
+    font-size: var(--text-2xl);
     font-weight: 700;
     margin: 0 0 24px 0;
     color: var(--text-primary);
@@ -409,14 +403,14 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-
+  /*
   .btn-primary {
-    background: var(--accent-color); /* #128378 */
+    background: var(--accent-color);
     color: #ffffff;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #0e6b62; /* 悬停加深 */
-  }
+    background: #0e6b62;
+  }*/
 
   .btn-secondary {
     background: var(--bg-hover);
@@ -446,7 +440,7 @@
   }
 
   /* 操作组 */
-  .update-actions,
+  /*.update-actions,*/
   .db-actions {
     margin-top: 16px;
     display: flex;
@@ -500,5 +494,11 @@
 
   input:checked + .slider:before {
     transform: translateX(18px);
+  }
+
+  @media (max-width: 767.99px) {
+    .settings-container {
+      padding: 24px 16px 80px;
+    }
   }
 </style>

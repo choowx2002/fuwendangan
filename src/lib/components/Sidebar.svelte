@@ -13,7 +13,7 @@
     Gamepad2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
-
+  import { selectedTTSColor, colorOptions, type colorValue } from '../stores/ui-store.svelte'
   let { isOpen = $bindable(), isMinimized = $bindable() } = $props()
 
   const navItems = [
@@ -50,6 +50,14 @@
       })
     }
   })
+
+  const colorMap: Record<colorValue, string> = {
+    Black: 'rgb(0,0,0)',
+    Red: 'rgb(218,26,24)',
+    Green: 'rgb(49,179,43)',
+    Purple: 'rgb(160,32,240)',
+    Blue: 'rgb(30,135,255)',
+  }
 
   function toggleMinimize() {
     isMinimized = !isMinimized
@@ -107,8 +115,15 @@
 
   <div class="sidebar-footer">
     <div class="user-info">
-      <div class="avatar">天</div>
-      <span class="willHidden" class:isHidden={isOpen && isMinimized}>天龠wx</span>
+      <div class="avatar" style="background: {colorMap[$selectedTTSColor as colorValue]}"></div>
+      <select bind:value={$selectedTTSColor}>
+        {#each colorOptions as color}
+          <option value={color.value}>
+            {color.name}
+          </option>
+        {/each}
+      </select>
+      <!-- <span class="willHidden" class:isHidden={isOpen && isMinimized}>天龠wx</span> -->
     </div>
   </div>
 </aside>
@@ -256,7 +271,6 @@
   .avatar {
     width: 24px;
     height: 24px;
-    background: #e0dcd3;
     border-radius: 50%;
     display: flex;
     align-items: center;

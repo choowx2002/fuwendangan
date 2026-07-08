@@ -11,6 +11,7 @@ import type {
   SortKeyItem,
   SqliteCardBase,
   SqliteDeck,
+  NumberRange,
 } from './types'
 
 /**
@@ -120,7 +121,10 @@ export function buildSearchParams(
   searchText: string,
   page: number = 1,
   pageSize: number = 60,
-  sortByList?: SortKeyItem[]
+  sortByList?: SortKeyItem[],
+  energy?: NumberRange | number,
+  return_energy?: NumberRange | number,
+  power?: NumberRange | number
 ): CardSearchParams {
   const params: CardSearchParams = {
     page,
@@ -133,6 +137,12 @@ export function buildSearchParams(
   const rawFilters = activeFilters
   // 2. 防御性兼容：如果 Svelte 把它变成了 {0: {...}} 这样的对象，用 Object.values 转回数组
   const filtersArray = Array.isArray(rawFilters) ? rawFilters : Object.values(rawFilters || {})
+
+  if (energy) params.energy = energy
+
+  if (return_energy) params.return_energy = return_energy
+
+  if (return_energy) params.power = power
 
   for (const filter of filtersArray) {
     if (!filter || !filter.type) continue

@@ -121,8 +121,8 @@ export type FilterStatus = 'unselected' | 'include' | 'must' | 'exclude'
 
 // 数值字段过滤模型 (适用于 power, energy, return_energy)
 export interface NumberRange {
-  min?: number // 大于等于 (>=)
-  max?: number // 小于等于 (<=)
+  min: number // 大于等于 (>=)
+  max: number // 小于等于 (<=)
 }
 
 // 数组过滤参数结构

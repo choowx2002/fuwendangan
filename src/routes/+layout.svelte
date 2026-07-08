@@ -9,12 +9,12 @@
   let { children } = $props()
 
   async function init() {
-    setLoadStatus('loading') // 使用全局方法更新状态
+    setLoadStatus('loading')
 
     try {
-      setTimeout(() => {
-        if (uiState.status === 'loading') setLoadStatus('syncing')
-      }, 500)
+      // setTimeout(() => {
+      //   if (uiState.status === 'loading') setLoadStatus('syncing')
+      // }, 500)
 
       await initializeDatabase()
 

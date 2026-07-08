@@ -3,17 +3,23 @@
   import SearchBar from './SearchBar.svelte'
   import FilterPanel from './FilterPanel.svelte'
   import CardItem from './CardItem.svelte'
-  import type { ActiveFilter, CardBase, FilterOptions, SortKeyItem } from '$lib/db/types'
+  import type {
+    ActiveFilter,
+    CardBase,
+    FilterOptions,
+    NumberRange,
+    SortKeyItem,
+  } from '$lib/db/types'
   import { LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount } from 'svelte'
   import SortModal from './SortModal.svelte'
 
   // --- 组件 Props ---
-  let { 
-    onCardClick,           // 外部传入的点击回调（查看详情 or 加入卡组）
-    deckCards = [],        // 当前卡组卡牌（用于 Deck Builder 显示数量）
-    showDeckCount = false  // 是否显示卡组中已有的数量
+  let {
+    onCardClick, // 外部传入的点击回调（查看详情 or 加入卡组）
+    deckCards = [], // 当前卡组卡牌（用于 Deck Builder 显示数量）
+    showDeckCount = false, // 是否显示卡组中已有的数量
   }: {
     onCardClick?: (card: CardBase) => void
     deckCards?: CardBase[]
@@ -25,6 +31,9 @@
   let activeFilters = $state<ActiveFilter[]>([])
   let currentSearchText = $state('')
   let isFilterOpen = $state(false)
+  let energy = $state<NumberRange>({ min: 0, max: 12 })
+  let power = $state<NumberRange>({ min: 0, max: 12 })
+  let return_energy = $state<NumberRange>({ min: 0, max: 4 })
 
   // --- 无限滚动专属状态 ---
   let displayedCards = $state<CardBase[]>([])
@@ -86,7 +95,10 @@
         currentSearchText,
         currentPage,
         pageSize,
-        sortList
+        sortList,
+        energy,
+        return_energy,
+        power
       )
 
       const result = await searchCards(params)
@@ -154,7 +166,7 @@
   // 计算卡组中该卡的数量
   function getDeckCount(cardId: string | number): number {
     if (!showDeckCount || !deckCards) return 0
-    return deckCards.filter(c => c.id === cardId).length
+    return deckCards.filter((c) => c.id === cardId).length
   }
 
   onMount(() => {
@@ -170,6 +182,21 @@
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
+  })
+
+  const totalActiveCount = $derived.by(() => {
+    let count = activeFilters.length
+
+    const isRangeActive = (current: NumberRange, globalRange?: { min: number; max: number }) => {
+      if (!globalRange) return false
+      return current.min > globalRange.min || current.max < globalRange.max
+    }
+
+    if (isRangeActive(energy, filterOptions?.energy_range)) count++
+    if (isRangeActive(power, filterOptions?.power_range)) count++
+    if (isRangeActive(return_energy, filterOptions?.return_energy_range)) count++
+
+    return count
   })
 </script>
 
@@ -188,8 +215,8 @@
     <button class="filter-toggle-btn" onclick={() => (isFilterOpen = true)}>
       <SlidersHorizontal size={18} />
       <span>筛选</span>
-      {#if activeFilters.length > 0}
-        <span class="badge">{activeFilters.length}</span>
+      {#if totalActiveCount > 0}
+        <span class="badge">{totalActiveCount}</span>
       {/if}
     </button>
   </header>
@@ -250,6 +277,9 @@
       isFilterOpen = false
       performSearch()
     }}
+    bind:energy
+    bind:power
+    bind:return_energy
   />
 </div>
 
@@ -259,7 +289,7 @@
     flex-direction: column;
     height: 100%;
   }
-  
+
   .deck-count {
     position: absolute;
     top: 4px;
@@ -362,10 +392,10 @@
 
   /* ================= 移动端适配 ================= */
   @media (max-width: 767.99px) {
-    .main-content {
+    /* .main-content {
       padding: 16px;
       padding-bottom: 0;
-    }
+    } */
     .card-grid {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
