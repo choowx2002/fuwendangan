@@ -77,17 +77,25 @@ export const getTableState = async (): Promise<TableStateRow[] | null> => {
 export async function resetDatabase() {
   const db = await getDatabase()
 
-  await db.execute('PRAGMA foreign_keys = OFF')
-
   try {
+    await db.execute('BEGIN TRANSACTION')
+
+    await db.execute('PRAGMA foreign_keys = OFF')
+
     for (const table of TABLE_LIST) {
       await db.execute(`DELETE FROM "${table}"`)
     }
 
-    // 重置 AUTOINCREMENT（如果有）
-    await db.execute('DELETE FROM sqlite_sequence')
-  } finally {
+    // await db.execute('DELETE FROM sqlite_sequence')
+
     await db.execute('PRAGMA foreign_keys = ON')
+
+    await db.execute('COMMIT')
+
     await initializeTables(db)
+
+  } catch (err) {
+    await db.execute('ROLLBACK')
+    throw err
   }
 }
