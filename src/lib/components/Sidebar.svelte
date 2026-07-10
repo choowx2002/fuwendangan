@@ -123,7 +123,7 @@
   {#if $showTTSFeatures}
     <div class="sidebar-footer">
       <div class="tts-info">
-        <p onclick={detectTTSServer} role="presentation">
+        <p title="点击链接" onclick={detectTTSServer} role="presentation">
           TTS链接：{$ttsState.sendPort ? '已连接' : '未连接'}
         </p>
       </div>
@@ -262,6 +262,12 @@
     font-weight: 500;
   }
 
+  .tts-info {
+    font-size: var(--text-base);
+    font-weight: bold;
+    cursor: pointer;
+  }
+
   .divider {
     height: 1px;
     background: var(--border-color);
@@ -323,7 +329,8 @@
     .sidebar {
       padding-top: env(safe-area-inset-top);
     }
-    .nav-item {
+    .nav-item,
+    .tts-info {
       font-size: var(--text-lg);
     }
   }

@@ -57,6 +57,7 @@ export {
   deletePrint,
   deletePrintsByCardId,
   clearAllPrints,
+  getPrints,
 } from './repository/print-repository'
 export {
   saveFilterOptions,

@@ -29,4 +29,5 @@ tauri-plugin-http = "2.5.9"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-store = "2"
 tauri-plugin-os = "2"
+tauri-plugin-dialog = "2"
 

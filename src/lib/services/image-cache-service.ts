@@ -83,33 +83,61 @@ export async function loadExternalImage(
 
 // ==================== 图片缓存管理 ====================
 
-const saveImageToAppFolder = async (dataUrl: string, filename: string) => {
-  try {
-    const response = await fetch(dataUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
-        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-      },
-    })
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry = 3) => {
+  for (let attempt = 1; attempt <= maxRetry; attempt++) {
+    try {
+      const controller = new AbortController()
+
+      // timeout 30s
+      const timeout = setTimeout(() => {
+        controller.abort()
+      }, 30000)
+
+      const response = await fetch(dataUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        },
+      })
+
+      clearTimeout(timeout)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const arrayBuffer = await blob.arrayBuffer()
+
+      await ensureDir(CARD_IMAGE)
+
+      await writeFile(`${CARD_IMAGE}/${filename}`, new Uint8Array(arrayBuffer), {
+        baseDir: BaseDirectory.AppLocalData,
+      })
+
+      console.log(`[Cache] 保存图片成功: ${filename}`)
+
+      return true
+    } catch (error) {
+      console.warn(`[Cache] 下载失败 (${attempt}/${maxRetry}):`, filename, error)
+
+      if (attempt < maxRetry) {
+        // exponential backoff
+        // 1s -> 2s -> 4s
+        await sleep(1000 * Math.pow(2, attempt - 1))
+      } else {
+        console.error(`[Cache] 最终失败: ${filename}`)
+
+        return false
+      }
     }
-
-    const blob = await response.blob()
-    const arrayBuffer = await blob.arrayBuffer()
-    const imagesDir = CARD_IMAGE
-
-    await ensureDir(imagesDir)
-
-    await writeFile(`${imagesDir}/${filename}`, new Uint8Array(arrayBuffer), {
-      baseDir: BaseDirectory.AppLocalData,
-    })
-
-    console.log('[Cache] 保存图片到本地缓存成功:', filename)
-  } catch (error) {
-    console.error('[Cache] 保存图片到本地缓存失败:', error)
   }
+
+  return false
 }
 
 export const loadImageFromAppFolder = async (url: string, name: string): Promise<string | null> => {
@@ -204,6 +232,36 @@ export const getImageDirSize = async (): Promise<number> => {
     return total
   }
   return getDirSize(imagesDir)
+}
+
+export async function getMissingCardPrints(
+  cardPrints: any[],
+  imagePath: string
+): Promise<{
+  missing: any[]
+  existingCount: number
+  totalCount: number
+}> {
+  const files = await readDir(imagePath, {
+    baseDir: BaseDirectory.AppLocalData,
+  })
+
+  const fileNames = new Set(
+    files.filter((file) => file.name).map((file) => file.name!.split('.')[0])
+  )
+  const missing = cardPrints.filter((print) => {
+    const expectedName = urlToFilename(
+      print.img_cdn ?? print.tts_cdn,
+      `${print.card_id}-${print.id || 'default'}`
+    )
+    return !fileNames.has(expectedName)
+  })
+
+  return {
+    missing,
+    existingCount: cardPrints.length - missing.length,
+    totalCount: cardPrints.length,
+  }
 }
 
 /**

@@ -3,13 +3,15 @@
   import { CircleCheck, CircleAlert, RefreshCw, X } from '@lucide/svelte'
 
   interface Props {
-    status: 'loading' | 'syncing' | 'success' | 'error'
+    status: 'loading' | 'syncing' | 'downloading' | 'success' | 'error'
     text?: string
     subtext?: string
+    progress?: number
     onRetry?: () => void
+    onCancel?: () => void
   }
 
-  let { status, text, subtext, onRetry }: Props = $props()
+  let { status, text, subtext, progress = 0, onRetry, onCancel }: Props = $props()
 
   const config = $derived.by(() => {
     switch (status) {
@@ -40,6 +42,13 @@
           subtext: subtext?.trim() ?? '请检查网络连接后重试',
           showGif: false,
         }
+
+      case 'downloading':
+        return {
+          text: text?.trim() ?? '正在下载卡牌...',
+          subtext: subtext?.trim() ?? '正在同步图片资源',
+          showGif: true,
+        }
     }
   })
 </script>
@@ -50,6 +59,18 @@
       <div class="gif-container">
         <!-- 替换为你的 GIF 路径 -->
         <img src="/loading.gif" alt="Loading" class="loading-gif" />
+        {#if status === 'downloading'}
+          <div class="progress-wrapper">
+            <div class="progress-info">
+              <span>下载进度</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+
+            <div class="progress-bar">
+              <div class="progress-value" style={`width: ${Math.min(progress, 100)}%`}></div>
+            </div>
+          </div>
+        {/if}
       </div>
     {:else if status === 'success'}
       <div class="icon-container success">
@@ -77,6 +98,13 @@
       <button class="retry-btn" onclick={hideLoading}>
         <X size={16} />
         <span>关闭</span>
+      </button>
+    {/if}
+
+    {#if status === 'downloading' && onCancel}
+      <button class="cancel-btn" onclick={onCancel}>
+        <X size={16} />
+        <span>取消下载</span>
       </button>
     {/if}
   </div>
@@ -192,5 +220,48 @@
 
   .retry-btn:active {
     transform: translateY(0);
+  }
+  .progress-wrapper {
+    margin: 20px 0 24px;
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .progress-bar {
+    height: 8px;
+    width: 100%;
+    background: var(--bg-secondary);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .progress-value {
+    height: 100%;
+    background: var(--text-primary);
+    border-radius: inherit;
+    transition: width 0.2s ease;
+  }
+
+  .cancel-btn {
+    margin-left: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+  }
+
+  .cancel-btn:hover {
+    background: var(--bg-secondary);
   }
 </style>

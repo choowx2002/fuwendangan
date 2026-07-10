@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from '@lucide/svelte'
+  import { Lock, X } from '@lucide/svelte'
   import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
   import NumberRangeSlider from '../NumberRangeSlider.svelte'
@@ -199,6 +199,14 @@
                       {:else}
                         {option}
                       {/if}
+
+                      {#if mode === 'require'}
+                        <Lock size={14} />
+                      {/if}
+
+                      {#if mode === 'exclude'}
+                        <X size={14} />
+                      {/if}
                     </button>
                   {/each}
                 </div>
@@ -367,7 +375,7 @@
 
   .option-btn {
     padding: 4px 10px;
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-primary);
@@ -375,6 +383,9 @@
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
   .option-btn:hover {
     background: var(--bg-hover);
@@ -382,22 +393,19 @@
   }
 
   .option-btn.include {
-    background: #e8f0fe;
-    border-color: #d2e3fc;
-    color: #1967d2;
+    background: var(--accent-color);
+    color: var(--bg-primary);
     font-weight: 500;
   }
   .option-btn.require {
-    background: #e6f4ea;
-    border-color: #ceead6;
-    color: #137333;
+    background: var(--accent-color);
+    color: var(--bg-primary);
     font-weight: 500;
   }
   .option-btn.exclude {
-    background: #fce8e6;
-    border-color: #f5c6c0;
-    color: #c5221f;
-    font-weight: 500;
+    background: #f5412a;
+    color: var(--bg-primary);
+    text-decoration-line: line-through;
   }
 
   /* ================= 移动端适配 (底部弹出抽屉) ================= */

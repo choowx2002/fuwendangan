@@ -56,6 +56,18 @@ export async function saveCardPrints(prints: CardPrint[]): Promise<void> {
 }
 
 /**
+ * 获取所有卡图
+ */
+export async function getPrints(): Promise<CardPrint[]> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT id, card_id, img_cdn, tts_cdn FROM ${TABLES.CARD_PRINTS} WHERE language = 'SC'`
+  )
+
+  return results.map(mapRowToPrint)
+}
+
+/**
  * 根据卡牌 ID 获取所有卡图
  */
 export async function getPrintsByCardId(cardId: string): Promise<CardPrint[]> {

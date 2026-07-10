@@ -62,6 +62,8 @@
     },
     "clipboard-manager:default",
     "store:default",
-    "os:default"
+    "os:default",
+    "dialog:default",
+    "dialog:allow-message"
   ]
 }
