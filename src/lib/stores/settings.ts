@@ -13,13 +13,13 @@ function getStore() {
 export function persistentWritable<T>(key: string, defaultValue: T) {
   const s = writable(defaultValue)
 
-  getStore().then(async store => {
+  getStore().then(async (store) => {
     const value = await store.get<T>(key)
     if (value !== undefined) {
       s.set(value)
     }
 
-    s.subscribe(async v => {
+    s.subscribe(async (v) => {
       await store.set(key, v)
       await store.save()
     })
@@ -28,17 +28,8 @@ export function persistentWritable<T>(key: string, defaultValue: T) {
   return s
 }
 
-export const showForeignCardArt = persistentWritable(
-  'showForeignCardArt',
-  false
-)
+export const showForeignCardArt = persistentWritable('showForeignCardArt', false)
 
-export const darkMode = persistentWritable(
-  'darkMode',
-  false
-)
+export const darkMode = persistentWritable('darkMode', false)
 
-export const showTTSFeatures = persistentWritable(
-  'showTTSFeatures',
-  false
-)
+export const showTTSFeatures = persistentWritable('showTTSFeatures', false)

@@ -93,7 +93,6 @@ export async function resetDatabase() {
     await db.execute('COMMIT')
 
     await initializeTables(db)
-
   } catch (err) {
     await db.execute('ROLLBACK')
     throw err

@@ -1,4 +1,4 @@
-import type { CardWithPrint } from "$lib/db"
+import type { CardWithPrint } from '$lib/db'
 
 export function deckToString(deck: CardWithPrint[]): string {
   return deck
@@ -28,7 +28,11 @@ export function deckToString(deck: CardWithPrint[]): string {
 
         card.card_prints.back_image ?? '',
 
-        card.card_prints.tts_cdn ? card.card_prints.tts_cdn : card.card_prints.img_cdn ? card.card_prints.img_cdn : '',
+        card.card_prints.tts_cdn
+          ? card.card_prints.tts_cdn
+          : card.card_prints.img_cdn
+            ? card.card_prints.img_cdn
+            : '',
 
         card.quantity ?? 1,
       ]
