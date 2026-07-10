@@ -1,10 +1,12 @@
 <script lang="ts">
   import { X } from '@lucide/svelte'
   import CacheImage from './CachedImage.svelte'
-  import type { CardBase, CardPrint } from '$lib/db/types'
+  import type { CardBase, CardPrint, CardWithPrint } from '$lib/db'
   import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
   import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
-  import { showForeignCardArt } from '$lib/stores/settings'
+  import { showForeignCardArt, showTTSFeatures } from '$lib/stores/settings'
+  import { ttsState } from '$lib/stores/ui-store.svelte'
+  import { sendToTTSTesting } from '$lib/services/tts-communication-service'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
@@ -65,6 +67,20 @@
   function handlePrintSelect(ver: CardPrint[]) {
     selectedVersion = ver
     selectedIndex = 0
+  }
+
+  function spawnCard() {
+    if (!card || !card.id) return
+    const data: CardWithPrint = {
+      ...card,
+      id: card.id,
+      card_prints: selectedVersion[selectedIndex],
+      quantity: 1,
+    }
+    console.log('sendToTTSTesting', data)
+    sendToTTSTesting([data]).then((e) => {
+      console.log(e)
+    })
   }
 </script>
 
@@ -148,6 +164,9 @@
                 </button>
               {/each}
             </div>
+          {/if}
+          {#if $ttsState.sendPort && $showTTSFeatures}
+            <button onclick={spawnCard} class="tts-btn">生成</button>
           {/if}
         </aside>
 
@@ -673,5 +692,21 @@
 
   ::-webkit-scrollbar {
     display: none;
+  }
+  .tts-btn {
+    padding: 4px 10px;
+    font-size: var(--text-sm);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-weight: bold;
+  }
+  .tts-btn:hover {
+    background: var(--bg-hover);
+    border-color: #d3d1cb;
   }
 </style>

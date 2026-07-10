@@ -13,7 +13,14 @@
     Gamepad2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
-  import { selectedTTSColor, colorOptions, type colorValue } from '../stores/ui-store.svelte'
+  import {
+    selectedTTSColor,
+    colorOptions,
+    type colorValue,
+    ttsState,
+  } from '../stores/ui-store.svelte'
+  import { detectTTSServer } from '$lib/services/tts-communication-service'
+  import { showTTSFeatures } from '$lib/stores/settings'
   let { isOpen = $bindable(), isMinimized = $bindable() } = $props()
 
   const navItems = [
@@ -113,19 +120,26 @@
     {/each}
   </nav>
 
-  <div class="sidebar-footer">
-    <div class="user-info">
-      <div class="avatar" style="background: {colorMap[$selectedTTSColor as colorValue]}"></div>
-      <select bind:value={$selectedTTSColor}>
-        {#each colorOptions as color}
-          <option value={color.value}>
-            {color.name}
-          </option>
-        {/each}
-      </select>
-      <!-- <span class="willHidden" class:isHidden={isOpen && isMinimized}>天龠wx</span> -->
+  {#if $showTTSFeatures}
+    <div class="sidebar-footer">
+      <div class="tts-info">
+        <p onclick={detectTTSServer} role="presentation">
+          TTS链接：{$ttsState.sendPort ? '已连接' : '未连接'}
+        </p>
+      </div>
+      <div class="user-info">
+        <div class="avatar" style="background: {colorMap[$selectedTTSColor as colorValue]}"></div>
+        <select bind:value={$selectedTTSColor}>
+          {#each colorOptions as color}
+            <option value={color.value}>
+              {color.name}
+            </option>
+          {/each}
+        </select>
+        <!-- <span class="willHidden" class:isHidden={isOpen && isMinimized}>天龠wx</span> -->
+      </div>
     </div>
-  </div>
+  {/if}
 </aside>
 
 <style>

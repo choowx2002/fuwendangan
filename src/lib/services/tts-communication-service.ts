@@ -4,6 +4,7 @@ import { get } from 'svelte/store'
 import { deckToString } from '$lib/cards/utils/deckSerializer.js'
 import type { TTSState } from '$lib/stores/ui-store.svelte.js'
 import { ttsState, selectedTTSColor } from '$lib/stores/ui-store.svelte.js'
+import type { CardWithPrint } from '$lib/db'
 
 /**
  * Check TTS TCP connection
@@ -112,7 +113,7 @@ export async function sendToTTS(deck: string) {
 /**
  * Send testing deck
  */
-export async function sendToTTSTesting(deck: any[]) {
+export async function sendToTTSTesting(deck: CardWithPrint[]) {
   const deckString = deckToString(deck)
 
   const color = get(selectedTTSColor)

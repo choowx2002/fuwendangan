@@ -5,6 +5,7 @@
   import { initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import '../app.css'
+  import { onMount } from 'svelte'
 
   let { children } = $props()
 
@@ -12,9 +13,9 @@
     setLoadStatus('loading')
 
     try {
-      // setTimeout(() => {
-      //   if (uiState.status === 'loading') setLoadStatus('syncing')
-      // }, 500)
+      setTimeout(() => {
+        if (uiState.status === 'loading') setLoadStatus('syncing')
+      }, 500)
 
       await initializeDatabase()
 
@@ -28,13 +29,13 @@
     }
   }
 
-  $effect(() => {
+  onMount(() => {
     init()
   })
 
-  function handleRetry() {
-    init()
-  }
+  // function handleRetry() {
+  //   init()
+  // }
 </script>
 
 <div class="layout-root">

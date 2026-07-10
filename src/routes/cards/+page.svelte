@@ -25,7 +25,7 @@
 <style>
   .page-wrapper {
     display: flex;
-    height: calc(100vh - var(--topbar-height));
+    height: calc(100vh - var(--topbar-height) - env(safe-area-inset-top));
     overflow: hidden;
   }
 

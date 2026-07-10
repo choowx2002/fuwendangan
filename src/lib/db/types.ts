@@ -44,6 +44,11 @@ export interface CardPrint {
   created_at: string | null
 }
 
+export type CardWithPrint = CardBase & {
+  card_prints: CardPrint
+  quantity: number
+}
+
 // 版本控制模型
 export interface AppVersion {
   id: number

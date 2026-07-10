@@ -21,6 +21,7 @@ export type {
   ArrayFieldKey,
   SortKeyItem,
   Deck,
+  CardWithPrint,
   DeckCard,
   SqliteDeck,
 } from './types'

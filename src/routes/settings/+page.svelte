@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTableState, formatBytes, resetDatabase, initializeDatabase } from '$lib/db'
-  import { showForeignCardArt as showFCA } from '$lib/stores/settings'
+  import { showForeignCardArt as showFCA, showTTSFeatures } from '$lib/stores/settings'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
   import { appDataDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { onMount } from 'svelte'
@@ -8,6 +8,7 @@
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion } from '@tauri-apps/api/app'
+  import { isMobile } from '$lib/services/os-serives'
 
   // import { invoke } from '@tauri-apps/api/core';
   // import { open } from '@tauri-apps/plugin-opener';
@@ -23,15 +24,17 @@
   let dbPath = $state<string>('加载中...')
   let imagePath = $state<string>('加载中...')
   let imageCacheSize = $state<string>('加载中...')
+  let inMobile = $state<boolean>(false)
 
   // --- 常量 ---
   const HELP_DOC_URL =
-    'https://wjp00vpskyvs.jp.larksuite.com/wiki/MeISwlCQeiiOK6kMxrujfVC2pcf?from=from_copylink' // 替换为真实的帮助文档 URL
+    'https://wjp00vpskyvs.jp.larksuite.com/wiki/MeISwlCQeiiOK6kMxrujfVC2pcf?from=from_copylink'
 
   // --- 生命周期 ---
   onMount(async () => {
     appVersion = await getVersion()
     await loadDbInfo()
+    inMobile = await isMobile()
   })
 
   // --- 逻辑函数 ---
@@ -147,6 +150,19 @@
         <span class="slider"></span>
       </label>
     </div>
+
+    {#if !inMobile}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">显示TTS功能</span>
+          <span class="setting-desc"> 单机的时候可以导入卡牌到TTS里 </span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" bind:checked={$showTTSFeatures} />
+          <span class="slider"></span>
+        </label>
+      </div>
+    {/if}
   </section>
 
   <!-- 2. 版本与更新 -->

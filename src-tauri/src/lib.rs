@@ -8,7 +8,6 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-
 #[tauri::command]
 fn send_to_tts(message: String) -> Result<String, String> {
     use std::io::Write;
@@ -100,13 +99,20 @@ pub fn run() {
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         // .plugin(tauri_plugin_prevent_default::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .invoke_handler(tauri::generate_handler![greet, check_tts_connections, send_to_tts, start_tts_listener])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            check_tts_connections,
+            send_to_tts,
+            start_tts_listener
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
