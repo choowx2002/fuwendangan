@@ -20,10 +20,12 @@
     onCardClick, // 外部传入的点击回调（查看详情 or 加入卡组）
     deckCards = [], // 当前卡组卡牌（用于 Deck Builder 显示数量）
     showDeckCount = false, // 是否显示卡组中已有的数量
+    displayedCards = $bindable<CardBase[]>([]),
   }: {
     onCardClick?: (card: CardBase) => void
     deckCards?: CardBase[]
     showDeckCount?: boolean
+    displayedCards?: CardBase[]
   } = $props()
 
   // --- 基础状态 ---
@@ -36,7 +38,6 @@
   let return_energy = $state<NumberRange>({ min: 0, max: 4 })
 
   // --- 无限滚动专属状态 ---
-  let displayedCards = $state<CardBase[]>([])
   let currentPage = $state(1)
   let hasMore = $state(true)
   let isLoading = $state(true)

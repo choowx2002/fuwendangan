@@ -77,7 +77,6 @@
       card_prints: selectedVersion[selectedIndex],
       quantity: 1,
     }
-    console.log('sendToTTSTesting', data)
     sendToTTSTesting([data]).then((e) => {
       console.log(e)
     })
@@ -385,6 +384,8 @@
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
     margin-bottom: 16px;
     overflow: hidden;
+    display: flex;
+    justify-content: center;
   }
 
   .image-controls {

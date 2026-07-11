@@ -157,3 +157,21 @@ export function updateTTSMessage(message: unknown) {
     lastMessage: message,
   }))
 }
+
+
+export function multiSpawn(cards: any[]) {
+  if (!cards.length) return;
+  const list: CardWithPrint[] = []
+  for (const c of cards) {
+    c.card_prints.forEach((p: any) => {
+      list.push({
+        ...c,
+        id: c.id,
+        card_prints: p,
+        quantity: 1,
+      })
+    });
+  }
+
+  sendToTTSTesting(list);
+}

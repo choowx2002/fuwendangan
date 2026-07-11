@@ -45,7 +45,7 @@
       <CachedImage
         src={currentSrc}
         name={`${card.id}-${defaultPrint?.id || 'default'}`}
-        width="100%"
+        height="100%"
         borderRadius="6px"
         fit="cover"
         onerror={handleError}
