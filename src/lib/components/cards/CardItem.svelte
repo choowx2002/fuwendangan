@@ -9,7 +9,8 @@
   let { card }: Props = $props()
 
   const defaultPrint = $derived(
-    card.card_prints?.find((p) => p.is_default) ?? card.card_prints?.[0]
+    card.card_prints?.find((p) => p.is_default) ??
+      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
   )
 
   // 【修复】使用 null 作为初始值，避免缓存 blue.jpg

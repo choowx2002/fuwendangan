@@ -34,6 +34,7 @@
   let imagePath = $state<string>('加载中...')
   let imageCacheSize = $state<string>('加载中...')
   let inMobile = $state<boolean>(false)
+  let onloadInfo = $state<boolean>(false)
 
   // 下载进度
   let downloadProgress = $state<number>(0)
@@ -47,13 +48,14 @@
 
   // --- 生命周期 ---
   onMount(async () => {
+    inMobile = await isMobile()
     appVersion = await getVersion()
     await loadDbInfo()
-    inMobile = await isMobile()
   })
 
   // --- 逻辑函数 ---
   async function loadDbInfo() {
+    onloadInfo = true
     try {
       const [db, base, appDir] = await Promise.all([
         getTableState(),
@@ -81,6 +83,8 @@
       imageCacheSize = '获取失败'
       dbPath = '获取失败'
       console.log('[初始化失败]', e)
+    } finally {
+      onloadInfo = false
     }
   }
 
@@ -339,7 +343,9 @@
     </div>
 
     <div class="db-actions">
-      <button class="btn btn-danger-outline" onclick={handleResetDb}> 重置数据库 </button>
+      <button class="btn btn-danger-outline" disabled={onloadInfo} onclick={handleResetDb}>
+        重置数据库
+      </button>
     </div>
   </section>
 
@@ -376,7 +382,9 @@
     </div>
 
     <div class="db-actions">
-      <button class="btn btn-danger-outline" onclick={handleResetImageCache}> 重置卡图缓存 </button>
+      <button class="btn btn-danger-outline" disabled={onloadInfo} onclick={handleResetImageCache}>
+        重置卡图缓存
+      </button>
     </div>
   </section>
 </div>

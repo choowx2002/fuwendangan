@@ -106,3 +106,14 @@ export async function clearAllCards(): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.CARDS_BASE}`)
 }
+
+/*
+ * 用来获取最新的updatedat的时间
+ */
+export async function getLatestUpdateCardTime(): Promise<string> {
+  const db = await getDatabase()
+  const results = await db.select<{ updated_at: string }[]>(
+    `SELECT updated_at FROM ${TABLES.CARDS_BASE} ORDER BY updated_at DESC LIMIT 1`
+  )
+  return results[0]?.updated_at ?? ''
+}

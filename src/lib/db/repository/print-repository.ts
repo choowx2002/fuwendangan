@@ -114,3 +114,14 @@ export async function clearAllPrints(): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS}`)
 }
+
+// /*
+//  * 用来获取最新的updatedat的时间
+//  */
+// export async function getLatestUpdatePrintTime(): Promise<string> {
+//   const db = await getDatabase()
+//   const results = await db.select<{ updated_at: string }[]>(
+//     `SELECT updated_at FROM ${TABLES.CARD_PRINTS} ORDER BY updated_at DESC LIMIT 1`
+//   )
+//   return results[0]?.updated_at ?? ''
+// }

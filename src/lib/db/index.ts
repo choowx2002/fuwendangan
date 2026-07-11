@@ -48,6 +48,7 @@ export {
   getCardCount,
   deleteCard,
   clearAllCards,
+  getLatestUpdateCardTime,
 } from './repository/card-repository'
 export {
   saveCardPrint,

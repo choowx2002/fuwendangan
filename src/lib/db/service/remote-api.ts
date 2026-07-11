@@ -5,6 +5,8 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { AppVersion, CardBase, CardPrint, IconDB } from '../types'
+import { getLatestUpdateCardTime } from '../repository/card-repository'
+// import { getLatestUpdatePrintTime } from '../repository/print-repository'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -62,6 +64,29 @@ export async function fetchAllCards(): Promise<CardBase[]> {
   return totalData
 }
 
+export async function fetchUpdatedCards(): Promise<CardBase[]> {
+  const supabase = getSupabaseClient()
+  const totalData: CardBase[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
+  let latestAt = await getLatestUpdateCardTime()
+  while (hasMore) {
+    const { data, count, error } = await supabase
+      .from('cards_base')
+      .select('*', { count: 'exact' })
+      .gt('updated_at', latestAt)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (error) throw new Error(`获取卡牌失败：${error.message}`)
+    if (data) totalData.push(...data)
+    if (count && data && data.length < pageSize) hasMore = false
+    page++
+  }
+
+  return totalData
+}
+
 /**
  * 获取所有卡图数据（分页拉取）
  */
@@ -71,11 +96,12 @@ export async function fetchAllPrints(): Promise<CardPrint[]> {
   let page = 0
   const pageSize = 300
   let hasMore = true
-
+  // let latestAt = await getLatestUpdatePrintTime()
   while (hasMore) {
     const { data, count, error } = await supabase
       .from('card_prints')
       .select('*', { count: 'exact' })
+      // .gt('updated_at', latestAt)
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (error) throw new Error(`获取卡图失败：${error.message}`)
