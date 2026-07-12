@@ -3,6 +3,7 @@
   import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
   import NumberRangeSlider from '../NumberRangeSlider.svelte'
+  import { iconLanguage } from '$lib/cards/config/constants'
 
   interface Props {
     isOpen: boolean
@@ -107,7 +108,21 @@
       <div class="modal-content" tabindex="-1" role="dialog" aria-modal="true">
         <!-- 头部 -->
         <header class="modal-header">
-          <h2>筛选条件</h2>
+          <h2 style="display: flex; align-items: center; gap: 5px">
+            筛选条件
+            <div
+              style="display: flex; align-items: baseline; gap: 5px; font-size: var(--text-sm); color: var(--text-secondary)"
+            >
+              <div
+                style="width: 10px; background-color: var(--accent-color); aspect-ratio: 1/1;"
+              ></div>
+              可有
+              <div style="width: 10px; background-color: royalblue; aspect-ratio: 1/1;"></div>
+              必有
+              <div style="width: 10px; background-color: #f5412a; aspect-ratio: 1/1;"></div>
+              排除
+            </div>
+          </h2>
           <button class="close-btn" onclick={onClose} aria-label="关闭">
             <X size={20} />
           </button>
@@ -192,21 +207,25 @@
                     >
                       {#if section.type === 'card_color_list'}
                         {#if option !== 'colorless'}
-                          <img src={`/runes/${option}.svg`} alt={option} width="20" />
-                        {:else}
-                          无色
+                          <img
+                            class:refelctIcon={mode}
+                            src={`/runes/${option}.svg`}
+                            alt={option}
+                            width="20"
+                          />
                         {/if}
+                        {iconLanguage[option] ? iconLanguage[option] : option}
                       {:else}
-                        {option}
+                        {iconLanguage[option] ? iconLanguage[option] : option}
                       {/if}
 
-                      {#if mode === 'require'}
+                      <!-- {#if mode === 'require'}
                         <Lock size={14} />
                       {/if}
 
                       {#if mode === 'exclude'}
                         <X size={14} />
-                      {/if}
+                      {/if} -->
                     </button>
                   {/each}
                 </div>
@@ -230,6 +249,10 @@
 {/if}
 
 <style>
+  .refelctIcon {
+    filter: brightness(0) invert(1);
+  }
+
   /* 遮罩层 */
   .modal-container {
     position: fixed;
@@ -386,6 +409,7 @@
     display: flex;
     align-items: center;
     gap: 5px;
+    user-select: none;
   }
   .option-btn:hover {
     background: var(--bg-hover);
@@ -398,7 +422,7 @@
     font-weight: 500;
   }
   .option-btn.require {
-    background: var(--accent-color);
+    background: royalblue;
     color: var(--bg-primary);
     font-weight: 500;
   }

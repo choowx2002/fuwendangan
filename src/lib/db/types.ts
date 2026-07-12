@@ -42,6 +42,7 @@ export interface CardPrint {
   print_order: number | null
   is_default: boolean | null
   created_at: string | null
+  updated_at: string | null
 }
 
 export type CardWithPrint = CardBase & {

@@ -6,13 +6,13 @@ export const OPTIONS_PRIORITY = {
     '传奇',
     '英雄单位',
     '单位',
-    '专属单位',
     '法术',
-    '专属法术',
     '装备',
-    '专属装备',
     '战场',
     '符文',
+    '专属单位',
+    '专属法术',
+    '专属装备',
     '单位指示物',
     '装备指示物',
     '战场指示物',
@@ -40,3 +40,18 @@ export const OPTIONS_PRIORITY = {
     '装配',
   ],
 }
+
+/*
+* translate to chinese map
+*/
+const languageMap: Record<string, string> = {
+  'red': '炽烈',
+  'green': '翠意',
+  'blue': '灵光',
+  'orange': '摧破',
+  'purple': '混沌',
+  'yellow': '序理',
+  'colorless': '无色'
+};
+
+export const iconLanguage = Object.freeze(languageMap)

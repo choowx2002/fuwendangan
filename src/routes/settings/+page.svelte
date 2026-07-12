@@ -111,9 +111,19 @@
   }
 
   async function handleResetDb() {
-    if (confirm('确定要重置数据库吗？\n此操作会删除您的卡组数据，并重新初始化数据库连接。')) {
+    const accpected = await ask(
+      '确定要重置数据库吗？\n此操作会删除您的卡组数据，并重新初始化数据库连接。',
+      {
+        title: '重置数据库',
+        kind: 'warning',
+        okLabel: '确定',
+        cancelLabel: '取消',
+      }
+    )
+    if (accpected) {
       await resetDatabase()
-      alert('数据库已成功重置！')
+      await loadDbInfo()
+      message('数据库已成功重置！')
     }
   }
 
@@ -137,8 +147,14 @@
     }
   }
 
-  function handleResetImageCache() {
-    if (confirm('确定要重置卡图缓存吗？\n此操作会删除您所有卡图缓存。')) {
+  async function handleResetImageCache() {
+    const accpected = await ask('确定要重置卡图缓存吗？\n此操作会删除您所有卡图缓存。', {
+      title: '重置卡图缓存',
+      kind: 'warning',
+      okLabel: '确定',
+      cancelLabel: '取消',
+    })
+    if (accpected) {
       clearLocalCache()
         .then(async () => {
           const imageCacheSizeByte = await getImageDirSize()

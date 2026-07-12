@@ -64,6 +64,8 @@
     "store:default",
     "os:default",
     "dialog:default",
-    "dialog:allow-message"
+    "dialog:allow-message",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

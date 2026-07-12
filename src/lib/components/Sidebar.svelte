@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
+  import { beforeNavigate, goto, onNavigate, pushState } from '$app/navigation'
   import {
     LayoutDashboard,
     Library,
@@ -31,6 +32,28 @@
     { icon: Gamepad2, label: '模拟器', href: '/simulator' },
   ]
 
+  const routeBackConfig = {
+    // 主页面
+    '/': { backTo: null, description: '首页 - 正常退出' },
+
+    // 二级页面
+    '/cards': { backTo: '/', description: '单卡库 → 首页' },
+    '/decks': { backTo: '/', description: '我的卡组 → 首页' },
+    '/collection': { backTo: '/', description: '收藏与闪卡 → 首页' },
+    '/simulator': { backTo: '/', description: '模拟器 → 首页' },
+
+    // 工具与设置
+    '/tools': { backTo: '/', description: '对战工具 → 首页' },
+    '/settings': { backTo: '/', description: '设置 → 首页' },
+
+    // 可以扩展嵌套页面
+    '/cards/detail': { backTo: '/cards', description: '卡牌详情 → 单卡库' },
+    '/decks/builder': { backTo: '/decks', description: '编辑卡组 → 我的卡组' },
+
+    // 特殊：如果你想留在当前页（比如筛选面板打开时）
+    // 这个在 FilterPanel 里单独处理，不放在这里
+  }
+
   const toolItems = [
     { icon: Wrench, label: '对战工具', href: '/tools' },
     { icon: Settings, label: '设置', href: '/settings' },
@@ -40,6 +63,11 @@
     if (window.innerWidth < 767.99) {
       isOpen = false
     }
+  }
+
+  function navigateTo(href: string) {
+    goto(href)
+    closeIfMobile()
   }
 
   onMount(() => {
@@ -77,7 +105,6 @@
       <div class="workspace-icon">
         <img src="/fuwendangan_logo_zn.webp" alt="logo" />
       </div>
-      <!-- <span class="workspace-name">我的卡牌库</span> -->
     </div>
 
     <button class="icon-btn" aria-label="最小化" onclick={toggleMinimize}>
@@ -95,7 +122,10 @@
         href={item.href}
         class="nav-item"
         class:active={page.url.pathname === item.href}
-        onclick={closeIfMobile}
+        onclick={(e) => {
+          e.preventDefault() // ← 阻止默认跳转
+          navigateTo(item.href)
+        }}
       >
         <item.icon size={18} strokeWidth={1.75} />
         <span class="willHidden" class:isHidden={isOpen && isMinimized}>{item.label}</span>
@@ -112,7 +142,10 @@
         href={item.href}
         class="nav-item"
         class:active={page.url.pathname === item.href}
-        onclick={closeIfMobile}
+        onclick={(e) => {
+          e.preventDefault() // ← 阻止默认跳转
+          navigateTo(item.href)
+        }}
       >
         <item.icon size={18} strokeWidth={1.75} />
         <span class="willHidden" class:isHidden={isOpen && isMinimized}>{item.label}</span>
@@ -136,7 +169,6 @@
             </option>
           {/each}
         </select>
-        <!-- <span class="willHidden" class:isHidden={isOpen && isMinimized}>天龠wx</span> -->
       </div>
     </div>
   {/if}

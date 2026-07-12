@@ -36,6 +36,7 @@ export const TABLE_DEFINITIONS = {
       print_order INTEGER,
       is_default INTEGER,
       created_at TEXT,
+      updated_at TEXT,
       FOREIGN KEY(card_id) REFERENCES cards_base(id) ON DELETE CASCADE
     )
   `,
@@ -104,5 +105,6 @@ export const TABLE_DEFINITIONS = {
   DROP: `
     DROP TABLE IF EXISTS decks;
     DROP TABLE IF EXISTS deck_cards;
+    DROP TABLE IF EXISTS card_prints;
   `,
 } as const

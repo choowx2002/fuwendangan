@@ -5,6 +5,8 @@
   import type { CardBase } from '$lib/db/types'
   import { ttsState } from '$lib/stores/ui-store.svelte'
   import { multiSpawn } from '$lib/services/tts-communication-service'
+  import { onBackButtonPress } from '@tauri-apps/api/app'
+  import { onMount } from 'svelte'
 
   let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])

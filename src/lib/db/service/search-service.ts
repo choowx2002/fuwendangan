@@ -24,8 +24,9 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     whereClauses.push(`(
       ${TABLES.CARDS_BASE}.card_name_cn LIKE ? OR ${TABLES.CARDS_BASE}.card_name_en LIKE ? OR
       ${TABLES.CARDS_BASE}.effect_cn LIKE ? OR ${TABLES.CARDS_BASE}.champion_tag LIKE ? OR ${TABLES.CARDS_BASE}.effect_en LIKE ?
+      OR ${TABLES.CARDS_BASE}.sub_title_cn LIKE ?
     )`)
-    queryParams.push(safeText, safeText, safeText, safeText, safeText)
+    queryParams.push(safeText, safeText, safeText, safeText, safeText,safeText)
   }
 
   // 2. 数组字段过滤
@@ -123,7 +124,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   const dataSql = `
     SELECT ${TABLES.CARDS_BASE}.*
     FROM ${TABLES.CARDS_BASE}
-    LEFT JOIN ${TABLES.CARD_PRINTS} ON ${TABLES.CARDS_BASE}.id = ${TABLES.CARD_PRINTS}.card_id 
+    LEFT JOIN ${TABLES.CARD_PRINTS} ON ${TABLES.CARDS_BASE}.id = ${TABLES.CARD_PRINTS}.card_id
       AND ${TABLES.CARD_PRINTS}.is_default = 1
     ${whereStr}
     ${orderBy}
