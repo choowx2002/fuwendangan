@@ -42,16 +42,16 @@ export const OPTIONS_PRIORITY = {
 }
 
 /*
-* translate to chinese map
-*/
+ * translate to chinese map
+ */
 const languageMap: Record<string, string> = {
-  'red': '炽烈',
-  'green': '翠意',
-  'blue': '灵光',
-  'orange': '摧破',
-  'purple': '混沌',
-  'yellow': '序理',
-  'colorless': '无色'
-};
+  red: '炽烈',
+  green: '翠意',
+  blue: '灵光',
+  orange: '摧破',
+  purple: '混沌',
+  yellow: '序理',
+  colorless: '无色',
+}
 
 export const iconLanguage = Object.freeze(languageMap)

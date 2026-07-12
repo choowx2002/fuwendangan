@@ -26,7 +26,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
       ${TABLES.CARDS_BASE}.effect_cn LIKE ? OR ${TABLES.CARDS_BASE}.champion_tag LIKE ? OR ${TABLES.CARDS_BASE}.effect_en LIKE ?
       OR ${TABLES.CARDS_BASE}.sub_title_cn LIKE ?
     )`)
-    queryParams.push(safeText, safeText, safeText, safeText, safeText,safeText)
+    queryParams.push(safeText, safeText, safeText, safeText, safeText, safeText)
   }
 
   // 2. 数组字段过滤
