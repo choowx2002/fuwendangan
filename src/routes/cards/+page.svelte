@@ -3,9 +3,8 @@
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import type { CardBase } from '$lib/db/types'
-  import { ttsState } from '$lib/stores/ui-store.svelte'
+  import { sidebarState, ttsState } from '$lib/stores/ui-store.svelte'
   import { multiSpawn } from '$lib/services/tts-communication-service'
-  import { onBackButtonPress } from '@tauri-apps/api/app'
   import { onMount } from 'svelte'
 
   let selectedCard = $state<CardBase | null>(null)
@@ -19,6 +18,10 @@
   function spwanMulti() {
     multiSpawn([...displayedCards])
   }
+
+  onMount(()=>{
+    sidebarState.isMinimized = true
+  })
 </script>
 
 <div class="page-wrapper">

@@ -14,6 +14,7 @@
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount } from 'svelte'
   import SortModal from './SortModal.svelte'
+  import { beforeNavigate } from '$app/navigation'
 
   // --- 组件 Props ---
   let {
@@ -43,6 +44,7 @@
   let isLoading = $state(true)
   let isLoadingMore = $state(false)
   let pageSize = 36
+  let totalCards = $state(0)
 
   // --- 排序方式 ---
   let sortList = $state<SortKeyItem[]>([{ id: 1, name: 'card_no', isAsc: true, order: 1 }])
@@ -103,6 +105,7 @@
       )
 
       const result = await searchCards(params)
+      totalCards = result.total
       if (isLoadMore) {
         displayedCards = [...displayedCards, ...result.data]
       } else {
@@ -199,6 +202,13 @@
 
     return count
   })
+
+  beforeNavigate(({cancel})=>{
+    if(isFilterOpen){
+      isFilterOpen = false
+      cancel()
+    }
+  })
 </script>
 
 <div class="card-pool-wrapper">
@@ -210,7 +220,7 @@
         onTextSearch={handleTextSearch}
       />
     </div>
-
+    <h2 style="font-size: var(--text-base);color: var(--text-secondary)">数量：{totalCards}</h2>
     <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
 
     <button class="filter-toggle-btn" onclick={() => (isFilterOpen = true)}>

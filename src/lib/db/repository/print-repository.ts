@@ -18,7 +18,7 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
     `INSERT OR REPLACE INTO ${TABLES.CARD_PRINTS}
      (id, card_id, card_no_extend, rarity_name, extend_rarity_name, back_image,
       language, img_cdn, tts_cdn, artist, print_order, is_default, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, $14)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       print.id,
       print.card_id,

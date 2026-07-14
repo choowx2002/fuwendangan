@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { beforeNavigate, goto, onNavigate, pushState } from '$app/navigation'
+  import { beforeNavigate, goto } from '$app/navigation'
   import {
     LayoutDashboard,
     Library,
@@ -8,7 +8,6 @@
     Wrench,
     Settings,
     ChevronRight,
-    Plus,
     Sparkles,
     ChevronLeft,
     Gamepad2,
@@ -19,10 +18,11 @@
     colorOptions,
     type colorValue,
     ttsState,
+    sidebarState
   } from '../stores/ui-store.svelte'
   import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { showTTSFeatures } from '$lib/stores/settings'
-  let { isOpen = $bindable(), isMinimized = $bindable() } = $props()
+  let { isOpen = $bindable() } = $props()
 
   const navItems = [
     { icon: LayoutDashboard, label: '首页', href: '/' },
@@ -32,7 +32,12 @@
     { icon: Gamepad2, label: '模拟器', href: '/simulator' },
   ]
 
-  const routeBackConfig = {
+  interface RouteConfig {
+    backTo: string | null
+    description: string
+  }
+
+  const routeBackConfig: Record<string, RouteConfig> = {
     // 主页面
     '/': { backTo: null, description: '首页 - 正常退出' },
 
@@ -47,11 +52,7 @@
     '/settings': { backTo: '/', description: '设置 → 首页' },
 
     // 可以扩展嵌套页面
-    '/cards/detail': { backTo: '/cards', description: '卡牌详情 → 单卡库' },
     '/decks/builder': { backTo: '/decks', description: '编辑卡组 → 我的卡组' },
-
-    // 特殊：如果你想留在当前页（比如筛选面板打开时）
-    // 这个在 FilterPanel 里单独处理，不放在这里
   }
 
   const toolItems = [
@@ -70,22 +71,42 @@
     closeIfMobile()
   }
 
-  onMount(() => {
-    window.addEventListener('resize', () => {
-      if (window.innerWidth < 767.99 && isMinimized) {
-        isMinimized = false
+onMount(() => {
+    const handleResize = () => {
+      // 3. 使用全局状态
+      if (window.innerWidth < 767.99 && sidebarState.isMinimized) {
+        sidebarState.isMinimized = false
       }
-    })
+    }
+    window.addEventListener('resize', handleResize)
 
     return () => {
-      window.removeEventListener('resize', () => {
-        if (window.innerWidth < 767.99 && isMinimized) {
-          isMinimized = false
-        }
-      })
+      window.removeEventListener('resize', handleResize)
     }
   })
 
+  beforeNavigate(({ from, cancel, type, delta }) => {
+    // 核心判断：只有当导航类型是浏览器后退(popstate) 且 delta 为负数时才触发
+    const isBackward = type === 'popstate' && delta && delta < 0
+
+    if (isBackward && from && from.url) {
+      const currentPath = from.url.pathname
+      const config = routeBackConfig[currentPath]
+      if (config) {
+        cancel() // 拦截原有的后退
+
+        if (config.backTo === null) {
+          // 如果当前已经在 '/' 首页，或者配置的 backTo 是 null（代表正常退出）
+          // 此时让浏览器继续正常的后退行为（退出你的应用/返回上一个网站）
+          return
+        }
+
+        // 如果有指定的返回页面（比如从 /decks/builder 回到 /decks）
+        // 使用 replaceState: true，避免污染历史记录栈
+        goto(config.backTo, { replaceState: true })
+      }
+    }
+  })
   const colorMap: Record<colorValue, string> = {
     Black: 'rgb(0,0,0)',
     Red: 'rgb(218,26,24)',
@@ -95,20 +116,20 @@
   }
 
   function toggleMinimize() {
-    isMinimized = !isMinimized
+    sidebarState.isMinimized = !sidebarState.isMinimized
   }
 </script>
 
-<aside class="sidebar" class:open={isOpen} class:isMinimized>
+<aside class="sidebar" class:open={isOpen} class:isMinimized={sidebarState.isMinimized}>
   <div class="sidebar-header">
-    <div class="workspace willHidden" class:isHidden={isMinimized}>
+    <div class="workspace willHidden" class:isHidden={sidebarState.isMinimized}>
       <div class="workspace-icon">
         <img src="/fuwendangan_logo_zn.webp" alt="logo" />
       </div>
     </div>
 
     <button class="icon-btn" aria-label="最小化" onclick={toggleMinimize}>
-      {#if !isMinimized}
+      {#if !sidebarState.isMinimized}
         <ChevronLeft size={16} />
       {:else}
         <ChevronRight class="nav-item" size={18} strokeWidth={2} />
@@ -128,14 +149,14 @@
         }}
       >
         <item.icon size={18} strokeWidth={1.75} />
-        <span class="willHidden" class:isHidden={isOpen && isMinimized}>{item.label}</span>
+        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>{item.label}</span>
       </a>
     {/each}
   </nav>
 
   <div class="divider"></div>
 
-  <nav class="nav-section willHidden" class:isHidden={isOpen && isMinimized}>
+  <nav class="nav-section willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>
     <div class="section-title">工具与设置</div>
     {#each toolItems as item}
       <a
@@ -148,7 +169,7 @@
         }}
       >
         <item.icon size={18} strokeWidth={1.75} />
-        <span class="willHidden" class:isHidden={isOpen && isMinimized}>{item.label}</span>
+        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>{item.label}</span>
       </a>
     {/each}
   </nav>

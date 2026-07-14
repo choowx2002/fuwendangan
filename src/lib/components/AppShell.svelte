@@ -2,10 +2,9 @@
 <script lang="ts">
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
-
+  import { sidebarState } from '../stores/ui-store.svelte'
   let { children } = $props()
   let isSidebarOpen = $state(false)
-  let isSidebarMinimized = $state(false)
   let isMobile = $state(false)
 
   // 监听窗口大小变化，桌面端自动展开侧边栏
@@ -26,8 +25,8 @@
   })
 </script>
 
-<div class="app-shell" class:sidebar-open={isSidebarOpen} class:isMinimized={isSidebarMinimized}>
-  <Sidebar bind:isOpen={isSidebarOpen} bind:isMinimized={isSidebarMinimized} />
+<div class="app-shell" class:sidebar-open={isSidebarOpen} class:isMinimized={sidebarState.isMinimized}>
+  <Sidebar bind:isOpen={isSidebarOpen} />
 
   <div class="main-area">
     {#if isMobile}
