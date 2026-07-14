@@ -6,6 +6,7 @@
   import type {
     ActiveFilter,
     CardBase,
+    CardPrint,
     FilterOptions,
     NumberRange,
     SortKeyItem,
@@ -15,7 +16,7 @@
   import { onMount } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { beforeNavigate } from '$app/navigation'
-
+  type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---
   let {
     onCardClick, // 外部传入的点击回调（查看详情 or 加入卡组）
@@ -23,8 +24,8 @@
     showDeckCount = false, // 是否显示卡组中已有的数量
     displayedCards = $bindable<CardBase[]>([]),
   }: {
-    onCardClick?: (card: CardBase) => void
-    deckCards?: CardBase[]
+    onCardClick?: (arg0: cardAndPrint) => void
+    deckCards?: cardAndPrint[]
     showDeckCount?: boolean
     displayedCards?: CardBase[]
   } = $props()
@@ -161,7 +162,7 @@
   }
 
   // 处理卡牌点击，抛给外部
-  function handleCardClick(card: CardBase) {
+  function handleCardClick(card: cardAndPrint) {
     if (onCardClick) {
       onCardClick(card)
     }
@@ -203,8 +204,8 @@
     return count
   })
 
-  beforeNavigate(({cancel})=>{
-    if(isFilterOpen){
+  beforeNavigate(({ cancel }) => {
+    if (isFilterOpen) {
       isFilterOpen = false
       cancel()
     }
@@ -243,7 +244,7 @@
           <div
             class:isBanned={card.is_banned}
             role="presentation"
-            onclick={() => handleCardClick(card)}
+            onclick={() => handleCardClick(card as any)}
           >
             <CardItem {card} />
             {#if showDeckCount}
