@@ -19,7 +19,7 @@
     multiSpawn([...displayedCards])
   }
 
-  onMount(()=>{
+  onMount(() => {
     sidebarState.isMinimized = true
   })
 </script>

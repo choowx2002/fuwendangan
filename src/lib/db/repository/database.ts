@@ -27,6 +27,7 @@ export async function getDatabase(): Promise<Database> {
  * @param db 数据库实例
  */
 async function initializeTables(db: Database): Promise<void> {
+  // await db.execute(TABLE_DEFINITIONS.DROP)
   await db.execute(TABLE_DEFINITIONS.cards_base)
   await db.execute(TABLE_DEFINITIONS.card_prints)
   await db.execute(TABLE_DEFINITIONS.filter_options)

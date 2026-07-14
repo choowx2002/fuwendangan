@@ -46,7 +46,7 @@ export async function fetchAllCards(): Promise<CardBase[]> {
   const supabase = getSupabaseClient()
   const totalData: CardBase[] = []
   let page = 0
-  const pageSize = 1000
+  const pageSize = 500
   let hasMore = true
 
   while (hasMore) {
@@ -68,9 +68,11 @@ export async function fetchUpdatedCards(): Promise<CardBase[]> {
   const supabase = getSupabaseClient()
   const totalData: CardBase[] = []
   let page = 0
-  const pageSize = 1000
+  const pageSize = 500
   let hasMore = true
-  let latestAt = await getLatestUpdateCardTime()
+  // let latestAt = await getLatestUpdateCardTime()
+  let latestAt = null
+
   while (hasMore) {
     if (latestAt) {
       const { data, count, error } = await supabase
@@ -105,7 +107,8 @@ export async function fetchAllPrints(): Promise<CardPrint[]> {
   let page = 0
   const pageSize = 1000
   let hasMore = true
-  let latestAt = await getLatestUpdatePrintTime()
+  // let latestAt = await getLatestUpdatePrintTime()
+  let latestAt = null
   while (hasMore) {
     if (latestAt) {
       const { data, count, error } = await supabase

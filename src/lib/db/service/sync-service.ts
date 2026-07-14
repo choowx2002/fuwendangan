@@ -32,9 +32,12 @@ export async function initializeDatabase(): Promise<void> {
 
     const localVersion = await versionRepo.getVersion()
 
-    const remoteTime = new Date(remoteVersion.updated_at).getTime()
-    const localTime = localVersion ? new Date(localVersion.updated_at).getTime() : 0
-    const needsSync = remoteTime > localTime
+    let needsSync = true
+    if (localVersion) {
+      const remoteTime = new Date(remoteVersion.updated_at).getTime()
+      const localTime = localVersion ? new Date(localVersion.updated_at).getTime() : 0
+      needsSync = remoteTime > localTime
+    }
 
     if (needsSync) {
       console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
@@ -52,13 +55,30 @@ export async function initializeDatabase(): Promise<void> {
  * 执行数据同步
  */
 async function performSync(remoteVersion: any): Promise<void> {
+  console.log("[DB] 开始获取 cards")
   const cards = await remoteApi.fetchAllCards()
-  const prints = await remoteApi.fetchAllPrints()
-  const icons = await remoteApi.fetchAllIcons()
+  console.log("[DB] 结束获取 cards")
 
+  console.log("[DB] 开始获取 prints")
+  const prints = await remoteApi.fetchAllPrints()
+  console.log("[DB] 结束获取 prints")
+
+  console.log("[DB] 开始获取 icons")
+  const icons = await remoteApi.fetchAllIcons()
+  console.log("[DB] 结束获取 icons")
+
+  console.log("[DB] 开始同步 cards")
   await cardRepo.saveCards(cards)
+  console.log("[DB] 结束同步 cards")
+
+  console.log("[DB] 开始同步 prints")
   await printRepo.saveCardPrints(prints)
+  console.log("[DB] 结束同步 prints")
+
+  console.log("[DB] 开始同步 icons")
   await iconRepo.saveIcons(icons)
+  console.log("[DB] 结束同步 icons")
+
   await updateFilterOptions()
   await versionRepo.saveVersion(remoteVersion)
 

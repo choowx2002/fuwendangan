@@ -114,6 +114,7 @@
       }
 
       hasMore = displayedCards.length < result.total
+      console.log($state.snapshot(displayedCards))
       currentPage++
     } catch (e) {
       console.error('搜索失败:', e)

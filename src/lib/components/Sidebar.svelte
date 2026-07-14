@@ -18,7 +18,7 @@
     colorOptions,
     type colorValue,
     ttsState,
-    sidebarState
+    sidebarState,
   } from '../stores/ui-store.svelte'
   import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { showTTSFeatures } from '$lib/stores/settings'
@@ -71,7 +71,7 @@
     closeIfMobile()
   }
 
-onMount(() => {
+  onMount(() => {
     const handleResize = () => {
       // 3. 使用全局状态
       if (window.innerWidth < 767.99 && sidebarState.isMinimized) {
@@ -149,7 +149,9 @@ onMount(() => {
         }}
       >
         <item.icon size={18} strokeWidth={1.75} />
-        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>{item.label}</span>
+        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
+          >{item.label}</span
+        >
       </a>
     {/each}
   </nav>
@@ -169,7 +171,9 @@ onMount(() => {
         }}
       >
         <item.icon size={18} strokeWidth={1.75} />
-        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>{item.label}</span>
+        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
+          >{item.label}</span
+        >
       </a>
     {/each}
   </nav>

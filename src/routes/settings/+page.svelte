@@ -73,8 +73,8 @@
       // 2. 图片路径
       imagePath = await join(base, CARD_IMAGE)
 
-      const imageCacheSizeByte = await getImageDirSize()
-      imageCacheSize = formatBytes(imageCacheSizeByte)
+      // const imageCacheSizeByte = await getImageDirSize()
+      // imageCacheSize = formatBytes(imageCacheSizeByte)
 
       // 3. db 路径
       dbPath = appDir
@@ -390,12 +390,12 @@
       </div>
     </div>
 
-    <div class="setting-item">
+    <!-- <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">卡图缓存占用大小</span>
       </div>
       <span class="version-tag">{imageCacheSize}</span>
-    </div>
+    </div> -->
 
     <div class="db-actions">
       <button class="btn btn-danger-outline" disabled={onloadInfo} onclick={handleResetImageCache}>

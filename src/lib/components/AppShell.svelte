@@ -25,7 +25,11 @@
   })
 </script>
 
-<div class="app-shell" class:sidebar-open={isSidebarOpen} class:isMinimized={sidebarState.isMinimized}>
+<div
+  class="app-shell"
+  class:sidebar-open={isSidebarOpen}
+  class:isMinimized={sidebarState.isMinimized}
+>
   <Sidebar bind:isOpen={isSidebarOpen} />
 
   <div class="main-area">

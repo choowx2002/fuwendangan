@@ -18,8 +18,8 @@ export function setLoadStatus(status: LoadStatus, text?: string, subText?: strin
 }
 
 export const sidebarState = $state({
-  isMinimized: false
-});
+  isMinimized: false,
+})
 
 export function setProgressStatus(
   status: LoadStatus,
