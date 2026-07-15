@@ -79,23 +79,11 @@ export async function resetDatabase() {
   const db = await getDatabase()
 
   try {
-    await db.execute('BEGIN TRANSACTION')
-
-    await db.execute('PRAGMA foreign_keys = OFF')
-
-    for (const table of TABLE_LIST) {
-      await db.execute(`DELETE FROM "${table}"`)
-    }
-
+    await db.execute(TABLE_DEFINITIONS.DROP)
     // await db.execute('DELETE FROM sqlite_sequence')
-
-    await db.execute('PRAGMA foreign_keys = ON')
-
-    await db.execute('COMMIT')
 
     await initializeTables(db)
   } catch (err) {
-    await db.execute('ROLLBACK')
     throw err
   }
 }

@@ -42,16 +42,13 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
  * 批量保存卡图（使用事务）
  */
 export async function saveCardPrints(prints: CardPrint[]): Promise<void> {
-  const db = await getDatabase()
-  await db.execute('BEGIN TRANSACTION;')
+  await getDatabase()
 
   try {
     for (const print of prints) {
       await saveCardPrint(print)
     }
-    await db.execute('COMMIT;')
   } catch (error) {
-    await db.execute('ROLLBACK;')
     throw error
   }
 }

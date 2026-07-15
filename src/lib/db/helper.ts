@@ -183,7 +183,7 @@ export function buildSearchParams(
     }
   }
 
-  console.log('[buildSearchParams] 最终生成的 params:', params)
+  // console.log('[buildSearchParams] 最终生成的 params:', params)
   return params
 }
 

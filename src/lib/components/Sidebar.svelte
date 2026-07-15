@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { beforeNavigate, goto } from '$app/navigation'
+  import { goto } from '$app/navigation'
   import {
     LayoutDashboard,
     Library,
@@ -32,29 +32,6 @@
     { icon: Gamepad2, label: '模拟器', href: '/simulator' },
   ]
 
-  interface RouteConfig {
-    backTo: string | null
-    description: string
-  }
-
-  const routeBackConfig: Record<string, RouteConfig> = {
-    // 主页面
-    '/': { backTo: null, description: '首页 - 正常退出' },
-
-    // 二级页面
-    '/cards': { backTo: '/', description: '单卡库 → 首页' },
-    '/decks': { backTo: '/', description: '我的卡组 → 首页' },
-    '/collection': { backTo: '/', description: '收藏与闪卡 → 首页' },
-    '/simulator': { backTo: '/', description: '模拟器 → 首页' },
-
-    // 工具与设置
-    '/tools': { backTo: '/', description: '对战工具 → 首页' },
-    '/settings': { backTo: '/', description: '设置 → 首页' },
-
-    // 可以扩展嵌套页面
-    '/decks/builder': { backTo: '/decks', description: '编辑卡组 → 我的卡组' },
-  }
-
   const toolItems = [
     { icon: Wrench, label: '对战工具', href: '/tools' },
     { icon: Settings, label: '设置', href: '/settings' },
@@ -85,28 +62,6 @@
     }
   })
 
-  beforeNavigate(({ from, cancel, type, delta }) => {
-    // 核心判断：只有当导航类型是浏览器后退(popstate) 且 delta 为负数时才触发
-    const isBackward = type === 'popstate' && delta && delta < 0
-
-    if (isBackward && from && from.url) {
-      const currentPath = from.url.pathname
-      const config = routeBackConfig[currentPath]
-      if (config) {
-        cancel() // 拦截原有的后退
-
-        if (config.backTo === null) {
-          // 如果当前已经在 '/' 首页，或者配置的 backTo 是 null（代表正常退出）
-          // 此时让浏览器继续正常的后退行为（退出你的应用/返回上一个网站）
-          return
-        }
-
-        // 如果有指定的返回页面（比如从 /decks/builder 回到 /decks）
-        // 使用 replaceState: true，避免污染历史记录栈
-        goto(config.backTo, { replaceState: true })
-      }
-    }
-  })
   const colorMap: Record<colorValue, string> = {
     Black: 'rgb(0,0,0)',
     Red: 'rgb(218,26,24)',

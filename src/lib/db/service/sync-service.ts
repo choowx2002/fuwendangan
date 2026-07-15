@@ -55,29 +55,29 @@ export async function initializeDatabase(): Promise<void> {
  * 执行数据同步
  */
 async function performSync(remoteVersion: any): Promise<void> {
-  console.log("[DB] 开始获取 cards")
+  console.log('[DB] 开始获取 cards')
   const cards = await remoteApi.fetchAllCards()
-  console.log("[DB] 结束获取 cards")
+  console.log('[DB] 结束获取 cards')
 
-  console.log("[DB] 开始获取 prints")
+  console.log('[DB] 开始获取 prints')
   const prints = await remoteApi.fetchAllPrints()
-  console.log("[DB] 结束获取 prints")
+  console.log('[DB] 结束获取 prints')
 
-  console.log("[DB] 开始获取 icons")
+  console.log('[DB] 开始获取 icons')
   const icons = await remoteApi.fetchAllIcons()
-  console.log("[DB] 结束获取 icons")
+  console.log('[DB] 结束获取 icons')
 
-  console.log("[DB] 开始同步 cards")
+  console.log('[DB] 开始同步 cards')
   await cardRepo.saveCards(cards)
-  console.log("[DB] 结束同步 cards")
+  console.log('[DB] 结束同步 cards')
 
-  console.log("[DB] 开始同步 prints")
+  console.log('[DB] 开始同步 prints')
   await printRepo.saveCardPrints(prints)
-  console.log("[DB] 结束同步 prints")
+  console.log('[DB] 结束同步 prints')
 
-  console.log("[DB] 开始同步 icons")
+  console.log('[DB] 开始同步 icons')
   await iconRepo.saveIcons(icons)
-  console.log("[DB] 结束同步 icons")
+  console.log('[DB] 结束同步 icons')
 
   await updateFilterOptions()
   await versionRepo.saveVersion(remoteVersion)

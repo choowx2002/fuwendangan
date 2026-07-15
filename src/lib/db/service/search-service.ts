@@ -24,9 +24,9 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     whereClauses.push(`(
       ${TABLES.CARDS_BASE}.card_name_cn LIKE ? OR ${TABLES.CARDS_BASE}.card_name_en LIKE ? OR
       ${TABLES.CARDS_BASE}.effect_cn LIKE ? OR ${TABLES.CARDS_BASE}.champion_tag LIKE ? OR ${TABLES.CARDS_BASE}.effect_en LIKE ?
-      OR ${TABLES.CARDS_BASE}.sub_title_cn LIKE ?
+      OR ${TABLES.CARDS_BASE}.sub_title_cn LIKE ? OR ${TABLES.CARDS_BASE}.card_no LIKE ?
     )`)
-    queryParams.push(safeText, safeText, safeText, safeText, safeText, safeText)
+    queryParams.push(safeText, safeText, safeText, safeText, safeText, safeText, safeText)
   }
 
   // 2. 数组字段过滤
@@ -109,6 +109,15 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
         }
       }
     }
+  }
+
+  if (params.champion_tag && params.champion_tag.trim() !== '') {
+    const safeText = `%${params.champion_tag.trim()}%`
+    whereClauses.push(`(
+      COALESCE(${TABLES.CARDS_BASE}.card_category, '') NOT LIKE '专属%' 
+      OR ${TABLES.CARDS_BASE}.champion_tag LIKE ?
+    )`)
+    queryParams.push(safeText)
   }
 
   const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''

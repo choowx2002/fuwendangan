@@ -3,6 +3,7 @@
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
   import { sidebarState } from '../stores/ui-store.svelte'
+  import { page } from '$app/state'
   let { children } = $props()
   let isSidebarOpen = $state(false)
   let isMobile = $state(false)
@@ -23,17 +24,22 @@
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   })
+
+  let isNotShowBothPage = $derived(['/decks/builder'].includes(page.url.pathname))
 </script>
 
 <div
   class="app-shell"
   class:sidebar-open={isSidebarOpen}
   class:isMinimized={sidebarState.isMinimized}
+  class:fullPage={isNotShowBothPage}
 >
-  <Sidebar bind:isOpen={isSidebarOpen} />
+  {#if !isNotShowBothPage}
+    <Sidebar bind:isOpen={isSidebarOpen} />
+  {/if}
 
   <div class="main-area">
-    {#if isMobile}
+    {#if isMobile && !isNotShowBothPage}
       <Topbar bind:isSidebarOpen />
     {/if}
     <main class="content">
@@ -72,6 +78,10 @@
 
     .isMinimized .main-area {
       margin-left: 64px;
+    }
+
+    .fullPage .main-area {
+      margin-left: 0;
     }
   }
 

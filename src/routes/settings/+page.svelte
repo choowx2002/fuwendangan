@@ -16,7 +16,7 @@
   import { getVersion } from '@tauri-apps/api/app'
   import { isMobile } from '$lib/services/os-serives'
   import { ask, message } from '@tauri-apps/plugin-dialog'
-  import { readDir } from '@tauri-apps/plugin-fs'
+  // import { readDir } from '@tauri-apps/plugin-fs'
   import LoadingModal from '$lib/components/LoadingModal.svelte'
 
   // import { invoke } from '@tauri-apps/api/core';

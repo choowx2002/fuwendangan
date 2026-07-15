@@ -15,7 +15,8 @@
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount } from 'svelte'
   import SortModal from './SortModal.svelte'
-  import { beforeNavigate } from '$app/navigation'
+  import { page } from '$app/state'
+
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---
   let {
@@ -23,18 +24,24 @@
     deckCards = [], // 当前卡组卡牌（用于 Deck Builder 显示数量）
     showDeckCount = false, // 是否显示卡组中已有的数量
     displayedCards = $bindable<CardBase[]>([]),
+    isFilterOpen = $bindable(false),
+    zone = $bindable('legend'),
   }: {
     onCardClick?: (arg0: cardAndPrint) => void
     deckCards?: cardAndPrint[]
     showDeckCount?: boolean
     displayedCards?: CardBase[]
+    isFilterOpen?: boolean
+    zone?: string
   } = $props()
 
   // --- 基础状态 ---
   let filterOptions = $state<FilterOptions | null>(null)
   let activeFilters = $state<ActiveFilter[]>([])
   let currentSearchText = $state('')
-  let isFilterOpen = $state(false)
+  let champion_tag = $state('')
+  let showZone = $state(false)
+
   let energy = $state<NumberRange>({ min: 0, max: 12 })
   let power = $state<NumberRange>({ min: 0, max: 12 })
   let return_energy = $state<NumberRange>({ min: 0, max: 4 })
@@ -94,6 +101,7 @@
     }
 
     try {
+      // console.log($state.snapshot(activeFilters))
       const params = buildSearchParams(
         activeFilters,
         currentSearchText,
@@ -105,7 +113,7 @@
         power
       )
 
-      const result = await searchCards(params)
+      const result = await searchCards({ ...params, champion_tag })
       totalCards = result.total
       if (isLoadMore) {
         displayedCards = [...displayedCards, ...result.data]
@@ -114,7 +122,6 @@
       }
 
       hasMore = displayedCards.length < result.total
-      console.log($state.snapshot(displayedCards))
       currentPage++
     } catch (e) {
       console.error('搜索失败:', e)
@@ -176,6 +183,11 @@
   }
 
   onMount(() => {
+    if (['/decks/builder'].includes(page.url.pathname)) {
+      showZone = true
+      changeZone('legend')
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.key.toLowerCase() === 'f') {
         event.preventDefault()
@@ -205,16 +217,149 @@
     return count
   })
 
-  beforeNavigate(({ cancel }) => {
-    if (isFilterOpen) {
-      isFilterOpen = false
-      cancel()
+  let previousZone = $state(zone)
+
+  $effect(() => {
+    if (zone !== previousZone) {
+      const needFilter = !(
+        [previousZone, zone].includes('mainDeck') && [previousZone, zone].includes('sideboard')
+      )
+
+      if (needFilter) {
+        addZoneFilter(zone)
+      }
+
+      const targetElement = document.getElementById(`zone-${zone}`)
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+
+      previousZone = zone
     }
   })
+
+  function changeZone(z: string, e?: MouseEvent) {
+    if (zone === z) return
+
+    if (e) {
+      const button = e.currentTarget as HTMLElement
+      button.scrollIntoView({
+        behavior: 'smooth',
+        inline: 'center',
+        block: 'nearest',
+      })
+    }
+
+    zone = z
+  }
+
+  function addZoneFilter(z: string) {
+    handleClearFilter()
+    currentSearchText = ''
+    champion_tag = ''
+    switch (z) {
+      case 'legend':
+        activeFilters.push({ type: 'card_category', value: '传奇', mode: 'require' })
+        break
+      case 'champion': {
+        activeFilters.push({ type: 'card_category', value: '英雄单位', mode: 'require' })
+        const legend = deckCards.find((c) => c.card_category === '传奇')
+        if (legend && legend?.champion_tag) {
+          currentSearchText = legend.champion_tag
+          legend.card_color_list?.forEach((color) => {
+            activeFilters.push({ type: 'card_color_list', value: color, mode: 'include' })
+          })
+        }
+        break
+      }
+
+      case 'mainDeck':
+      case 'sideboard': {
+        activeFilters.push(
+          { type: 'card_category', value: '英雄单位', mode: 'include' },
+          { type: 'card_category', value: '单位', mode: 'include' },
+          { type: 'card_category', value: '法术', mode: 'include' },
+          { type: 'card_category', value: '装备', mode: 'include' },
+          { type: 'card_category', value: '专属单位', mode: 'include' },
+          { type: 'card_category', value: '专属法术', mode: 'include' },
+          { type: 'card_category', value: '专属装备', mode: 'include' }
+        )
+        const legend = deckCards.find((c) => c.card_category === '传奇')
+        if (legend && legend?.champion_tag) {
+          champion_tag = legend.champion_tag
+          legend.card_color_list?.forEach((color) => {
+            activeFilters.push({ type: 'card_color_list', value: color, mode: 'include' })
+          })
+        }
+        break
+      }
+
+      case 'battlefields':
+        activeFilters.push({ type: 'card_category', value: '战场', mode: 'require' })
+        break
+
+      case 'runes':
+        {
+          activeFilters.push({ type: 'card_category', value: '符文', mode: 'require' })
+          const legend = deckCards.find((c) => c.card_category === '传奇')
+          if (legend) {
+            legend.card_color_list?.forEach((color) => {
+              activeFilters.push({ type: 'card_color_list', value: color, mode: 'include' })
+            })
+          }
+        }
+        break
+
+      default:
+        break
+    }
+
+    performSearch()
+  }
 </script>
 
 <div class="card-pool-wrapper">
   <header class="search-header">
+    {#if showZone}
+      <div class="deck-zone-tabs">
+        <button
+          class:active={zone === 'legend'}
+          onclick={(e) => {
+            changeZone('legend', e)
+          }}>传奇</button
+        >
+        <button
+          class:active={zone === 'champion'}
+          onclick={(e) => {
+            changeZone('champion', e)
+          }}>选定英雄</button
+        >
+        <button
+          class:active={zone === 'mainDeck'}
+          onclick={(e) => {
+            changeZone('mainDeck', e)
+          }}>主牌堆</button
+        >
+        <button
+          class:active={zone === 'battlefields'}
+          onclick={(e) => {
+            changeZone('battlefields', e)
+          }}>战场</button
+        >
+        <button
+          class:active={zone === 'runes'}
+          onclick={(e) => {
+            changeZone('runes', e)
+          }}>符文</button
+        >
+        <button
+          class:active={zone === 'sideboard'}
+          onclick={(e) => {
+            changeZone('sideboard', e)
+          }}>备牌</button
+        >
+      </div>
+    {/if}
     <div class="search-wrapper">
       <SearchBar
         {filterOptions}
@@ -246,6 +391,7 @@
             class:isBanned={card.is_banned}
             role="presentation"
             onclick={() => handleCardClick(card as any)}
+            style="position: relative;"
           >
             <CardItem {card} />
             {#if showDeckCount}
@@ -297,6 +443,34 @@
 </div>
 
 <style>
+  .deck-zone-tabs {
+    width: 100%;
+    display: flex;
+    overflow: hidden;
+    overflow-x: auto;
+    gap: 5px;
+  }
+
+  .deck-zone-tabs > button {
+    all: unset;
+    text-transform: uppercase;
+    font-weight: bolder;
+    background-color: var(--bg-secondary);
+    padding: 8px 12px;
+    font-size: var(--text-lg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    word-break: keep-all;
+    transition: all 0.15s;
+    box-shadow: 0 4px 8px 0px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+  }
+
+  .deck-zone-tabs > button.active {
+    color: var(--bg-secondary);
+    background-color: var(--accent-color);
+  }
+
   .card-pool-wrapper {
     display: flex;
     flex-direction: column;
@@ -318,7 +492,8 @@
   .search-header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    column-gap: 16px;
+    row-gap: 10px;
     padding-bottom: 12px;
     flex-shrink: 0;
     flex-wrap: wrap;

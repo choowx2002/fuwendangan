@@ -55,16 +55,13 @@ export async function saveCard(card: CardBase): Promise<void> {
  * 批量保存卡牌（使用事务）
  */
 export async function saveCards(cards: CardBase[]): Promise<void> {
-  const db = await getDatabase()
-  await db.execute('BEGIN TRANSACTION;')
+  await getDatabase()
 
   try {
     for (const card of cards) {
       await saveCard(card)
     }
-    await db.execute('COMMIT;')
   } catch (error) {
-    await db.execute('ROLLBACK;')
     throw error
   }
 }

@@ -2,9 +2,10 @@
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import type { CardBase, CardPrint } from '$lib/db/types'
-  import { beforeNavigate } from '$app/navigation'
+  import { beforeNavigate, goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import { GripVertical, LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
+  import { ask } from '@tauri-apps/plugin-dialog'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
 
@@ -22,6 +23,7 @@
   // --- 核心：未保存修改标记 (Dirty State) ---
   let isDirty = $state(false)
   let isSaving = $state(false)
+  let confirmBack = $state(false)
 
   // --- 拖拽调整宽度状态 ---
   let rightPanelWidth = $state(50)
@@ -34,8 +36,8 @@
     legend: { name: 'Legend', maxCount: 1 },
     champion: { name: 'Champion', maxCount: 1 },
     mainDeck: { name: 'MainDeck', maxCount: 39 },
-    battlefield: { name: 'Battlefields', maxCount: 3 },
-    rune: { name: 'Runes', maxCount: 12 },
+    battlefields: { name: 'Battlefields', maxCount: 3 },
+    runes: { name: 'Runes', maxCount: 12 },
     sideboard: { name: 'Sideboard', maxCount: 8 },
   } as const
 
@@ -65,24 +67,26 @@
     return Array.from(map.values())
   }
 
-  beforeNavigate((navigation) => {
+  beforeNavigate(async (navigation) => {
+    if (confirmBack) {
+      return
+    }
+
     if (isDirty) {
-      const confirmed = confirm('您有未保存的卡组修改，离开将丢失这些更改。确定要离开吗？')
-      if (!confirmed) {
-        navigation.cancel()
+      navigation.cancel()
+      const confirmed = await ask('您有未保存的卡组修改，离开将丢失这些更改。确定要离开吗？', {
+        kind: 'warning',
+        okLabel: '确定',
+        cancelLabel: '继续编辑',
+      })
+      if (confirmed) {
+        confirmBack = confirmed
+        goto('/decks')
       }
     }
   })
 
   onMount(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (isDirty) {
-        event.preventDefault()
-        event.returnValue = ''
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
     const updateContainerWidth = () => {
       containerWidth = window.innerWidth
     }
@@ -90,7 +94,6 @@
     window.addEventListener('resize', updateContainerWidth)
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('resize', updateContainerWidth)
     }
   })
@@ -109,10 +112,10 @@
       case 'mainDeck':
         currentCount = mainDeckCards.length
         break
-      case 'battlefield':
+      case 'battlefields':
         currentCount = battlefieldCards.length
         break
-      case 'rune':
+      case 'runes':
         currentCount = runeCards.length
         break
       case 'sideboard':
@@ -160,7 +163,8 @@
     }
 
     const capacityError = checkZoneCapacity(selectedZone)
-    if (capacityError) {
+    const isReplacable = ['legend', 'champion'].includes(selectedZone)
+    if (capacityError && !isReplacable) {
       alert(capacityError)
       return
     }
@@ -179,18 +183,19 @@
 
     switch (selectedZone) {
       case 'legend':
-        legendCards = [...legendCards, card]
+        legendCards = [card]
+        selectedZone = 'champion'
         break
       case 'champion':
-        championCards = [...championCards, card]
+        championCards = [card]
         break
       case 'mainDeck':
         mainDeckCards = [...mainDeckCards, card]
         break
-      case 'battlefield':
+      case 'battlefields':
         battlefieldCards = [...battlefieldCards, card]
         break
-      case 'rune':
+      case 'runes':
         runeCards = [...runeCards, card]
         break
       case 'sideboard':
@@ -212,10 +217,10 @@
       case 'mainDeck':
         targetArray = mainDeckCards
         break
-      case 'battlefield':
+      case 'battlefields':
         targetArray = battlefieldCards
         break
-      case 'rune':
+      case 'runes':
         targetArray = runeCards
         break
       case 'sideboard':
@@ -237,10 +242,10 @@
         case 'mainDeck':
           mainDeckCards = mainDeckCards.toSpliced(index, 1)
           break
-        case 'battlefield':
+        case 'battlefields':
           battlefieldCards = battlefieldCards.toSpliced(index, 1)
           break
-        case 'rune':
+        case 'runes':
           runeCards = runeCards.toSpliced(index, 1)
           break
         case 'sideboard':
@@ -299,10 +304,6 @@
   }
 </script>
 
-<!-- ============================================
-     SNIPPET: 卡牌项组件 (参考图片样式)
-     横向布局：图片 | 名称+ID | 数量
-============================================ -->
 {#snippet cardItem(
   group: { card: cardAndPrint; count: number },
   zone: ZoneKey,
@@ -328,7 +329,12 @@
 <div class="deck-builder-layout">
   <!-- 左侧：卡池 -->
   <main class="card-pool-panel">
-    <CardPool onCardClick={handleAddCard} deckCards={getAllDeckCards()} showDeckCount={true} />
+    <CardPool
+      onCardClick={handleAddCard}
+      deckCards={getAllDeckCards()}
+      showDeckCount={true}
+      bind:zone={selectedZone}
+    />
   </main>
 
   <!-- 中间：拖拽手柄 -->
@@ -368,26 +374,6 @@
       </button>
     </div>
 
-    <div class="zone-selector">
-      <span class="selector-label">当前添加区域:</span>
-      <select bind:value={selectedZone} class="zone-select">
-        <option value="legend">Legend ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</option>
-        <option value="champion"
-          >Champion ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</option
-        >
-        <option value="mainDeck"
-          >MainDeck ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</option
-        >
-        <option value="battlefield"
-          >Battlefields ({battlefieldCards.length}/{ZONE_CONFIG.battlefield.maxCount})</option
-        >
-        <option value="rune">Runes ({runeCards.length}/{ZONE_CONFIG.rune.maxCount})</option>
-        <option value="sideboard"
-          >Sideboard ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</option
-        >
-      </select>
-    </div>
-
     {#if isDirty}
       <div class="unsaved-warning">
         <TriangleAlert size={14} />
@@ -395,13 +381,11 @@
       </div>
     {/if}
 
-    <h2 class="deck-title">卡牌列表 ({getTotalCount()})</h2>
-
     <div class="zones-container">
       <!-- Legend Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name">Legend ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span>
+          <span class="zone-name">传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span>
         </div>
         <div class="zone-list">
           {#each groupCards(legendCards) as group}
@@ -416,7 +400,7 @@
       <div class="zone-section">
         <div class="zone-header">
           <span class="zone-name"
-            >Champion ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
+            >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
           >
         </div>
         <div class="zone-list">
@@ -432,7 +416,7 @@
       <div class="zone-section">
         <div class="zone-header">
           <span class="zone-name"
-            >MainDeck ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</span
+            >主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</span
           >
         </div>
         <div class="zone-list">
@@ -448,12 +432,12 @@
       <div class="zone-section">
         <div class="zone-header">
           <span class="zone-name"
-            >Battlefields ({battlefieldCards.length}/{ZONE_CONFIG.battlefield.maxCount})</span
+            >战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})</span
           >
         </div>
         <div class="zone-list">
           {#each groupCards(battlefieldCards) as group}
-            {@render cardItem(group, 'battlefield', handleRemoveOneCard)}
+            {@render cardItem(group, 'battlefields', handleRemoveOneCard)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -463,11 +447,11 @@
       <!-- Runes Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name">Runes ({runeCards.length}/{ZONE_CONFIG.rune.maxCount})</span>
+          <span class="zone-name">符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span>
         </div>
         <div class="zone-list">
           {#each groupCards(runeCards) as group}
-            {@render cardItem(group, 'rune', handleRemoveOneCard)}
+            {@render cardItem(group, 'runes', handleRemoveOneCard)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -478,7 +462,7 @@
       <div class="zone-section">
         <div class="zone-header">
           <span class="zone-name"
-            >Sideboard ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</span
+            >备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</span
           >
         </div>
         <div class="zone-list">
@@ -502,9 +486,9 @@
   }
 
   @media (max-width: 767.99px) {
-    .deck-builder-layout {
+    /* .deck-builder-layout {
       padding: 24px 16px;
-    }
+    } */
   }
 
   .deck-panel {
@@ -618,6 +602,10 @@
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 
+  .zone-list:has(> .empty-zone) {
+    display: block;
+  }
+
   /* 卡牌项容器：作为相对定位的基准 */
   .card-item {
     position: relative;
@@ -633,8 +621,8 @@
   }
 
   .card-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    /* transform: translateY(-2px); */
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
   }
 
   .card-item:active {
@@ -652,9 +640,9 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: 50% 25%;
-    transform: scale(1.25);
-    opacity: 0.85;
+    object-position: 15px 16%;
+    transform: scale(1.05);
+    opacity: 1;
     /* 可选：如果原图分辨率不高，放大后会有锯齿，加 1px 模糊会让背景更柔和自然 */
     /* filter: blur(1px); */
   }
@@ -724,12 +712,13 @@
 
   /* 空状态样式保持 */
   .empty-zone {
-    color: #6b7280;
+    width: 100%;
+    color: var(--text-secondary);
     text-align: center;
     padding: 24px 1rem;
     font-size: 13px;
     font-style: italic;
-    background: var(--bg-secondary, #f9fafb);
+    background: var(--bg-primary);
     border-radius: 6px;
   }
 
