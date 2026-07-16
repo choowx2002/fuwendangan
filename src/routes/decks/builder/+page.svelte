@@ -1,13 +1,14 @@
-<!-- src/routes/decks/builder/+page.svelte -->
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import type { CardBase, CardPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
   import { onMount } from 'svelte'
-  import { GripVertical, LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { CircleAlert, GripVertical, LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
+  import { ask, message } from '@tauri-apps/plugin-dialog'
+  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import { validateDeck } from '$lib/decks/deck-validator'
 
-  type cardAndPrint = CardBase & { card_prints: CardPrint[] }
+  type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
   // --- 卡组状态：六个区域 ---
   let legendCards = $state<cardAndPrint[]>([])
@@ -53,6 +54,19 @@
       ...sideboardCards,
     ]
   }
+
+  let deckIssues = $derived(
+    validateDeck({
+      legendCards,
+      championCards,
+      mainDeckCards,
+      battlefieldCards,
+      runeCards,
+      sideboardCards,
+    })
+  )
+
+  let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
 
   function groupCards(cards: cardAndPrint[]) {
     const map = new Map<string, { card: cardAndPrint; count: number }>()
@@ -134,7 +148,7 @@
   function checkNameSubtitleLimit(card: cardAndPrint, targetZone: ZoneKey): string | null {
     const checkedZones: ZoneKey[] = ['champion', 'mainDeck', 'sideboard']
     if (!checkedZones.includes(targetZone)) return null
-
+    if ((card.card_name_cn ?? '') + (card.sub_title_cn ?? '') === '小蜘蛛') return null
     const cardIdentifier = `${card.card_name_cn || ''}|${card.sub_title_cn || ''}`
     const currentTotalCount = [...championCards, ...mainDeckCards, ...sideboardCards].filter(
       (c) => `${c.card_name_cn || ''}|${c.sub_title_cn || ''}` === cardIdentifier
@@ -158,28 +172,34 @@
 
   function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
-      alert('该卡牌为禁卡，无法加入卡组！')
+      message('该卡牌为禁卡，无法加入卡组！')
       return
     }
 
     const capacityError = checkZoneCapacity(selectedZone)
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
-    if (capacityError && !isReplacable) {
-      alert(capacityError)
-      return
-    }
+    // if (capacityError && !isReplacable) {
+    //   message(capacityError)
+    //   return
+    // }
 
-    const nameLimitError = checkNameSubtitleLimit(card, selectedZone)
-    if (nameLimitError) {
-      alert(nameLimitError)
-      return
-    }
+    // const nameLimitError = checkNameSubtitleLimit(card, selectedZone)
+    // if (nameLimitError) {
+    //   message(nameLimitError)
+    //   return
+    // }
 
-    const weiWoError = checkWeiWoLimit(card)
-    if (weiWoError) {
-      alert(weiWoError)
-      return
-    }
+    // const weiWoError = checkWeiWoLimit(card)
+    // if (weiWoError) {
+    //   message(weiWoError)
+    //   return
+    // }
+
+    let defaultPrint =
+      card.card_prints?.find((p) => p.is_default) ??
+      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
+
+    if (defaultPrint?.id) card.selectedPrints = defaultPrint.id
 
     switch (selectedZone) {
       case 'legend':
@@ -188,6 +208,7 @@
         break
       case 'champion':
         championCards = [card]
+        selectedZone = 'mainDeck'
         break
       case 'mainDeck':
         mainDeckCards = [...mainDeckCards, card]
@@ -261,10 +282,10 @@
     try {
       await new Promise((resolve) => setTimeout(resolve, 800))
       isDirty = false
-      alert('卡组保存成功！')
+      message('卡组保存成功！')
     } catch (error) {
       console.error('保存失败:', error)
-      alert('保存失败，请重试')
+      message('保存失败，请重试')
     } finally {
       isSaving = false
     }
@@ -311,10 +332,15 @@
 )}
   <div role="presentation" class="card-item" onclick={() => onRemove(group.card.id, zone)}>
     <div class="card-image">
-      <img
-        src={group.card.card_prints[0]?.img_cdn || '/placeholder-card.png'}
-        alt={group.card.card_name_cn}
-      />
+      {#if group.card.selectedPrints}
+        {@const defaultPrint = group.card.card_prints.find(
+          (p) => p.id === group.card.selectedPrints
+        )}
+        <CardSimpleImage
+          url={defaultPrint?.img_cdn}
+          name={`${group.card.id}-${defaultPrint!.id || 'default'}`}
+        />
+      {/if}
     </div>
     <div class="card-info">
       <div class="card-name">{group.card.card_name_cn}</div>
@@ -362,8 +388,9 @@
       <button
         class="save-btn"
         onclick={handleSave}
-        disabled={isSaving || !isDirty}
-        class:is-dirty={isDirty}
+        disabled={isSaving || !isDirty || hasErrors}
+        class:is-dirty={isDirty && !hasErrors}
+        class:has-errors={hasErrors}
       >
         {#if isSaving}
           <LoaderCircle class="animate-spin" size={16} />
@@ -372,20 +399,37 @@
         {/if}
         <span>保存</span>
       </button>
+      {#if hasErrors}
+        <div class="error-info-container">
+          <CircleAlert size={25} color={'#dc2626'} />
+          <div class="issues-panel">
+            <div class="issues-header">
+              <TriangleAlert size={16} class="text-red-500" />
+              <span>卡组校验未通过 ({deckIssues.length} 个问题)</span>
+            </div>
+            <ul class="issues-list">
+              {#each deckIssues as issue}
+                <li class="issue-item" class:error={issue.severity === 'error'}>
+                  <span class="issue-icon">
+                    {#if issue.severity === 'error'}✕
+                    {:else}⚠{/if}
+                  </span>
+                  <span class="issue-text">{@html issue.message}</span>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        </div>
+      {/if}
     </div>
-
-    {#if isDirty}
-      <div class="unsaved-warning">
-        <TriangleAlert size={14} />
-        <span>有未保存的修改</span>
-      </div>
-    {/if}
 
     <div class="zones-container">
       <!-- Legend Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name">传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span>
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
+            >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
+          >
         </div>
         <div class="zone-list">
           {#each groupCards(legendCards) as group}
@@ -399,7 +443,7 @@
       <!-- Champion Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name"
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
             >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
           >
         </div>
@@ -415,7 +459,7 @@
       <!-- MainDeck Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name"
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}
             >主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</span
           >
         </div>
@@ -431,7 +475,10 @@
       <!-- Battlefields Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name"
+          <span
+            class="zone-name"
+            role="presentation"
+            onclick={() => (selectedZone = 'battlefields')}
             >战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})</span
           >
         </div>
@@ -447,7 +494,9 @@
       <!-- Runes Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name">符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span>
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
+            >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
+          >
         </div>
         <div class="zone-list">
           {#each groupCards(runeCards) as group}
@@ -461,7 +510,7 @@
       <!-- Sideboard Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name"
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'sideboard')}
             >备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</span
           >
         </div>
@@ -478,6 +527,72 @@
 </div>
 
 <style>
+  .error-info-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+  }
+
+  .error-info-container:hover > .issues-panel,
+  .issues-panel:hover {
+    display: block;
+  }
+
+  .issues-panel {
+    padding: 0;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    background: #fef2f2;
+    position: absolute;
+    right: -5px;
+    z-index: 99999;
+    width: min(300px, 100vw);
+    top: 100%;
+    padding-top: 5px;
+    display: none;
+  }
+
+  .issues-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 1rem;
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: #991b1b; /* 深红色文字 */
+    border-bottom: 1px solid #fecaca;
+  }
+
+  .issues-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .issue-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: var(--text-base);
+    color: #7f1d1d;
+    line-height: 1.4;
+  }
+
+  .issue-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-weight: bold;
+  }
+
+  .issue-item.error .issue-icon {
+    color: #dc2626;
+  }
+
   .deck-builder-layout {
     margin: 0 auto;
     display: flex;
@@ -573,6 +688,12 @@
     flex: 1;
     overflow-y: auto;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .zones-container > .zone-section:nth-child(n + 3) {
+    grid-column: 1 / -1;
   }
 
   .zone-section {
@@ -591,6 +712,7 @@
 
   .zone-name {
     color: var(--text-primary);
+    cursor: pointer;
   }
 
   /* 列表容器调整间距 */
@@ -636,7 +758,7 @@
     z-index: 1;
   }
 
-  .card-image img {
+  :global(.card-image img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -789,5 +911,15 @@
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  }
+
+  .save-btn.has-errors {
+    background: #ef4444; /* 红色 */
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+
+  .save-btn.has-errors:hover {
+    background: #ef4444;
   }
 </style>

@@ -113,8 +113,10 @@
 
   <div class="divider"></div>
 
-  <nav class="nav-section willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>
-    <div class="section-title">工具与设置</div>
+  <nav class="nav-section">
+    <div class="section-title willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>
+      工具与设置
+    </div>
     {#each toolItems as item}
       <a
         href={item.href}
@@ -197,16 +199,25 @@
   .workspace {
     display: flex;
     align-items: center;
-    gap: 8px;
     font-weight: 600;
     font-size: var(--text-base);
+    /* 添加平滑隐藏支持 */
+    overflow: hidden;
+    max-width: 150px;
+    opacity: 1;
+    transition:
+      max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.2s ease;
+  }
+
+  .workspace.isHidden {
+    max-width: 0;
+    opacity: 0;
   }
 
   .workspace-icon {
     width: 100%;
     height: 22px;
-    /*background: var(--accent-color);*/
-    /*color: white;*/
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
@@ -242,14 +253,30 @@
   .section-title {
     font-size: var(--text-sm);
     color: var(--text-tertiary);
-    padding: 8px 12px 4px;
     font-weight: 500;
+    /* 添加平滑隐藏支持 */
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: 1;
+    max-width: 120px;
+    padding: 8px 12px 4px;
+    transition:
+      max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.2s ease,
+      padding-left 0.25s ease,
+      padding-right 0.25s ease;
+  }
+
+  .section-title.isHidden {
+    opacity: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
     padding: 6px 12px;
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
@@ -272,6 +299,34 @@
     background: var(--bg-active);
     color: var(--text-primary);
     font-weight: 500;
+  }
+
+  .willHidden {
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: 1;
+    max-width: 120px;
+    transition:
+      max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.2s ease;
+  }
+
+  .nav-item .willHidden {
+    margin-left: 10px;
+    transition:
+      max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.2s ease,
+      margin-left 0.25s ease;
+  }
+
+  /* 隐藏状态 */
+  .isHidden {
+    opacity: 0;
+    max-width: 0;
+  }
+
+  .nav-item .isHidden {
+    margin-left: 0;
   }
 
   .tts-info {
@@ -309,22 +364,6 @@
     justify-content: center;
     font-size: var(--text-sm);
     color: var(--text-primary);
-  }
-
-  .willHidden {
-    transition:
-      width 0.2s ease,
-      opacity 0.2s ease,
-      display 0s 0.2s ease;
-    opacity: 1;
-    max-width: 999px;
-  }
-
-  .isHidden {
-    opacity: 0;
-    max-width: 0;
-    display: none;
-    overflow: hidden;
   }
 
   @media (min-width: 767.99px) {

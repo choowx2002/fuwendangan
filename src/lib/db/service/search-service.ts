@@ -30,7 +30,14 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   }
 
   // 2. 数组字段过滤
-  const arrayFields = ['region', 'tag', 'keyword', 'advanced_tag', 'card_color_list'] as const
+  const arrayFields = [
+    'region',
+    'tag',
+    'keyword',
+    'advanced_tag',
+    'card_color_list',
+    'card_category',
+  ] as const
 
   for (const field of arrayFields) {
     const filterParam = params[field] as
@@ -65,7 +72,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   }
 
   // 3. 文本字段精确过滤
-  const textFields = ['card_category', 'series_name', 'rarity_name'] as const
+  const textFields = ['series_name', 'rarity_name'] as const
   for (const field of textFields) {
     const filterParam = params[field] as
       { include?: string[]; must?: string[]; exclude?: string[] } | undefined
@@ -114,7 +121,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   if (params.champion_tag && params.champion_tag.trim() !== '') {
     const safeText = `%${params.champion_tag.trim()}%`
     whereClauses.push(`(
-      COALESCE(${TABLES.CARDS_BASE}.card_category, '') NOT LIKE '专属%' 
+      COALESCE(${TABLES.CARDS_BASE}.card_category, '') NOT LIKE '%专属%' 
       OR ${TABLES.CARDS_BASE}.champion_tag LIKE ?
     )`)
     queryParams.push(safeText)

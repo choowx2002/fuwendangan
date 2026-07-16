@@ -200,8 +200,13 @@
                   {/if}
                 {/each}
               {/if}
-              {#if card.card_category}
-                <span class="chip">{card.card_category}</span>
+
+              {#if card.card_category && card.card_category.length > 0}
+                {#each card.card_category as t (t)}
+                  {#if t !== 'colorless'}
+                    <span class="chip">{card.card_category}</span>
+                  {/if}
+                {/each}
               {/if}
 
               {#if card.champion_tag}

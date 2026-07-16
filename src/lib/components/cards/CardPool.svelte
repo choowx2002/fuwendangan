@@ -13,7 +13,7 @@
   } from '$lib/db/types'
   import { LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
   import { buildSearchParams } from '$lib/db/helper'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
 
@@ -101,7 +101,6 @@
     }
 
     try {
-      // console.log($state.snapshot(activeFilters))
       const params = buildSearchParams(
         activeFilters,
         currentSearchText,
@@ -122,6 +121,15 @@
       }
 
       hasMore = displayedCards.length < result.total
+
+      await tick()
+      if (displayedCards.length > 0 && currentPage == 1) {
+        const firstItem = document.getElementById(displayedCards[0].id)
+        if (firstItem) {
+          firstItem.scrollIntoView({ behavior: 'smooth' })
+        }
+      }
+
       currentPage++
     } catch (e) {
       console.error('搜索失败:', e)
@@ -263,7 +271,7 @@
         break
       case 'champion': {
         activeFilters.push({ type: 'card_category', value: '英雄单位', mode: 'require' })
-        const legend = deckCards.find((c) => c.card_category === '传奇')
+        const legend = deckCards.find((c) => c.card_category?.includes('传奇'))
         if (legend && legend?.champion_tag) {
           currentSearchText = legend.champion_tag
           legend.card_color_list?.forEach((color) => {
@@ -284,7 +292,7 @@
           { type: 'card_category', value: '专属法术', mode: 'include' },
           { type: 'card_category', value: '专属装备', mode: 'include' }
         )
-        const legend = deckCards.find((c) => c.card_category === '传奇')
+        const legend = deckCards.find((c) => c.card_category?.includes('传奇'))
         if (legend && legend?.champion_tag) {
           champion_tag = legend.champion_tag
           legend.card_color_list?.forEach((color) => {
@@ -301,7 +309,7 @@
       case 'runes':
         {
           activeFilters.push({ type: 'card_category', value: '符文', mode: 'require' })
-          const legend = deckCards.find((c) => c.card_category === '传奇')
+          const legend = deckCards.find((c) => c.card_category?.includes('传奇'))
           if (legend) {
             legend.card_color_list?.forEach((color) => {
               activeFilters.push({ type: 'card_color_list', value: color, mode: 'include' })
@@ -388,6 +396,7 @@
       <div class="card-grid">
         {#each displayedCards as card (card.id)}
           <div
+            id={card.id}
             class:isBanned={card.is_banned}
             role="presentation"
             onclick={() => handleCardClick(card as any)}

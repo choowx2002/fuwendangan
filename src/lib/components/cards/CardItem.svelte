@@ -58,10 +58,12 @@
       class="placeholder"
       style="width: 100%; height: 100%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center;"
     >
-      <span style="color: var(--text-muted); font-size: var(--text-sm);">无图片</span>
+      <span style="aspect-ratio: 744 / 1040;color: var(--text-muted); font-size: var(--text-sm);"
+        >无图片</span
+      >
     </div>
   {/if}
-  <h5 style="color: var(--text-primary) ;margin: 0; text-align: center;">
+  <h5 style="color: var(--text-primary) ;margin: 0; text-align: center; font-weight: 100;">
     {`${card.card_name_cn} ${card.sub_title_cn || ''}`}
   </h5>
 </div>

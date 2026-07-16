@@ -23,8 +23,8 @@ export async function updateFilterOptions(): Promise<void> {
       (SELECT json_group_array(val) FROM (SELECT DISTINCT value as val FROM ${TABLES.CARDS_BASE}, json_each(keyword) WHERE value IS NOT NULL)) as keywords,
       (SELECT json_group_array(val) FROM (SELECT DISTINCT value as val FROM ${TABLES.CARDS_BASE}, json_each(advanced_tag) WHERE value IS NOT NULL)) as advanced_tags,
       (SELECT json_group_array(val) FROM (SELECT DISTINCT value as val FROM ${TABLES.CARDS_BASE}, json_each(card_color_list) WHERE value IS NOT NULL)) as colors,
-
-      (SELECT json_group_array(val) FROM (SELECT DISTINCT card_category as val FROM ${TABLES.CARDS_BASE} WHERE card_category IS NOT NULL)) as categories,
+      (SELECT json_group_array(val) FROM (SELECT DISTINCT value as val FROM ${TABLES.CARDS_BASE}, json_each(card_category) WHERE value IS NOT NULL)) as categories,
+      
       (SELECT json_group_array(val) FROM (SELECT DISTINCT series_name as val FROM ${TABLES.CARDS_BASE} WHERE series_name IS NOT NULL)) as series,
       (SELECT json_group_array(val) FROM (SELECT DISTINCT rarity_name as val FROM ${TABLES.CARDS_BASE} WHERE rarity_name IS NOT NULL)) as rarities,
       (SELECT json_group_array(val) FROM (SELECT DISTINCT champion_tag as val FROM ${TABLES.CARDS_BASE} WHERE champion_tag IS NOT NULL)) as champions

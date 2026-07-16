@@ -51,6 +51,7 @@ export function toSqliteModel(card: CardBase): SqliteCardBase {
   return {
     ...card, // 直接展开，保留所有普通文本和数字字段
     // 仅覆盖需要序列化的数组字段
+    card_category: card.card_category ? JSON.stringify(card.card_category) : null,
     card_color_list: card.card_color_list ? JSON.stringify(card.card_color_list) : null,
     region: card.region ? JSON.stringify(card.region) : null,
     tag: card.tag ? JSON.stringify(card.tag) : null,

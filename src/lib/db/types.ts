@@ -6,7 +6,7 @@ export interface CardBase {
   card_name_en: string | null
   sub_title_cn: string | null
   sub_title_en: string | null
-  card_category: string | null
+  card_category: string[] | null
   card_color_list: string[] | null
   region: string[] | null
   tag: string[] | null
@@ -72,8 +72,9 @@ export interface IconDB {
 // SQLite 存储模型 (将 PG 的数组转为 JSON 字符串，布尔值转为 0/1)
 export interface SqliteCardBase extends Omit<
   CardBase,
-  'card_color_list' | 'region' | 'tag' | 'keyword' | 'advanced_tag' | 'is_banned'
+  'card_category' | 'card_color_list' | 'region' | 'tag' | 'keyword' | 'advanced_tag' | 'is_banned'
 > {
+  card_category: string | null
   card_color_list: string | null
   region: string | null
   tag: string | null
