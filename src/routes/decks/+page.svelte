@@ -123,7 +123,7 @@
   // Calculate difference in days (or any unit: 'second', 'minute', 'hour', 'month', 'year')
   function getRelativeTime(date: number | Date) {
     const now = new Date()
-    const diffInMs = date - now
+    const diffInMs = date  - now 
     const diffInSecs = Math.round(diffInMs / 1000)
 
     // Set up formatter

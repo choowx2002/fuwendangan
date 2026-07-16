@@ -26,7 +26,15 @@
   })
 
   const isBattlefield = $derived.by(() => {
-    return card?.card_category === '战场'
+    return card?.card_category?.includes('战场')
+  })
+
+  const isRune = $derived.by(() => {
+    return card?.card_category?.includes('符文')
+  })
+
+  const isLegend = $derived.by(() => {
+    return card?.card_category?.includes('传奇')
   })
 
   let formatedEffect = $state<string>('')
@@ -228,7 +236,7 @@
           </header>
 
           <!-- 核心数值 (Stats) -->
-          {#if !['传奇', '战场', '符文'].includes(card?.card_category ?? '')}
+          {#if card?.card_category?.length && (isBattlefield || isLegend || isRune)}
             <div class="stats-grid">
               {#if card.energy != null}
                 <div class="stat-box">
