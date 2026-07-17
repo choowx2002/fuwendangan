@@ -20,6 +20,7 @@ import type {
 export function mapRowToCard(row: any): CardBase {
   return {
     ...row,
+    card_category: row.card_category ? JSON.parse(row.card_category) : null,
     card_color_list: row.card_color_list ? JSON.parse(row.card_color_list) : null,
     region: row.region ? JSON.parse(row.region) : null,
     tag: row.tag ? JSON.parse(row.tag) : null,
@@ -166,7 +167,7 @@ export function buildSearchParams(
     ]
     if (arrayFields.includes(dbField as string)) {
       if (!params[dbField as keyof CardSearchParams]) {
-        ;(params as any)[dbField] = {} as ArrayFilterParam
+        ; (params as any)[dbField] = {} as ArrayFilterParam
       }
       const paramObj = (params as any)[dbField] as ArrayFilterParam
 
@@ -174,13 +175,13 @@ export function buildSearchParams(
       const modeKey = filter.mode === 'require' ? 'must' : filter.mode
 
       if (!paramObj[modeKey as keyof ArrayFilterParam]) {
-        ;(paramObj as any)[modeKey] = []
+        ; (paramObj as any)[modeKey] = []
       }
-      ;(paramObj as any)[modeKey].push(filter.value)
+      ; (paramObj as any)[modeKey].push(filter.value)
     }
     // 处理文本类字段 (精确匹配，如 category, rarity)
     else {
-      ;(params as any)[dbField] = filter.value
+      ; (params as any)[dbField] = filter.value
     }
   }
 

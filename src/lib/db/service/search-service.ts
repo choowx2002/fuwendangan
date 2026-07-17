@@ -5,7 +5,7 @@
 
 import type { CardBase, CardPrint, CardSearchParams, CardSearchResult } from '../types'
 import { getDatabase } from '../repository/database'
-import { buildOrderBy } from '../helper'
+import { buildOrderBy, mapRowToCard } from '../helper'
 import { TABLES } from '../config/constants'
 
 /**
@@ -150,15 +150,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   const rows = await db.select<any[]>(dataSql, dataParams)
 
   // 7. 反序列化主表数据
-  let cards = rows.map((row) => ({
-    ...row,
-    card_color_list: row.card_color_list ? JSON.parse(row.card_color_list) : null,
-    region: row.region ? JSON.parse(row.region) : null,
-    tag: row.tag ? JSON.parse(row.tag) : null,
-    keyword: row.keyword ? JSON.parse(row.keyword) : null,
-    advanced_tag: row.advanced_tag ? JSON.parse(row.advanced_tag) : null,
-    is_banned: row.is_banned === 1,
-  }))
+  let cards = rows.map((row) => mapRowToCard(row))
 
   // 8. 获取关联的卡图
   if (cards.length > 0) {

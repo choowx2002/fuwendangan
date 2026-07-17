@@ -11,6 +11,7 @@ import * as iconRepo from '../repository/icon-repository'
 import * as versionRepo from '../repository/version-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState } from '$lib/stores/ui-store.svelte'
+import { ask } from '@tauri-apps/plugin-dialog'
 
 /**
  * 初始化数据库（在 Tauri 环境中执行数据同步）
@@ -40,9 +41,12 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     if (needsSync) {
+      const accepted = await ask("你想要同步数据吗？")
       console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
-      uiState.status = 'syncing'
-      await performSync(remoteVersion)
+      if (accepted) {
+        uiState.status = 'syncing'
+        await performSync(remoteVersion)
+      }
     } else {
       console.log('[DB] 本地数据已是最新，无需同步')
     }

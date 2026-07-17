@@ -66,7 +66,6 @@ export function validateDeck(deck: {
   const nameCountMap = new Map<string, { count: number; name: string }>()
 
   for (const card of coreZones) {
-    // 保留您原有的特例逻辑
     const rawName = (card.card_name_cn ?? '') + (card.sub_title_cn ?? '')
     if (rawName === '小蜘蛛') continue
 
