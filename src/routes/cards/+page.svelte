@@ -25,8 +25,10 @@
 
   onMount(() => {
     isMobile().then((is) => {
-      if (!is) {
+      if (!is && window.innerWidth >= 767.99) {
         sidebarState.isMinimized = true
+      } else {
+        sidebarState.isMinimized = false
       }
     })
   })

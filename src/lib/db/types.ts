@@ -260,3 +260,7 @@ export interface RuleBooks {
   name: string;
   updated_at: string;
 }
+
+export interface TreeNode extends Rule {
+  children: TreeNode[]
+}

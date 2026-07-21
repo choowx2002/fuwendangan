@@ -466,7 +466,7 @@
     font-weight: bolder;
     background-color: var(--bg-secondary);
     padding: 8px 12px;
-    font-size: var(--text-lg);
+    font-size: var(--text-sm);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     word-break: keep-all;

@@ -33,6 +33,7 @@
   ]
 
   const toolItems = [
+    { icon: Library, label: '游戏文档', href: '/rules' },
     { icon: Wrench, label: '对战工具', href: '/tools' },
     { icon: Settings, label: '设置', href: '/settings' },
   ]

@@ -22,9 +22,11 @@ export async function getDocs(): Promise<RuleBooks[]> {
       rules_book as name,
       MAX(updated_at) AS updated_at
   FROM
-      ${TABLES.ICONS}
+      ${TABLES.RULES}
   GROUP BY
       rules_book; `)
+
+  console.log("res", results);
   return results.length > 0 ? results : []
 }
 

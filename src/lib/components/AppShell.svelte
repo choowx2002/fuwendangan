@@ -25,7 +25,9 @@
     return () => window.removeEventListener('resize', handleResize)
   })
 
-  let isNotShowBothPage = $derived(['/decks/builder'].includes(page.url.pathname))
+  let isNotShowBothPage = $derived(
+    page.url.pathname === '/decks/builder' || page.url.pathname.startsWith('/rules/')
+  )
 </script>
 
 <div

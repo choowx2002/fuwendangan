@@ -82,6 +82,11 @@
   }
 
   beforeNavigate(async (navigation) => {
+    if (!navigation.to) {
+      navigation.cancel()
+      return
+    }
+
     if (confirmBack) {
       return
     }
