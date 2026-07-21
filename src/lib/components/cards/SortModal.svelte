@@ -237,6 +237,7 @@
     white-space: nowrap;
     transition: all 0.15s;
     box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.05);
+    margin-left: auto;
   }
 
   .trigger:hover {

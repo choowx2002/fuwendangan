@@ -34,6 +34,7 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.icons)
   await db.execute(TABLE_DEFINITIONS.decks)
   await db.execute(TABLE_DEFINITIONS.deck_cards)
+  await db.execute(TABLE_DEFINITIONS.rules)
   await db.execute(TABLE_DEFINITIONS.version)
 }
 

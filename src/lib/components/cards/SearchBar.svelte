@@ -277,4 +277,10 @@
     font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
+
+  @media (max-width: 767.99px) {
+      .search-wrapper {
+        max-width: none;
+      }
+  }
 </style>

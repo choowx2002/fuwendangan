@@ -102,6 +102,22 @@ export const TABLE_DEFINITIONS = {
     )
   `,
 
+  rules: `
+  CREATE TABLE IF NOT EXISTS rules (
+    id TEXT NOT NULL,
+    rule_number TEXT NOT NULL,
+    parent_number TEXT,
+    level INTEGER NOT NULL,
+    is_heading INTEGER DEFAULT 0,
+    text_en TEXT,
+    text_zh TEXT,
+    sort_order INTEGER NOT NULL,
+    rules_book TEXT NOT NULL DEFAULT 'CRD',
+    updated_at TEXT,
+    PRIMARY KEY (id)
+  )
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS decks;

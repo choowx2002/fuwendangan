@@ -60,6 +60,15 @@ export {
   clearAllPrints,
   getPrints,
 } from './repository/print-repository'
+
+export {
+  getRulesByDocName,
+  getDocs,
+  saveRules,
+  clearRules,
+  saveRule
+} from './repository/rules-repository'
+
 export {
   saveFilterOptions,
   getFilterOptions,

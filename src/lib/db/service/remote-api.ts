@@ -4,7 +4,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { AppVersion, CardBase, CardPrint, IconDB } from '../types'
+import type { AppVersion, CardBase, CardPrint, IconDB, Rule } from '../types'
 import { getLatestUpdateCardTime } from '../repository/card-repository'
 import { getLatestUpdatePrintTime } from '../repository/print-repository'
 
@@ -152,6 +152,31 @@ export async function fetchAllIcons(): Promise<IconDB[]> {
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (error) throw new Error(`获取图标数据失败：${error.message}`)
+    if (data) totalData.push(...data)
+    if (count && data && data.length < pageSize) hasMore = false
+    page++
+  }
+
+  return totalData
+}
+
+/**
+ * 获取所有RULES数据（分页拉取）
+ */
+export async function fetchAllRules(): Promise<Rule[]> {
+  const supabase = getSupabaseClient()
+  const totalData: Rule[] = []
+  let page = 0
+  const pageSize = 100
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, count, error } = await supabase
+      .from('rules')
+      .select('*', { count: 'exact' })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (error) throw new Error(`获取RULES数据失败：${error.message}`)
     if (data) totalData.push(...data)
     if (count && data && data.length < pageSize) hasMore = false
     page++

@@ -9,6 +9,7 @@ import * as cardRepo from '../repository/card-repository'
 import * as printRepo from '../repository/print-repository'
 import * as iconRepo from '../repository/icon-repository'
 import * as versionRepo from '../repository/version-repository'
+import * as ruleRepo from '../repository/rules-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState } from '$lib/stores/ui-store.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
@@ -71,6 +72,10 @@ async function performSync(remoteVersion: any): Promise<void> {
   const icons = await remoteApi.fetchAllIcons()
   console.log('[DB] 结束获取 icons')
 
+  console.log('[DB] 开始获取 rules')
+  const rules = await remoteApi.fetchAllRules()
+  console.log('[DB] 结束获取 rules')
+
   console.log('[DB] 开始同步 cards')
   await cardRepo.saveCards(cards)
   console.log('[DB] 结束同步 cards')
@@ -82,6 +87,10 @@ async function performSync(remoteVersion: any): Promise<void> {
   console.log('[DB] 开始同步 icons')
   await iconRepo.saveIcons(icons)
   console.log('[DB] 结束同步 icons')
+
+  console.log('[DB] 开始同步 rules')
+  await ruleRepo.saveRules(rules)
+  console.log('[DB] 结束同步 rules')
 
   await updateFilterOptions()
   await versionRepo.saveVersion(remoteVersion)
