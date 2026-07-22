@@ -152,7 +152,7 @@
             </div>
           {/if}
 
-          {#if sortedMap && sortedMap.size > 0}
+          {#if sortedMap && sortedMap.size > 1}
             <div class="prints-scroll">
               {#each Array.from(sortedMap ?? []) as [k, v], i (k)}
                 <button

@@ -14,7 +14,7 @@
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { validateDeck } from '$lib/decks/deck-validator'
-  import { removeCardFromDeck } from '$lib/db'
+  import { isMobile } from '$lib/services/os-serives'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
@@ -35,7 +35,7 @@
   let confirmBack = $state(false)
 
   // --- 拖拽调整宽度状态 ---
-  let isMobile = $state(false)
+  let isMobile1 = $state(false)
 
   let rightPanelWidth = $state(50)
   let rightPanelHeight = $state(50)
@@ -50,6 +50,8 @@
   let containerHeight = 0
 
   let layoutElement: HTMLDivElement
+  let animationFrame: number | null = null
+  let pendingEvent: PointerEvent | null = null
 
   const ZONE_CONFIG = {
     legend: { name: 'Legend', maxCount: 1 },
@@ -84,20 +86,9 @@
     })
   )
 
+  let isTouchDevice = $state(false)
+  let useVerticalResize = $derived(isMobile1 || isTouchDevice)
   let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
-
-  function groupCards(cards: cardAndPrint[]) {
-    const map = new Map<string, { card: cardAndPrint; count: number }>()
-    for (const card of cards) {
-      const existing = map.get(card.id)
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(card.id, { card, count: 1 })
-      }
-    }
-    return Array.from(map.values())
-  }
 
   beforeNavigate(async (navigation) => {
     if (!navigation.to) {
@@ -124,8 +115,9 @@
   })
 
   onMount(() => {
-    function updateLayoutMode() {
-      isMobile = window.innerWidth < 798
+    async function updateLayoutMode() {
+      isTouchDevice = await isMobile()
+      isMobile1 = window.innerWidth < 787.99
     }
 
     updateLayoutMode()
@@ -136,6 +128,19 @@
       window.removeEventListener('resize', updateLayoutMode)
     }
   })
+
+  function groupCards(cards: cardAndPrint[]) {
+    const map = new Map<string, { card: cardAndPrint; count: number }>()
+    for (const card of cards) {
+      const existing = map.get(card.id)
+      if (existing) {
+        existing.count += 1
+      } else {
+        map.set(card.id, { card, count: 1 })
+      }
+    }
+    return Array.from(map.values())
+  }
 
   function checkZoneCapacity(targetZone: ZoneKey): string | null {
     const config = ZONE_CONFIG[targetZone]
@@ -316,19 +321,21 @@
     }
   }
 
-  function getTotalCount(): number {
-    return getAllDeckCards().length
-  }
-
   function handlePointerDown(e: PointerEvent) {
     if (!layoutElement) return
+
+    e.preventDefault()
+
+    const target = e.currentTarget as HTMLElement
+
+    target.setPointerCapture?.(e.pointerId)
 
     containerWidth = layoutElement.clientWidth
     containerHeight = layoutElement.clientHeight
 
     isResizing = true
 
-    if (isMobile) {
+    if (useVerticalResize) {
       startY = e.clientY
       startSize = rightPanelHeight
     } else {
@@ -336,31 +343,52 @@
       startSize = rightPanelWidth
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointermove', handlePointerMove, {
+      passive: false,
+    })
 
-    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointerup', handlePointerUp, {
+      once: true,
+    })
 
     document.body.style.userSelect = 'none'
+    document.body.style.touchAction = 'none'
 
-    document.documentElement.style.cursor = isMobile ? 'row-resize' : 'col-resize'
+    document.documentElement.style.cursor = useVerticalResize ? 'row-resize' : 'col-resize'
   }
 
   function handlePointerMove(e: PointerEvent) {
     if (!isResizing) return
 
-    if (isMobile) {
-      const deltaY = e.clientY - startY
+    e.preventDefault()
 
-      const deltaPercent = (-deltaY / containerHeight) * 100
+    pendingEvent = e
 
-      rightPanelHeight = Math.max(20, Math.min(80, startSize + deltaPercent))
-    } else {
-      const deltaX = startX - e.clientX
+    if (animationFrame !== null) return
 
-      const deltaPercent = (deltaX / containerWidth) * 100
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = null
 
-      rightPanelWidth = Math.max(20, Math.min(80, startSize + deltaPercent))
-    }
+      if (!pendingEvent || !isResizing) return
+
+      const event = pendingEvent
+
+      pendingEvent = null
+
+      if (useVerticalResize) {
+        const deltaY = event.clientY - startY
+
+        const deltaPercent = (-deltaY / containerHeight) * 100
+
+        rightPanelHeight = Math.max(0, Math.min(100, startSize + deltaPercent))
+      } else {
+        const deltaX = startX - event.clientX
+
+        const deltaPercent = (deltaX / containerWidth) * 100
+
+        rightPanelWidth = Math.max(20, Math.min(80, startSize + deltaPercent))
+      }
+    })
   }
 
   function handlePointerUp() {
@@ -368,11 +396,19 @@
 
     isResizing = false
 
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame)
+
+      animationFrame = null
+    }
+
+    pendingEvent = null
+
     window.removeEventListener('pointermove', handlePointerMove)
 
-    window.removeEventListener('pointerup', handlePointerUp)
-
     document.body.style.userSelect = ''
+
+    document.body.style.touchAction = ''
 
     document.documentElement.style.cursor = ''
   }
@@ -424,7 +460,7 @@
     aria-label="resize panel"
     onpointerdown={handlePointerDown}
   >
-    {#if isMobile}
+    {#if isMobile1}
       <GripHorizontal size={16} />
     {:else}
       <GripVertical size={16} />
@@ -434,8 +470,8 @@
   <!-- 右侧：卡组面板 -->
   <aside
     class="deck-panel"
-    style:width={!isMobile ? `${rightPanelWidth}%` : undefined}
-    style:height={isMobile ? `${rightPanelHeight}%` : undefined}
+    style:width={!isMobile1 ? `${rightPanelWidth}%` : undefined}
+    style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
       <input
@@ -660,12 +696,6 @@
     overflow: hidden;
   }
 
-  @media (max-width: 767.99px) {
-    /* .deck-builder-layout {
-      padding: 24px 16px;
-    } */
-  }
-
   .deck-panel {
     border-right: 1px solid var(--border-color, #e5e7eb);
     display: flex;
@@ -723,25 +753,6 @@
     100% {
       box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
     }
-  }
-
-  .unsaved-warning {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 1rem;
-    background: #fef3c7;
-    color: #92400e;
-    font-size: 12px;
-    border-bottom: 1px solid #fde68a;
-  }
-
-  .deck-title {
-    padding: 1rem;
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
   }
 
   .zones-container {
@@ -929,6 +940,8 @@
       color 0.2s;
     position: relative;
     z-index: 20;
+    touch-action: none;
+    user-select: none;
   }
 
   .grip-button:hover {
@@ -939,38 +952,6 @@
   .grip-button.resizing {
     background-color: var(--bg-active, #e5e7eb);
     color: var(--text-primary);
-  }
-
-  .zone-selector {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 1rem;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
-    background: var(--bg-secondary, #f9fafb);
-  }
-
-  .selector-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    white-space: nowrap;
-  }
-
-  .zone-select {
-    flex: 1;
-    padding: 6px 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 13px;
-    background: white;
-    cursor: pointer;
-  }
-
-  .zone-select:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
 
   .save-btn.has-errors {
@@ -985,11 +966,13 @@
 
   @media (max-width: 767.99px) {
     .deck-builder-layout {
+      padding-block-start: env(safe-area-inset-top);
       flex-direction: column;
     }
 
     .deck-panel {
       width: 100% !important;
+      max-height: 90svh;
     }
 
     .grip-button {
