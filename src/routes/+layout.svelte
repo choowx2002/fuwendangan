@@ -2,7 +2,7 @@
 <script lang="ts">
   import AppShell from '../lib/components/AppShell.svelte'
   import LoadingModal from '../lib/components/LoadingModal.svelte'
-  import { initializeDatabase } from '../lib/db'
+  import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import '../app.css'
   import { onMount } from 'svelte'
@@ -10,6 +10,8 @@
   let { children } = $props()
 
   async function init() {
+    let needInit = !(await getVersion())
+    if (!needInit) return
     setLoadStatus('loading')
 
     try {
@@ -20,9 +22,6 @@
       await initializeDatabase()
 
       setLoadStatus('success')
-      // setTimeout(() => {
-      //   setLoadStatus('success')
-      // }, 900)
     } catch (error) {
       console.error('[Layout] 初始化失败:', error)
       setLoadStatus('error', '初始化失败', error instanceof Error ? error.message : '未知错误')
@@ -32,10 +31,6 @@
   onMount(() => {
     init()
   })
-
-  // function handleRetry() {
-  //   init()
-  // }
 </script>
 
 <div class="layout-root">

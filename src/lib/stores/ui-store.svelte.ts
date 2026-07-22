@@ -5,7 +5,7 @@ import { writable } from 'svelte/store'
 export type LoadStatus = 'loading' | 'syncing' | 'success' | 'error' | 'hidden' | 'downloading'
 
 export const uiState = $state({
-  status: 'loading' as LoadStatus,
+  status: 'hidden' as LoadStatus,
   text: '' as string | undefined,
   subText: '' as string | undefined,
   progress: 0 as number | undefined,

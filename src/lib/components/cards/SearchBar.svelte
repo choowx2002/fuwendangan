@@ -279,8 +279,8 @@
   }
 
   @media (max-width: 767.99px) {
-      .search-wrapper {
-        max-width: none;
-      }
+    .search-wrapper {
+      max-width: none;
+    }
   }
 </style>

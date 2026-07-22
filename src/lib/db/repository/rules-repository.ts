@@ -26,7 +26,7 @@ export async function getDocs(): Promise<RuleBooks[]> {
   GROUP BY
       rules_book; `)
 
-  console.log("res", results);
+  console.log('res', results)
   return results.length > 0 ? results : []
 }
 

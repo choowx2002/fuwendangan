@@ -66,7 +66,7 @@ export {
   getDocs,
   saveRules,
   clearRules,
-  saveRule
+  saveRule,
 } from './repository/rules-repository'
 
 export {

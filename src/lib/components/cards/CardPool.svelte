@@ -17,10 +17,21 @@
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
 
+  const ZONE_CONFIG = {
+    legend: { name: 'Legend', maxCount: 1 },
+    champion: { name: 'Champion', maxCount: 1 },
+    mainDeck: { name: 'MainDeck', maxCount: 39 },
+    battlefields: { name: 'Battlefields', maxCount: 3 },
+    runes: { name: 'Runes', maxCount: 12 },
+    sideboard: { name: 'Sideboard', maxCount: 8 },
+  } as const
+
+  type ZoneKey = keyof typeof ZONE_CONFIG
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---
   let {
     onCardClick, // 外部传入的点击回调（查看详情 or 加入卡组）
+    onMenuClick,
     deckCards = [], // 当前卡组卡牌（用于 Deck Builder 显示数量）
     showDeckCount = false, // 是否显示卡组中已有的数量
     displayedCards = $bindable<CardBase[]>([]),
@@ -28,11 +39,12 @@
     zone = $bindable('legend'),
   }: {
     onCardClick?: (arg0: cardAndPrint) => void
+    onMenuClick?: (id: string, zone: ZoneKey) => void
     deckCards?: cardAndPrint[]
     showDeckCount?: boolean
     displayedCards?: CardBase[]
     isFilterOpen?: boolean
-    zone?: string
+    zone?: ZoneKey
   } = $props()
 
   // --- 基础状态 ---
@@ -400,6 +412,10 @@
             class:isBanned={card.is_banned}
             role="presentation"
             onclick={() => handleCardClick(card as any)}
+            oncontextmenu={(e) => {
+              e.preventDefault()
+              onMenuClick(card.id, zone)
+            }}
             style="position: relative;"
           >
             <CardItem {card} />

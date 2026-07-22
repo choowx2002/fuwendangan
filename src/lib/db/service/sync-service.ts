@@ -42,7 +42,7 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     if (needsSync) {
-      const accepted = await ask("你想要同步数据吗？")
+      const accepted = await ask('你想要同步数据吗？')
       console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
       if (accepted) {
         uiState.status = 'syncing'

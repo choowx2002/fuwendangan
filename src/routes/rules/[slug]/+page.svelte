@@ -13,7 +13,7 @@
     expandedRules,
     type Lang,
   } from '$lib/stores/rules'
-  import { ArrowLeft, Menu } from '@lucide/svelte'
+  import { ArrowLeft, ArrowLeftCircle, ChevronLeft, CircleChevronLeft, Menu } from '@lucide/svelte'
   import { isMobile } from '$lib/services/os-serives'
   import { longpress } from '$lib/services/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -21,7 +21,7 @@
 
   let loading = $state(true)
   let searchQuery = $state('')
-  let sidebarOpen = $state(true)
+  let sidebarOpen = $state(false)
   let isMobileInit = $state(false)
 
   // 搜索结果
@@ -93,11 +93,11 @@
   onMount(() => {
     isMobile().then((is) => {
       isMobileInit = is
-      if (!is && window.innerWidth >= 767.99) {
-        sidebarOpen = true
-      } else {
-        sidebarOpen = false
-      }
+      // if (!is && window.innerWidth >= 767.99) {
+      //   sidebarOpen = true
+      // } else {
+      //   sidebarOpen = false
+      // }
     })
     // ======================
     // Load Rules
@@ -122,33 +122,6 @@
     }
 
     loadRules()
-
-    // ======================
-    // Keyboard Shortcut
-    // ======================
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-
-        const input = document.querySelector<HTMLInputElement>('.search-input')
-        input?.focus()
-      }
-
-      if (e.key === 'Escape') {
-        searchQuery = ''
-      }
-    }
-
-    document.addEventListener('keydown', handler)
-
-    function handleResize() {
-      if (window.innerWidth >= 767.99) {
-        sidebarOpen = true
-      } else {
-        sidebarOpen = false
-      }
-    }
-    window.addEventListener('resize', handleResize)
 
     // ======================
     // Scroll Active Rule
@@ -249,8 +222,6 @@
     // Cleanup
     // ======================
     return () => {
-      document.removeEventListener('keydown', handler)
-
       if (main) {
         main.removeEventListener('scroll', onScroll)
         main.removeEventListener('click', onClick)
@@ -260,11 +231,18 @@
 
   let toastMsg = $state('')
 
-  async function triggerAction(rule: Rule) {
+  async function triggerAction(rule: Rule, lang: Lang) {
+    let text: string | null = `${rule.rule_number}. `
     try {
-      const content = `${rule.rule_number}. ${rule.text_zh}`.trim()
+      if (lang === 'zh') {
+        text += rule.text_zh?.trim()
+      } else if (lang === 'en') {
+        text += rule.text_en?.trim()
+      } else {
+        text += `${rule.text_zh?.trim()} \n${rule.text_en?.trim()}`
+      }
 
-      await writeText(content)
+      await writeText(text)
 
       // 显示 Toast 提示
       showToast(`已复制规则 ${rule.rule_number}`)
@@ -284,11 +262,16 @@
 
 <div class="page">
   <!-- Sidebar -->
+  {#if !isMobileInit}
+    <div
+      style="cursor: pointer ;position: fixed; top: calc(env(safe-area-inset-top) + 16px); left: 16px;  width: 56px;
+         height: 56px;display: flex; justify-content: center; align-items: center;"
+    >
+      <ChevronLeft size={32} onclick={() => goto('/rules')} />
+    </div>
+  {/if}
   <aside class="sidebar" class:collapsed={!sidebarOpen}>
     <div class="search-box">
-      {#if !isMobileInit}
-        <ArrowLeft size={14} onclick={() => goto('/rules')} />
-      {/if}
       <svg
         width="14"
         height="14"
@@ -300,7 +283,6 @@
         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
       </svg>
       <input type="text" bind:value={searchQuery} placeholder="搜索规则…" class="search-input" />
-      <kbd class="search-kbd">⌘K</kbd>
     </div>
 
     <div class="toc">
@@ -347,7 +329,7 @@
                   class="chapter rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 500, onLongPress: () => triggerAction(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
                 >
                   <div class="chapter-num">Chapter {rule.rule_number}</div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
@@ -361,8 +343,7 @@
                   class="section rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  style="padding-left: {Math.min((rule.level - 2) * 14, 42)}px"
-                  use:longpress={{ duration: 500, onLongPress: () => triggerAction(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
                 >
                   <h3 class="section-title">
                     <div class="section-num">{rule.rule_number}</div>
@@ -377,8 +358,7 @@
                   class="rule-row rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  style="padding-left: {Math.min((rule.level - 2) * 14, 42)}px"
-                  use:longpress={{ duration: 500, onLongPress: () => triggerAction(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
                 >
                   <div class="rule-num">{rule.rule_number}</div>
                   <div class="rule-body">
@@ -567,11 +547,11 @@
     border-left: 2px solid transparent;
     color: var(--text-primary);
     font-size: var(--text-sm);
-    transition: all 0.12s;
+    transition: all 0.3s;
     user-select: none;
     width: 100%;
     text-align: left;
-    background: none;
+    background: #ffffff00;
     border: none;
     border-left: 2px solid transparent;
   }
@@ -658,6 +638,12 @@
     overflow-y: auto;
     height: 100vh;
     background: #d7c8b4;
+    transition: margin-left 0.2s;
+    will-change: margin-left;
+  }
+
+  .sidebar.collapsed ~ .main {
+    margin-left: 0;
   }
 
   @media (max-width: 767.99px) {
@@ -695,7 +681,7 @@
 
   @media (max-width: 767.99px) {
     .book {
-      padding: 24px 20px;
+      padding: 24px 10px;
     }
   }
 
@@ -789,23 +775,37 @@
     margin-top: 4px;
   }
 
+  /*.rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+  }*/
+
   .rule-row {
     display: flex;
-    gap: 14px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border-color);
+    flex-direction: row;
+    gap: 4px;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border-bottom: none;
     transition: background 0.15s;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .rule-row:hover {
+      background: var(--bg-hover);
+    }
+  }
+
+  @media (hover: none) {
+    .rule-row:active {
+      background: var(--bg-hover);
+    }
   }
 
   .rule-row:last-child {
     border-bottom: none;
-  }
-
-  .rule-row:hover {
-    background: var(--bg-hover);
-    /* margin: 0 -8px; */
-    /* padding: 10px 8px; */
-    border-radius: var(--radius-sm);
   }
 
   .rule-num {
@@ -890,8 +890,8 @@
   /* FAB */
   .fab {
     position: fixed;
-    right: 24px;
-    bottom: 24px;
+    top: calc(env(safe-area-inset-top) + 16px);
+    right: 82px;
     width: 56px;
     height: 56px;
     border-radius: 50%;
@@ -902,7 +902,7 @@
     font-weight: 600;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(18, 131, 120, 0.3);
-    transition: all 0.2s;
+    transition: all 0.5s;
     z-index: 50;
   }
 
@@ -913,6 +913,8 @@
 
   @media (max-width: 767.99px) {
     .fab {
+      top: auto;
+
       right: 16px;
       bottom: 16px;
       width: 48px;
@@ -922,12 +924,12 @@
 
   /* Mobile Toggle */
   .mobile-toggle {
-    display: none;
+    display: flex;
     position: fixed;
+    top: calc(env(safe-area-inset-top) + 16px);
     right: 16px;
-    bottom: 72px;
-    width: 48px;
-    height: 48px;
+    width: 56px;
+    height: 56px;
     border-radius: var(--radius-md);
     background: #af7f08;
     color: white;
@@ -940,7 +942,11 @@
 
   @media (max-width: 767.99px) {
     .mobile-toggle {
-      display: flex;
+      top: auto;
+      right: 16px;
+      bottom: 72px;
+      width: 48px;
+      height: 48px;
     }
   }
 

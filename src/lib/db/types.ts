@@ -218,47 +218,47 @@ export type TableStateRow = {
 }
 
 export interface Rule {
-  id: string;
-  rule_number: string;
-  parent_number: string | null;
-  level: number;
-  is_heading: boolean | null;
-  text_en: string | null;
-  text_zh: string | null;
-  sort_order: number;
-  rules_book: string;
-  updated_at: string;
+  id: string
+  rule_number: string
+  parent_number: string | null
+  level: number
+  is_heading: boolean | null
+  text_en: string | null
+  text_zh: string | null
+  sort_order: number
+  rules_book: string
+  updated_at: string
 }
 
 export interface RuleInsert {
-  id?: string;
-  rule_number: string;
-  parent_number?: string | null;
-  level: number;
-  is_heading?: boolean | null;
-  text_en?: string | null;
-  text_zh?: string | null;
-  sort_order: number;
-  rules_book?: string;
-  updated_at: string;
+  id?: string
+  rule_number: string
+  parent_number?: string | null
+  level: number
+  is_heading?: boolean | null
+  text_en?: string | null
+  text_zh?: string | null
+  sort_order: number
+  rules_book?: string
+  updated_at: string
 }
 
 export interface RuleUpdate {
-  id?: string;
-  rule_number?: string;
-  parent_number?: string | null;
-  level?: number;
-  is_heading?: boolean | null;
-  text_en?: string | null;
-  text_zh?: string | null;
-  sort_order?: number;
-  rules_book?: string;
-  updated_at: string;
+  id?: string
+  rule_number?: string
+  parent_number?: string | null
+  level?: number
+  is_heading?: boolean | null
+  text_en?: string | null
+  text_zh?: string | null
+  sort_order?: number
+  rules_book?: string
+  updated_at: string
 }
 
 export interface RuleBooks {
-  name: string;
-  updated_at: string;
+  name: string
+  updated_at: string
 }
 
 export interface TreeNode extends Rule {

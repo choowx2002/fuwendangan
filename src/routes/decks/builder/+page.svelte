@@ -3,10 +3,18 @@
   import type { CardBase, CardPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
   import { onMount } from 'svelte'
-  import { CircleAlert, GripVertical, LoaderCircle, Save, TriangleAlert } from '@lucide/svelte'
+  import {
+    CircleAlert,
+    GripHorizontal,
+    GripVertical,
+    LoaderCircle,
+    Save,
+    TriangleAlert,
+  } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { validateDeck } from '$lib/decks/deck-validator'
+  import { removeCardFromDeck } from '$lib/db'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
@@ -27,11 +35,21 @@
   let confirmBack = $state(false)
 
   // --- 拖拽调整宽度状态 ---
+  let isMobile = $state(false)
+
   let rightPanelWidth = $state(50)
+  let rightPanelHeight = $state(50)
+
   let isResizing = $state(false)
-  let startX = $state(0)
-  let startWidth = $state(0)
-  let containerWidth = $state(0)
+
+  let startX = 0
+  let startY = 0
+  let startSize = 0
+
+  let containerWidth = 0
+  let containerHeight = 0
+
+  let layoutElement: HTMLDivElement
 
   const ZONE_CONFIG = {
     legend: { name: 'Legend', maxCount: 1 },
@@ -106,14 +124,16 @@
   })
 
   onMount(() => {
-    const updateContainerWidth = () => {
-      containerWidth = window.innerWidth
+    function updateLayoutMode() {
+      isMobile = window.innerWidth < 798
     }
-    updateContainerWidth()
-    window.addEventListener('resize', updateContainerWidth)
+
+    updateLayoutMode()
+
+    window.addEventListener('resize', updateLayoutMode)
 
     return () => {
-      window.removeEventListener('resize', updateContainerWidth)
+      window.removeEventListener('resize', updateLayoutMode)
     }
   })
 
@@ -301,31 +321,59 @@
   }
 
   function handlePointerDown(e: PointerEvent) {
-    isResizing = true
-    startX = e.clientX
-    startWidth = rightPanelWidth
+    if (!layoutElement) return
 
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    containerWidth = layoutElement.clientWidth
+    containerHeight = layoutElement.clientHeight
+
+    isResizing = true
+
+    if (isMobile) {
+      startY = e.clientY
+      startSize = rightPanelHeight
+    } else {
+      startX = e.clientX
+      startSize = rightPanelWidth
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+
+    window.addEventListener('pointerup', handlePointerUp)
+
     document.body.style.userSelect = 'none'
-    document.documentElement.style.cursor = 'col-resize'
+
+    document.documentElement.style.cursor = isMobile ? 'row-resize' : 'col-resize'
   }
 
   function handlePointerMove(e: PointerEvent) {
-    if (!isResizing || containerWidth === 0) return
+    if (!isResizing) return
 
-    const deltaX = startX - e.clientX
-    const deltaPercent = (deltaX / containerWidth) * 100
-    const newWidth = startWidth + deltaPercent
+    if (isMobile) {
+      const deltaY = e.clientY - startY
 
-    rightPanelWidth = Math.max(20, Math.min(80, newWidth))
+      const deltaPercent = (-deltaY / containerHeight) * 100
+
+      rightPanelHeight = Math.max(20, Math.min(80, startSize + deltaPercent))
+    } else {
+      const deltaX = startX - e.clientX
+
+      const deltaPercent = (deltaX / containerWidth) * 100
+
+      rightPanelWidth = Math.max(20, Math.min(80, startSize + deltaPercent))
+    }
   }
 
-  function handlePointerUp(e: PointerEvent) {
+  function handlePointerUp() {
     if (!isResizing) return
 
     isResizing = false
-    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+
+    window.removeEventListener('pointermove', handlePointerMove)
+
+    window.removeEventListener('pointerup', handlePointerUp)
+
     document.body.style.userSelect = ''
+
     document.documentElement.style.cursor = ''
   }
 </script>
@@ -351,17 +399,18 @@
       <div class="card-name">{group.card.card_name_cn}</div>
       <div class="card-id">{group.card.card_no}</div>
     </div>
-    {#if group.count > 1}
+    {#if group.count}
       <div class="card-count">{group.count}</div>
     {/if}
   </div>
 {/snippet}
 
-<div class="deck-builder-layout">
+<div bind:this={layoutElement} class="deck-builder-layout">
   <!-- 左侧：卡池 -->
   <main class="card-pool-panel">
     <CardPool
       onCardClick={handleAddCard}
+      onMenuClick={handleRemoveOneCard}
       deckCards={getAllDeckCards()}
       showDeckCount={true}
       bind:zone={selectedZone}
@@ -372,16 +421,22 @@
   <button
     class="grip-button"
     class:resizing={isResizing}
-    aria-label="调整面板宽度"
+    aria-label="resize panel"
     onpointerdown={handlePointerDown}
-    onpointermove={handlePointerMove}
-    onpointerup={handlePointerUp}
   >
-    <GripVertical size={16} />
+    {#if isMobile}
+      <GripHorizontal size={16} />
+    {:else}
+      <GripVertical size={16} />
+    {/if}
   </button>
 
   <!-- 右侧：卡组面板 -->
-  <aside class="deck-panel" style="width: {rightPanelWidth}%">
+  <aside
+    class="deck-panel"
+    style:width={!isMobile ? `${rightPanelWidth}%` : undefined}
+    style:height={isMobile ? `${rightPanelHeight}%` : undefined}
+  >
     <div class="deck-header">
       <input
         type="text"
@@ -926,5 +981,19 @@
 
   .save-btn.has-errors:hover {
     background: #ef4444;
+  }
+
+  @media (max-width: 767.99px) {
+    .deck-builder-layout {
+      flex-direction: column;
+    }
+
+    .deck-panel {
+      width: 100% !important;
+    }
+
+    .grip-button {
+      cursor: row-resize;
+    }
   }
 </style>

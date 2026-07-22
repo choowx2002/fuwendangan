@@ -12,7 +12,7 @@ export const TABLES = {
   ICONS: 'icons',
   DECKS: 'decks',
   DECK_CARDS: 'deck_cards',
-  RULES: 'rules'
+  RULES: 'rules',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]
