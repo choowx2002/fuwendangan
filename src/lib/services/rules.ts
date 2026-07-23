@@ -65,7 +65,7 @@ export function escapeHtml(s: string): string {
 export function scrollToRule(ruleNumber: string) {
   const el = document.getElementById(`r-${ruleNumber}`)
   if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   el.classList.remove('rule-flash')
   void el.offsetWidth
   el.classList.add('rule-flash')

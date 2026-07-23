@@ -87,7 +87,7 @@
   )
 
   let isTouchDevice = $state(false)
-  let useVerticalResize = $derived(isMobile1 || isTouchDevice)
+  let useVerticalResize = $state(false)
   let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
 
   beforeNavigate(async (navigation) => {
@@ -118,6 +118,8 @@
     async function updateLayoutMode() {
       isTouchDevice = await isMobile()
       isMobile1 = window.innerWidth < 787.99
+
+      useVerticalResize = isMobile1 || isTouchDevice
     }
 
     updateLayoutMode()
@@ -763,6 +765,16 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .deck-panel {
+    container-type: inline-size; /* 声明这是一个容器 */
+  }
+
+  @container (max-width: 350px) {
+    .zones-container {
+      grid-template-columns: 1fr;
+    }
+  }
+
   .zones-container > .zone-section:nth-child(n + 3) {
     grid-column: 1 / -1;
   }
@@ -792,7 +804,7 @@
     gap: 8px;
     padding: 12px;
     margin: 0;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 
   .zone-list:has(> .empty-zone) {

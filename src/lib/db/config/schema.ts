@@ -88,17 +88,29 @@ export const TABLE_DEFINITIONS = {
     )
   `,
 
+  deck_versions: `
+      CREATE TABLE IF NOT EXISTS deck_versions (
+        id TEXT PRIMARY KEY,
+        deck_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL,
+        note TEXT,
+        created_at TEXT,
+        FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+        UNIQUE(deck_id, version_number)
+      )
+    `,
+
   deck_cards: `
     CREATE TABLE IF NOT EXISTS deck_cards (
       id TEXT PRIMARY KEY,
-      deck_id TEXT NOT NULL,
+      deck_version_id TEXT NOT NULL,
       card_id TEXT NOT NULL,
       quantity INTEGER DEFAULT 1,
       zone TEXT NOT NULL,
       created_at TEXT,
-      FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE,
-      FOREIGN KEY(card_id) REFERENCES cards_base(id),
-      UNIQUE(deck_id, card_id, zone)
+      FOREIGN KEY(deck_version_id) REFERENCES decks(id) ON DELETE CASCADE,
+      FOREIGN KEY(card_id) REFERENCES card_prints(id),
+      UNIQUE(deck_version_id, card_id, zone)
     )
   `,
 
@@ -121,6 +133,7 @@ export const TABLE_DEFINITIONS = {
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS decks;
+    DROP TABLE IF EXISTS deck_versions;
     DROP TABLE IF EXISTS deck_cards;
     DROP TABLE IF EXISTS card_prints;
     DROP TABLE IF EXISTS cards_base;

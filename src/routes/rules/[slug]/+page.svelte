@@ -93,15 +93,8 @@
   onMount(() => {
     isMobile().then((is) => {
       isMobileInit = is
-      // if (!is && window.innerWidth >= 767.99) {
-      //   sidebarOpen = true
-      // } else {
-      //   sidebarOpen = false
-      // }
     })
-    // ======================
-    // Load Rules
-    // ======================
+
     const loadRules = async () => {
       try {
         const data = await getRulesByDocName(page.params.slug || 'core')
@@ -123,9 +116,6 @@
 
     loadRules()
 
-    // ======================
-    // Scroll Active Rule
-    // ======================
     const main = document.getElementById('main')
     if (!main) return
 
@@ -265,7 +255,7 @@
   {#if !isMobileInit}
     <div
       style="cursor: pointer ;position: fixed; top: calc(env(safe-area-inset-top) + 16px); left: 16px;  width: 56px;
-         height: 56px;display: flex; justify-content: center; align-items: center;"
+         height: 56px;display: flex; justify-content: center; align-items: center;z-index: 1;"
     >
       <ChevronLeft size={32} onclick={() => goto('/rules')} />
     </div>
@@ -459,7 +449,6 @@
   .sidebar {
     padding-top: env(safe-area-inset-top);
     width: 280px;
-    /* background: var(--bg-secondary); */
     background: #d7c8b4;
     border-right: 1px solid var(--border-color);
     display: flex;
@@ -469,7 +458,7 @@
     top: 0;
     bottom: 0;
     z-index: 40;
-    transition: transform 0.2s;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
   }
 
@@ -505,16 +494,6 @@
   }
 
   .search-input::placeholder {
-    color: var(--text-secondary);
-  }
-
-  .search-kbd {
-    font-size: var(--text-base);
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-color);
-    font-family: 'JetBrains Mono', monospace;
     color: var(--text-secondary);
   }
 
@@ -634,21 +613,21 @@
   /* Main */
   .main {
     flex: 1;
-    margin-left: 280px;
+    transform: translateX(280px);
     overflow-y: auto;
     height: 100vh;
     background: #d7c8b4;
-    transition: margin-left 0.2s;
-    will-change: margin-left;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
   }
 
   .sidebar.collapsed ~ .main {
-    margin-left: 0;
+    transform: translateX(0);
   }
 
   @media (max-width: 767.99px) {
     .main {
-      margin-left: 0;
+      transform: translateX(0);
     }
   }
 
@@ -790,6 +769,7 @@
     border-radius: var(--radius-sm);
     border-bottom: none;
     transition: background 0.15s;
+    white-space: break-spaces;
   }
 
   @media (hover: hover) and (pointer: fine) {
