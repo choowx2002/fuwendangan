@@ -11,11 +11,12 @@
     NumberRange,
     SortKeyItem,
   } from '$lib/db/types'
-  import { LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
+  import { ChevronDown, ChevronUp, LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
   import { buildSearchParams } from '$lib/db/helper'
   import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
+  import { isMobile } from '$lib/services/os-serives'
 
   const ZONE_CONFIG = {
     legend: { name: 'Legend', maxCount: 1 },
@@ -53,6 +54,8 @@
   let currentSearchText = $state('')
   let champion_tag = $state('')
   let showZone = $state(false)
+  let isMobileSmall = $state(false)
+  let expandedFilter = $state(false)
 
   let energy = $state<NumberRange>({ min: 0, max: 12 })
   let power = $state<NumberRange>({ min: 0, max: 12 })
@@ -203,6 +206,12 @@
   }
 
   onMount(() => {
+    async function updateLayoutMode() {
+      isMobileSmall = window.innerWidth < 399.99
+    }
+
+    updateLayoutMode()
+
     if (['/decks/builder'].includes(page.url.pathname)) {
       showZone = true
       changeZone('legend')
@@ -216,9 +225,11 @@
       }
     }
 
+    window.addEventListener('resize', updateLayoutMode)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updateLayoutMode)
     }
   })
 
@@ -258,7 +269,7 @@
     }
   })
 
-  function changeZone(z: string, e?: MouseEvent) {
+  function changeZone(z: ZoneKey, e?: MouseEvent) {
     if (zone === z) return
 
     if (e) {
@@ -386,17 +397,34 @@
         onAddFilter={handleAddFromPopdown}
         onTextSearch={handleTextSearch}
       />
-    </div>
-    <h2 style="font-size: var(--text-base);color: var(--text-secondary)">数量：{totalCards}</h2>
-    <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
-
-    <button class="filter-toggle-btn" onclick={() => (isFilterOpen = true)}>
-      <SlidersHorizontal size={18} />
-      <span>筛选</span>
-      {#if totalActiveCount > 0}
-        <span class="badge">{totalActiveCount}</span>
+      {#if isMobileSmall}
+        {#if expandedFilter}
+          <ChevronUp
+            style="user-select: none;"
+            onclick={() => (expandedFilter = !expandedFilter)}
+          />
+        {:else}
+          <ChevronDown
+            style="user-select: none;"
+            onclick={() => (expandedFilter = !expandedFilter)}
+          />
+        {/if}
       {/if}
-    </button>
+    </div>
+    {#if expandedFilter || !isMobileSmall}
+      {#if !showDeckCount}
+        <h2 style="font-size: var(--text-base);color: var(--text-secondary)">数量：{totalCards}</h2>
+      {/if}
+      <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
+
+      <button class="filter-toggle-btn" onclick={() => (isFilterOpen = true)}>
+        <SlidersHorizontal size={18} />
+        <span>筛选</span>
+        {#if totalActiveCount > 0}
+          <span class="badge">{totalActiveCount}</span>
+        {/if}
+      </button>
+    {/if}
   </header>
 
   <section class="results-area">
@@ -414,7 +442,7 @@
             onclick={() => handleCardClick(card as any)}
             oncontextmenu={(e) => {
               e.preventDefault()
-              onMenuClick(card.id, zone)
+              if (onMenuClick) onMenuClick(card.id, zone)
             }}
             style="position: relative;"
           >
@@ -605,16 +633,16 @@
 
   /* ================= 移动端适配 ================= */
   @media (max-width: 767.99px) {
-    /* .main-content {
-      padding: 16px;
-      padding-bottom: 0;
-    } */
     .card-grid {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
     }
 
     .search-wrapper {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 5px;
       flex: 0 0 100%;
     }
   }

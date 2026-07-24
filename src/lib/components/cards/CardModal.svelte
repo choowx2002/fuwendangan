@@ -179,7 +179,6 @@
 
         <!-- 右侧：详细信息区域 -->
         <section class="info-section">
-          <!-- 头部：标题与元数据 -->
           <header class="card-header">
             <div class="title-group">
               <h1 class="card-title">
@@ -234,7 +233,7 @@
           </header>
 
           <!-- 核心数值 (Stats) -->
-          {#if card?.card_category?.length && (isBattlefield || isLegend || isRune)}
+          {#if card?.card_category?.length && !(isBattlefield || isLegend || isRune)}
             <div class="stats-grid">
               {#if card.energy != null}
                 <div class="stat-box">
@@ -527,7 +526,7 @@
     text-transform: uppercase;
   }
   .stat-value {
-    font-size: var(--text-2xl);
+    font-size: var(--text-xl);
     font-weight: 700;
     color: var(--text-primary);
   }

@@ -70,11 +70,14 @@
 
 <style>
   .card-item {
-    display: block;
+    display: flex;
     position: relative;
-    /* aspect-ratio: 744 / 1040; */
-    /* border-radius: var(--radius-md); */
     text-decoration: none;
     cursor: pointer;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    height: 100%;
+    justify-content: center;
   }
 </style>

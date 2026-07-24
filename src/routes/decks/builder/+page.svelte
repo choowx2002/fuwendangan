@@ -455,7 +455,19 @@
 
         const deltaPercent = (-deltaY / containerHeight) * 100
 
-        rightPanelHeight = Math.max(0, Math.min(100, startSize + deltaPercent))
+        let newHeight = startSize + deltaPercent
+
+        // Clamp
+        newHeight = Math.max(0, Math.min(85, newHeight))
+
+        // Snap
+        const SNAP_THRESHOLD = 10
+
+        if (newHeight <= SNAP_THRESHOLD) {
+          newHeight = 0
+        }
+
+        rightPanelHeight = newHeight
       } else {
         const deltaX = startX - event.clientX
 
@@ -634,7 +646,7 @@
             >主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</span
           >
         </div>
-        <div class="zone-list">
+        <div class="zone-list multi-item">
           {#each groupCards(mainDeckCards) as group}
             {@render cardItem(group, 'mainDeck', handleRemoveOneCard)}
           {:else}
@@ -653,7 +665,7 @@
             >战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})</span
           >
         </div>
-        <div class="zone-list">
+        <div class="zone-list multi-item">
           {#each groupCards(battlefieldCards) as group}
             {@render cardItem(group, 'battlefields', handleRemoveOneCard)}
           {:else}
@@ -669,7 +681,7 @@
             >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
           >
         </div>
-        <div class="zone-list">
+        <div class="zone-list multi-item">
           {#each groupCards(runeCards) as group}
             {@render cardItem(group, 'runes', handleRemoveOneCard)}
           {:else}
@@ -685,7 +697,7 @@
             >备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</span
           >
         </div>
-        <div class="zone-list">
+        <div class="zone-list multi-item">
           {#each groupCards(sideboardCards) as group}
             {@render cardItem(group, 'sideboard', handleRemoveOneCard)}
           {:else}
@@ -1007,6 +1019,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    background-color: var(--bg-primary);
   }
 
   .grip-button {
@@ -1062,6 +1075,18 @@
 
     .grip-button {
       cursor: row-resize;
+      filter: drop-shadow(0 -10px 10px rgba(0, 0, 0, 0.1));
+    }
+
+    .grip-button:hover {
+      color: var(--text-secondary);
+      background-color: var(--bg-hover);
+      cursor: row-resize;
+      filter: drop-shadow(0 -10px 10px rgba(0, 0, 0, 0.1));
+    }
+
+    .zone-list.multi-item {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     }
   }
 </style>

@@ -112,4 +112,10 @@
     padding-bottom: 0;
     background: var(--bg-primary);
   }
+
+  @media (max-width: 767.99px) {
+    .main-content {
+      padding: 5px 16px 0;
+    }
+  }
 </style>
