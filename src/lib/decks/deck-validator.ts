@@ -50,6 +50,14 @@ export function validateDeck(deck: {
       })
     }
 
+    if (zone.name !== '备牌' && zone.cards.length < zone.maxCount) {
+      issues.push({
+        severity: 'warning',
+        type: 'capacity',
+        message: `${zone.name} 区域卡牌数量 (${zone.cards.length}) 不足 (${zone.maxCount})！`,
+      })
+    }
+
     const bannedCards = zone.cards.filter((c) => c.is_banned)
     if (bannedCards.length > 0) {
       issues.push({

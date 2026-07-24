@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
+  import { getDecks, getLatestDeckCards } from '$lib/db'
   import {
     Plus,
     Search,
@@ -10,6 +11,7 @@
     PenLine,
     Folder,
   } from '@lucide/svelte'
+  import { onMount } from 'svelte'
 
   // 模拟卡组数据
   const allDecks = [
@@ -143,6 +145,20 @@
 
   const pastDate = new Date('2026-07-05T12:00:00')
   console.log(getRelativeTime(pastDate))
+
+  const init = async () => {
+    const decks = await getDecks()
+    console.log(decks)
+
+    if (decks.length) {
+      const cards = await getLatestDeckCards(decks[0].id)
+      console.log(cards)
+    }
+  }
+
+  onMount(() => {
+    init()
+  })
 </script>
 
 <div class="decks-page">

@@ -15,6 +15,13 @@
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { validateDeck } from '$lib/decks/deck-validator'
   import { isMobile } from '$lib/services/os-serives'
+  import {
+    createDeck,
+    deleteDeck,
+    saveDeckAsNewVersion,
+    type DeckCardInput,
+    type DeckInput,
+  } from '$lib/db'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
@@ -64,14 +71,14 @@
 
   type ZoneKey = keyof typeof ZONE_CONFIG
 
-  function getAllDeckCards(): cardAndPrint[] {
+  function getAllDeckCards(): (cardAndPrint & { zone: string })[] {
     return [
-      ...legendCards,
-      ...championCards,
-      ...mainDeckCards,
-      ...battlefieldCards,
-      ...runeCards,
-      ...sideboardCards,
+      ...legendCards.map((card) => ({ ...card, zone: 'legend' })),
+      ...championCards.map((card) => ({ ...card, zone: 'champion' })),
+      ...mainDeckCards.map((card) => ({ ...card, zone: 'mainDeck' })),
+      ...battlefieldCards.map((card) => ({ ...card, zone: 'battlefields' })),
+      ...runeCards.map((card) => ({ ...card, zone: 'runes' })),
+      ...sideboardCards.map((card) => ({ ...card, zone: 'sideboard' })),
     ]
   }
 
@@ -309,13 +316,79 @@
     }
   }
 
+  const convertDeckCardInput = (cards: (cardAndPrint & { zone: string })[]) => {
+    const deckCardInputs: DeckCardInput[] = []
+    for (const card of cards) {
+      const c: DeckCardInput = {
+        cardPrintId: card.selectedPrints ?? card.card_prints[0].id,
+        quantity: 1,
+        zone: card.zone!,
+      }
+      deckCardInputs.push(c)
+    }
+
+    return deckCardInputs
+  }
+
+  const compressDeckCards = (cards: DeckCardInput[]) => {
+    const compressed: DeckCardInput[] = []
+    for (const card of cards) {
+      const existing = compressed.find(
+        (c) => c.cardPrintId === card.cardPrintId && c.zone === card.zone
+      )
+      if (existing) {
+        existing.quantity += card.quantity
+      } else {
+        compressed.push(card)
+      }
+    }
+    return compressed
+  }
+
   async function handleSave() {
+    if (hasErrors) {
+      message('你的构筑存在问题哦')
+      return
+    }
+
+    if (deckIssues.filter((i) => i.severity === 'warning').length) {
+      const ignoreWarning = await ask(
+        `是否要继续保存？\n${deckIssues
+          .filter((i) => i.severity === 'warning')
+          .map((i) => i.message)
+          .join('\n')}`,
+        {
+          okLabel: '确定保存',
+          cancelLabel: '继续编辑',
+        }
+      )
+
+      if (!ignoreWarning) return
+    }
+
     isSaving = true
+    const deckInfo: DeckInput = {
+      name: deckName,
+      description: '',
+      format: '1v1（比赛）',
+    }
+    const convertedCards = convertDeckCardInput(getAllDeckCards())
+    // convert to deck card input
+    const compressCards = compressDeckCards(convertedCards)
+
+    console.log(compressCards)
+    let deckID: string | null = null
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      deckID = await createDeck(deckInfo)
+      if (deckID) {
+        const result = await saveDeckAsNewVersion(deckID, compressCards)
+      }
       isDirty = false
-      message('卡组保存成功！')
+      goto(`/decks`)
     } catch (error) {
+      if (deckID) {
+        await deleteDeck(deckID)
+      }
       console.error('保存失败:', error)
       message('保存失败，请重试')
     } finally {

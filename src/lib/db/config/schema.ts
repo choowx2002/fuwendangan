@@ -108,7 +108,7 @@ export const TABLE_DEFINITIONS = {
       quantity INTEGER DEFAULT 1,
       zone TEXT NOT NULL,
       created_at TEXT,
-      FOREIGN KEY(deck_version_id) REFERENCES decks(id) ON DELETE CASCADE,
+      FOREIGN KEY(deck_version_id) REFERENCES deck_versions(id) ON DELETE CASCADE,
       FOREIGN KEY(card_id) REFERENCES card_prints(id),
       UNIQUE(deck_version_id, card_id, zone)
     )
