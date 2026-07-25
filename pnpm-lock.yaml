@@ -11,6 +11,9 @@ importers:
       '@lucide/svelte':
         specifier: ^1.22.0
         version: 1.22.0(svelte@5.56.4)
+      '@piltoverarchive/riftbound-deck-codes':
+        specifier: ^1.4.0
+        version: 1.4.0
       '@supabase/supabase-js':
         specifier: ^2.108.2
         version: 2.108.2
@@ -257,6 +260,10 @@ packages:
     resolution: {integrity: sha512-eaNC3GGu9ma7mviB9vPL6OnawXqxdvRnoAQSq5l15mBlsuwD7kozZ7pzPXSlT6OwSl7hz4qTk+ZU3OEewwi5gQ==}
     peerDependencies:
       svelte: ^5
+
+  '@piltoverarchive/riftbound-deck-codes@1.4.0':
+    resolution: {integrity: sha512-f3fphTANbyiohgrFhitgYcBsLpMFjGCVA7Ai0l+gWCyZMi7eC/IIJ580Xfyp4+XVioqn11OIkBzFZX9/TIg5Fw==}
+    engines: {node: '>=16.0.0'}
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
@@ -926,6 +933,8 @@ snapshots:
   '@lucide/svelte@1.22.0(svelte@5.56.4)':
     dependencies:
       svelte: 5.56.4
+
+  '@piltoverarchive/riftbound-deck-codes@1.4.0': {}
 
   '@polka/url@1.0.0-next.29': {}
 
