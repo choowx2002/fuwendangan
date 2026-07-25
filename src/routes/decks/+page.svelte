@@ -1,6 +1,14 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
-  import { getDecks, getLatestDeckCards } from '$lib/db'
+  import { beforeNavigate, goto } from '$app/navigation'
+  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import {
+    deleteDeck,
+    duplicateDeck,
+    getDeckList,
+    toggleFavorite,
+    type DeckListResult,
+  } from '$lib/db'
+  import { getRelativeTime } from '$lib/services/time-helper'
   import {
     Plus,
     Search,
@@ -10,77 +18,13 @@
     Trash2,
     PenLine,
     Folder,
+    HeartIcon,
   } from '@lucide/svelte'
+  import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
 
   // 模拟卡组数据
-  const allDecks = [
-    {
-      id: '1',
-      name: '红绿快攻 (RG Aggro)',
-      format: '1v1（比赛）',
-      cardCount: 60,
-      wins: 12,
-      losses: 4,
-      draw: 1,
-      updated: '2小时前',
-      favorite: true,
-    },
-    {
-      id: '2',
-      name: '蓝白控制 (WU Control)',
-      format: '1v1（比赛）',
-      cardCount: 75,
-      wins: 8,
-      losses: 7,
-      draw: 0,
-      updated: '昨天',
-      favorite: false,
-    },
-    {
-      id: '3',
-      name: '勇得中速 (Jund Midrange)',
-      format: '1v1（比赛）',
-      cardCount: 60,
-      wins: 15,
-      losses: 5,
-      draw: 4,
-      updated: '3天前',
-      favorite: true,
-    },
-    {
-      id: '4',
-      name: '精灵组合技 (Elves Combo)',
-      format: '1v1（比赛）',
-      cardCount: 60,
-      wins: 20,
-      losses: 8,
-      draw: 1,
-      updated: '1周前',
-      favorite: false,
-    },
-    {
-      id: '5',
-      name: '黑绿腐化 (BG Midrange)',
-      format: '1v1（决斗）',
-      cardCount: 60,
-      wins: 10,
-      losses: 6,
-      draw: 1,
-      updated: '2周前',
-      favorite: false,
-    },
-    {
-      id: '6',
-      name: '伊捷凤凰 (Izzet Phoenix)',
-      format: '1v1（比赛）',
-      cardCount: 60,
-      wins: 18,
-      losses: 9,
-      updated: '3周前',
-      favorite: true,
-    },
-  ]
+  let allDecks = $state<DeckListResult[]>([])
 
   // 筛选状态
   let searchQuery = $state('')
@@ -103,61 +47,68 @@
 
       const matchesFormat = selectedFormat === '全部' || deck.format === selectedFormat
 
-      const matchesFavorite = !showFavoritesOnly || deck.favorite
+      const matchesFavorite = !showFavoritesOnly || deck.is_favorite
 
       return matchesSearch && matchesFormat && matchesFavorite
     })
   )
-  function toggleFavorite(deckId: string) {
-    const deck = allDecks.find((d) => d.id === deckId)
-    if (deck) {
-      deck.favorite = !deck.favorite
+
+  async function toggleFavoriteAction(deckId: string) {
+    await toggleFavorite(deckId)
+    init()
+  }
+
+  async function deleteDeckAsk(name: string, deckId: string) {
+    const confirm = await ask(`你确定要删除 ${name} 吗？`, {
+      kind: 'warning',
+      okLabel: '确定',
+      cancelLabel: '取消',
+    })
+
+    if (confirm) {
+      if (await deleteDeck(deckId)) {
+        init()
+      }
     }
   }
 
-  function deleteDeck(deckId: string) {
-    console.log('删除卡组:', deckId)
-  }
+  async function duplicateDeckAsk(name: string, deckId: string) {
+    const confirm = await ask(`你确定要复制 ${name} 吗？`, {
+      kind: 'warning',
+      okLabel: '确定',
+      cancelLabel: '取消',
+    })
 
-  function duplicateDeck(deckId: string) {
-    console.log('复制卡组:', deckId)
-  }
-  // Calculate difference in days (or any unit: 'second', 'minute', 'hour', 'month', 'year')
-  function getRelativeTime(date: number | Date) {
-    const now = new Date()
-    const diffInMs = date - now
-    const diffInSecs = Math.round(diffInMs / 1000)
+    if (!confirm) return
 
-    // Set up formatter
-    const rtf = new Intl.RelativeTimeFormat('zh', { numeric: 'auto' })
+    try {
+      const newDeckId = await duplicateDeck(deckId)
 
-    // Define time thresholds in seconds
-    if (Math.abs(diffInSecs) < 60) {
-      return rtf.format(diffInSecs, 'second')
-    } else if (Math.abs(diffInSecs) < 3600) {
-      return rtf.format(Math.round(diffInSecs / 60), 'minute')
-    } else if (Math.abs(diffInSecs) < 86400) {
-      return rtf.format(Math.round(diffInSecs / 3600), 'hour')
-    } else {
-      return rtf.format(Math.round(diffInSecs / 86400), 'day')
+      if (newDeckId) {
+        message('复制成功！').then(init)
+      }
+    } catch (error) {
+      console.error(error)
+      message('复制失败')
     }
   }
-
-  const pastDate = new Date('2026-07-05T12:00:00')
-  console.log(getRelativeTime(pastDate))
 
   const init = async () => {
-    const decks = await getDecks()
-    console.log(decks)
-
-    if (decks.length) {
-      const cards = await getLatestDeckCards(decks[0].id)
-      console.log(cards)
-    }
+    const { decks, total } = await getDeckList()
+    allDecks = decks
   }
 
   onMount(() => {
     init()
+  })
+
+  beforeNavigate(({ from, cancel, type, delta }) => {
+    const isBackward = type === 'popstate' && delta && delta < 0
+
+    if (isBackward) {
+        cancel()
+        goto("/", { replaceState: true })
+    }
   })
 </script>
 
@@ -218,48 +169,77 @@
   {:else}
     <div class="decks-grid">
       {#each filteredDecks as deck (deck.id)}
-        <div class="deck-card" class:favorite={deck.favorite}>
+        <div
+          class="deck-card"
+          class:favorite={deck.is_favorite}
+          role="presentation"
+          onclick={() => {
+            goto(`/decks/${deck.id}`)
+          }}
+        >
           <div class="deck-header">
+            <div class="deck-avatar">
+              <CardSimpleImage
+                url={deck.legend_image}
+                name={`${deck.legend_id}-${deck.legend_print_id || 'default'}`}
+              />
+            </div>
             <div class="deck-info">
               <h3 class="deck-name">{deck.name}</h3>
               <span class="deck-format-badge">{deck.format}</span>
             </div>
-            <button class="menu-btn" title="更多操作">
+            <!-- <button class="menu-btn" title="更多操作">
               <EllipsisVertical size={18} />
-            </button>
+            </button> -->
           </div>
 
           <div class="deck-stats-row">
             <div class="stat-item">
+              <span class="stat-label">版本</span>
+              <span class="stat-value">v{deck.latest_version_number?.toFixed(1)}</span>
+            </div>
+            <div class="stat-item">
               <span class="stat-label">卡牌</span>
-              <span class="stat-value">{deck.cardCount}</span>
+              <span class="stat-value">{deck.latest_version_card_count}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">战绩</span>
               <span class="stat-value record">
-                <span class="win">{deck.wins}</span>
+                <span class="win">1</span>
                 <span class="separator">-</span>
-                <span class="loss">{deck.losses}</span>
+                <span class="loss">0</span>
               </span>
             </div>
-            <div class="stat-item">
+            <div class="stat-item" title={new Date(deck.updated_at!).toLocaleString()}>
               <span class="stat-label">更新</span>
-              <span class="stat-value time">{deck.updated}</span>
+              <span class="stat-value time">{getRelativeTime(deck.updated_at!)}</span>
             </div>
           </div>
 
           <div class="deck-actions">
-            <button class="action-btn" onclick={() => duplicateDeck(deck.id)} title="复制卡组">
+            <button
+              class="action-btn"
+              onclick={() => duplicateDeckAsk(deck.name, deck.id)}
+              title="复制卡组"
+            >
               <Copy size={16} />
             </button>
             <button
               class="action-btn"
-              onclick={() => toggleFavorite(deck.id)}
+              onclick={() => toggleFavoriteAction(deck.id)}
               title="收藏/取消收藏"
             >
-              <PenLine size={16} />
+              {#if deck.is_favorite}
+                <HeartIcon fill="red" color={'red'} size={16} />
+              {:else}
+                <HeartIcon size={16} />
+              {/if}
             </button>
-            <button class="action-btn danger" onclick={() => deleteDeck(deck.id)} title="删除卡组">
+            <button
+              class="action-btn danger"
+              onclick={() => deleteDeckAsk(deck.name, deck.id)}
+              title="删除卡组"
+            >
               <Trash2 size={16} />
             </button>
           </div>
@@ -384,7 +364,7 @@
     background: var(--bg-primary);
   }
 
-  .filter-icon {
+  :global(.filter-icon) {
     color: var(--text-tertiary);
     flex-shrink: 0;
   }
@@ -433,7 +413,7 @@
     text-align: center;
   }
 
-  .empty-icon {
+  :global(.empty-icon) {
     color: var(--text-tertiary);
     margin-bottom: 16px;
   }
@@ -513,7 +493,7 @@
   .deck-name {
     font-size: var(--text-lg);
     font-weight: 600;
-    margin: 0 0 8px 0;
+    margin: 0 0 4px 0;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -529,7 +509,7 @@
     color: var(--text-secondary);
   }
 
-  .menu-btn {
+  /* .menu-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -546,7 +526,7 @@
   .menu-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
-  }
+  } */
 
   .deck-stats-row {
     display: flex;
@@ -630,5 +610,20 @@
     background: #fee;
     color: #e03e3e;
     border-color: #fcc;
+  }
+
+  .deck-avatar {
+    height: 48px;
+    overflow: hidden;
+    width: 48px;
+    border-radius: 99%;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  :global(.deck-avatar > img) {
+    width: 100%;
+    transform: scale(2);
+    object-fit: cover;
+    object-position: center 10px;
   }
 </style>

@@ -2,7 +2,6 @@
   import { searchCards, getFilterOptions } from '$lib/db'
   import SearchBar from './SearchBar.svelte'
   import FilterPanel from './FilterPanel.svelte'
-  import CardItem from './CardItem.svelte'
   import type {
     ActiveFilter,
     CardBase,
@@ -16,7 +15,7 @@
   import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
-  import { isMobile } from '$lib/services/os-serives'
+  import CachedImage from './CachedImage.svelte'
 
   const ZONE_CONFIG = {
     legend: { name: 'Legend', maxCount: 1 },
@@ -347,6 +346,11 @@
 
     performSearch()
   }
+
+  const getDefaultImg = (card: cardAndPrint) => {
+    return card.card_prints?.find((p) => p.is_default) ??
+      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
+  }
 </script>
 
 <div class="card-pool-wrapper">
@@ -435,6 +439,7 @@
     {:else if displayedCards.length > 0}
       <div class="card-grid">
         {#each displayedCards as card (card.id)}
+          {@const defaultI = getDefaultImg(card as unknown as cardAndPrint)}
           <div
             id={card.id}
             class:isBanned={card.is_banned}
@@ -444,9 +449,20 @@
               e.preventDefault()
               if (onMenuClick) onMenuClick(card.id, zone)
             }}
-            style="position: relative;"
+            style="position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column"
           >
-            <CardItem {card} />
+             <CachedImage
+                src={defaultI?.img_cdn! ?? defaultI?.tts_cdn!}
+                name={`${card.id}-${defaultI?.id || 'default'}`}
+                borderRadius="6px"
+                fit="cover"
+              />
+            <h5
+              style="color: var(--text-primary) ;margin: 0; text-align: center;"
+            >
+              {`${card.card_name_cn} ${card.sub_title_cn || ''}`}
+            </h5>
+            <small style="font-size: var(--text-xs)">{card.card_no}</small>
             {#if showDeckCount}
               {@const count = getDeckCount(card.id)}
               {#if count > 0}
@@ -611,7 +627,7 @@
   /* ================= 底部状态与哨兵 ================= */
   .bottom-status {
     margin-top: 24px;
-    padding-bottom: 24px; /* 留出底部安全距离 */
+    padding-bottom: 24px;
   }
 
   .loading-more,
@@ -625,7 +641,6 @@
     font-size: var(--text-sm);
   }
 
-  /* 哨兵元素：高度极小，不可见，仅用于被 Observer 监测 */
   .sentinel {
     height: 1px;
     width: 100%;
@@ -643,7 +658,6 @@
       flex-wrap: nowrap;
       align-items: center;
       gap: 5px;
-      flex: 0 0 100%;
     }
   }
 

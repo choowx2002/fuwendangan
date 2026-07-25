@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { replaceState } from '$app/navigation'
+  import { page } from '$app/state'
   import { getCardCount } from '$lib/db'
   import { setLoadStatus, hideLoading } from '$lib/stores/ui-store.svelte'
   import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
@@ -61,6 +63,7 @@
       setLoadStatus('error', '同步失败，请检查网络')
     }
   }
+
   onMount(async () => {
     try {
       await getCardCount()

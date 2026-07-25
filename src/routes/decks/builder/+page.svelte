@@ -376,7 +376,6 @@
     // convert to deck card input
     const compressCards = compressDeckCards(convertedCards)
 
-    console.log(compressCards)
     let deckID: string | null = null
     try {
       deckID = await createDeck(deckInfo)
@@ -561,13 +560,6 @@
     style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
-      <input
-        type="text"
-        bind:value={deckName}
-        oninput={() => (isDirty = true)}
-        class="deck-name-input"
-        placeholder="输入卡组名称"
-      />
       <button
         class="save-btn"
         onclick={handleSave}
@@ -796,14 +788,8 @@
     border-bottom: 1px solid var(--border-color, #e5e7eb);
     display: flex;
     gap: 8px;
-  }
-
-  .deck-name-input {
-    flex: 1;
-    padding: 6px 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 14px;
+    align-items: center;
+    justify-content: flex-end;
   }
 
   .save-btn {
@@ -851,7 +837,7 @@
   }
 
   .deck-panel {
-    container-type: inline-size; /* 声明这是一个容器 */
+    container-type: inline-size;
   }
 
   @container (max-width: 350px) {
@@ -892,26 +878,30 @@
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 
+  .zone-list:not(.multi-item) {
+    padding: 12px;
+    margin: 0;
+      grid-template-columns: unset;
+    }
+
   .zone-list:has(> .empty-zone) {
     display: block;
   }
 
-  /* 卡牌项容器：作为相对定位的基准 */
   .card-item {
     position: relative;
-    height: 64px; /* 固定高度，适合横向展示 */
+    height: 64px;
     width: 100%;
     overflow: hidden;
     border-radius: 6px;
     cursor: pointer;
-    background: #0f172a; /* 兜底深色背景，防止图片加载前白屏 */
+    background: #0f172a;
     transition:
       transform 0.2s ease,
       box-shadow 0.2s ease;
   }
 
   .card-item:hover {
-    /* transform: translateY(-2px); */
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
   }
 
@@ -933,8 +923,6 @@
     object-position: 15px 16%;
     transform: scale(1.05);
     opacity: 1;
-    /* 可选：如果原图分辨率不高，放大后会有锯齿，加 1px 模糊会让背景更柔和自然 */
-    /* filter: blur(1px); */
   }
 
   /* 信息层：绝对定位在左侧，承载文字和渐变 */
@@ -943,20 +931,19 @@
     left: 0;
     top: 0;
     bottom: 0;
-    width: 80%; /* 占据左侧大部分空间，留出右侧给图片透气 */
+    width: 80%;
     z-index: 2;
     display: flex;
     flex-direction: column;
     justify-content: center;
     padding-left: 16px;
 
-    /* 核心：从左到右的渐变，从深黑过渡到透明，完美凸显白色文字 */
     background: linear-gradient(
       90deg,
       rgba(15, 23, 42, 0.95) 0%,
-      /* 左侧极暗，保证 name 清晰 */ rgba(15, 23, 42, 0.85) 40%,
+      rgba(15, 23, 42, 0.85) 40%,
       rgba(15, 23, 42, 0.4) 55%,
-      transparent 100% /* 右侧完全透明，露出底层放大的卡牌原画 */
+      transparent 100%
     );
   }
 

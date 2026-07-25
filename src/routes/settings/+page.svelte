@@ -18,6 +18,7 @@
   import { ask, message } from '@tauri-apps/plugin-dialog'
   // import { readDir } from '@tauri-apps/plugin-fs'
   import LoadingModal from '$lib/components/LoadingModal.svelte'
+  import { beforeNavigate, goto } from '$app/navigation'
 
   // import { invoke } from '@tauri-apps/api/core';
   // import { open } from '@tauri-apps/plugin-opener';
@@ -221,6 +222,15 @@
       loadDbInfo()
     }
   }
+
+  beforeNavigate(({ from, cancel, type, delta }) => {
+    const isBackward = type === 'popstate' && delta && delta < 0
+
+    if (isBackward) {
+        cancel()
+        goto("/", { replaceState: true })
+    }
+  })
 </script>
 
 <div class="settings-container">

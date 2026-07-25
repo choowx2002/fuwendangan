@@ -55,15 +55,9 @@
       if (config) {
         cancel() // 拦截原有的后退
 
-        if (config.backTo === null) {
-          // 如果当前已经在 '/' 首页，或者配置的 backTo 是 null（代表正常退出）
-          // 此时让浏览器继续正常的后退行为（退出你的应用/返回上一个网站）
-          return
-        }
-
         // 如果有指定的返回页面（比如从 /decks/builder 回到 /decks）
         // 使用 replaceState: true，避免污染历史记录栈
-        goto(config.backTo, { replaceState: true })
+        goto("/", { replaceState: true })
       }
     }
   })

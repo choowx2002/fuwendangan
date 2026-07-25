@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
+  import { beforeNavigate, goto } from '$app/navigation'
   import { getDocs } from '$lib/db'
   import type { RuleBooks } from '$lib/db/types'
   import { onMount } from 'svelte'
@@ -11,6 +11,15 @@
       docs = await getDocs()
     } catch (error) {
       console.error(error)
+    }
+  })
+
+  beforeNavigate(({ from, cancel, type, delta }) => {
+    const isBackward = type === 'popstate' && delta && delta < 0
+
+    if (isBackward) {
+        cancel()
+        goto("/", { replaceState: true })
     }
   })
 </script>

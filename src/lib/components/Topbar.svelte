@@ -23,11 +23,11 @@
   </div>
 
   <div class="right">
-    <button class="icon-btn search-btn" aria-label="搜索">
+    <!-- <button class="icon-btn search-btn" aria-label="搜索">
       <Search size={18} />
       <span class="search-text">搜索卡牌、卡组...</span>
       <kbd>⌘K</kbd>
-    </button>
+    </button> -->
     <button class="icon-btn" aria-label="通知">
       <Bell size={18} />
     </button>
@@ -96,7 +96,7 @@
     color: var(--text-tertiary);
   }
 
-  .search-btn {
+  /* .search-btn {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     padding: 4px 10px;
@@ -121,9 +121,9 @@
     border-radius: 3px;
     padding: 1px 4px;
     color: var(--text-secondary);
-  }
+  } */
 
-  @media (max-width: 767.99px) {
+  /* @media (max-width: 767.99px) {
     .search-btn {
       width: auto;
       padding: 6px;
@@ -132,5 +132,5 @@
     kbd {
       display: none;
     }
-  }
+  } */
 </style>
