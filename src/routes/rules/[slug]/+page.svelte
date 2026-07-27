@@ -13,7 +13,7 @@
     expandedRules,
     type Lang,
   } from '$lib/stores/rules'
-  import {  ChevronLeft, Menu } from '@lucide/svelte'
+  import { ChevronLeft, Menu } from '@lucide/svelte'
   import { isMobile } from '$lib/services/os-serives'
   import { longpress } from '$lib/services/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -28,14 +28,12 @@
   let searchResults = $derived.by(() => {
     if (!searchQuery.trim()) return []
     const q = searchQuery.trim().toLowerCase()
-    return $rules
-      .filter(
-        (r) =>
-          r.rule_number.toLowerCase().includes(q) ||
-          (r.text_zh || '').toLowerCase().includes(q) ||
-          (r.text_en || '').toLowerCase().includes(q)
-      )
-      .slice(0, 50)
+    return $rules.filter(
+      (r) =>
+        r.rule_number.toLowerCase().includes(q) ||
+        (r.text_zh || '').toLowerCase().includes(q) ||
+        (r.text_en || '').toLowerCase().includes(q)
+    )
   })
 
   // 过滤后的树（用于搜索时）
