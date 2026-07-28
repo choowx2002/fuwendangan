@@ -96,6 +96,7 @@
   const init = async () => {
     const { decks, total } = await getDeckList()
     allDecks = decks
+    console.log(decks)
   }
 
   onMount(() => {
@@ -106,8 +107,8 @@
     const isBackward = type === 'popstate' && delta && delta < 0
 
     if (isBackward) {
-        cancel()
-        goto("/", { replaceState: true })
+      cancel()
+      goto('/', { replaceState: true })
     }
   })
 </script>

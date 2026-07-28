@@ -8,8 +8,11 @@
     GripHorizontal,
     GripVertical,
     LoaderCircle,
+    Minus,
+    Plus,
     Save,
     TriangleAlert,
+    X,
   } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -35,6 +38,17 @@
 
   let deckName = $state('未命名卡组')
   let selectedZone = $state<ZoneKey>('mainDeck')
+
+  type DisplayMode = 'grouped' | 'single'
+
+  let mainDeckDisplayMode = $state<DisplayMode>('grouped')
+  let sideboardDisplayMode = $state<DisplayMode>('grouped')
+  let printModalPrintIndex = $state(0)
+  let printModalTarget = $state<{
+    card: cardAndPrint
+    zone: ZoneKey
+    grouped: boolean
+  } | null>(null)
 
   // --- 核心：未保存修改标记 (Dirty State) ---
   let isDirty = $state(false)
@@ -124,7 +138,7 @@
   onMount(() => {
     async function updateLayoutMode() {
       isTouchDevice = await isMobile()
-      isMobile1 = window.innerWidth < 787.99
+      isMobile1 = window.innerWidth < 479.99
 
       useVerticalResize = isMobile1 || isTouchDevice
     }
@@ -140,14 +154,22 @@
 
   function groupCards(cards: cardAndPrint[]) {
     const map = new Map<string, { card: cardAndPrint; count: number }>()
+
     for (const card of cards) {
-      const existing = map.get(card.id)
+      // Print 不同的情况下不能合并，否则切换 Print 后无法准确知道数量
+      const key = `${card.id}:${card.selectedPrints ?? ''}`
+      const existing = map.get(key)
+
       if (existing) {
         existing.count += 1
       } else {
-        map.set(card.id, { card, count: 1 })
+        map.set(key, {
+          card,
+          count: 1,
+        })
       }
     }
+
     return Array.from(map.values())
   }
 
@@ -234,34 +256,45 @@
     //   return
     // }
 
-    let defaultPrint =
+    const defaultPrint =
       card.card_prints?.find((p) => p.is_default) ??
-      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
+      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC') ??
+      card.card_prints?.[0]
 
-    if (defaultPrint?.id) card.selectedPrints = defaultPrint.id
+    const newCard: cardAndPrint = {
+      ...card,
+      card_prints: card.card_prints ?? [],
+      selectedPrints: defaultPrint?.id,
+    }
 
     switch (selectedZone) {
       case 'legend':
-        legendCards = [card]
+        legendCards = [newCard]
         selectedZone = 'champion'
         break
+
       case 'champion':
-        championCards = [card]
+        championCards = [newCard]
         selectedZone = 'mainDeck'
         break
+
       case 'mainDeck':
-        mainDeckCards = [...mainDeckCards, card]
+        mainDeckCards = [...mainDeckCards, newCard]
         break
+
       case 'battlefields':
-        battlefieldCards = [...battlefieldCards, card]
+        battlefieldCards = [...battlefieldCards, newCard]
         break
+
       case 'runes':
-        runeCards = [...runeCards, card]
+        runeCards = [...runeCards, newCard]
         break
+
       case 'sideboard':
-        sideboardCards = [...sideboardCards, card]
+        sideboardCards = [...sideboardCards, newCard]
         break
     }
+
     isDirty = true
   }
 
@@ -314,6 +347,82 @@
       }
       isDirty = true
     }
+  }
+
+  function getZoneCards(zone: ZoneKey): cardAndPrint[] {
+    switch (zone) {
+      case 'legend':
+        return legendCards
+      case 'champion':
+        return championCards
+      case 'mainDeck':
+        return mainDeckCards
+      case 'battlefields':
+        return battlefieldCards
+      case 'runes':
+        return runeCards
+      case 'sideboard':
+        return sideboardCards
+    }
+  }
+
+  function setZoneCards(zone: ZoneKey, cards: cardAndPrint[]) {
+    switch (zone) {
+      case 'legend':
+        legendCards = cards
+        break
+      case 'champion':
+        championCards = cards
+        break
+      case 'mainDeck':
+        mainDeckCards = cards
+        break
+      case 'battlefields':
+        battlefieldCards = cards
+        break
+      case 'runes':
+        runeCards = cards
+        break
+      case 'sideboard':
+        sideboardCards = cards
+        break
+    }
+  }
+
+  function addCardQuantity(card: cardAndPrint, zone: ZoneKey) {
+    const cards = getZoneCards(zone)
+
+    if (cards.length >= ZONE_CONFIG[zone].maxCount) {
+      message(`${ZONE_CONFIG[zone].name} 区域已达到最大容量 ${ZONE_CONFIG[zone].maxCount} 张！`)
+      return
+    }
+
+    const newCard: cardAndPrint = {
+      ...card,
+      card_prints: card.card_prints ?? [],
+      selectedPrints: card.selectedPrints,
+    }
+
+    setZoneCards(zone, [...cards, newCard])
+    isDirty = true
+  }
+
+  function removeCardQuantity(card: cardAndPrint, zone: ZoneKey, grouped: boolean) {
+    const cards = getZoneCards(zone)
+
+    let index = -1
+
+    if (grouped) {
+      index = cards.findIndex((c) => c.id === card.id && c.selectedPrints === card.selectedPrints)
+    } else {
+      // Single 模式只删除当前这一张实体卡
+      index = cards.findIndex((c) => c === card)
+    }
+
+    if (index === -1) return
+
+    setZoneCards(zone, cards.toSpliced(index, 1))
+    isDirty = true
   }
 
   const convertDeckCardInput = (cards: (cardAndPrint & { zone: string })[]) => {
@@ -498,32 +607,187 @@
 
     document.documentElement.style.cursor = ''
   }
+
+  function openPrintModal(card: cardAndPrint, zone: ZoneKey, grouped: boolean) {
+    if (!card.card_prints?.length) return
+    const filteredCard = {
+      ...card,
+      card_prints: card.card_prints
+        .filter((p) => p.language === 'SC')
+        .sort((a, b) => {
+          const nameA = a.card_no_extend.toUpperCase()
+          const nameB = b.card_no_extend.toUpperCase()
+          if (nameA < nameB) {
+            return -1
+          }
+          if (nameA > nameB) {
+            return 1
+          }
+
+          return 0
+        }),
+    }
+
+    if (!filteredCard.card_prints?.length) return
+
+    const index = Math.max(
+      0,
+      filteredCard.card_prints.findIndex((print) => print.id === card.selectedPrints)
+    )
+
+    printModalPrintIndex = index
+
+    printModalTarget = {
+      card: filteredCard,
+      zone,
+      grouped,
+    }
+  }
+
+  function closePrintModal() {
+    printModalTarget = null
+  }
+
+  function selectCardPrint(printId: string) {
+    const target = printModalTarget
+
+    if (!target) return
+
+    applyCardPrintSelection(target, printId)
+
+    closePrintModal()
+  }
+
+  function applyCardPrintSelection(target: NonNullable<typeof printModalTarget>, printId: string) {
+    const cards = getZoneCards(target.zone)
+
+    if (target.grouped) {
+      // Grouping：当前这一组全部切换到新的 Print
+      const updated = cards.map((card) => {
+        if (card.id === target.card.id && card.selectedPrints === target.card.selectedPrints) {
+          return {
+            ...card,
+            selectedPrints: printId,
+          }
+        }
+
+        return card
+      })
+
+      setZoneCards(target.zone, updated)
+    } else {
+      // Single：只修改当前实体
+      const updated = cards.map((card) => {
+        if (card === target.card) {
+          return {
+            ...card,
+            selectedPrints: printId,
+          }
+        }
+
+        return card
+      })
+
+      setZoneCards(target.zone, updated)
+    }
+
+    isDirty = true
+  }
+
+  function getPrintQuantity(zone: ZoneKey, cardId: string, printId: string): number {
+    return getZoneCards(zone).filter(
+      (card) => card.id === cardId && card.selectedPrints === printId
+    ).length
+  }
+
+  function changePrintQuantity(delta: number) {
+    const target = printModalTarget
+
+    if (!target) return
+
+    const currentPrint = target.card.card_prints[printModalPrintIndex]
+
+    if (!currentPrint) return
+
+    const currentQuantity = getPrintQuantity(target.zone, target.card.id, currentPrint.id)
+
+    if (delta > 0) {
+      addCardQuantity(
+        {
+          ...target.card,
+          selectedPrints: currentPrint.id,
+        },
+        target.zone
+      )
+
+      return
+    }
+
+    if (currentQuantity <= 0) return
+
+    removeCardQuantity(
+      {
+        ...target.card,
+        selectedPrints: currentPrint.id,
+      },
+      target.zone,
+      true
+    )
+  }
 </script>
 
-{#snippet cardItem(
-  group: { card: cardAndPrint; count: number },
-  zone: ZoneKey,
-  onRemove: (cardId: string, zone: ZoneKey) => void
-)}
-  <div role="presentation" class="card-item" onclick={() => onRemove(group.card.id, zone)}>
+{#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
+  <div
+    role="button"
+    tabindex="0"
+    class="card-item"
+    onclick={() => openPrintModal(group.card, zone, grouped)}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        openPrintModal(group.card, zone, grouped)
+      }
+    }}
+  >
     <div class="card-image">
       {#if group.card.selectedPrints}
-        {@const defaultPrint = group.card.card_prints.find(
+        {@const selectedPrint = group.card.card_prints.find(
           (p) => p.id === group.card.selectedPrints
         )}
+
         <CardSimpleImage
-          url={defaultPrint?.img_cdn}
-          name={`${group.card.id}-${defaultPrint!.id || 'default'}`}
+          url={selectedPrint?.img_cdn}
+          name={`${group.card.id}-${selectedPrint?.id || 'default'}`}
         />
       {/if}
     </div>
+
     <div class="card-info">
       <div class="card-name">{group.card.card_name_cn}</div>
       <div class="card-id">{group.card.card_no}</div>
     </div>
-    {#if group.count}
-      <div class="card-count">{group.count}</div>
-    {/if}
+
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="card-quantity-control" onclick={(e) => e.stopPropagation()}>
+      <button
+        class="quantity-btn"
+        aria-label="减少数量"
+        onclick={() => removeCardQuantity(group.card, zone, grouped)}
+      >
+        <Minus size={14} />
+      </button>
+
+      <span class="card-count">{group.count}</span>
+
+      <button
+        class="quantity-btn"
+        aria-label="增加数量"
+        onclick={() => addCardQuantity(group.card, zone)}
+      >
+        <Plus size={14} />
+      </button>
+    </div>
   </div>
 {/snippet}
 
@@ -608,7 +872,7 @@
         </div>
         <div class="zone-list">
           {#each groupCards(legendCards) as group}
-            {@render cardItem(group, 'legend', handleRemoveOneCard)}
+            {@render cardItem(group, 'legend', true)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -624,7 +888,7 @@
         </div>
         <div class="zone-list">
           {#each groupCards(championCards) as group}
-            {@render cardItem(group, 'champion', handleRemoveOneCard)}
+            {@render cardItem(group, 'champion', true)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -634,16 +898,40 @@
       <!-- MainDeck Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}
-            >主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})</span
-          >
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
+            主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
+          </span>
+
+          <div class="display-mode-switch">
+            <button
+              class:active={mainDeckDisplayMode === 'grouped'}
+              onclick={() => (mainDeckDisplayMode = 'grouped')}
+            >
+              合并
+            </button>
+
+            <button
+              class:active={mainDeckDisplayMode === 'single'}
+              onclick={() => (mainDeckDisplayMode = 'single')}
+            >
+              单张
+            </button>
+          </div>
         </div>
-        <div class="zone-list multi-item">
-          {#each groupCards(mainDeckCards) as group}
-            {@render cardItem(group, 'mainDeck', handleRemoveOneCard)}
+        <div class="zone-list multi-item" class:single-mode={mainDeckDisplayMode === 'single'}>
+          {#if mainDeckDisplayMode === 'grouped'}
+            {#each groupCards(mainDeckCards) as group}
+              {@render cardItem(group, 'mainDeck', true)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
           {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
+            {#each mainDeckCards as card}
+              {@render cardItem({ card, count: 1 }, 'mainDeck', false)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
+          {/if}
         </div>
       </div>
 
@@ -659,7 +947,7 @@
         </div>
         <div class="zone-list multi-item">
           {#each groupCards(battlefieldCards) as group}
-            {@render cardItem(group, 'battlefields', handleRemoveOneCard)}
+            {@render cardItem(group, 'battlefields', true)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -675,7 +963,7 @@
         </div>
         <div class="zone-list multi-item">
           {#each groupCards(runeCards) as group}
-            {@render cardItem(group, 'runes', handleRemoveOneCard)}
+            {@render cardItem(group, 'runes', true)}
           {:else}
             <div class="empty-zone">该区域为空</div>
           {/each}
@@ -685,20 +973,135 @@
       <!-- Sideboard Zone -->
       <div class="zone-section">
         <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'sideboard')}
-            >备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})</span
-          >
+          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'sideboard')}>
+            备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})
+          </span>
+
+          <div class="display-mode-switch">
+            <button
+              class:active={sideboardDisplayMode === 'grouped'}
+              onclick={() => (sideboardDisplayMode = 'grouped')}
+            >
+              合并
+            </button>
+
+            <button
+              class:active={sideboardDisplayMode === 'single'}
+              onclick={() => (sideboardDisplayMode = 'single')}
+            >
+              单张
+            </button>
+          </div>
         </div>
-        <div class="zone-list multi-item">
-          {#each groupCards(sideboardCards) as group}
-            {@render cardItem(group, 'sideboard', handleRemoveOneCard)}
+        <div class="zone-list multi-item" class:single-mode={sideboardDisplayMode === 'single'}>
+          {#if sideboardDisplayMode === 'grouped'}
+            {#each groupCards(sideboardCards) as group}
+              {@render cardItem(group, 'sideboard', true)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
           {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
+            {#each sideboardCards as card}
+              {@render cardItem({ card, count: 1 }, 'sideboard', false)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
+          {/if}
         </div>
       </div>
     </div>
   </aside>
+
+  {#if printModalTarget}
+    {@const prints = printModalTarget.card.card_prints}
+    {@const currentPrint = prints[printModalPrintIndex]}
+    <div class="print-modal-overlay" role="presentation" onclick={closePrintModal}>
+      <!-- svelte-ignore a11y_interactive_supports_focus -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="print-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="切换卡图版本"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="print-modal-header">
+          <div>
+            <div class="print-modal-title">
+              {printModalTarget.card.card_name_cn}
+            </div>
+
+            <div class="print-modal-subtitle">
+              {printModalTarget.card.card_no}
+            </div>
+          </div>
+
+          <button class="print-modal-close" aria-label="关闭" onclick={closePrintModal}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div class="print-modal-content">
+          <div class="print-slider">
+            <button
+              class="slider-arrow"
+              disabled={printModalPrintIndex === 0}
+              onclick={() => {
+                printModalPrintIndex = Math.max(0, printModalPrintIndex - 1)
+              }}
+            >
+              ‹
+            </button>
+
+            <div class="print-slide">
+              <div class="print-slide-image">
+                <CardSimpleImage
+                  url={prints[printModalPrintIndex]?.img_cdn}
+                  name={`${printModalTarget.card.id}-${currentPrint?.id}`}
+                />
+              </div>
+            </div>
+
+            <button
+              class="slider-arrow"
+              disabled={printModalPrintIndex >= prints.length - 1}
+              onclick={() => {
+                printModalPrintIndex = Math.min(prints.length - 1, printModalPrintIndex + 1)
+              }}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
+        <div class="print-quantity-control">
+          <button
+            class="quantity-btn"
+            disabled={getPrintQuantity(
+              printModalTarget.zone,
+              printModalTarget.card.id,
+              currentPrint?.id ?? ''
+            ) <= 0}
+            onclick={() => changePrintQuantity(-1)}
+          >
+            <Minus size={18} />
+          </button>
+
+          <span class="print-quantity">
+            {getPrintQuantity(
+              printModalTarget.zone,
+              printModalTarget.card.id,
+              currentPrint?.id ?? ''
+            )}
+          </span>
+
+          <button class="quantity-btn" onclick={() => changePrintQuantity(1)}>
+            <Plus size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -881,8 +1284,8 @@
   .zone-list:not(.multi-item) {
     padding: 12px;
     margin: 0;
-      grid-template-columns: unset;
-    }
+    grid-template-columns: unset;
+  }
 
   .zone-list:has(> .empty-zone) {
     display: block;
@@ -1049,7 +1452,129 @@
     background: #ef4444;
   }
 
-  @media (max-width: 767.99px) {
+  .card-quantity-control {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+
+    display: flex;
+    align-items: center;
+    gap: 2px;
+
+    height: 32px;
+    padding: 2px;
+
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 7px;
+
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+  }
+
+  .quantity-btn {
+    width: 26px;
+    height: 26px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: none;
+    border-radius: 5px;
+
+    color: white;
+    background: transparent;
+    cursor: pointer;
+
+    transition:
+      background-color 0.15s,
+      transform 0.15s;
+  }
+
+  .quantity-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .quantity-btn:active {
+    transform: scale(0.9);
+  }
+
+  .card-count {
+    min-width: 24px;
+    padding: 0 4px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .zone-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    padding: 8px 1rem;
+    background: var(--bg-secondary, #f9fafb);
+    font-weight: 600;
+    font-size: 13px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .display-mode-switch {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+
+    padding: 2px;
+    border-radius: 5px;
+
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color, #e5e7eb);
+  }
+
+  .display-mode-switch button {
+    border: none;
+    border-radius: 4px;
+
+    padding: 3px 7px;
+
+    background: transparent;
+    color: var(--text-secondary);
+
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .display-mode-switch button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .display-mode-switch button.active {
+    background: var(--accent-color);
+    color: var(--bg-primary);
+  }
+
+  .zone-list.single-mode {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  .zone-list.single-mode .card-item {
+    min-width: 0;
+  }
+
+  @media (max-width: 479.99px) {
     .deck-builder-layout {
       padding-block-start: env(safe-area-inset-top);
       flex-direction: column;
@@ -1074,6 +1599,313 @@
 
     .zone-list.multi-item {
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .zone-list.single-mode {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+  }
+
+  /* =========================================
+     Card Prints Modal (Notion Style)
+     ========================================= */
+
+  .print-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(55, 53, 47, 0.4); /* 使用 Notion 文本色作为遮罩底色 */
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .print-modal {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 680px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid var(--border-color);
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px) scale(0.98);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  .print-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+  }
+
+  .print-modal-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    line-height: 1.2;
+  }
+
+  .print-modal-subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+  }
+
+  .print-modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: 12px;
+  }
+
+  .print-modal-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .print-modal-content {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .print-slider {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    position: relative;
+  }
+
+  .slider-arrow {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 300;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .slider-arrow:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
+    transform: scale(1.05);
+  }
+
+  .slider-arrow:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  .slider-arrow:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .print-slide {
+    flex: 1;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .print-slide-image {
+    flex: 1;
+    max-width: 260px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 针对 CardSimpleImage 渲染的 img 标签使用 :global 穿透 */
+  :global(.print-slide-image img) {
+    width: 100%;
+    aspect-ratio: 744/1040;
+    max-height: 360px;
+    object-fit: contain;
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    transition: transform 0.3s ease;
+  }
+
+  .print-quantity-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+  }
+
+  .print-quantity-control .quantity-btn {
+    width: 44px;
+    height: 44px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .print-quantity-control .quantity-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .print-quantity-control .quantity-btn:active {
+    transform: translateY(0);
+  }
+
+  .print-quantity {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 48px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* =========================================
+     Mobile Responsive (手机适配)
+     ========================================= */
+  @media (max-width: 640px) {
+    .print-modal-overlay {
+      padding: 10px;
+    }
+
+    .print-modal {
+      max-height: 94vh;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .print-modal-header {
+      padding: 14px 16px;
+    }
+
+    .print-modal-title {
+      font-size: var(--text-lg);
+    }
+
+    .print-modal-content {
+      padding: 16px 12px;
+    }
+
+    .print-slider {
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .print-slide {
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .print-slide-image {
+      max-width: 240px;
+      width: 100%;
+    }
+
+    /* 移动端将左右箭头绝对定位悬浮在图片两侧，节省横向空间 */
+    .slider-arrow {
+      position: absolute;
+      top: 32%; /* 定位在图片中部偏上 */
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+      background: rgba(247, 247, 245, 0.95);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      z-index: 5;
+    }
+
+    .slider-arrow:first-child {
+      left: 8px;
+    }
+
+    .slider-arrow:last-child {
+      right: 8px;
+    }
+
+    .print-quantity-control {
+      padding: 14px 16px;
+      gap: 16px;
+    }
+
+    .print-quantity-control .quantity-btn {
+      width: 40px;
+      height: 40px;
+    }
+
+    .print-quantity {
+      font-size: var(--text-xl);
+    }
+  }
+
+  @media (max-width: 380px) {
+    .print-slide-image {
+      max-width: 200px;
     }
   }
 </style>

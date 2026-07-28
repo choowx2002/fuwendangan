@@ -206,7 +206,7 @@
 
   onMount(() => {
     async function updateLayoutMode() {
-      isMobileSmall = window.innerWidth < 399.99
+      isMobileSmall = window.innerWidth < 479.99
     }
 
     updateLayoutMode()
@@ -348,8 +348,10 @@
   }
 
   const getDefaultImg = (card: cardAndPrint) => {
-    return card.card_prints?.find((p) => p.is_default) ??
+    return (
+      card.card_prints?.find((p) => p.is_default) ??
       card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
+    )
   }
 </script>
 
@@ -451,15 +453,13 @@
             }}
             style="position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column"
           >
-             <CachedImage
-                src={defaultI?.img_cdn! ?? defaultI?.tts_cdn!}
-                name={`${card.id}-${defaultI?.id || 'default'}`}
-                borderRadius="6px"
-                fit="cover"
-              />
-            <h5
-              style="color: var(--text-primary) ;margin: 0; text-align: center;"
-            >
+            <CachedImage
+              src={defaultI?.img_cdn! ?? defaultI?.tts_cdn!}
+              name={`${card.id}-${defaultI?.id || 'default'}`}
+              borderRadius="6px"
+              fit="cover"
+            />
+            <h5 style="color: var(--text-primary) ;margin: 0; text-align: center;">
               {`${card.card_name_cn} ${card.sub_title_cn || ''}`}
             </h5>
             <small style="font-size: var(--text-xs)">{card.card_no}</small>
@@ -658,6 +658,7 @@
       flex-wrap: nowrap;
       align-items: center;
       gap: 5px;
+      flex: 0 0 100%;
     }
   }
 
