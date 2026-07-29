@@ -93,7 +93,7 @@
 
       <!-- Footer -->
       {#if footer}
-        <div class="modal-footer" class:footerCentered={footerCentered}>
+        <div class="modal-footer" class:footerCentered>
           {@render footer()}
         </div>
       {/if}
@@ -120,8 +120,12 @@
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .modal {

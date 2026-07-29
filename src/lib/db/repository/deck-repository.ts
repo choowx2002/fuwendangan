@@ -357,14 +357,7 @@ export async function getDeckList(
   options: GetDeckListOptions = {}
 ): Promise<{ decks: DeckListResult[]; total: number }> {
   const db = await getDatabase()
-  const {
-    limit = 20,
-    offset = 0,
-    deckName,
-    format,
-    isFavorite,
-    cardFilter,
-  } = options
+  const { limit = 20, offset = 0, deckName, format, isFavorite, cardFilter } = options
 
   const whereConditions: string[] = []
   const params: any[] = []
@@ -390,7 +383,7 @@ export async function getDeckList(
     const subParams: any[] = []
 
     if (cardFilter.legendName) {
-      cardWhere.push(`cb.card_name_cn LIKE ?`) 
+      cardWhere.push(`cb.card_name_cn LIKE ?`)
       subParams.push(`%${cardFilter.legendName}%`)
     }
     if (cardFilter.subtitle) {
@@ -497,7 +490,6 @@ export async function getDeckList(
   return { decks, total }
 }
 
-
 /**
  * Duplicate a deck (copy latest version)
  */
@@ -510,17 +502,13 @@ export async function duplicateDeck(deckId: string): Promise<string> {
 
   try {
     // 1. Get original deck
-    const decks = await db.select<Deck[]>(
-      `SELECT * FROM decks WHERE id = ?`,
-      [deckId]
-    )
+    const decks = await db.select<Deck[]>(`SELECT * FROM decks WHERE id = ?`, [deckId])
 
     if (decks.length === 0) {
       throw new Error('Deck not found')
     }
 
     const sourceDeck = decks[0]
-
 
     // 2. Create new deck
     await db.execute(
@@ -549,7 +537,6 @@ export async function duplicateDeck(deckId: string): Promise<string> {
       ]
     )
 
-
     // 3. Get latest version
     const versions = await db.select<DeckVersion[]>(
       `
@@ -568,7 +555,6 @@ export async function duplicateDeck(deckId: string): Promise<string> {
     }
 
     const sourceVersion = versions[0]
-
 
     // 4. Create new version
     await db.execute(
@@ -591,7 +577,6 @@ export async function duplicateDeck(deckId: string): Promise<string> {
       ]
     )
 
-
     // 5. Copy cards
     const cards = await db.select<DeckCard[]>(
       `
@@ -601,7 +586,6 @@ export async function duplicateDeck(deckId: string): Promise<string> {
       `,
       [sourceVersion.id]
     )
-
 
     if (cards.length > 0) {
       for (const card of cards) {
@@ -617,21 +601,12 @@ export async function duplicateDeck(deckId: string): Promise<string> {
           )
           VALUES (?, ?, ?, ?, ?, ?)
           `,
-          [
-            Snowflake.generate(),
-            newVersionId,
-            card.card_id,
-            card.quantity,
-            card.zone,
-            timestamp,
-          ]
+          [Snowflake.generate(), newVersionId, card.card_id, card.quantity, card.zone, timestamp]
         )
       }
     }
 
-
     return newDeckId
-
   } catch (error) {
     console.error('[DUPLICATE DECK] failed:', error)
     throw error

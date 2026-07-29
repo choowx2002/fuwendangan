@@ -18,8 +18,8 @@
     const isBackward = type === 'popstate' && delta && delta < 0
 
     if (isBackward) {
-        cancel()
-        goto("/", { replaceState: true })
+      cancel()
+      goto('/', { replaceState: true })
     }
   })
 </script>

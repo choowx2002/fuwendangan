@@ -57,7 +57,7 @@
 
         // 如果有指定的返回页面（比如从 /decks/builder 回到 /decks）
         // 使用 replaceState: true，避免污染历史记录栈
-        goto("/", { replaceState: true })
+        goto('/', { replaceState: true })
       }
     }
   })

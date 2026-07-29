@@ -597,10 +597,10 @@
 
       if (useVerticalResize) {
         const deltaY = event.clientY - startY
-        
+
         // 【关键修复】加上负号：向上拖拽(deltaY<0) -> deltaPercent>0 -> 高度增加
         const deltaPercent = (-deltaY / containerHeight) * 100
-        
+
         let newHeight = startSize + deltaPercent
 
         // 1. Clamp (边界限制)：限制在 20% 到 85% 之间
@@ -611,7 +611,7 @@
 
         // 2. Snap (吸附效果)
         const SNAP_THRESHOLD_BOTTOM = 5 // 拖到小于 30% 时，自动收起
-        const SNAP_THRESHOLD_TOP = 95    // 拖到大于 80% 时，自动最大化
+        const SNAP_THRESHOLD_TOP = 95 // 拖到大于 80% 时，自动最大化
 
         if (newHeight <= SNAP_THRESHOLD_BOTTOM) {
           newHeight = 0 // 完全收起 (如果 MIN_HEIGHT 是 0 的话)
@@ -620,7 +620,6 @@
         }
 
         rightPanelHeight = newHeight
-        
       } else {
         const deltaX = startX - event.clientX
 
@@ -780,19 +779,18 @@
     )
   }
 
-
   function changePrintsId() {
-    const target = printModalTarget;
-    if(!target) return
+    const target = printModalTarget
+    if (!target) return
 
     const currentPrint = target.card.card_prints[printModalPrintIndex]
-    if(!currentPrint)return
+    if (!currentPrint) return
 
     let card = getZoneCards(target.zone).filter(
       (card) => card.id === target.card.id && card.selectedPrints === target.card.selectedPrints
     )
 
-    card.forEach((c)=> {
+    card.forEach((c) => {
       c.selectedPrints = currentPrint.id
     })
   }
@@ -1142,7 +1140,13 @@
             <Plus size={18} />
           </button>
 
-          <button class="save-btn" disabled={printModalTarget?.card.selectedPrints === currentPrint.id} onclick={() => changePrintsId()}> 切换 </button>
+          <button
+            class="save-btn"
+            disabled={printModalTarget?.card.selectedPrints === currentPrint.id}
+            onclick={() => changePrintsId()}
+          >
+            切换
+          </button>
         </div>
       {/snippet}
     </CommonModal>
@@ -1976,7 +1980,7 @@
     .slider-arrow {
       position: absolute;
       top: 50%;
-transform: translateY(-50%);
+      transform: translateY(-50%);
       width: 36px;
       height: 36px;
       font-size: 20px;

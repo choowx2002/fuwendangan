@@ -37,11 +37,11 @@
   <!-- 直接使用 uiState.status -->
   {#if uiState.status === 'error'}
     <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />
-  {:else if uiState.status !== 'success' && uiState.status !== 'hidden'}
+  {:else if uiState.status !== 'success' && uiState.status !== 'hidden' && uiState.status !== 'downloading'}
     <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />
   {/if}
 
-  {#if uiState.status === 'success' || uiState.status === 'hidden'}
+  {#if uiState.status === 'success' || uiState.status === 'hidden' || uiState.status === 'downloading'}
     <AppShell>
       {@render children()}
     </AppShell>

@@ -242,6 +242,8 @@ export async function getMissingCardPrints(
   existingCount: number
   totalCount: number
 }> {
+  await ensureDir(CARD_IMAGE)
+
   const files = await readDir(imagePath, {
     baseDir: BaseDirectory.AppLocalData,
   })
@@ -249,11 +251,13 @@ export async function getMissingCardPrints(
   const fileNames = new Set(
     files.filter((file) => file.name).map((file) => file.name!.split('.')[0])
   )
+
   const missing = cardPrints.filter((print) => {
     const expectedName = urlToFilename(
       print.img_cdn ?? print.tts_cdn,
       `${print.card_id}-${print.id || 'default'}`
     )
+
     return !fileNames.has(expectedName)
   })
 

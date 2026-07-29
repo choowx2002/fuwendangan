@@ -1,13 +1,13 @@
 <script lang="ts">
   import { getTableState, formatBytes, resetDatabase, initializeDatabase, getPrints } from '$lib/db'
   import { showForeignCardArt as showFCA, showTTSFeatures } from '$lib/stores/settings'
+  import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
+
   import {
-    CARD_IMAGE,
-    clearLocalCache,
-    getImageDirSize,
-    getMissingCardPrints,
-    loadImageFromAppFolder,
-  } from '$lib/services/image-cache-service'
+    prepareCardImageDownload,
+    startCardImageDownload,
+    isCardImageDownloading,
+  } from '$lib/services/card-image-download-service'
   import { appDataDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { onMount } from 'svelte'
   import { setLoadStatus } from '$lib/stores/ui-store.svelte'
@@ -16,8 +16,6 @@
   import { getVersion } from '@tauri-apps/api/app'
   import { isMobile } from '$lib/services/os-serives'
   import { ask, message } from '@tauri-apps/plugin-dialog'
-  // import { readDir } from '@tauri-apps/plugin-fs'
-  import LoadingModal from '$lib/components/LoadingModal.svelte'
   import { beforeNavigate, goto } from '$app/navigation'
 
   // import { invoke } from '@tauri-apps/api/core';
@@ -36,12 +34,6 @@
   let imageCacheSize = $state<string>('加载中...')
   let inMobile = $state<boolean>(false)
   let onloadInfo = $state<boolean>(false)
-
-  // 下载进度
-  let downloadProgress = $state<number>(0)
-  let isDownloading = $state<boolean>(false)
-  let shouldContinueDownload = $state<boolean>(true)
-  let downloadSubText = $state<string>('')
 
   // --- 常量 ---
   const HELP_DOC_URL =
@@ -168,58 +160,46 @@
   }
 
   async function startDownloadAll() {
-    // Continue downloading
-    const cardPrints = await getPrints()
-
-    //check the install amount by check image dir list with `${card.id}-${defaultPrint?.id || 'default'}` as filename
-    const { missing, existingCount, totalCount } = await getMissingCardPrints(cardPrints, imagePath)
-    if (missing.length === 0) {
-      await message('所有卡牌资源已经存在，无需下载。', {
-        title: '卡牌资源',
-        kind: 'info',
-      })
-      return
-    }
-    const accepted = await ask(
-      `为了下载大约${missing.length}张卡牌资源，本应用需要下载数据。如果您正在使用手机热点或移动网络，下载可能会消耗较多流量。\n\n是否继续执行？`,
-      {
-        title: '卡牌资源下载',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
-
-    if (!accepted) {
+    if (isCardImageDownloading()) {
       return
     }
 
-    isDownloading = true
-    //start download
     try {
-      for (const [index, fileData] of missing.entries()) {
-        if (!shouldContinueDownload) break
-        downloadProgress = ((index + 1) / missing.length) * 100
-        downloadSubText = `正在下载第 ${index + 1} / ${missing.length} 张卡牌资源...`
-        await loadImageFromAppFolder(
-          fileData.img_cdn ?? fileData.tts_cdn,
-          `${fileData.card_id}-${fileData?.id || 'default'}`
-        )
+      const { missing } = await prepareCardImageDownload()
+
+      if (missing.length === 0) {
+        await message('所有卡牌资源已经存在，无需下载。', {
+          title: '卡牌资源',
+          kind: 'info',
+        })
+
+        return
       }
-    } catch (error: unknown) {
-      console.error(error)
-      shouldContinueDownload = false
-      await message(error instanceof Error ? error.message : '截图给作者吧～', {
-        title: '下载卡牌出现问题QAQ',
+
+      const accepted = await ask(
+        `为了下载大约${missing.length}张卡牌资源，本应用需要下载数据。如果您正在使用手机热点或移动网络，下载可能会消耗较多流量。\n\n是否继续执行？`,
+        {
+          title: '卡牌资源下载',
+          kind: 'warning',
+          okLabel: '确定',
+          cancelLabel: '取消',
+        }
+      )
+
+      if (!accepted) {
+        return
+      }
+
+      // 启动全局后台任务。
+      // 离开 Settings 页面后下载仍会继续。
+      startCardImageDownload(missing)
+    } catch (error) {
+      console.error('[Settings] 准备卡图下载失败:', error)
+
+      await message(error instanceof Error ? error.message : '无法准备卡图下载任务。', {
+        title: '卡牌资源下载',
         kind: 'error',
       })
-    } finally {
-      isDownloading = false
-      if (!shouldContinueDownload) {
-        downloadProgress = 0
-      }
-      downloadSubText = ''
-      loadDbInfo()
     }
   }
 
@@ -227,8 +207,8 @@
     const isBackward = type === 'popstate' && delta && delta < 0
 
     if (isBackward) {
-        cancel()
-        goto("/", { replaceState: true })
+      cancel()
+      goto('/', { replaceState: true })
     }
   })
 </script>
@@ -414,17 +394,6 @@
     </div>
   </section>
 </div>
-{#if isDownloading}
-  <LoadingModal
-    status="downloading"
-    progress={downloadProgress}
-    subtext={downloadSubText}
-    onCancel={() => {
-      shouldContinueDownload = false
-      downloadSubText = '正在取消下载中'
-    }}
-  />
-{/if}
 
 <style>
   /* 基础变量与容器 - 继承 app.css 的设计系统 */
