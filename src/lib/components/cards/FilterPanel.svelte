@@ -131,7 +131,7 @@
         <!-- 内容区：可滚动 -->
         <div class="modal-body">
           <section class="filter-section range-section">
-            <h3 class="section-title">数值范围</h3>
+            <!-- <h3 class="section-title">数值范围</h3> -->
             <div class="range-grid">
               <div class="range-item">
                 <div class="range-label">
@@ -188,7 +188,6 @@
             </div>
           </section>
 
-          <!-- 🆕 将原有的离散筛选包裹在 columns-wrapper 中，以维持双列布局 -->
           <div class="columns-wrapper">
             {#each sections as section}
               {@const sortedList = sortOptions(section.type, section.options)}
@@ -213,8 +212,9 @@
                             alt={option}
                             width="20"
                           />
+                        {:else}
+                          {iconLanguage[option] ? iconLanguage[option] : option}
                         {/if}
-                        {iconLanguage[option] ? iconLanguage[option] : option}
                       {:else}
                         {iconLanguage[option] ? iconLanguage[option] : option}
                       {/if}
@@ -433,7 +433,7 @@
   }
 
   /* ================= 移动端适配 (底部弹出抽屉) ================= */
-  @media (max-width: 767.99px) {
+  @media (max-width: 479.99px) {
     .modal-container {
       padding: 0;
       align-items: flex-end;

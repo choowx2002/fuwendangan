@@ -10,7 +10,7 @@
   }
 
   let { filterOptions, onAddFilter, onTextSearch }: Props = $props()
-
+  let currentValue = $state('')
   let searchText = $state('')
   let isFocused = $state(false)
   let activeIndex = $state(-1)
@@ -70,6 +70,8 @@
       if (e.key === 'Enter') {
         e.preventDefault()
         onTextSearch(searchText)
+        currentValue = searchText
+        inputEl?.blur()
       }
       return
     }
@@ -85,11 +87,13 @@
       if (activeIndex >= 0) {
         selectSuggestion(suggestions[activeIndex])
       } else {
+        inputEl?.blur()
         onTextSearch(searchText)
+        currentValue = searchText
       }
     } else if (e.key === 'Escape') {
       activeIndex = -1
-      // inputEl?.blur()
+      inputEl?.blur()
     }
   }
 
@@ -118,12 +122,13 @@
       mode: 'include',
       type: suggestion.type, // 传递真实的分类！
     })
-    searchText = ''
+    onTextSearch('')
+    currentValue = searchText = ''
     inputEl?.blur()
   }
 
   function clearSearch() {
-    searchText = ''
+    currentValue = searchText = ''
     onTextSearch('')
     inputEl?.focus()
   }
@@ -137,13 +142,13 @@
       bind:this={inputEl}
       type="text"
       bind:value={searchText}
-      placeholder="搜索卡牌名称、效果，或输入标签..."
+      placeholder={currentValue ? `正在搜索“${currentValue}”` : '搜索卡牌名称、效果，或输入标签...'}
       onfocus={() => (isFocused = true)}
       onblur={() => setTimeout(() => (isFocused = false), 200)}
       onkeydown={handleKeydown}
       autocomplete="off"
     />
-    {#if searchText}
+    {#if currentValue}
       <button class="clear-btn" onclick={clearSearch} aria-label="清除">
         <X size={14} />
       </button>
