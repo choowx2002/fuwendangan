@@ -13,6 +13,7 @@ import * as ruleRepo from '../repository/rules-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState } from '$lib/stores/ui-store.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
+import { getDatabase } from '../repository/database'
 
 /**
  * 初始化数据库（在 Tauri 环境中执行数据同步）
@@ -31,11 +32,11 @@ export async function initializeDatabase(): Promise<void> {
       console.warn('[DB] 未获取到远端版本信息，跳过同步')
       return
     }
-
+    await getDatabase();
     const localVersion = await versionRepo.getVersion()
 
     let needsSync = true
-    if (localVersion) {
+    if (localVersion !== null) {
       const remoteTime = new Date(remoteVersion.updated_at).getTime()
       const localTime = localVersion ? new Date(localVersion.updated_at).getTime() : 0
       needsSync = remoteTime > localTime
@@ -61,7 +62,7 @@ export async function initializeDatabase(): Promise<void> {
  */
 async function performSync(remoteVersion: any): Promise<void> {
   console.log('[DB] 开始获取 cards')
-  const cards = await remoteApi.fetchAllCards()
+  const cards = await remoteApi.fetchUpdatedCards()
   console.log('[DB] 结束获取 cards')
 
   console.log('[DB] 开始获取 prints')

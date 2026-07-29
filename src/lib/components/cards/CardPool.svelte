@@ -137,12 +137,12 @@
       hasMore = displayedCards.length < result.total
 
       await tick()
-      // if (displayedCards.length > 0 && currentPage == 1) {
-      //   const firstItem = document.getElementById(displayedCards[0].id)
-      //   if (firstItem) {
-      //     firstItem.scrollIntoView({ behavior: 'smooth'  })
-      //   }
-      // }
+      if (displayedCards.length > 0 && currentPage == 1) {
+        const firstItem = document.getElementById(displayedCards[0].id)
+        if (firstItem) {
+          firstItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      }
 
       currentPage++
     } catch (e) {
