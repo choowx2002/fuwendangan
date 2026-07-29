@@ -25,6 +25,7 @@
     type DeckCardInput,
     type DeckInput,
   } from '$lib/db'
+  import CommonModal from '$lib/components/CommonModal.svelte'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
@@ -38,6 +39,10 @@
 
   let deckName = $state('未命名卡组')
   let selectedZone = $state<ZoneKey>('mainDeck')
+
+  let showSaveModal = $state(false)
+  let saveDeckName = $state('未命名卡组')
+  let saveDeckDescription = $state('')
 
   type DisplayMode = 'grouped' | 'single'
 
@@ -475,33 +480,65 @@
       if (!ignoreWarning) return
     }
 
+    // 校验通过后，不立即保存，先打开保存信息 Modal
+    saveDeckName = deckName === '未命名卡组' ? '' : deckName
+    saveDeckDescription = ''
+    showSaveModal = true
+  }
+
+  async function confirmSaveDeck() {
+    const name = saveDeckName.trim()
+
+    if (!name) {
+      message('请输入卡组名称')
+      return
+    }
+
     isSaving = true
+
     const deckInfo: DeckInput = {
-      name: deckName,
-      description: '',
+      name,
+      description: saveDeckDescription.trim() || null,
       format: '1v1（比赛）',
     }
+
     const convertedCards = convertDeckCardInput(getAllDeckCards())
-    // convert to deck card input
     const compressCards = compressDeckCards(convertedCards)
 
     let deckID: string | null = null
+
     try {
       deckID = await createDeck(deckInfo)
+
       if (deckID) {
-        const result = await saveDeckAsNewVersion(deckID, compressCards)
+        await saveDeckAsNewVersion(deckID, compressCards)
       }
+
+      deckName = name
       isDirty = false
-      goto(`/decks`)
+      showSaveModal = false
+
+      goto('/decks')
     } catch (error) {
       if (deckID) {
-        await deleteDeck(deckID)
+        try {
+          await deleteDeck(deckID)
+        } catch (deleteError) {
+          console.error('清理保存失败的卡组失败:', deleteError)
+        }
       }
+
       console.error('保存失败:', error)
       message('保存失败，请重试')
     } finally {
       isSaving = false
     }
+  }
+
+  function cancelSaveDeck() {
+    if (isSaving) return
+
+    showSaveModal = false
   }
 
   function handlePointerDown(e: PointerEvent) {
@@ -560,22 +597,30 @@
 
       if (useVerticalResize) {
         const deltaY = event.clientY - startY
-
+        
+        // 【关键修复】加上负号：向上拖拽(deltaY<0) -> deltaPercent>0 -> 高度增加
         const deltaPercent = (-deltaY / containerHeight) * 100
-
+        
         let newHeight = startSize + deltaPercent
 
-        // Clamp
-        newHeight = Math.max(0, Math.min(85, newHeight))
+        // 1. Clamp (边界限制)：限制在 20% 到 85% 之间
+        // 如果你希望允许完全收起，可以把 20 改成 0
+        const MIN_HEIGHT = 5
+        const MAX_HEIGHT = 95
+        newHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight))
 
-        // Snap
-        const SNAP_THRESHOLD = 10
+        // 2. Snap (吸附效果)
+        const SNAP_THRESHOLD_BOTTOM = 5 // 拖到小于 30% 时，自动收起
+        const SNAP_THRESHOLD_TOP = 95    // 拖到大于 80% 时，自动最大化
 
-        if (newHeight <= SNAP_THRESHOLD) {
-          newHeight = 0
+        if (newHeight <= SNAP_THRESHOLD_BOTTOM) {
+          newHeight = 0 // 完全收起 (如果 MIN_HEIGHT 是 0 的话)
+        } else if (newHeight >= SNAP_THRESHOLD_TOP) {
+          newHeight = 100 // 完全展开 (可选)
         }
 
         rightPanelHeight = newHeight
+        
       } else {
         const deltaX = startX - event.clientX
 
@@ -734,6 +779,23 @@
       true
     )
   }
+
+
+  function changePrintsId() {
+    const target = printModalTarget;
+    if(!target) return
+
+    const currentPrint = target.card.card_prints[printModalPrintIndex]
+    if(!currentPrint)return
+
+    let card = getZoneCards(target.zone).filter(
+      (card) => card.id === target.card.id && card.selectedPrints === target.card.selectedPrints
+    )
+
+    card.forEach((c)=> {
+      c.selectedPrints = currentPrint.id
+    })
+  }
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
@@ -770,23 +832,23 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="card-quantity-control" onclick={(e) => e.stopPropagation()}>
-      <button
+      <!-- <button
         class="quantity-btn"
         aria-label="减少数量"
         onclick={() => removeCardQuantity(group.card, zone, grouped)}
       >
         <Minus size={14} />
-      </button>
+      </button> -->
 
       <span class="card-count">{group.count}</span>
 
-      <button
+      <!-- <button
         class="quantity-btn"
         aria-label="增加数量"
         onclick={() => addCardQuantity(group.card, zone)}
       >
         <Plus size={14} />
-      </button>
+      </button> -->
     </div>
   </div>
 {/snippet}
@@ -811,7 +873,7 @@
     onpointerdown={handlePointerDown}
   >
     {#if isMobile1}
-      <GripHorizontal size={16} />
+      <GripHorizontal size={24} />
     {:else}
       <GripVertical size={16} />
     {/if}
@@ -1015,71 +1077,52 @@
   {#if printModalTarget}
     {@const prints = printModalTarget.card.card_prints}
     {@const currentPrint = prints[printModalPrintIndex]}
-    <div class="print-modal-overlay" role="presentation" onclick={closePrintModal}>
-      <!-- svelte-ignore a11y_interactive_supports_focus -->
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div
-        class="print-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="切换卡图版本"
-        onclick={(e) => e.stopPropagation()}
-      >
-        <div class="print-modal-header">
-          <div>
-            <div class="print-modal-title">
-              {printModalTarget.card.card_name_cn}
-            </div>
 
-            <div class="print-modal-subtitle">
-              {printModalTarget.card.card_no}
-            </div>
-          </div>
+    <CommonModal
+      open
+      title={`${printModalTarget!.card.card_name_cn!} ${printModalTarget!.card.sub_title_cn}`.trim()}
+      subtitle={currentPrint.card_no_extend}
+      onclose={closePrintModal}
+      footerCentered={true}
+    >
+      <div class="print-slider">
+        <button
+          class="slider-arrow"
+          disabled={printModalPrintIndex === 0}
+          onclick={() => {
+            printModalPrintIndex = Math.max(0, printModalPrintIndex - 1)
+          }}
+        >
+          ‹
+        </button>
 
-          <button class="print-modal-close" aria-label="关闭" onclick={closePrintModal}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div class="print-modal-content">
-          <div class="print-slider">
-            <button
-              class="slider-arrow"
-              disabled={printModalPrintIndex === 0}
-              onclick={() => {
-                printModalPrintIndex = Math.max(0, printModalPrintIndex - 1)
-              }}
-            >
-              ‹
-            </button>
-
-            <div class="print-slide">
-              <div class="print-slide-image">
-                <CardSimpleImage
-                  url={prints[printModalPrintIndex]?.img_cdn}
-                  name={`${printModalTarget.card.id}-${currentPrint?.id}`}
-                />
-              </div>
-            </div>
-
-            <button
-              class="slider-arrow"
-              disabled={printModalPrintIndex >= prints.length - 1}
-              onclick={() => {
-                printModalPrintIndex = Math.min(prints.length - 1, printModalPrintIndex + 1)
-              }}
-            >
-              ›
-            </button>
+        <div class="print-slide">
+          <div class="print-slide-image">
+            <CardSimpleImage
+              url={prints[printModalPrintIndex]?.img_cdn}
+              name={`${printModalTarget.card.id}-${currentPrint?.id}`}
+            />
           </div>
         </div>
 
+        <button
+          class="slider-arrow"
+          disabled={printModalPrintIndex >= prints.length - 1}
+          onclick={() => {
+            printModalPrintIndex = Math.min(prints.length - 1, printModalPrintIndex + 1)
+          }}
+        >
+          ›
+        </button>
+      </div>
+
+      {#snippet footer()}
         <div class="print-quantity-control">
           <button
             class="quantity-btn"
             disabled={getPrintQuantity(
-              printModalTarget.zone,
-              printModalTarget.card.id,
+              printModalTarget!.zone,
+              printModalTarget!.card.id,
               currentPrint?.id ?? ''
             ) <= 0}
             onclick={() => changePrintQuantity(-1)}
@@ -1089,8 +1132,8 @@
 
           <span class="print-quantity">
             {getPrintQuantity(
-              printModalTarget.zone,
-              printModalTarget.card.id,
+              printModalTarget!.zone,
+              printModalTarget!.card.id,
               currentPrint?.id ?? ''
             )}
           </span>
@@ -1098,10 +1141,70 @@
           <button class="quantity-btn" onclick={() => changePrintQuantity(1)}>
             <Plus size={18} />
           </button>
+
+          <button class="save-btn" disabled={printModalTarget?.card.selectedPrints === currentPrint.id} onclick={() => changePrintsId()}> 切换 </button>
         </div>
-      </div>
-    </div>
+      {/snippet}
+    </CommonModal>
   {/if}
+
+  <CommonModal
+    open={showSaveModal}
+    title="保存卡组"
+    subtitle="为你的卡组设置名称和描述"
+    closable={!isSaving}
+    onclose={cancelSaveDeck}
+  >
+    <!-- 默认 slot → modal-content -->
+    <label class="save-modal-field">
+      <span class="save-modal-label">
+        卡组名称 <span class="required">*</span>
+      </span>
+      <input
+        class="save-modal-input"
+        type="text"
+        placeholder="例如：蜘蛛快攻"
+        maxlength="100"
+        bind:value={saveDeckName}
+        disabled={isSaving}
+        onkeydown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            confirmSaveDeck()
+          }
+        }}
+      />
+    </label>
+
+    <label class="save-modal-field">
+      <span class="save-modal-label">Description</span>
+      <textarea
+        class="save-modal-textarea"
+        placeholder="简单描述一下这个卡组……"
+        maxlength="500"
+        rows="5"
+        bind:value={saveDeckDescription}
+        disabled={isSaving}></textarea>
+    </label>
+
+    <!-- footer snippet → modal-footer -->
+    {#snippet footer()}
+      <button class="save-modal-cancel" disabled={isSaving} onclick={cancelSaveDeck}> 取消 </button>
+      <button
+        class="save-modal-confirm"
+        disabled={isSaving || !saveDeckName.trim()}
+        onclick={confirmSaveDeck}
+      >
+        {#if isSaving}
+          <LoaderCircle class="animate-spin" size={16} />
+          <span>保存中...</span>
+        {:else}
+          <Save size={16} />
+          <span>保存卡组</span>
+        {/if}
+      </button>
+    {/snippet}
+  </CommonModal>
 </div>
 
 <style>
@@ -1232,7 +1335,7 @@
   }
 
   .zones-container {
-    flex: 1;
+    /* flex: 1; */
     overflow-y: auto;
     padding: 0;
     display: grid;
@@ -1403,13 +1506,16 @@
   }
 
   .card-pool-panel {
-    padding: 12px 24px;
     flex: 1;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     min-width: 0;
     background-color: var(--bg-primary);
+  }
+
+  :global(.card-pool-panel > .card-pool-wrapper) {
+    padding: 12px 2%;
   }
 
   .grip-button {
@@ -1582,7 +1688,7 @@
 
     .deck-panel {
       width: 100% !important;
-      max-height: 90svh;
+      /* max-height: 90svh; */
     }
 
     .grip-button {
@@ -1610,18 +1716,18 @@
      Card Prints Modal (Notion Style)
      ========================================= */
 
-  .print-modal-overlay {
+  /* .print-modal-overlay {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(55, 53, 47, 0.4); /* 使用 Notion 文本色作为遮罩底色 */
+    background: rgba(55, 53, 47, 0.4);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
     animation: fadeIn 0.2s ease-out;
-  }
+  } */
 
   @keyframes fadeIn {
     from {
@@ -1632,7 +1738,7 @@
     }
   }
 
-  .print-modal {
+  /* .print-modal {
     background: var(--bg-secondary);
     border-radius: var(--radius-lg);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
@@ -1644,7 +1750,7 @@
     overflow: hidden;
     animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     border: 1px solid var(--border-color);
-  }
+  } */
 
   @keyframes slideUp {
     from {
@@ -1657,7 +1763,7 @@
     }
   }
 
-  .print-modal-header {
+  /* .print-modal-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -1707,7 +1813,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
+  } */
 
   .print-slider {
     display: flex;
@@ -1784,8 +1890,6 @@
     align-items: center;
     justify-content: center;
     gap: 24px;
-    padding: 16px 24px;
-    border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
   }
 
@@ -1829,7 +1933,7 @@
      Mobile Responsive (手机适配)
      ========================================= */
   @media (max-width: 640px) {
-    .print-modal-overlay {
+    /* .print-modal-overlay {
       padding: 10px;
     }
 
@@ -1849,7 +1953,7 @@
 
     .print-modal-content {
       padding: 16px 12px;
-    }
+    } */
 
     .print-slider {
       flex-direction: column;
@@ -1871,7 +1975,8 @@
     /* 移动端将左右箭头绝对定位悬浮在图片两侧，节省横向空间 */
     .slider-arrow {
       position: absolute;
-      top: 32%; /* 定位在图片中部偏上 */
+      top: 50%;
+transform: translateY(-50%);
       width: 36px;
       height: 36px;
       font-size: 20px;
@@ -1906,6 +2011,266 @@
   @media (max-width: 380px) {
     .print-slide-image {
       max-width: 200px;
+    }
+  }
+
+  /* =========================================
+   Save Deck Modal
+   ========================================= */
+
+  /* .save-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 20px;
+
+    background: rgba(55, 53, 47, 0.4);
+    backdrop-filter: blur(4px);
+  } */
+
+  /* .save-modal {
+    width: min(460px, 100%);
+    max-height: min(90svh, 620px);
+
+    display: flex;
+    flex-direction: column;
+
+    overflow: hidden;
+
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.18),
+      0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  .save-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+
+    padding: 20px;
+
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+  }
+
+  .save-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .save-modal-subtitle {
+    margin-top: 4px;
+
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .save-modal-close {
+    width: 32px;
+    height: 32px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    border: none;
+    border-radius: 6px;
+
+    background: transparent;
+    color: var(--text-secondary);
+
+    cursor: pointer;
+  }
+
+  .save-modal-close:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .save-modal-close:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .save-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+
+    padding: 20px;
+
+    overflow-y: auto;
+  } */
+
+  .save-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .save-modal-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .required {
+    color: #ef4444;
+  }
+
+  .save-modal-input,
+  .save-modal-textarea {
+    width: 100%;
+    box-sizing: border-box;
+
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 7px;
+
+    background: var(--bg-primary);
+    color: var(--text-primary);
+
+    font: inherit;
+    font-size: 14px;
+
+    outline: none;
+
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .save-modal-input {
+    height: 40px;
+    padding: 0 11px;
+  }
+
+  .save-modal-textarea {
+    min-height: 110px;
+    padding: 10px 11px;
+
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  .save-modal-input::placeholder,
+  .save-modal-textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.65;
+  }
+
+  .save-modal-input:focus,
+  .save-modal-textarea:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 15%, transparent);
+  }
+
+  .save-modal-input:disabled,
+  .save-modal-textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* .save-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+
+    padding: 16px 20px;
+
+    border-top: 1px solid var(--border-color, #e5e7eb);
+  } */
+
+  .save-modal-cancel,
+  .save-modal-confirm {
+    min-height: 36px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+
+    padding: 0 14px;
+
+    border-radius: 7px;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    cursor: pointer;
+  }
+
+  .save-modal-cancel {
+    border: 1px solid var(--border-color, #d1d5db);
+
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .save-modal-cancel:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  .save-modal-confirm {
+    border: 1px solid var(--accent-color);
+
+    background: var(--accent-color);
+    color: var(--bg-primary);
+  }
+
+  .save-modal-confirm:hover:not(:disabled) {
+    filter: brightness(0.95);
+  }
+
+  .save-modal-cancel:disabled,
+  .save-modal-confirm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 479.99px) {
+    /* .save-modal-overlay {
+      align-items: flex-end;
+      padding: 0;
+    }
+
+    .save-modal {
+      width: 100%;
+      max-height: 90svh;
+
+      border-radius: 14px 14px 0 0;
+      border-bottom: none;
+    }
+
+    .save-modal-header {
+      padding: 18px 16px;
+    }
+
+    .save-modal-content {
+      padding: 18px 16px;
+    }
+
+    .save-modal-footer {
+      padding: 14px 16px;
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+    } */
+
+    .save-modal-cancel,
+    .save-modal-confirm {
+      min-height: 42px;
+      flex: 1;
     }
   }
 </style>
