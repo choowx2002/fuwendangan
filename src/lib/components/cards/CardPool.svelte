@@ -16,17 +16,8 @@
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
   import CachedImage from './CachedImage.svelte'
+  import type { ZoneKey } from '$lib/db/constants'
 
-  const ZONE_CONFIG = {
-    legend: { name: 'Legend', maxCount: 1 },
-    champion: { name: 'Champion', maxCount: 1 },
-    mainDeck: { name: 'MainDeck', maxCount: 39 },
-    battlefields: { name: 'Battlefields', maxCount: 3 },
-    runes: { name: 'Runes', maxCount: 12 },
-    sideboard: { name: 'Sideboard', maxCount: 8 },
-  } as const
-
-  type ZoneKey = keyof typeof ZONE_CONFIG
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---
   let {

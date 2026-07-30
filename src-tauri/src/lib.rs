@@ -94,16 +94,16 @@ fn start_tts_listener(window: tauri::Window) {
 }
 #[cfg(debug_assertions)]
 fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
-  use tauri_plugin_prevent_default::Flags;
+    use tauri_plugin_prevent_default::Flags;
 
-  tauri_plugin_prevent_default::Builder::new()
-    .with_flags(Flags::all().difference(Flags::DEV_TOOLS | Flags::RELOAD | Flags::CONTEXT_MENU))
-    .build()
+    tauri_plugin_prevent_default::Builder::new()
+        .with_flags(Flags::all().difference(Flags::DEV_TOOLS | Flags::RELOAD | Flags::CONTEXT_MENU))
+        .build()
 }
 
 #[cfg(not(debug_assertions))]
 fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
-  tauri_plugin_prevent_default::init()
+    tauri_plugin_prevent_default::init()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -112,6 +112,7 @@ pub fn run() {
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())

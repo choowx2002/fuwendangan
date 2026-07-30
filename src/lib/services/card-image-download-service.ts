@@ -7,6 +7,8 @@ import {
 import { appLocalDataDir, join } from '@tauri-apps/api/path'
 import { message } from '@tauri-apps/plugin-dialog'
 import { setProgressStatus, uiState, hideLoading } from '$lib/stores/ui-store.svelte'
+import { isMobile } from '$lib/services/os-serives'
+import { sendNotification } from '@tauri-apps/plugin-notification'
 
 let cancelRequested = false
 
@@ -52,7 +54,7 @@ export function cancelCardImageDownload() {
  * 注意这里故意不 await runCardImageDownload。
  * 这样 Settings 页面可以立即返回，下载任务继续在 service 中运行。
  */
-export function startCardImageDownload(missing: any[]) {
+export async function startCardImageDownload(missing: any[]) {
   if (uiState.status === 'downloading' || missing.length === 0) {
     return
   }
@@ -61,10 +63,23 @@ export function startCardImageDownload(missing: any[]) {
 
   setProgressStatus('downloading', '正在下载卡牌', `准备下载 ${missing.length} 张卡图`, 0)
 
-  void runCardImageDownload(missing)
+  const onMobile = await isMobile()
+  if (onMobile && missing.length > 0) {
+    try {
+      sendNotification({
+        title: '卡牌资源下载',
+        body: `开始下载 ${missing.length} 张卡图`,
+        icon: 'icon',
+      })
+    } catch (error) {
+      console.error('[Notification] 发送通知失败:', error)
+    }
+  }
+
+  void runCardImageDownload(missing, onMobile)
 }
 
-async function runCardImageDownload(missing: any[]) {
+async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
   let completed = 0
   let failed = 0
 
@@ -95,10 +110,35 @@ async function runCardImageDownload(missing: any[]) {
         `${completed} / ${missing.length}${failed ? ` · ${failed} 张失败` : ''}`,
         progress
       )
+
+      // 在移动设备上更新通知进度（每 10% 更新一次）
+      if (onMobile && completed % Math.max(1, Math.floor(missing.length / 10)) === 0) {
+        try {
+          sendNotification({
+            title: '卡牌资源下载',
+            body: `进度：${completed} / ${missing.length}${failed ? ` · ${failed} 张失败` : ''}`,
+            icon: 'icon',
+          })
+        } catch (error) {
+          console.error('[Notification] 更新通知失败:', error)
+        }
+      }
     }
 
     if (cancelRequested) {
       return
+    }
+
+    if (onMobile) {
+      try {
+        sendNotification({
+          title: '卡牌资源下载完成',
+          body: `成功 ${completed - failed} 张，失败 ${failed} 张`,
+          icon: 'icon',
+        })
+      } catch (error) {
+        console.error('[Notification] 发送完成通知失败:', error)
+      }
     }
 
     if (failed > 0) {
@@ -109,6 +149,19 @@ async function runCardImageDownload(missing: any[]) {
     }
   } catch (error) {
     console.error('[CardImageDownload]', error)
+
+    // 下载错误通知
+    if (onMobile) {
+      try {
+        sendNotification({
+          title: '卡牌资源下载失败',
+          body: error instanceof Error ? error.message : '下载卡图时发生未知错误。',
+          icon: 'icon',
+        })
+      } catch (notificationError) {
+        console.error('[Notification] 发送错误通知失败:', notificationError)
+      }
+    }
 
     await message(error instanceof Error ? error.message : '下载卡图时发生未知错误。', {
       title: '下载卡牌出现问题',

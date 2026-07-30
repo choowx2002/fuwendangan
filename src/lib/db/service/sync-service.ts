@@ -32,7 +32,7 @@ export async function initializeDatabase(): Promise<void> {
       console.warn('[DB] 未获取到远端版本信息，跳过同步')
       return
     }
-    await getDatabase();
+    await getDatabase()
     const localVersion = await versionRepo.getVersion()
 
     let needsSync = true

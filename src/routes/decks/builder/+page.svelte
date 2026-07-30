@@ -4,7 +4,13 @@
   import { beforeNavigate, goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import {
+    ArrowDownAZIcon,
+    ArrowUpDownIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    ChevronUpIcon,
     CircleAlert,
+    EllipsisVerticalIcon,
     GripHorizontal,
     GripVertical,
     LoaderCircle,
@@ -26,6 +32,7 @@
     type DeckInput,
   } from '$lib/db'
   import CommonModal from '$lib/components/CommonModal.svelte'
+  import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
@@ -62,7 +69,7 @@
 
   // --- 拖拽调整宽度状态 ---
   let isMobile1 = $state(false)
-
+  let revertLayout = $state(false)
   let rightPanelWidth = $state(50)
   let rightPanelHeight = $state(50)
 
@@ -78,17 +85,6 @@
   let layoutElement: HTMLDivElement
   let animationFrame: number | null = null
   let pendingEvent: PointerEvent | null = null
-
-  const ZONE_CONFIG = {
-    legend: { name: 'Legend', maxCount: 1 },
-    champion: { name: 'Champion', maxCount: 1 },
-    mainDeck: { name: 'MainDeck', maxCount: 39 },
-    battlefields: { name: 'Battlefields', maxCount: 3 },
-    runes: { name: 'Runes', maxCount: 12 },
-    sideboard: { name: 'Sideboard', maxCount: 8 },
-  } as const
-
-  type ZoneKey = keyof typeof ZONE_CONFIG
 
   function getAllDeckCards(): (cardAndPrint & { zone: string })[] {
     return [
@@ -115,6 +111,7 @@
   let isTouchDevice = $state(false)
   let useVerticalResize = $state(false)
   let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
+  let showErrorModal = $state(false)
 
   beforeNavigate(async (navigation) => {
     if (!navigation.to) {
@@ -543,7 +540,10 @@
 
   function handlePointerDown(e: PointerEvent) {
     if (!layoutElement) return
-
+    if (useVerticalResize && revertLayout && rightPanelHeight === 100) {
+      rightPanelHeight = 50
+      return
+    }
     e.preventDefault()
 
     const target = e.currentTarget as HTMLElement
@@ -597,9 +597,13 @@
 
       if (useVerticalResize) {
         const deltaY = event.clientY - startY
-
+        let deltaPercent: number
         // 【关键修复】加上负号：向上拖拽(deltaY<0) -> deltaPercent>0 -> 高度增加
-        const deltaPercent = (-deltaY / containerHeight) * 100
+        if (revertLayout) {
+          deltaPercent = (deltaY / containerHeight) * 100
+        } else {
+          deltaPercent = (-deltaY / containerHeight) * 100
+        }
 
         let newHeight = startSize + deltaPercent
 
@@ -610,8 +614,8 @@
         newHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight))
 
         // 2. Snap (吸附效果)
-        const SNAP_THRESHOLD_BOTTOM = 5 // 拖到小于 30% 时，自动收起
-        const SNAP_THRESHOLD_TOP = 95 // 拖到大于 80% 时，自动最大化
+        const SNAP_THRESHOLD_BOTTOM = 10 // 拖到小于 30% 时，自动收起
+        const SNAP_THRESHOLD_TOP = 85 // 拖到大于 80% 时，自动最大化
 
         if (newHeight <= SNAP_THRESHOLD_BOTTOM) {
           newHeight = 0 // 完全收起 (如果 MIN_HEIGHT 是 0 的话)
@@ -692,52 +696,6 @@
     printModalTarget = null
   }
 
-  function selectCardPrint(printId: string) {
-    const target = printModalTarget
-
-    if (!target) return
-
-    applyCardPrintSelection(target, printId)
-
-    closePrintModal()
-  }
-
-  function applyCardPrintSelection(target: NonNullable<typeof printModalTarget>, printId: string) {
-    const cards = getZoneCards(target.zone)
-
-    if (target.grouped) {
-      // Grouping：当前这一组全部切换到新的 Print
-      const updated = cards.map((card) => {
-        if (card.id === target.card.id && card.selectedPrints === target.card.selectedPrints) {
-          return {
-            ...card,
-            selectedPrints: printId,
-          }
-        }
-
-        return card
-      })
-
-      setZoneCards(target.zone, updated)
-    } else {
-      // Single：只修改当前实体
-      const updated = cards.map((card) => {
-        if (card === target.card) {
-          return {
-            ...card,
-            selectedPrints: printId,
-          }
-        }
-
-        return card
-      })
-
-      setZoneCards(target.zone, updated)
-    }
-
-    isDirty = true
-  }
-
   function getPrintQuantity(zone: ZoneKey, cardId: string, printId: string): number {
     return getZoneCards(zone).filter(
       (card) => card.id === cardId && card.selectedPrints === printId
@@ -794,20 +752,49 @@
       c.selectedPrints = currentPrint.id
     })
   }
+
+  function arrangeDecks() {
+    for (const zone of Object.keys(ZONE_CONFIG)) {
+      const zoneCards = getZoneCards(zone as ZoneKey)
+      if (zoneCards.length <= 1) continue
+
+      zoneCards.sort((a, b) => {
+        const aName = (a.card_name_en || '') + (a.sub_title_en || '')
+        const bName = (b.card_name_en || '') + (b.sub_title_en || '')
+        if (aName !== bName) return aName.localeCompare(bName)
+
+        const aCardName = a.selectedPrints || ''
+        const bCardName = b.selectedPrints || ''
+        if (aCardName !== bCardName) return aCardName.localeCompare(bCardName)
+        return 0
+      })
+    }
+  }
+
+  const filteredCardsIssues = $derived.by(() => {
+    const ErrorCards = new Set<string>()
+    const data = deckIssues.forEach((issue) => {
+      if (issue.cardNames && issue.cardNames.length > 0) {
+        issue.cardNames.forEach((name) => {
+          if (name) ErrorCards.add(name)
+        })
+      }
+    })
+    return ErrorCards
+  })
+
+  function checkErrorCard(rawName: string) {
+    return filteredCardsIssues.has(rawName)
+  }
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
+  {@const rawName = `${group.card.card_name_cn}${group.card.sub_title_cn ? ' - ' + group.card.sub_title_cn : ''}`}
+  {@const hasErrorCard = checkErrorCard(rawName)}
   <div
-    role="button"
-    tabindex="0"
+    role="presentation"
     class="card-item"
     onclick={() => openPrintModal(group.card, zone, grouped)}
-    onkeydown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        openPrintModal(group.card, zone, grouped)
-      }
-    }}
   >
     <div class="card-image">
       {#if group.card.selectedPrints}
@@ -823,7 +810,7 @@
     </div>
 
     <div class="card-info">
-      <div class="card-name">{group.card.card_name_cn}</div>
+      <div class="card-name">{rawName}</div>
       <div class="card-id">{group.card.card_no}</div>
     </div>
 
@@ -838,7 +825,7 @@
         <Minus size={14} />
       </button> -->
 
-      <span class="card-count">{group.count}</span>
+      <span class="card-count" class:hasErrorCard>{group.count}</span>
 
       <!-- <button
         class="quantity-btn"
@@ -851,7 +838,11 @@
   </div>
 {/snippet}
 
-<div bind:this={layoutElement} class="deck-builder-layout">
+<div
+  bind:this={layoutElement}
+  class="deck-builder-layout"
+  class:revert-layout={revertLayout && useVerticalResize}
+>
   <!-- 左侧：卡池 -->
   <main class="card-pool-panel">
     <CardPool
@@ -871,7 +862,11 @@
     onpointerdown={handlePointerDown}
   >
     {#if isMobile1}
-      <GripHorizontal size={24} />
+      {#if revertLayout && rightPanelHeight === 100}
+        <ChevronUpIcon size={24} />
+      {:else}
+        <GripHorizontal size={24} />
+      {/if}
     {:else}
       <GripVertical size={16} />
     {/if}
@@ -884,6 +879,23 @@
     style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
+      {#if hasErrors}
+        <div
+          class="error-info-container"
+          role="presentation"
+          onclick={() => (showErrorModal = !showErrorModal)}
+        >
+          <CircleAlert size={25} color={'#dc2626'} />
+        </div>
+      {/if}
+      {#if useVerticalResize}
+        <button
+          onclick={() => {
+            revertLayout = !revertLayout
+          }}><ArrowUpDownIcon size={16} /></button
+        >
+      {/if}
+      <button class="save-btn" onclick={arrangeDecks}><ArrowDownAZIcon size={16} />整理</button>
       <button
         class="save-btn"
         onclick={handleSave}
@@ -898,28 +910,7 @@
         {/if}
         <span>保存</span>
       </button>
-      {#if hasErrors}
-        <div class="error-info-container">
-          <CircleAlert size={25} color={'#dc2626'} />
-          <div class="issues-panel">
-            <div class="issues-header">
-              <TriangleAlert size={16} class="text-red-500" />
-              <span>卡组校验未通过 ({deckIssues.length} 个问题)</span>
-            </div>
-            <ul class="issues-list">
-              {#each deckIssues as issue}
-                <li class="issue-item" class:error={issue.severity === 'error'}>
-                  <span class="issue-icon">
-                    {#if issue.severity === 'error'}✕
-                    {:else}⚠{/if}
-                  </span>
-                  <span class="issue-text">{@html issue.message}</span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        </div>
-      {/if}
+      <EllipsisVerticalIcon size={16}></EllipsisVerticalIcon>
     </div>
 
     <div class="zones-container">
@@ -1078,7 +1069,7 @@
 
     <CommonModal
       open
-      title={`${printModalTarget!.card.card_name_cn!} ${printModalTarget!.card.sub_title_cn}`.trim()}
+      title={`${printModalTarget!.card.card_name_cn!} ${printModalTarget!.card.sub_title_cn || ''}`.trim()}
       subtitle={currentPrint.card_no_extend}
       onclose={closePrintModal}
       footerCentered={true}
@@ -1091,7 +1082,7 @@
             printModalPrintIndex = Math.max(0, printModalPrintIndex - 1)
           }}
         >
-          ‹
+          <ChevronLeftIcon size={16}></ChevronLeftIcon>
         </button>
 
         <div class="print-slide">
@@ -1110,7 +1101,7 @@
             printModalPrintIndex = Math.min(prints.length - 1, printModalPrintIndex + 1)
           }}
         >
-          ›
+          <ChevronRightIcon size={16}></ChevronRightIcon>
         </button>
       </div>
 
@@ -1209,6 +1200,36 @@
       </button>
     {/snippet}
   </CommonModal>
+
+  <CommonModal
+    closeOnOverlay={true}
+    onclose={() => (showErrorModal = !showErrorModal)}
+    open={showErrorModal}
+    title={`卡组校验未通过 (${deckIssues.length} 个问题)`}
+  >
+    <div class="issues-panel">
+      <ul class="issues-list">
+        {#each deckIssues as issue}
+          <li class="issue-item" class:error={issue.severity === 'error'}>
+            <span class="issue-icon">
+              {#if issue.severity === 'error'}
+                <X size={12} />
+              {:else}<TriangleAlert size={12} />
+              {/if}
+            </span>
+            <span class="issue-text">{@html issue.message}</span>
+          </li>
+        {/each}
+      </ul>
+    </div>
+
+    <!-- footer snippet → modal-footer -->
+    {#snippet footer()}
+      <button class="save-modal-confirm" onclick={() => (showErrorModal = !showErrorModal)}>
+        <span>了解</span>
+      </button>
+    {/snippet}
+  </CommonModal>
 </div>
 
 <style>
@@ -1217,24 +1238,6 @@
     justify-content: center;
     align-items: center;
     position: relative;
-  }
-
-  .error-info-container:hover > .issues-panel,
-  .issues-panel:hover {
-    display: block;
-  }
-
-  .issues-panel {
-    padding: 0;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
-    background: #fef2f2;
-    position: absolute;
-    right: -5px;
-    z-index: 99999;
-    width: min(300px, 100vw);
-    top: 100%;
-    padding-top: 5px;
-    display: none;
   }
 
   .issues-header {
@@ -1294,7 +1297,7 @@
   }
 
   .deck-header {
-    padding: 1rem;
+    padding: 1rem 2%;
     border-bottom: 1px solid var(--border-color, #e5e7eb);
     display: flex;
     gap: 8px;
@@ -1497,6 +1500,10 @@
     border: 2px solid rgba(255, 255, 255, 0.2); /* 增加一点边缘高光 */
   }
 
+  .card-count.hasErrorCard {
+    background-color: #dc2626;
+  }
+
   /* 空状态样式保持 */
   .empty-zone {
     width: 100%;
@@ -1685,14 +1692,30 @@
   }
 
   @media (max-width: 479.99px) {
+    ::-webkit-scrollbar {
+      display: none;
+    }
+
     .deck-builder-layout {
       padding-block-start: env(safe-area-inset-top);
       flex-direction: column;
     }
 
+    .deck-builder-layout.revert-layout {
+      flex-direction: column-reverse;
+    }
+
     .deck-panel {
       width: 100% !important;
-      /* max-height: 90svh; */
+      min-height: 65px;
+      max-height: calc(100% - 26px);
+      flex-direction: column-reverse;
+      justify-content: space-between;
+    }
+
+    .deck-builder-layout.revert-layout > .deck-panel {
+      flex-direction: column;
+      justify-content: unset;
     }
 
     .grip-button {
@@ -1848,11 +1871,6 @@
   .slider-arrow:hover:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--text-secondary);
-    transform: scale(1.05);
-  }
-
-  .slider-arrow:active:not(:disabled) {
-    transform: scale(0.95);
   }
 
   .slider-arrow:disabled {

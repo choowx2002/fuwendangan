@@ -71,7 +71,7 @@ export async function fetchUpdatedCards(): Promise<CardBase[]> {
   const pageSize = 500
   let hasMore = true
   let latestAt = await getLatestUpdateCardTime()
-  console.log("Latest At Cards", latestAt);
+  console.log('Latest At Cards', latestAt)
   // let latestAt = null
 
   while (hasMore) {
@@ -109,7 +109,7 @@ export async function fetchAllPrints(): Promise<CardPrint[]> {
   const pageSize = 1000
   let hasMore = true
   let latestAt = await getLatestUpdatePrintTime()
-  console.log("Latest At", latestAt);
+  console.log('Latest At', latestAt)
   // let latestAt = null
   while (hasMore) {
     if (latestAt) {

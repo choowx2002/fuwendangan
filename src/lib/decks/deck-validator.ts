@@ -1,4 +1,5 @@
 // src/lib/utils/deck-validator.ts
+import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
 import type { CardBase, CardPrint } from '$lib/db/types'
 
 type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
@@ -22,13 +23,13 @@ export function validateDeck(deck: {
   const { legendCards, championCards, mainDeckCards, battlefieldCards, runeCards, sideboardCards } =
     deck
 
-  const ZONE_CONFIG = {
-    legend: { name: '传奇', maxCount: 1, cards: legendCards },
-    champion: { name: '选定英雄', maxCount: 1, cards: championCards },
-    mainDeck: { name: '主牌堆', maxCount: 39, cards: mainDeckCards },
-    battlefields: { name: '战场', maxCount: 3, cards: battlefieldCards },
-    runes: { name: '符文', maxCount: 12, cards: runeCards },
-    sideboard: { name: '备牌', maxCount: 8, cards: sideboardCards },
+  const zoneCards = {
+    legend: legendCards,
+    champion: championCards,
+    mainDeck: mainDeckCards,
+    battlefields: battlefieldCards,
+    runes: runeCards,
+    sideboard: sideboardCards,
   }
 
   const allCards = [
@@ -42,23 +43,24 @@ export function validateDeck(deck: {
 
   // 1. 区域容量检查 & 禁卡检查
   for (const [zoneKey, zone] of Object.entries(ZONE_CONFIG)) {
-    if (zone.cards.length > zone.maxCount) {
+    const cards = zoneCards[zoneKey as ZoneKey]
+    if (cards.length > zone.maxCount) {
       issues.push({
         severity: 'error',
         type: 'capacity',
-        message: `${zone.name} 区域卡牌数量 (${zone.cards.length}) 超过了最大限制 (${zone.maxCount})！`,
+        message: `${zone.label} 区域卡牌数量 (${cards.length}) 超过了最大限制 (${zone.maxCount})！`,
       })
     }
 
-    if (zone.name !== '备牌' && zone.cards.length < zone.maxCount) {
+    if (zone.name !== 'Sideboard' && cards.length < zone.maxCount) {
       issues.push({
         severity: 'warning',
         type: 'capacity',
-        message: `${zone.name} 区域卡牌数量 (${zone.cards.length}) 不足 (${zone.maxCount})！`,
+        message: `${zone.label} 区域卡牌数量 (${cards.length}) 不足 (${zone.maxCount})！`,
       })
     }
 
-    const bannedCards = zone.cards.filter((c) => c.is_banned)
+    const bannedCards = cards.filter((c) => c.is_banned)
     if (bannedCards.length > 0) {
       issues.push({
         severity: 'error',
@@ -94,6 +96,7 @@ export function validateDeck(deck: {
         severity: 'error',
         type: 'name_limit',
         message: `同名卡牌 <b>"${data.name}"</b> 在 选定英雄 + 主牌堆 + 备牌 中最多只能加入 3 张 (当前: ${data.count} 张)！`,
+        cardNames: [data.name],
       })
     }
   }
@@ -122,8 +125,6 @@ export function validateDeck(deck: {
       })
     }
   }
-
-  return issues
 
   return issues
 }
