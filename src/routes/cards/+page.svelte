@@ -3,10 +3,8 @@
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import type { CardBase } from '$lib/db/types'
-  import { sidebarState, ttsState } from '$lib/stores/ui-store.svelte'
+  import { ttsState } from '$lib/stores/ui-store.svelte'
   import { multiSpawn } from '$lib/services/tts-communication-service'
-  import { onMount } from 'svelte'
-  import { isMobile } from '$lib/services/os-serives'
   import { beforeNavigate, goto } from '$app/navigation'
   import { routeBackConfig } from '$lib/services/route-service'
 
@@ -23,15 +21,15 @@
     multiSpawn([...displayedCards])
   }
 
-  onMount(() => {
-    isMobile().then((is) => {
-      if (!is && window.innerWidth >= 767.99) {
-        sidebarState.isMinimized = true
-      } else {
-        sidebarState.isMinimized = false
-      }
-    })
-  })
+  // onMount(() => {
+  //   isMobile().then((is) => {
+  //     if (!is && window.innerWidth >= 767.99) {
+  //       sidebarState.isMinimized = true
+  //     } else {
+  //       sidebarState.isMinimized = false
+  //     }
+  //   })
+  // })
 
   beforeNavigate(({ from, cancel, type, delta }) => {
     // 核心判断：只有当导航类型是浏览器后退(popstate) 且 delta 为负数时才触发

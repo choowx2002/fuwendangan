@@ -22,6 +22,7 @@
   } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
+  import { stopPropagation } from 'svelte/legacy'
 
   // 模拟卡组数据
   let allDecks = $state<DeckListResult[]>([])
@@ -108,7 +109,7 @@
 
     if (isBackward) {
       cancel()
-      goto('/', { replaceState: true })
+      goto('/')
     }
   })
 </script>
@@ -220,14 +221,20 @@
           <div class="deck-actions">
             <button
               class="action-btn"
-              onclick={() => duplicateDeckAsk(deck.name, deck.id)}
+              onclick={(e) => {
+                e.stopPropagation()
+                duplicateDeckAsk(deck.name, deck.id)
+              }}
               title="复制卡组"
             >
               <Copy size={16} />
             </button>
             <button
               class="action-btn"
-              onclick={() => toggleFavoriteAction(deck.id)}
+              onclick={(e) => {
+                e.stopPropagation()
+                toggleFavoriteAction(deck.id)
+              }}
               title="收藏/取消收藏"
             >
               {#if deck.is_favorite}
@@ -238,7 +245,10 @@
             </button>
             <button
               class="action-btn danger"
-              onclick={() => deleteDeckAsk(deck.name, deck.id)}
+              onclick={(e) => {
+                e.stopPropagation()
+                deleteDeckAsk(deck.name, deck.id)
+              }}
               title="删除卡组"
             >
               <Trash2 size={16} />

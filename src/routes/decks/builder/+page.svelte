@@ -1,6 +1,6 @@
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
-  import type { CardBase, CardPrint } from '$lib/db/types'
+  import type { CardBase, CardPrint, CardWithPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import {
@@ -14,6 +14,7 @@
     GripHorizontal,
     GripVertical,
     LoaderCircle,
+    CheckIcon,
     Minus,
     Plus,
     Save,
@@ -50,13 +51,33 @@
   let showSaveModal = $state(false)
   let saveDeckName = $state('未命名卡组')
   let saveDeckDescription = $state('')
+  let showMoreMenu = $state(false)
+  let showDeckStats = $state(false)
+  let showZoneSelector = $state(false)
 
   type DisplayMode = 'grouped' | 'single'
-
-  let singleColumnCount = $state(4)
   let mainDeckDisplayMode = $state<DisplayMode>('grouped')
   let sideboardDisplayMode = $state<DisplayMode>('grouped')
-  let showAllZoneMode = $state(false)
+
+  let singleColumnCount = $state(4)
+  type CardDisplayMode = 'text' | 'graphic'
+  let cardDisplayMode = $state<CardDisplayMode>('text')
+
+  // 每个区域的独立显示模式
+  let zoneDisplayModes = $state<Record<ZoneKey, CardDisplayMode>>({
+    legend: 'text',
+    champion: 'text',
+    mainDeck: 'text',
+    battlefields: 'text',
+    runes: 'text',
+    sideboard: 'text',
+  })
+
+  // 全局显示模式（用于快速切换）
+  let globalDisplayMode = $state<CardDisplayMode>('text')
+  let showDisplayModeMenu = $state(false)
+
+  let showAllZoneMode = $state(true)
   let printModalPrintIndex = $state(0)
   let printModalTarget = $state<{
     card: cardAndPrint
@@ -778,7 +799,7 @@
 
   const filteredCardsIssues = $derived.by(() => {
     const ErrorCards = new Set<string>()
-    const data = deckIssues.forEach((issue) => {
+    deckIssues.forEach((issue) => {
       if (issue.cardNames && issue.cardNames.length > 0) {
         issue.cardNames.forEach((name) => {
           if (name) ErrorCards.add(name)
@@ -791,6 +812,27 @@
   function checkErrorCard(rawName: string) {
     return filteredCardsIssues.has(rawName)
   }
+
+  function cardItemRemove(card: cardAndPrint, zone: ZoneKey, grouped: boolean): any {
+    if (isTouchDevice) return
+    removeCardQuantity(card, zone, grouped)
+  }
+
+  // 更新全局显示模式（检查所有区域是否一致）
+  function updateGlobalDisplayMode() {
+    const modes = Object.values(zoneDisplayModes)
+    const allSame = modes.every((m) => m === modes[0])
+    if (allSame) {
+      globalDisplayMode = modes[0]
+    } else {
+      globalDisplayMode = 'text' // 或者保持当前，但显示为"混合"
+    }
+  }
+
+  // 获取区域的显示模式
+  function getZoneDisplayMode(zone: ZoneKey): CardDisplayMode {
+    return zoneDisplayModes[zone] || 'text'
+  }
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
@@ -800,6 +842,10 @@
     role="presentation"
     class="card-item"
     onclick={() => openPrintModal(group.card, zone, grouped)}
+    oncontextmenu={(e) => {
+      e.stopPropagation
+      cardItemRemove(group.card, zone, grouped)
+    }}
   >
     <div class="card-image">
       {#if group.card.selectedPrints}
@@ -814,18 +860,23 @@
       {/if}
     </div>
 
-    {#if grouped}
+    {#if zoneDisplayModes[zone] === 'text'}
       <div class="card-info">
         <div class="card-name">{rawName}</div>
         <div class="card-id">{group.card.card_no}</div>
       </div>
-
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="card-quantity-control" class:hasErrorCard onclick={(e) => e.stopPropagation()}>
-        <span class="card-count">{group.count}</span>
-      </div>
     {/if}
+
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="card-quantity-control"
+      class:hasErrorCard
+      class:graphic-mode={zoneDisplayModes[zone] === 'graphic'}
+      onclick={(e) => e.stopPropagation()}
+    >
+      <span class="card-count">{group.count}</span>
+    </div>
   </div>
 {/snippet}
 
@@ -870,46 +921,41 @@
     style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
+      <!-- 1. 取消按钮 -->
       <button
-        class="save-btn"
-        style="margin-right: auto; background-color: var(--secondary-accent-color)"
-        onclick={() => window.history.back()}>取消</button
+        class="button button-text"
+        style="margin-right: auto; color: var(--secondary-accent-color);"
+        onclick={() => window.history.back()}
       >
+        取消
+      </button>
 
+      <button
+        class="button-icon"
+        onclick={() => (showDisplayModeMenu = !showDisplayModeMenu)}
+        title="切换显示模式"
+      >
+        {globalDisplayMode === 'text' ? '📝' : '🖼️'}
+      </button>
+
+      <!-- 2. 错误信息按钮 -->
       {#if hasErrors}
         <div
-          class="error-info-container"
+          class="button-icon button-danger"
           role="presentation"
           onclick={() => (showErrorModal = !showErrorModal)}
+          style="width: 36px; height: 36px;"
         >
           <CircleAlert size={25} color={'#dc2626'} />
         </div>
       {/if}
 
-      {#if mainDeckDisplayMode === 'single' || sideboardDisplayMode === 'single'}
-        <input
-          type="number"
-          min="1"
-          max="6"
-          value={singleColumnCount}
-          oninput={(e) => (singleColumnCount = parseInt(e?.target?.value || 0))}
-        />
-      {/if}
-
-      {#if useVerticalResize}
-        <button
-          onclick={() => {
-            revertLayout = !revertLayout
-          }}><ArrowUpDownIcon size={16} /></button
-        >
-      {/if}
-      <button class="save-btn" onclick={arrangeDecks}><ArrowDownAZIcon size={16} />整理</button>
+      <!-- 3. 保存按钮 -->
       <button
-        class="save-btn"
+        class="button {hasErrors ? 'button-danger' : 'button-primary'}"
         onclick={handleSave}
         disabled={isSaving || !isDirty || hasErrors}
-        class:is-dirty={isDirty && !hasErrors}
-        class:has-errors={hasErrors}
+        style="min-width: 80px;"
       >
         {#if isSaving}
           <LoaderCircle class="animate-spin" size={16} />
@@ -918,7 +964,11 @@
         {/if}
         <span>保存</span>
       </button>
-      <EllipsisVerticalIcon size={16}></EllipsisVerticalIcon>
+
+      <!-- 4. 更多选项按钮 -->
+      <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title="更多选项">
+        <EllipsisVerticalIcon size={16} />
+      </button>
     </div>
 
     <div class="zones-container">
@@ -930,7 +980,7 @@
               >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
             >
           </div>
-          <div class="zone-list">
+          <div class="zone-list" class:graphic-mode={zoneDisplayModes.legend === 'graphic'}>
             {#each groupCards(legendCards) as group}
               {@render cardItem(group, 'legend', true)}
             {:else}
@@ -939,151 +989,164 @@
           </div>
         </div>
 
-      <!-- Champion Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
-            >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
-          >
-        </div>
-        <div class="zone-list">
-          {#each groupCards(championCards) as group}
-            {@render cardItem(group, 'champion', true)}
-          {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
-        </div>
-      </div>
-      {/if}
-
-
-      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'mainDeck')}
-
-      <!-- MainDeck Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
-            主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
-          </span>
-
-          <div class="display-mode-switch">
-            <button
-              class:active={mainDeckDisplayMode === 'grouped'}
-              onclick={() => (mainDeckDisplayMode = 'grouped')}
+        <!-- Champion Zone -->
+        <div class="zone-section">
+          <div class="zone-header">
+            <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
+              >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
             >
-              合并
-            </button>
-
-            <button
-              class:active={mainDeckDisplayMode === 'single'}
-              onclick={() => (mainDeckDisplayMode = 'single')}
-            >
-              单张
-            </button>
+          </div>
+          <div class="zone-list" class:graphic-mode={zoneDisplayModes.champion === 'graphic'}>
+            {#each groupCards(championCards) as group}
+              {@render cardItem(group, 'champion', true)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
           </div>
         </div>
-        <div
-          class="zone-list multi-item"
-          class:single-mode={mainDeckDisplayMode === 'single'}
-          style:--single-column-count={singleColumnCount}
-        >
-          {#if mainDeckDisplayMode === 'grouped'}
-            {#each groupCards(mainDeckCards) as group}
-              {@render cardItem(group, 'mainDeck', true)}
+      {/if}
+
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'mainDeck')}
+        <!-- MainDeck Zone -->
+        <div class="zone-section full-space">
+          <div class="zone-header">
+            <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
+              主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
+            </span>
+
+            <div class="display-mode-switch">
+              <button
+                class:active={mainDeckDisplayMode === 'grouped'}
+                onclick={() => (mainDeckDisplayMode = 'grouped')}
+              >
+                合并
+              </button>
+
+              <button
+                class:active={mainDeckDisplayMode === 'single'}
+                onclick={() => (mainDeckDisplayMode = 'single')}
+              >
+                单张
+              </button>
+            </div>
+          </div>
+          <div
+            class="zone-list multi-item"
+            class:graphic-mode={zoneDisplayModes.mainDeck === 'graphic'}
+            style:--single-column-count={singleColumnCount}
+          >
+            {#if mainDeckDisplayMode === 'grouped'}
+              {#each groupCards(mainDeckCards) as group}
+                {@render cardItem(group, 'mainDeck', true)}
+              {:else}
+                <div class="empty-zone">该区域为空</div>
+              {/each}
             {:else}
-              <div class="empty-zone">该区域为空</div>
-            {/each}
-          {:else}
-            {#each mainDeckCards as card}
-              {@render cardItem({ card, count: 1 }, 'mainDeck', false)}
-            {:else}
-              <div class="empty-zone">该区域为空</div>
-            {/each}
-          {/if}
+              {#each mainDeckCards as card}
+                {@render cardItem({ card, count: 1 }, 'mainDeck', false)}
+              {:else}
+                <div class="empty-zone">该区域为空</div>
+              {/each}
+            {/if}
+          </div>
         </div>
-      </div>
       {/if}
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'battlefields')}
-      <!-- Battlefields Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span
-            class="zone-name"
-            role="presentation"
-            onclick={() => (selectedZone = 'battlefields')}
-            >战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})</span
-          >
-        </div>
-        <div class="zone-list multi-item">
-          {#each groupCards(battlefieldCards) as group}
-            {@render cardItem(group, 'battlefields', true)}
-          {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
-        </div>
-      </div>
-      {/if}
-      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'runes')}
-      <!-- Runes Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
-            >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
-          >
-        </div>
-        <div class="zone-list multi-item">
-          {#each groupCards(runeCards) as group}
-            {@render cardItem(group, 'runes', true)}
-          {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
-        </div>
-      </div>
-      {/if}
-
-
-      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'sideboard')}
-      <!-- Sideboard Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'sideboard')}>
-            备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})
-          </span>
-
-          <div class="display-mode-switch">
-            <button
-              class:active={sideboardDisplayMode === 'grouped'}
-              onclick={() => (sideboardDisplayMode = 'grouped')}
+        <!-- Battlefields Zone -->
+        <div class="zone-section full-space">
+          <div class="zone-header">
+            <span
+              class="zone-name"
+              role="presentation"
+              onclick={() => (selectedZone = 'battlefields')}
             >
-              合并
-            </button>
-
-            <button
-              class:active={sideboardDisplayMode === 'single'}
-              onclick={() => (sideboardDisplayMode = 'single')}
-            >
-              单张
-            </button>
+              战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})
+            </span>
+          </div>
+          <div
+            class="zone-list multi-item battlefield-graphic"
+            class:graphic-mode={zoneDisplayModes.battlefields === 'graphic'}
+            style:--single-column-count={singleColumnCount}
+          >
+            {#each groupCards(battlefieldCards) as group}
+              {@render cardItem(group, 'battlefields', true)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
           </div>
         </div>
-        <div class="zone-list multi-item" class:single-mode={sideboardDisplayMode === 'single'}>
-          {#if sideboardDisplayMode === 'grouped'}
-            {#each groupCards(sideboardCards) as group}
-              {@render cardItem(group, 'sideboard', true)}
+      {/if}
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'runes')}
+        <!-- Runes Zone -->
+        <div class="zone-section full-space">
+          <div class="zone-header">
+            <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
+              >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
+            >
+          </div>
+          <div
+            class="zone-list multi-item"
+            class:graphic-mode={zoneDisplayModes.runes === 'graphic'}
+            style:--single-column-count={singleColumnCount}
+          >
+            {#each groupCards(runeCards) as group}
+              {@render cardItem(group, 'runes', true)}
             {:else}
               <div class="empty-zone">该区域为空</div>
             {/each}
-          {:else}
-            {#each sideboardCards as card}
-              {@render cardItem({ card, count: 1 }, 'sideboard', false)}
-            {:else}
-              <div class="empty-zone">该区域为空</div>
-            {/each}
-          {/if}
+          </div>
         </div>
-      </div>
+      {/if}
 
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'sideboard')}
+        <!-- Sideboard Zone -->
+        <div class="zone-section full-space">
+          <div class="zone-header">
+            <span
+              class="zone-name"
+              role="presentation"
+              onclick={() => (selectedZone = 'sideboard')}
+            >
+              备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})
+            </span>
+
+            <div class="display-mode-switch">
+              <button
+                class:active={sideboardDisplayMode === 'grouped'}
+                onclick={() => (sideboardDisplayMode = 'grouped')}
+              >
+                合并
+              </button>
+
+              <button
+                class:active={sideboardDisplayMode === 'single'}
+                onclick={() => (sideboardDisplayMode = 'single')}
+              >
+                单张
+              </button>
+            </div>
+          </div>
+          <div
+            class="zone-list multi-item"
+            class:graphic-mode={zoneDisplayModes.sideboard === 'graphic'}
+            style:--single-column-count={singleColumnCount}
+          >
+            {#if sideboardDisplayMode === 'grouped'}
+              {#each groupCards(sideboardCards) as group}
+                {@render cardItem(group, 'sideboard', true)}
+              {:else}
+                <div class="empty-zone">该区域为空</div>
+              {/each}
+            {:else}
+              {#each sideboardCards as card}
+                {@render cardItem({ card, count: 1 }, 'sideboard', false)}
+              {:else}
+                <div class="empty-zone">该区域为空</div>
+              {/each}
+            {/if}
+          </div>
+        </div>
       {/if}
     </div>
   </aside>
@@ -1269,16 +1332,420 @@
       </button>
     {/snippet}
   </CommonModal>
+
+  <!-- 更多选项 Modal -->
+  <CommonModal
+    open={showMoreMenu}
+    onclose={() => (showMoreMenu = false)}
+    title="更多选项"
+    subtitle="卡组管理工具"
+    closable={true}
+  >
+    <div class="more-menu-content">
+      <!-- 1. 显示模式切换 - 文字/卡图 -->
+      <div class="more-menu-section">
+        <div class="more-menu-item more-menu-toggle-buttons">
+          <span class="toggle-label">
+            <span>显示模式</span>
+          </span>
+          <div class="toggle-button-group">
+            <button
+              class="toggle-btn {cardDisplayMode === 'text' ? 'active' : ''}"
+              onclick={() => {
+                cardDisplayMode = 'text'
+              }}
+            >
+              文字
+            </button>
+            <button
+              class="toggle-btn {cardDisplayMode === 'graphic' ? 'active' : ''}"
+              onclick={() => {
+                cardDisplayMode = 'graphic'
+              }}
+            >
+              卡图
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 区域选择 - 可展开 -->
+      <div class="more-menu-section">
+        <div
+          role="presentation"
+          aria-label="区域卡牌展示模式"
+          class="more-menu-item more-menu-expandable"
+          onclick={() => {
+            showZoneSelector = !showZoneSelector
+          }}
+        >
+          <span class="toggle-label">
+            <span>📌</span>
+            <span>选择区域</span>
+          </span>
+          <div class="expand-control">
+            <span class="selected-zone-label">{ZONE_CONFIG[selectedZone].label}</span>
+            <ChevronRightIcon size={16} class="expand-icon {showZoneSelector ? 'expanded' : ''}" />
+          </div>
+        </div>
+
+        {#if showZoneSelector}
+          <div class="zone-selector-dropdown">
+            {#each Object.entries(ZONE_CONFIG) as [key, config]}
+              <button
+                class="zone-option {selectedZone === key ? 'active' : ''}"
+                onclick={() => {
+                  selectedZone = key as ZoneKey
+                  showZoneSelector = false
+                }}
+              >
+                <span class="zone-option-name">{config.name}</span>
+                <span class="zone-option-count"
+                  >({getZoneCards(key as ZoneKey).length}/{config.maxCount})</span
+                >
+                {#if selectedZone === key}
+                  <CheckIcon size={16} class="zone-check" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <!-- 3. 布局切换 -->
+      {#if useVerticalResize}
+        <button
+          class="more-menu-item"
+          onclick={() => {
+            revertLayout = !revertLayout
+            showMoreMenu = false
+          }}
+        >
+          <ArrowUpDownIcon size={18} />
+          <span>{revertLayout ? '恢复默认布局' : '切换布局'}</span>
+        </button>
+      {/if}
+
+      <!-- 4. 整理按钮 -->
+      <button
+        class="more-menu-item"
+        onclick={() => {
+          arrangeDecks()
+          showMoreMenu = false
+        }}
+      >
+        <ArrowDownAZIcon size={18} />
+        <span>整理卡组</span>
+      </button>
+
+      <!-- 5. 每行列数 (仅在卡图模式显示) -->
+      {#if cardDisplayMode === 'graphic'}
+        <div class="more-menu-item more-menu-input">
+          <span class="more-menu-label">
+            <span>每行列数</span>
+          </span>
+          <input
+            type="number"
+            min="2"
+            max="6"
+            value={singleColumnCount}
+            oninput={(e) => {
+              const target = e.target as HTMLInputElement
+              singleColumnCount = parseInt(target.value || '4')
+            }}
+            class="number-input"
+            style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); text-align: center;"
+          />
+        </div>
+      {/if}
+
+      <!-- 6. 显示所有区域切换 - Toggle -->
+      <div class="more-menu-item more-menu-toggle">
+        <span class="toggle-label">
+          <span>{showAllZoneMode ? '📁' : '📂'}</span>
+          <span>{showAllZoneMode ? '显示所有区域' : '专注当前区域'}</span>
+        </span>
+        <button
+          aria-label="区域模式"
+          class="toggle-switch {showAllZoneMode ? 'active' : ''}"
+          onclick={() => {
+            showAllZoneMode = !showAllZoneMode
+          }}
+          role="switch"
+          aria-checked={showAllZoneMode}
+        >
+          <span class="toggle-slider"></span>
+        </button>
+      </div>
+
+      <!-- 7. 显示卡组统计 -->
+      <button
+        class="more-menu-item"
+        onclick={() => {
+          showDeckStats = !showDeckStats
+          showMoreMenu = false
+        }}
+      >
+        <span>📊</span>
+        <span>卡组统计</span>
+      </button>
+    </div>
+
+    <!-- footer -->
+    {#snippet footer()}
+      <button class="save-modal-confirm" onclick={() => (showMoreMenu = false)}>
+        <span>关闭</span>
+      </button>
+    {/snippet}
+  </CommonModal>
+
+  <!-- 卡组统计 Modal -->
+  <CommonModal
+    open={showDeckStats}
+    onclose={() => (showDeckStats = false)}
+    title="卡组统计"
+    subtitle="卡组构成分析"
+  >
+    <div class="deck-stats-content">
+      <div class="stat-row">
+        <span class="stat-label">总卡牌数</span>
+        <span class="stat-value">{getAllDeckCards().length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">传奇</span>
+        <span class="stat-value">{legendCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">英雄</span>
+        <span class="stat-value">{championCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">主牌堆</span>
+        <span class="stat-value">{mainDeckCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">战场</span>
+        <span class="stat-value">{battlefieldCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">符文</span>
+        <span class="stat-value">{runeCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">备牌</span>
+        <span class="stat-value">{sideboardCards.length}</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-row stat-total">
+        <span class="stat-label">合计</span>
+        <span class="stat-value">{getAllDeckCards().length}</span>
+      </div>
+    </div>
+
+    {#snippet footer()}
+      <button class="save-modal-confirm" onclick={() => (showDeckStats = false)}>
+        <span>了解</span>
+      </button>
+    {/snippet}
+  </CommonModal>
 </div>
 
-<style>
-  .error-info-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: relative;
-  }
+<!-- 显示模式选择 Modal -->
+<CommonModal
+  open={showDisplayModeMenu}
+  onclose={() => (showDisplayModeMenu = false)}
+  title="区域显示模式"
+  subtitle="为每个区域单独设置显示方式"
+  closable={true}
+>
+  <div class="display-mode-menu">
+    <!-- 全局快速切换 -->
+    <div class="display-mode-global">
+      <span class="global-label">🌐 全局切换</span>
+      <div class="display-mode-switch">
+        <button
+          class:active={globalDisplayMode === 'text'}
+          onclick={() => {
+            globalDisplayMode = 'text'
+            // 应用到所有区域
+            Object.keys(zoneDisplayModes).forEach((key) => {
+              zoneDisplayModes[key as ZoneKey] = 'text'
+            })
+          }}
+        >
+          📝 文字
+        </button>
+        <button
+          class:active={globalDisplayMode === 'graphic'}
+          onclick={() => {
+            globalDisplayMode = 'graphic'
+            // 应用到所有区域
+            Object.keys(zoneDisplayModes).forEach((key) => {
+              zoneDisplayModes[key as ZoneKey] = 'graphic'
+            })
+          }}
+        >
+          🖼️ 卡图
+        </button>
+      </div>
+    </div>
 
+    <div class="display-mode-divider"></div>
+
+    <!-- 各区域独立控制 -->
+    <div class="display-mode-item">
+      <span class="zone-label">⚔️ 传奇</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.legend === 'text'}
+          onclick={() => {
+            zoneDisplayModes.legend = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.legend === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.legend = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+
+    <div class="display-mode-item">
+      <span class="zone-label">👑 英雄</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.champion === 'text'}
+          onclick={() => {
+            zoneDisplayModes.champion = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.champion === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.champion = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+
+    <div class="display-mode-item">
+      <span class="zone-label">📚 主牌堆</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.mainDeck === 'text'}
+          onclick={() => {
+            zoneDisplayModes.mainDeck = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.mainDeck === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.mainDeck = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+
+    <div class="display-mode-item">
+      <span class="zone-label">🏛️ 战场</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.battlefields === 'text'}
+          onclick={() => {
+            zoneDisplayModes.battlefields = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.battlefields === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.battlefields = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+
+    <div class="display-mode-item">
+      <span class="zone-label">🔮 符文</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.runes === 'text'}
+          onclick={() => {
+            zoneDisplayModes.runes = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.runes === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.runes = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+
+    <div class="display-mode-item">
+      <span class="zone-label">📦 备牌</span>
+      <div class="display-mode-switch small">
+        <button
+          class:active={zoneDisplayModes.sideboard === 'text'}
+          onclick={() => {
+            zoneDisplayModes.sideboard = 'text'
+            updateGlobalDisplayMode()
+          }}
+        >
+          文字
+        </button>
+        <button
+          class:active={zoneDisplayModes.sideboard === 'graphic'}
+          onclick={() => {
+            zoneDisplayModes.sideboard = 'graphic'
+            updateGlobalDisplayMode()
+          }}
+        >
+          卡图
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {#snippet footer()}
+    <button class="save-modal-confirm" onclick={() => (showDisplayModeMenu = false)}>
+      <span>完成</span>
+    </button>
+  {/snippet}
+</CommonModal>
+
+<style>
   .issues-list {
     list-style: none;
     margin: 0;
@@ -1352,11 +1819,6 @@
     cursor: not-allowed;
   }
 
-  .save-btn.is-dirty:not(:disabled) {
-    background: #f59e0b;
-    animation: pulse 2s infinite;
-  }
-
   @keyframes pulse {
     0% {
       box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
@@ -1374,7 +1836,7 @@
     overflow-y: auto;
     padding: 0;
     display: grid;
-    /*grid-template-columns: repeat(2, 1fr);*/
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .deck-panel {
@@ -1387,7 +1849,7 @@
     }
   }
 
-  .zones-container > .zone-section:nth-child(n + 3) {
+  .zones-container > .zone-section.full-space {
     grid-column: 1 / -1;
   }
 
@@ -1400,9 +1862,6 @@
     background: var(--bg-secondary, #f9fafb);
     font-weight: 600;
     font-size: 13px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
   }
 
   .zone-name {
@@ -1434,7 +1893,7 @@
     height: 64px;
     width: 100%;
     overflow: hidden;
-    border-radius: 6px;
+    border-radius: 5%;
     cursor: pointer;
     background: #0f172a;
     transition:
@@ -1505,10 +1964,6 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }
 
-  .card-quantity-control.hasErrorCard {
-    background: #dc2626;
-  }
-
   /* 空状态样式保持 */
   .empty-zone {
     width: 100%;
@@ -1564,23 +2019,12 @@
     color: var(--text-primary);
   }
 
-  .save-btn.has-errors {
-    background: #ef4444; /* 红色 */
-    cursor: not-allowed;
-    opacity: 0.8;
-  }
-
-  .save-btn.has-errors:hover {
-    background: #ef4444;
-  }
-
   .card-quantity-control {
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
     z-index: 5;
-
     display: flex;
     align-items: center;
     gap: 2px;
@@ -1594,6 +2038,21 @@
 
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);
+  }
+
+  .card-quantity-control.graphic-mode {
+    top: 10px;
+    right: 0;
+    height: 20px;
+    padding: 2%;
+    background-color: var(--accent-color);
+    border-top-right-radius: 5%;
+    border-top-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .card-quantity-control.hasErrorCard {
+    background: #dc2626;
   }
 
   .quantity-btn {
@@ -1633,9 +2092,13 @@
     justify-content: center;
 
     color: white;
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 700;
     line-height: 1;
+  }
+
+  .card-quantity-control.graphic-mode .card-count {
+    font-size: var(--text-base);
   }
 
   .zone-header {
@@ -1648,9 +2111,6 @@
     background: var(--bg-secondary, #f9fafb);
     font-weight: 600;
     font-size: 13px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
   }
 
   .display-mode-switch {
@@ -1688,19 +2148,31 @@
     color: var(--bg-primary);
   }
 
-  .zone-list.single-mode {
+  .zone-list.multi-item.graphic-mode {
     --single-column-count: 4;
     grid-template-columns: repeat(var(--single-column-count), 1fr);
   }
 
-  .zone-list.single-mode .card-item {
+  .zone-list.multi-item.graphic-mode.max-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .zone-list.graphic-mode .card-item {
     min-width: 0;
     height: 100%;
     width: 100%;
     aspect-ratio: 744 / 1040;
   }
 
-  :global(.zone-list.single-mode .card-item img) {
+  .zone-list.graphic-mode:not(.multi-item) .card-item {
+    min-width: 0;
+    height: 100%;
+    max-height: 200px;
+    width: auto;
+    aspect-ratio: 744 / 1040;
+  }
+
+  :global(.zone-list.graphic-mode .card-item img) {
     object-position: initial;
     image-rendering: optimizeQuality;
     transform: none;
@@ -1749,10 +2221,10 @@
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     }
 
-    .zone-list.single-mode {
+    /* .zone-list.graphic-mode {
       --single-column-count: 4;
       grid-template-columns: repeat(var(--single-column-count), 1fr);
-    }
+    } */
   }
 
   @keyframes fadeIn {
@@ -2075,6 +2547,373 @@
     .save-modal-confirm {
       min-height: 42px;
       flex: 1;
+    }
+  }
+
+  /* ========== 更多菜单样式 ========== */
+  .more-menu-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  .more-menu-section {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+  }
+
+  .more-menu-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
+
+  .more-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: var(--text-md);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    width: 100%;
+  }
+
+  .more-menu-item:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .more-menu-item:active {
+    background-color: var(--bg-active);
+  }
+
+  /* ========== 显示模式切换 ========== */
+  .more-menu-toggle-buttons {
+    justify-content: space-between !important;
+    cursor: default !important;
+  }
+
+  .more-menu-toggle-buttons:hover {
+    background-color: transparent !important;
+  }
+
+  .toggle-button-group {
+    display: flex;
+    gap: 2px;
+    background-color: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    border: 1px solid var(--border-color);
+  }
+
+  .toggle-btn {
+    padding: 4px 14px;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .toggle-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .toggle-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+  }
+
+  .toggle-btn.active:hover {
+    background-color: color-mix(in oklab, var(--accent-color) 85%, black);
+  }
+
+  /* ========== 区域选择器（可展开） ========== */
+  .more-menu-expandable {
+    cursor: pointer;
+  }
+
+  .more-menu-expandable:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .expand-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .selected-zone-label {
+    font-size: var(--text-sm);
+    color: var(--accent-color);
+    font-weight: 500;
+  }
+
+  :global(.expand-icon) {
+    transition: transform 0.3s ease;
+    color: var(--text-secondary);
+  }
+
+  :global(.expand-icon.expanded) {
+    transform: rotate(90deg);
+  }
+
+  .zone-selector-dropdown {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 14px 8px 14px;
+    animation: slideDown 0.25s ease;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .zone-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    width: 100%;
+    position: relative;
+  }
+
+  .zone-option:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .zone-option.active {
+    background-color: color-mix(in oklab, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
+  }
+
+  .zone-option-name {
+    flex: 1;
+    text-align: left;
+    font-weight: 500;
+  }
+
+  .zone-option-count {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  /* ========== Toggle Switch ========== */
+  .more-menu-toggle {
+    justify-content: space-between !important;
+    cursor: default !important;
+  }
+
+  .more-menu-toggle:hover {
+    background-color: transparent !important;
+  }
+
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background-color: var(--border-color);
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    flex-shrink: 0;
+    padding: 0;
+  }
+
+  .toggle-switch.active {
+    background-color: var(--accent-color);
+  }
+
+  .toggle-slider {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background-color: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  .toggle-switch.active .toggle-slider {
+    transform: translateX(20px);
+  }
+
+  .toggle-switch:hover .toggle-slider {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+
+  .toggle-switch:active .toggle-slider {
+    transform: scale(0.9);
+  }
+
+  .toggle-switch.active:active .toggle-slider {
+    transform: translateX(20px) scale(0.9);
+  }
+
+  /* ========== 输入框 ========== */
+  .more-menu-input {
+    justify-content: space-between !important;
+    cursor: default !important;
+  }
+
+  .more-menu-input:hover {
+    background-color: transparent !important;
+  }
+
+  .more-menu-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .number-input {
+    width: 60px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+
+  .number-input:focus {
+    border-color: var(--accent-color);
+  }
+
+  .number-input::-webkit-inner-spin-button {
+    opacity: 0.5;
+  }
+
+  /* ========== 卡组统计 ========== */
+  .deck-stats-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 0;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s ease;
+  }
+
+  .stat-row:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .stat-label {
+    color: var(--text-secondary);
+    font-size: var(--text-md);
+  }
+
+  .stat-value {
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+
+  .stat-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+  }
+
+  .stat-total {
+    background-color: var(--bg-hover);
+    border-radius: var(--radius-sm);
+  }
+
+  .stat-total .stat-label {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .stat-total .stat-value {
+    font-size: var(--text-lg);
+    color: var(--accent-color);
+  }
+
+  /* ========== 响应式 ========== */
+  @media (max-width: 479.99px) {
+    .more-menu-item {
+      padding: 12px 14px;
+      font-size: var(--text-base);
+    }
+
+    .toggle-switch {
+      width: 48px;
+      height: 28px;
+    }
+
+    .toggle-slider {
+      width: 24px;
+      height: 24px;
+    }
+
+    .toggle-switch.active .toggle-slider {
+      transform: translateX(20px);
+    }
+
+    .toggle-switch:active .toggle-slider {
+      transform: scale(0.9);
+    }
+
+    .toggle-switch.active:active .toggle-slider {
+      transform: translateX(20px) scale(0.9);
+    }
+
+    .zone-option {
+      padding: 10px 12px;
+    }
+
+    .stat-row {
+      padding: 10px 12px;
     }
   }
 </style>
