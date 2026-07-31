@@ -130,7 +130,7 @@
 
   .modal {
     width: min(460px, 100%);
-    max-height: min(90svh, 620px);
+    max-height: min(90svh, 900px);
 
     display: flex;
     flex-direction: column;

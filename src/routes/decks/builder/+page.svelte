@@ -53,14 +53,17 @@
 
   type DisplayMode = 'grouped' | 'single'
 
+  let singleColumnCount = $state(4)
   let mainDeckDisplayMode = $state<DisplayMode>('grouped')
   let sideboardDisplayMode = $state<DisplayMode>('grouped')
+  let showAllZoneMode = $state(false)
   let printModalPrintIndex = $state(0)
   let printModalTarget = $state<{
     card: cardAndPrint
     zone: ZoneKey
     grouped: boolean
   } | null>(null)
+  let showCurrentCardDetails = $state(false)
 
   // --- 核心：未保存修改标记 (Dirty State) ---
   let isDirty = $state(false)
@@ -132,7 +135,7 @@
       })
       if (confirmed) {
         confirmBack = confirmed
-        goto('/decks')
+        window.history.back()
       }
     }
   })
@@ -737,9 +740,9 @@
     )
   }
 
-  function changePrintsId() {
+  function changePrintsId(id: string) {
     const target = printModalTarget
-    if (!target) return
+    if (!target || !id) return
 
     const currentPrint = target.card.card_prints[printModalPrintIndex]
     if (!currentPrint) return
@@ -751,6 +754,8 @@
     card.forEach((c) => {
       c.selectedPrints = currentPrint.id
     })
+
+    target.card.selectedPrints = id
   }
 
   function arrangeDecks() {
@@ -809,32 +814,18 @@
       {/if}
     </div>
 
-    <div class="card-info">
-      <div class="card-name">{rawName}</div>
-      <div class="card-id">{group.card.card_no}</div>
-    </div>
+    {#if grouped}
+      <div class="card-info">
+        <div class="card-name">{rawName}</div>
+        <div class="card-id">{group.card.card_no}</div>
+      </div>
 
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="card-quantity-control" onclick={(e) => e.stopPropagation()}>
-      <!-- <button
-        class="quantity-btn"
-        aria-label="减少数量"
-        onclick={() => removeCardQuantity(group.card, zone, grouped)}
-      >
-        <Minus size={14} />
-      </button> -->
-
-      <span class="card-count" class:hasErrorCard>{group.count}</span>
-
-      <!-- <button
-        class="quantity-btn"
-        aria-label="增加数量"
-        onclick={() => addCardQuantity(group.card, zone)}
-      >
-        <Plus size={14} />
-      </button> -->
-    </div>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="card-quantity-control" class:hasErrorCard onclick={(e) => e.stopPropagation()}>
+        <span class="card-count">{group.count}</span>
+      </div>
+    {/if}
   </div>
 {/snippet}
 
@@ -879,6 +870,12 @@
     style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
+      <button
+        class="save-btn"
+        style="margin-right: auto; background-color: var(--secondary-accent-color)"
+        onclick={() => window.history.back()}>取消</button
+      >
+
       {#if hasErrors}
         <div
           class="error-info-container"
@@ -888,6 +885,17 @@
           <CircleAlert size={25} color={'#dc2626'} />
         </div>
       {/if}
+
+      {#if mainDeckDisplayMode === 'single' || sideboardDisplayMode === 'single'}
+        <input
+          type="number"
+          min="1"
+          max="6"
+          value={singleColumnCount}
+          oninput={(e) => (singleColumnCount = parseInt(e?.target?.value || 0))}
+        />
+      {/if}
+
       {#if useVerticalResize}
         <button
           onclick={() => {
@@ -914,21 +922,22 @@
     </div>
 
     <div class="zones-container">
-      <!-- Legend Zone -->
-      <div class="zone-section">
-        <div class="zone-header">
-          <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
-            >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
-          >
+      {#if showAllZoneMode || (!showAllZoneMode && (selectedZone === 'legend' || selectedZone === 'champion'))}
+        <!-- Legend Zone -->
+        <div class="zone-section">
+          <div class="zone-header">
+            <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
+              >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
+            >
+          </div>
+          <div class="zone-list">
+            {#each groupCards(legendCards) as group}
+              {@render cardItem(group, 'legend', true)}
+            {:else}
+              <div class="empty-zone">该区域为空</div>
+            {/each}
+          </div>
         </div>
-        <div class="zone-list">
-          {#each groupCards(legendCards) as group}
-            {@render cardItem(group, 'legend', true)}
-          {:else}
-            <div class="empty-zone">该区域为空</div>
-          {/each}
-        </div>
-      </div>
 
       <!-- Champion Zone -->
       <div class="zone-section">
@@ -945,6 +954,10 @@
           {/each}
         </div>
       </div>
+      {/if}
+
+
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'mainDeck')}
 
       <!-- MainDeck Zone -->
       <div class="zone-section">
@@ -969,7 +982,11 @@
             </button>
           </div>
         </div>
-        <div class="zone-list multi-item" class:single-mode={mainDeckDisplayMode === 'single'}>
+        <div
+          class="zone-list multi-item"
+          class:single-mode={mainDeckDisplayMode === 'single'}
+          style:--single-column-count={singleColumnCount}
+        >
           {#if mainDeckDisplayMode === 'grouped'}
             {#each groupCards(mainDeckCards) as group}
               {@render cardItem(group, 'mainDeck', true)}
@@ -985,7 +1002,9 @@
           {/if}
         </div>
       </div>
+      {/if}
 
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'battlefields')}
       <!-- Battlefields Zone -->
       <div class="zone-section">
         <div class="zone-header">
@@ -1004,7 +1023,8 @@
           {/each}
         </div>
       </div>
-
+      {/if}
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'runes')}
       <!-- Runes Zone -->
       <div class="zone-section">
         <div class="zone-header">
@@ -1020,7 +1040,10 @@
           {/each}
         </div>
       </div>
+      {/if}
 
+
+      {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'sideboard')}
       <!-- Sideboard Zone -->
       <div class="zone-section">
         <div class="zone-header">
@@ -1060,6 +1083,8 @@
           {/if}
         </div>
       </div>
+
+      {/if}
     </div>
   </aside>
 
@@ -1080,6 +1105,7 @@
           disabled={printModalPrintIndex === 0}
           onclick={() => {
             printModalPrintIndex = Math.max(0, printModalPrintIndex - 1)
+            showCurrentCardDetails = false
           }}
         >
           <ChevronLeftIcon size={16}></ChevronLeftIcon>
@@ -1091,6 +1117,12 @@
               url={prints[printModalPrintIndex]?.img_cdn}
               name={`${printModalTarget.card.id}-${currentPrint?.id}`}
             />
+          </div>
+          <div
+            class="print-slide-details"
+            style:--detail-height={showCurrentCardDetails ? '50vh' : 0}
+          >
+            {printModalTarget.card.effect_cn}
           </div>
         </div>
 
@@ -1107,6 +1139,13 @@
 
       {#snippet footer()}
         <div class="print-quantity-control">
+          <button
+            class="save-btn"
+            onclick={() => (showCurrentCardDetails = !showCurrentCardDetails)}
+          >
+            {showCurrentCardDetails ? '收起' : '详情'}
+          </button>
+
           <button
             class="quantity-btn"
             disabled={getPrintQuantity(
@@ -1134,7 +1173,7 @@
           <button
             class="save-btn"
             disabled={printModalTarget?.card.selectedPrints === currentPrint.id}
-            onclick={() => changePrintsId()}
+            onclick={() => changePrintsId(currentPrint.id)}
           >
             切换
           </button>
@@ -1299,8 +1338,8 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: #3b82f6;
-    color: white;
+    background: var(--accent-color);
+    color: var(--bg-primary);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -1335,7 +1374,7 @@
     overflow-y: auto;
     padding: 0;
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /*grid-template-columns: repeat(2, 1fr);*/
   }
 
   .deck-panel {
@@ -1466,30 +1505,8 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }
 
-  /* 数量徽章：绝对定位在最右侧，悬浮于图片之上 */
-  .card-count {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 5;
-    min-width: 32px;
-    height: 32px;
-    padding: 0 8px;
-    background: #10b981; /* 翡翠绿 */
-    color: white;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    border: 2px solid rgba(255, 255, 255, 0.2); /* 增加一点边缘高光 */
-  }
-
-  .card-count.hasErrorCard {
-    background-color: #dc2626;
+  .card-quantity-control.hasErrorCard {
+    background: #dc2626;
   }
 
   /* 空状态样式保持 */
@@ -1672,11 +1689,21 @@
   }
 
   .zone-list.single-mode {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    --single-column-count: 4;
+    grid-template-columns: repeat(var(--single-column-count), 1fr);
   }
 
   .zone-list.single-mode .card-item {
     min-width: 0;
+    height: 100%;
+    width: 100%;
+    aspect-ratio: 744 / 1040;
+  }
+
+  :global(.zone-list.single-mode .card-item img) {
+    object-position: initial;
+    image-rendering: optimizeQuality;
+    transform: none;
   }
 
   @media (max-width: 479.99px) {
@@ -1723,7 +1750,8 @@
     }
 
     .zone-list.single-mode {
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      --single-column-count: 4;
+      grid-template-columns: repeat(var(--single-column-count), 1fr);
     }
   }
 
@@ -1791,10 +1819,11 @@
     align-items: center;
     min-width: 0;
     justify-content: center;
+    flex-direction: column;
   }
 
   .print-slide-image {
-    flex: 1;
+    flex: 0 0 100%;
     max-width: 260px;
     display: flex;
     justify-content: center;
@@ -1804,12 +1833,21 @@
   /* 针对 CardSimpleImage 渲染的 img 标签使用 :global 穿透 */
   :global(.print-slide-image img) {
     width: 100%;
-    aspect-ratio: 744/1040;
+    /*aspect-ratio: 744/1040;*/
     max-height: 360px;
-    object-fit: contain;
+    object-fit: cover;
     border-radius: var(--radius-md);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     transition: transform 0.3s ease;
+    image-rendering: optimizeQuality;
+  }
+
+  .print-slide-details {
+    --detail-height: 0;
+    max-height: var(--detail-height);
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+    text-align: start;
   }
 
   .print-quantity-control {
