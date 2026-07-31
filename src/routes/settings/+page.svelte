@@ -457,14 +457,14 @@
   }
 
   .setting-desc {
-    font-size: var(--text-sm); /* 12px */
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     line-height: 1.4;
   }
 
   .file-path {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: var(--text-xs); /* 11px */
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
     word-break: break-all;
     cursor: copy;

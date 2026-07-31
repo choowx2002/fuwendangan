@@ -374,11 +374,6 @@
 </div>
 
 <style>
-  :global(body) {
-    background-color: var(--bg-primary);
-    font-family: 'Noto Sans SC', system-ui, sans-serif;
-  }
-
   .deck-builder-container {
     max-width: 1280px;
     margin: 0 auto;

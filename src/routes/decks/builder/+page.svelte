@@ -1240,17 +1240,6 @@
     position: relative;
   }
 
-  .issues-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 1rem;
-    font-weight: 600;
-    font-size: var(--text-md);
-    color: #991b1b; /* 深红色文字 */
-    border-bottom: 1px solid #fecaca;
-  }
-
   .issues-list {
     list-style: none;
     margin: 0;
@@ -1474,7 +1463,6 @@
   .card-id {
     font-size: 11px;
     color: #cbd5e1; /* 浅灰色 */
-    font-family: 'Courier New', monospace;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }
 
@@ -1739,23 +1727,6 @@
     }
   }
 
-  /* =========================================
-     Card Prints Modal (Notion Style)
-     ========================================= */
-
-  /* .print-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: rgba(55, 53, 47, 0.4);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    animation: fadeIn 0.2s ease-out;
-  } */
-
   @keyframes fadeIn {
     from {
       opacity: 0;
@@ -1764,20 +1735,6 @@
       opacity: 1;
     }
   }
-
-  /* .print-modal {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-    width: 100%;
-    max-width: 680px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    border: 1px solid var(--border-color);
-  } */
 
   @keyframes slideUp {
     from {
@@ -1789,58 +1746,6 @@
       opacity: 1;
     }
   }
-
-  /* .print-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-  }
-
-  .print-modal-title {
-    font-size: var(--text-xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-    line-height: 1.2;
-  }
-
-  .print-modal-subtitle {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-family: 'Courier New', monospace;
-  }
-
-  .print-modal-close {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 6px;
-    border-radius: var(--radius-sm);
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin-left: 12px;
-  }
-
-  .print-modal-close:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .print-modal-content {
-    padding: 24px;
-    overflow-y: auto;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  } */
 
   .print-slider {
     display: flex;
@@ -1955,28 +1860,6 @@
      Mobile Responsive (手机适配)
      ========================================= */
   @media (max-width: 640px) {
-    /* .print-modal-overlay {
-      padding: 10px;
-    }
-
-    .print-modal {
-      max-height: 94vh;
-      width: 100%;
-      max-width: 100%;
-    }
-
-    .print-modal-header {
-      padding: 14px 16px;
-    }
-
-    .print-modal-title {
-      font-size: var(--text-lg);
-    }
-
-    .print-modal-content {
-      padding: 16px 12px;
-    } */
-
     .print-slider {
       flex-direction: column;
       gap: 16px;
@@ -1994,7 +1877,6 @@
       width: 100%;
     }
 
-    /* 移动端将左右箭头绝对定位悬浮在图片两侧，节省横向空间 */
     .slider-arrow {
       position: absolute;
       top: 50%;
@@ -2035,106 +1917,6 @@
       max-width: 200px;
     }
   }
-
-  /* =========================================
-   Save Deck Modal
-   ========================================= */
-
-  /* .save-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    padding: 20px;
-
-    background: rgba(55, 53, 47, 0.4);
-    backdrop-filter: blur(4px);
-  } */
-
-  /* .save-modal {
-    width: min(460px, 100%);
-    max-height: min(90svh, 620px);
-
-    display: flex;
-    flex-direction: column;
-
-    overflow: hidden;
-
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 12px;
-
-    box-shadow:
-      0 20px 50px rgba(0, 0, 0, 0.18),
-      0 4px 12px rgba(0, 0, 0, 0.08);
-  }
-
-  .save-modal-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-
-    padding: 20px;
-
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
-  }
-
-  .save-modal-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .save-modal-subtitle {
-    margin-top: 4px;
-
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-
-  .save-modal-close {
-    width: 32px;
-    height: 32px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    flex-shrink: 0;
-
-    border: none;
-    border-radius: 6px;
-
-    background: transparent;
-    color: var(--text-secondary);
-
-    cursor: pointer;
-  }
-
-  .save-modal-close:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .save-modal-close:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .save-modal-content {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-
-    padding: 20px;
-
-    overflow-y: auto;
-  } */
 
   .save-modal-field {
     display: flex;
@@ -2203,18 +1985,6 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
-
-  /* .save-modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-
-    padding: 16px 20px;
-
-    border-top: 1px solid var(--border-color, #e5e7eb);
-  } */
-
   .save-modal-cancel,
   .save-modal-confirm {
     min-height: 36px;
@@ -2263,32 +2033,6 @@
   }
 
   @media (max-width: 479.99px) {
-    /* .save-modal-overlay {
-      align-items: flex-end;
-      padding: 0;
-    }
-
-    .save-modal {
-      width: 100%;
-      max-height: 90svh;
-
-      border-radius: 14px 14px 0 0;
-      border-bottom: none;
-    }
-
-    .save-modal-header {
-      padding: 18px 16px;
-    }
-
-    .save-modal-content {
-      padding: 18px 16px;
-    }
-
-    .save-modal-footer {
-      padding: 14px 16px;
-      padding-bottom: max(14px, env(safe-area-inset-bottom));
-    } */
-
     .save-modal-cancel,
     .save-modal-confirm {
       min-height: 42px;

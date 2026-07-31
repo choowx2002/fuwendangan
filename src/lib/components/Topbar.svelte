@@ -28,9 +28,9 @@
       <span class="search-text">搜索卡牌、卡组...</span>
       <kbd>⌘K</kbd>
     </button> -->
-    <button class="icon-btn" aria-label="通知">
+    <!-- <button class="icon-btn" aria-label="通知">
       <Bell size={18} />
-    </button>
+    </button> -->
   </div>
 </header>
 
@@ -95,42 +95,4 @@
   .separator {
     color: var(--text-tertiary);
   }
-
-  /* .search-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    padding: 4px 10px;
-    gap: 8px;
-    font-size: var(--text-base);
-    color: var(--text-tertiary);
-    width: 240px;
-    justify-content: flex-start;
-  }
-  .search-btn:hover {
-    background: var(--bg-hover);
-  }
-  .search-text {
-    flex: 1;
-    text-align: left;
-  }
-  kbd {
-    font-family: inherit;
-    font-size: var(--text-sm);
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    padding: 1px 4px;
-    color: var(--text-secondary);
-  } */
-
-  /* @media (max-width: 767.99px) {
-    .search-btn {
-      width: auto;
-      padding: 6px;
-    }
-    .search-text,
-    kbd {
-      display: none;
-    }
-  } */
 </style>

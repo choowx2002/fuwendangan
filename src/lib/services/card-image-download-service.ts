@@ -8,38 +8,95 @@ import { appLocalDataDir, join } from '@tauri-apps/api/path'
 import { message } from '@tauri-apps/plugin-dialog'
 import { setProgressStatus, uiState, hideLoading } from '$lib/stores/ui-store.svelte'
 import { isMobile } from '$lib/services/os-serives'
-import { sendNotification } from '@tauri-apps/plugin-notification'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+  createChannel,
+  Importance
+} from '@tauri-apps/plugin-notification'
 
 let cancelRequested = false
+let permissionGranted = false
+
+// 固定的通知 ID 和 Channel ID，用于覆盖更新同一条通知
+const NOTIFICATION_ID = 4242
+const CHANNEL_ID = 'card-download-progress'
+
+const initNotificationMobile = async () => {
+  // 如果已经获取过权限，直接返回，避免重复请求和创建 Channel
+  if (permissionGranted) return
+
+  permissionGranted = await isPermissionGranted()
+
+  if (!permissionGranted) {
+    const permission = await requestPermission()
+    permissionGranted = permission === 'granted'
+  }
+
+  // 获取权限后，在 Android 上创建通知通道（Channel）
+  if (permissionGranted) {
+    try {
+      await createChannel({
+        id: CHANNEL_ID,
+        name: '卡图下载进度',
+        description: '显示卡牌图片下载的后台进度',
+        importance: Importance.Low, // Low 级别不会弹出 heads-up 遮挡屏幕
+        vibration: false,
+        sound: undefined,
+      })
+    } catch (error) {
+      console.warn('[Notification] 创建 Channel 失败:', error)
+    }
+  }
+}
+
+/**
+ * 发送/更新正在下载中的进度通知
+ */
+const updateProgressNotification = (completed: number, total: number, failed: number) => {
+  const percent = Math.round((completed / total) * 100)
+  sendNotification({
+    id: NOTIFICATION_ID,
+    channelId: CHANNEL_ID,
+    title: '卡牌资源下载',
+    body: `${percent}% (${completed}/${total})${failed ? ` · ${failed} 失败` : ''}`,
+    icon: 'icon',
+    ongoing: true,    // 正在进行中，禁止用户滑动删除
+    autoCancel: false,
+    silent: true      // 更新时不发声
+  })
+}
+
+/**
+ * 发送最终结果通知（完成/取消/失败），并解除 ongoing 状态
+ */
+const finishNotification = (title: string, body: string) => {
+  sendNotification({
+    id: NOTIFICATION_ID,
+    channelId: CHANNEL_ID,
+    title,
+    body,
+    icon: 'icon',
+    ongoing: false,   // 解除锁定，允许用户滑动删除
+    autoCancel: true  // 点击后自动消失
+  })
+}
 
 export const isCardImageDownloading = () => uiState.status === 'downloading'
 
-/**
- * 准备卡图下载任务。
- *
- * 这里只负责计算哪些图片缺失，不真正开始下载。
- */
 export async function prepareCardImageDownload(): Promise<{
   missing: any[]
   existingCount: number
   totalCount: number
 }> {
   const [cardPrints, localDataDir] = await Promise.all([getPrints(), appLocalDataDir()])
-
   const imagePath = await join(localDataDir, CARD_IMAGE)
-
   return getMissingCardPrints(cardPrints, imagePath)
 }
 
-/**
- * 请求取消下载。
- *
- * 当前正在进行的 HTTP 请求不会被强制杀掉，
- * 会在当前图片完成后停止。
- */
 export function cancelCardImageDownload() {
   cancelRequested = true
-
   setProgressStatus(
     'downloading',
     '正在取消下载',
@@ -48,34 +105,29 @@ export function cancelCardImageDownload() {
   )
 }
 
-/**
- * 启动后台卡图下载。
- *
- * 注意这里故意不 await runCardImageDownload。
- * 这样 Settings 页面可以立即返回，下载任务继续在 service 中运行。
- */
 export async function startCardImageDownload(missing: any[]) {
   if (uiState.status === 'downloading' || missing.length === 0) {
     return
   }
 
   cancelRequested = false
-
   setProgressStatus('downloading', '正在下载卡牌', `准备下载 ${missing.length} 张卡图`, 0)
 
   const onMobile = await isMobile()
+
+  // 初始化移动端通知权限和 Channel
   if (onMobile && missing.length > 0) {
     try {
-      sendNotification({
-        title: '卡牌资源下载',
-        body: `开始下载 ${missing.length} 张卡图`,
-        icon: 'icon',
-      })
+      await initNotificationMobile()
+      if (permissionGranted) {
+        updateProgressNotification(0, missing.length, 0)
+      }
     } catch (error) {
-      console.error('[Notification] 发送通知失败:', error)
+      console.error('[Notification] 初始化通知失败:', error)
     }
   }
 
+  // 故意不 await，让 Settings 页面立即返回
   void runCardImageDownload(missing, onMobile)
 }
 
@@ -112,33 +164,27 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
       )
 
       // 在移动设备上更新通知进度（每 10% 更新一次）
-      if (onMobile && completed % Math.max(1, Math.floor(missing.length / 10)) === 0) {
-        try {
-          sendNotification({
-            title: '卡牌资源下载',
-            body: `进度：${completed} / ${missing.length}${failed ? ` · ${failed} 张失败` : ''}`,
-            icon: 'icon',
-          })
-        } catch (error) {
-          console.error('[Notification] 更新通知失败:', error)
-        }
+      if (onMobile && permissionGranted && completed % Math.max(1, Math.floor(missing.length / 10)) === 0) {
+        updateProgressNotification(completed, missing.length, failed)
       }
     }
 
     if (cancelRequested) {
+      if (onMobile && permissionGranted) {
+        finishNotification(
+          '卡牌下载已取消',
+          `已下载 ${completed} 张，失败 ${failed} 张`
+        )
+      }
       return
     }
 
-    if (onMobile) {
-      try {
-        sendNotification({
-          title: '卡牌资源下载完成',
-          body: `成功 ${completed - failed} 张，失败 ${failed} 张`,
-          icon: 'icon',
-        })
-      } catch (error) {
-        console.error('[Notification] 发送完成通知失败:', error)
-      }
+    // 下载完成
+    if (onMobile && permissionGranted) {
+      finishNotification(
+        '卡牌资源下载完成',
+        `成功 ${completed - failed} 张，失败 ${failed} 张`
+      )
     }
 
     if (failed > 0) {
@@ -150,17 +196,11 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
   } catch (error) {
     console.error('[CardImageDownload]', error)
 
-    // 下载错误通知
-    if (onMobile) {
-      try {
-        sendNotification({
-          title: '卡牌资源下载失败',
-          body: error instanceof Error ? error.message : '下载卡图时发生未知错误。',
-          icon: 'icon',
-        })
-      } catch (notificationError) {
-        console.error('[Notification] 发送错误通知失败:', notificationError)
-      }
+    if (onMobile && permissionGranted) {
+      finishNotification(
+        '卡牌资源下载失败',
+        error instanceof Error ? error.message : '下载卡图时发生未知错误。'
+      )
     }
 
     await message(error instanceof Error ? error.message : '下载卡图时发生未知错误。', {
