@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { loadImageFromAppFolder } from '$lib/services/image-cache-service' // 替换为你的实际路径
+  import { loadImageFromAppFolder } from '$lib/services/image-cache-service'
 
-  let { url, name, fallback = '/blue.jpg', className = '' } = $props()
+  let { url, name, fallback = '/blue.jpg', className = '', isLandscape = false } = $props()
 
   let imageUrl = $state<string>('/blue.jpg')
   let isLoading = $state(true)
@@ -19,7 +19,6 @@
     isLoading = true
 
     const safeName = name || 'card'
-
     imageUrl = currentFallback
 
     loadImageFromAppFolder(url, safeName).then((localUrl) => {
@@ -35,10 +34,46 @@
   })
 </script>
 
-<img src={imageUrl} alt={name || 'Card Image'} class={className} class:loading={isLoading} />
+{#if isLandscape}
+  <div class="landscape-container {className}">
+    <div class="rotate-wrapper">
+      <img src={imageUrl} alt={name || 'Card Image'} class:loading={isLoading} />
+    </div>
+  </div>
+{:else}
+  <img src={imageUrl} alt={name || 'Card Image'} class={className} class:loading={isLoading} />
+{/if}
 
 <style>
   .loading {
     opacity: 0.5;
+  }
+
+  /* ========== 战场横版模式 ========== */
+  .landscape-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1040 / 744;
+    overflow: hidden;
+    display: inline-block;
+  }
+
+  .rotate-wrapper {
+    position: absolute;
+    top: 25%;
+    left: 50%;
+    /* DOM 宽高互换：宽=容器高，高=容器宽 */
+    width: calc(100% * 744 / 1040);
+    height: calc(100% * 1040 / 744);
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center center;
+  }
+
+  .rotate-wrapper img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: optimizeQuality;
   }
 </style>

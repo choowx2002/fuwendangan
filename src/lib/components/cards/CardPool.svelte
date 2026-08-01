@@ -195,6 +195,10 @@
     return deckCards.filter((c) => c.id === cardId).length
   }
 
+  let isLandscape = $derived.by(() => {
+    return displayedCards.every((c) => c.card_category?.findIndex((cat) => cat === '战场') !== -1)
+  })
+
   onMount(() => {
     async function updateLayoutMode() {
       isMobileSmall = window.innerWidth < 479.99
@@ -449,6 +453,7 @@
               name={`${card.id}-${defaultI?.id || 'default'}`}
               borderRadius="6px"
               fit="cover"
+              {isLandscape}
             />
             <h5 style="color: var(--text-primary) ;margin: 0; text-align: center;">
               {`${card.card_name_cn} ${card.sub_title_cn || ''}`}

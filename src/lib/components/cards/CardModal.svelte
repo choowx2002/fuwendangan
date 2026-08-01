@@ -122,6 +122,7 @@
                 borderRadius="6px"
                 isHover={false}
                 errorImage=""
+                isLandscape={isBattlefield}
               />
             {:else}
               <div class="no-image">No Image</div>
@@ -167,6 +168,7 @@
                     fit="contain"
                     isHover={false}
                     errorImage=""
+                    isLandscape={isBattlefield}
                   />
                 </button>
               {/each}

@@ -13,7 +13,7 @@ import {
   requestPermission,
   sendNotification,
   createChannel,
-  Importance
+  Importance,
 } from '@tauri-apps/plugin-notification'
 
 let cancelRequested = false
@@ -62,9 +62,9 @@ const updateProgressNotification = (completed: number, total: number, failed: nu
     title: '卡牌资源下载',
     body: `${percent}% (${completed}/${total})${failed ? ` · ${failed} 失败` : ''}`,
     icon: 'icon',
-    ongoing: true,    // 正在进行中，禁止用户滑动删除
+    ongoing: true, // 正在进行中，禁止用户滑动删除
     autoCancel: false,
-    silent: true      // 更新时不发声
+    silent: true, // 更新时不发声
   })
 }
 
@@ -78,8 +78,8 @@ const finishNotification = (title: string, body: string) => {
     title,
     body,
     icon: 'icon',
-    ongoing: false,   // 解除锁定，允许用户滑动删除
-    autoCancel: true  // 点击后自动消失
+    ongoing: false, // 解除锁定，允许用户滑动删除
+    autoCancel: true, // 点击后自动消失
   })
 }
 
@@ -164,27 +164,25 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
       )
 
       // 在移动设备上更新通知进度（每 10% 更新一次）
-      if (onMobile && permissionGranted && completed % Math.max(1, Math.floor(missing.length / 10)) === 0) {
+      if (
+        onMobile &&
+        permissionGranted &&
+        completed % Math.max(1, Math.floor(missing.length / 10)) === 0
+      ) {
         updateProgressNotification(completed, missing.length, failed)
       }
     }
 
     if (cancelRequested) {
       if (onMobile && permissionGranted) {
-        finishNotification(
-          '卡牌下载已取消',
-          `已下载 ${completed} 张，失败 ${failed} 张`
-        )
+        finishNotification('卡牌下载已取消', `已下载 ${completed} 张，失败 ${failed} 张`)
       }
       return
     }
 
     // 下载完成
     if (onMobile && permissionGranted) {
-      finishNotification(
-        '卡牌资源下载完成',
-        `成功 ${completed - failed} 张，失败 ${failed} 张`
-      )
+      finishNotification('卡牌资源下载完成', `成功 ${completed - failed} 张，失败 ${failed} 张`)
     }
 
     if (failed > 0) {

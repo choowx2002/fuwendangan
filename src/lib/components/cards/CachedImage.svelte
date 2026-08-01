@@ -14,9 +14,10 @@
     errorImage = '',
     lazy = true,
     className = '',
-    style = 'aspect-ratio: 744 / 1040;',
+    style = '',
     isHover = true,
     onerror = undefined as ((e: Event) => void) | undefined,
+    isLandscape = false,
   } = $props()
 
   let imageUrl = $state('')
@@ -26,7 +27,6 @@
 
   let currentObjectUrl: string | null = null
   let requestId = 0
-
   let containerElement = $state<HTMLDivElement | undefined>(undefined)
 
   const fitStyles: Record<ObjectFitType, string> = {
@@ -37,7 +37,9 @@
     'scale-down': 'object-fit: scale-down;',
   }
 
-  // 统一清理 Object URL，防止内存泄漏
+  // 根据模式计算 aspect-ratio
+  const aspectRatio = $derived(isLandscape ? '1040 / 744' : '744 / 1040')
+
   function cleanupObjectUrl() {
     if (currentObjectUrl) {
       URL.revokeObjectURL(currentObjectUrl)
@@ -52,23 +54,17 @@
       error = false
       return
     }
-
-    // 第 13 条：生成当前请求的唯一 ID
     const currentRequestId = ++requestId
-
     loading = true
     error = false
     showImgDownloadError = false
-    imageUrl = '' // 第 12 条：清空旧图，防止切换时闪烁
+    imageUrl = ''
 
     try {
       const url = await loadImageFromAppFolder(src, name)
-
-      // 第 13 条：防止异步竞态。如果在此期间发起了新请求，则丢弃当前结果
       if (currentRequestId !== requestId) return
-
       if (url) {
-        cleanupObjectUrl() // 清理旧的 Object URL
+        cleanupObjectUrl()
         imageUrl = url
         currentObjectUrl = url
       } else {
@@ -76,9 +72,7 @@
         onerror?.(new Event('loadImageFromAppFolder returned null'))
       }
     } catch (err) {
-      // 第 13 条：捕获异常时同样需要校验请求 ID
       if (currentRequestId !== requestId) return
-
       console.error('[CacheImage] 加载图片失败:', err)
       error = true
       onerror?.(new Event('loadImageFromAppFolder threw error'))
@@ -88,9 +82,7 @@
     }
   }
 
-  // 监听 src 和 lazy 的变化
   $effect(() => {
-    // 第 12 条：src 变化时，立即重置状态
     imageUrl = ''
     error = false
     showImgDownloadError = false
@@ -102,42 +94,31 @@
     }
 
     if (!lazy) {
-      // 第 2 条：支持 preload (lazy={false})
       loading = true
       loadImage()
     } else {
-      // 懒加载模式
-      loading = true // 保持 loading 状态，直到进入视口
+      loading = true
       const el = containerElement
-
       if (el) {
         const obs = new IntersectionObserver(
           (entries) => {
             if (entries[0].isIntersecting) {
               loadImage()
-              obs.disconnect() // 加载后断开观察，节省性能
+              obs.disconnect()
             }
           },
-          { rootMargin: '50px', threshold: 0.01 } // threshold 0.01 更容易在虚拟列表中触发
+          { rootMargin: '50px', threshold: 0.01 }
         )
         obs.observe(el)
-
-        // 清理函数：组件销毁或 effect 重新运行时触发（完美支持第 10 条虚拟列表）
-        return () => {
-          obs.disconnect()
-        }
+        return () => obs.disconnect()
       }
     }
   })
 
-  // 组件销毁时确保清理 Object URL
   $effect(() => {
-    return () => {
-      cleanupObjectUrl()
-    }
+    return () => cleanupObjectUrl()
   })
 
-  // 统一处理 <img> 标签的加载失败
   function handleImgError(e: Event) {
     error = true
     loading = false
@@ -150,85 +131,86 @@
   bind:this={containerElement}
   class="cache-image-container {className}"
   class:cache-image-container-hover={isHover}
+  class:landscape={isLandscape}
   style:position="relative"
   style:width={width || '100%'}
   style:height={height || 'auto'}
   style:border-radius={borderRadius}
   style:overflow="hidden"
+  style:aspect-ratio={aspectRatio}
   {style}
 >
-  {#if loading}
-    {#if placeholder}
-      <img
-        src={placeholder}
-        alt="加载中..."
-        style="width: 100%; height: 100%; {fitStyles[fit]}; opacity: 0.5;"
-      />
-    {:else}
-      <div
-        class="loading-placeholder"
-        style="width: 100%; height: 100%; background: var(--bg-secondary, #f0f0f0); display: flex; align-items: center; justify-content: center;"
-      >
-        <LoaderCircle size={24} class="animate-spin" />
-      </div>
-    {/if}
-  {:else if error}
-    {#if errorImage}
-      <!-- 第 6 条：自定义错误图片 -->
-      <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; {fitStyles[fit]};" />
-    {:else if src}
-      <!-- Fallback 机制：如果缓存加载失败，尝试直接用原 src 加载 (如 CDN 直链) -->
-      <div class="error-placeholder">
+  <!-- ★ 旋转 wrapper：仅在 isLandscape 时生效 -->
+  <div class="rotate-wrapper" class:active={isLandscape}>
+    {#if loading}
+      {#if placeholder}
         <img
-          {src}
-          alt={alt || name}
-          style="width: 100%; height: 100%; {fitStyles[fit]};"
-          onerror={handleImgError}
+          src={placeholder}
+          alt="加载中..."
+          style="width: 100%; height: 100%; {fitStyles[fit]}; opacity: 0.5;"
         />
-
-        {#if showImgDownloadError}
-          <div class="error-tip">
-            <strong>无法加载图片</strong>
-            <span>可能原因：</span>
-            <ul>
-              <li>网络连接异常</li>
-              <li>图片服务器暂时不可用</li>
-              <li>中国大陆地区可能因网络环境导致无法访问</li>
-              <li>图片资源不存在或已被移除</li>
-            </ul>
-          </div>
-        {/if}
-      </div>
-    {:else}
-      <div
-        class="error-placeholder"
-        style="width: 100%; height: 100%; background: var(--bg-secondary, #f5f5f5); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px;"
-      >
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
-        <span style="color: #999; font-size: var(--text-sm, 14px);">图片加载失败</span>
-      </div>
+      {:else}
+        <div class="loading-placeholder">
+          <LoaderCircle size={24} class="animate-spin" />
+        </div>
+      {/if}
+    {:else if error}
+      {#if errorImage}
+        <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; {fitStyles[fit]};" />
+      {:else if src}
+        <div class="error-placeholder">
+          <img
+            {src}
+            alt={alt || name}
+            style="width: 100%; height: 100%; {fitStyles[fit]};"
+            onerror={handleImgError}
+          />
+          {#if showImgDownloadError}
+            <div class="error-tip">
+              <strong>无法加载图片</strong>
+              <span>可能原因：</span>
+              <ul>
+                <li>网络连接异常</li>
+                <li>图片服务器暂时不可用</li>
+                <li>中国大陆地区可能因网络环境导致无法访问</li>
+                <li>图片资源不存在或已被移除</li>
+              </ul>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="error-placeholder error-placeholder-empty">
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#ccc"
+            stroke-width="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          <span style="color: #999; font-size: 14px;">图片加载失败</span>
+        </div>
+      {/if}
+    {:else if imageUrl}
+      <img
+        src={imageUrl}
+        alt={alt || name}
+        style="width: 100%; height: 100%; {fitStyles[
+          fit
+        ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease;"
+        onerror={handleImgError}
+      />
     {/if}
-  {:else if imageUrl}
-    <img
-      src={imageUrl}
-      alt={alt || name}
-      style="width: 100%; height: 100%; {fitStyles[
-        fit
-      ]}; border-radius: {borderRadius}; transition: opacity 0.3s ease;"
-      onerror={handleImgError}
-    />
-  {/if}
+  </div>
 </div>
 
 <style>
   .cache-image-container {
     display: inline-block;
-    /* 默认 aspect-ratio，可通过 prop style 覆盖 */
-    aspect-ratio: 744 / 1040;
     overflow: hidden;
     transition: all 0.2s ease;
   }
@@ -240,15 +222,58 @@
 
   .cache-image-container-hover:hover {
     transform: translateY(-1px);
-    /* 如果需要阴影，可在此处取消注释 */
-    /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); */
   }
 
+  /* ========== 核心：旋转 wrapper ========== */
+  .rotate-wrapper {
+    width: 100%;
+    height: 100%;
+  }
+
+  .rotate-wrapper.active {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /*
+     * 关键数学：
+     * 容器是横版 W×H (1040:744)
+     * 图片是竖版，旋转后需要视觉宽=H_visual, 视觉高=W_visual
+     * 所以 DOM 宽 = 容器高, DOM 高 = 容器宽
+     *
+     * width  的 100% = 父元素宽度 → × (744/1040) = 容器高度 ✓
+     * height 的 100% = 父元素高度 → × (1040/744) = 容器宽度 ✓
+     */
+    width: calc(100% * 744 / 1040);
+    height: calc(100% * 1040 / 744);
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center center;
+  }
+
+  /* ========== 加载占位 ========== */
+  .loading-placeholder {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-secondary, #f0f0f0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ========== 错误状态 ========== */
   .error-placeholder {
     position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;
+  }
+
+  .error-placeholder-empty {
+    background: var(--bg-secondary, #f5f5f5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .error-tip {
@@ -263,12 +288,12 @@
     text-align: center;
     background: rgba(0, 0, 0, 0.65);
     color: #fff;
-    font-size: var(--text-sm, 14px);
+    font-size: 14px;
     backdrop-filter: blur(2px);
   }
 
   .error-tip strong {
-    font-size: var(--text-base, 16px);
+    font-size: 16px;
   }
 
   .error-tip ul {

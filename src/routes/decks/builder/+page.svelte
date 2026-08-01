@@ -2,7 +2,7 @@
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import type { CardBase, CardPrint, CardWithPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import {
     ArrowDownAZIcon,
     ArrowUpDownIcon,
@@ -257,7 +257,7 @@
     return null
   }
 
-  function handleAddCard(card: cardAndPrint) {
+  async function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
       message('该卡牌为禁卡，无法加入卡组！')
       return
@@ -293,6 +293,8 @@
       selectedPrints: defaultPrint?.id,
     }
 
+    const zoneElementDiv = document.getElementById(`${selectedZone.toLowerCase()}-zone`)
+    const dataId = `${newCard.id}-${newCard.selectedPrints || 'default'}`
     switch (selectedZone) {
       case 'legend':
         legendCards = [newCard]
@@ -320,7 +322,15 @@
         sideboardCards = [...sideboardCards, newCard]
         break
     }
+    await tick()
+    if (zoneElementDiv) {
+      const cardElements = zoneElementDiv.querySelectorAll(`[data-id="${dataId}"]`)
+      const lastIndexCard = cardElements[cardElements.length - 1]
 
+      if (lastIndexCard) {
+        lastIndexCard.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
     isDirty = true
   }
 
@@ -838,7 +848,9 @@
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
   {@const rawName = `${group.card.card_name_cn}${group.card.sub_title_cn ? ' - ' + group.card.sub_title_cn : ''}`}
   {@const hasErrorCard = checkErrorCard(rawName)}
+  {@const selectedPrint = group.card.card_prints.find((p) => p.id === group.card.selectedPrints)}
   <div
+    data-id={`${group.card.id}-${selectedPrint?.id || 'default'}`}
     role="presentation"
     class="card-item"
     onclick={() => openPrintModal(group.card, zone, grouped)}
@@ -848,16 +860,11 @@
     }}
   >
     <div class="card-image">
-      {#if group.card.selectedPrints}
-        {@const selectedPrint = group.card.card_prints.find(
-          (p) => p.id === group.card.selectedPrints
-        )}
-
-        <CardSimpleImage
-          url={selectedPrint?.img_cdn}
-          name={`${group.card.id}-${selectedPrint?.id || 'default'}`}
-        />
-      {/if}
+      <CardSimpleImage
+        url={selectedPrint?.img_cdn}
+        name={`${group.card.id}-${selectedPrint?.id || 'default'}`}
+        isLandscape={group.card.card_category?.findIndex((cat) => cat === '战场') !== -1}
+      />
     </div>
 
     {#if zoneDisplayModes[zone] === 'text'}
@@ -867,16 +874,18 @@
       </div>
     {/if}
 
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="card-quantity-control"
-      class:hasErrorCard
-      class:graphic-mode={zoneDisplayModes[zone] === 'graphic'}
-      onclick={(e) => e.stopPropagation()}
-    >
-      <span class="card-count">{group.count}</span>
-    </div>
+    {#if grouped}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="card-quantity-control"
+        class:hasErrorCard
+        class:graphic-mode={zoneDisplayModes[zone] === 'graphic'}
+        onclick={(e) => e.stopPropagation()}
+      >
+        <span class="card-count">{group.count}</span>
+      </div>
+    {/if}
   </div>
 {/snippet}
 
@@ -974,7 +983,7 @@
     <div class="zones-container">
       {#if showAllZoneMode || (!showAllZoneMode && (selectedZone === 'legend' || selectedZone === 'champion'))}
         <!-- Legend Zone -->
-        <div class="zone-section">
+        <div class="zone-section" id="legend-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
               >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
@@ -990,7 +999,7 @@
         </div>
 
         <!-- Champion Zone -->
-        <div class="zone-section">
+        <div class="zone-section" id="champion-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
               >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
@@ -1008,7 +1017,7 @@
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'mainDeck')}
         <!-- MainDeck Zone -->
-        <div class="zone-section full-space">
+        <div class="zone-section full-space" id="maindeck-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
               主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
@@ -1054,7 +1063,7 @@
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'battlefields')}
         <!-- Battlefields Zone -->
-        <div class="zone-section full-space">
+        <div class="zone-section full-space" id="battlefields-zone">
           <div class="zone-header">
             <span
               class="zone-name"
@@ -1065,7 +1074,7 @@
             </span>
           </div>
           <div
-            class="zone-list multi-item battlefield-graphic"
+            class="zone-list multi-item max-3"
             class:graphic-mode={zoneDisplayModes.battlefields === 'graphic'}
             style:--single-column-count={singleColumnCount}
           >
@@ -1079,7 +1088,7 @@
       {/if}
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'runes')}
         <!-- Runes Zone -->
-        <div class="zone-section full-space">
+        <div class="zone-section full-space" id="runes-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
               >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
@@ -1101,7 +1110,7 @@
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'sideboard')}
         <!-- Sideboard Zone -->
-        <div class="zone-section full-space">
+        <div class="zone-section full-space" id="sideboard-zone">
           <div class="zone-header">
             <span
               class="zone-name"
@@ -1179,6 +1188,9 @@
             <CardSimpleImage
               url={prints[printModalPrintIndex]?.img_cdn}
               name={`${printModalTarget.card.id}-${currentPrint?.id}`}
+              isLandscape={printModalTarget.card.card_category?.findIndex(
+                (cat) => cat === '战场'
+              ) !== -1}
             />
           </div>
           <div
@@ -1837,15 +1849,19 @@
     padding: 0;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
+    scroll-snap-type: y proximity;
   }
 
   .deck-panel {
     container-type: inline-size;
   }
 
-  @container (max-width: 350px) {
+  @container (max-width: 360.99px) {
     .zones-container {
       grid-template-columns: 1fr;
+    }
+    .zone-list.max-3:not(.graphic-mode) .card-image {
+      transform: translateY(-50%);
     }
   }
 
@@ -1855,6 +1871,7 @@
 
   .zone-section {
     border-bottom: 1px solid var(--border-color, #e5e7eb);
+    scroll-snap-align: start;
   }
 
   .zone-header {
@@ -1862,6 +1879,9 @@
     background: var(--bg-secondary, #f9fafb);
     font-weight: 600;
     font-size: 13px;
+    position: sticky;
+    top: 0;
+    z-index: 6;
   }
 
   .zone-name {
@@ -1893,7 +1913,7 @@
     height: 64px;
     width: 100%;
     overflow: hidden;
-    border-radius: 5%;
+    border-radius: 10px;
     cursor: pointer;
     background: #0f172a;
     transition:
@@ -1914,6 +1934,10 @@
     position: absolute;
     inset: 0;
     z-index: 1;
+  }
+
+  .zone-list.max-3:not(.graphic-mode) .card-image {
+    scale: 1.25;
   }
 
   :global(.card-image img) {
@@ -2041,14 +2065,17 @@
   }
 
   .card-quantity-control.graphic-mode {
-    top: 10px;
+    font-weight: bold;
+    bottom: 0;
+    top: unset;
+    transform: unset;
     right: 0;
     height: 20px;
     padding: 2%;
     background-color: var(--accent-color);
-    border-top-right-radius: 5%;
-    border-top-left-radius: 0;
-    border-bottom-right-radius: 0;
+    border-bottom-right-radius: 5%;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 0;
   }
 
   .card-quantity-control.hasErrorCard {
@@ -2153,7 +2180,7 @@
     grid-template-columns: repeat(var(--single-column-count), 1fr);
   }
 
-  .zone-list.multi-item.graphic-mode.max-3 {
+  :global(.zone-list.multi-item.graphic-mode.max-3) {
     grid-template-columns: repeat(3, 1fr);
   }
 
@@ -2172,6 +2199,11 @@
     aspect-ratio: 744 / 1040;
   }
 
+  .zone-list.graphic-mode.max-3 .card-item {
+    height: min-content;
+    aspect-ratio: 1040/744;
+  }
+
   :global(.zone-list.graphic-mode .card-item img) {
     object-position: initial;
     image-rendering: optimizeQuality;
@@ -2181,6 +2213,10 @@
   @media (max-width: 479.99px) {
     ::-webkit-scrollbar {
       display: none;
+    }
+
+    .card-item {
+      border-radius: 5%;
     }
 
     .deck-builder-layout {
