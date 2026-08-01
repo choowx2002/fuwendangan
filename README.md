@@ -415,7 +415,7 @@ The remote Supabase database acts as the source for synchronized card and rules 
 Current version:
 
 ```text
-0.8.0
+0.8.5
 ```
 
 ---

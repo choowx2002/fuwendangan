@@ -49,7 +49,7 @@
   /* Font Size */
   --text-xs: 0.55rem; /* 11px */
   --text-sm: 0.65rem; /* 12px */
-  --text-base: 0.75rem; /* 14px */
+  --text-base: 0.8rem; /* 14px */
   --text-md: 0.875rem; /* 15px */
   --text-lg: 1rem; /* 16px */
   --text-xl: 1.125rem; /* 18px */
@@ -60,6 +60,13 @@
   --text-display: 2.25rem; /* 36px */
   --text-hero: 2.5rem; /* 40px */
 
+  --card-color-red: #e5484d;
+  --card-color-orange: #f76808;
+  --card-color-yellow: #eab308;
+  --card-color-green: #30a46c;
+  --card-color-blue: #3e63dd;
+  --card-color-purple: #8e4ec6;
+  --card-color-neutral: #9b9a97;
   color: var(--text-primary);
   background-color: var(--bg-primary);
 }

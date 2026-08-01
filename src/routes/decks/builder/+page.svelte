@@ -1,10 +1,9 @@
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
-  import type { CardBase, CardPrint, CardWithPrint } from '$lib/db/types'
+  import type { CardBase, CardPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
   import { onMount, tick } from 'svelte'
   import {
-    ArrowDownAZIcon,
     ArrowUpDownIcon,
     ChevronLeftIcon,
     ChevronRightIcon,
@@ -14,7 +13,6 @@
     GripHorizontal,
     GripVertical,
     LoaderCircle,
-    CheckIcon,
     Minus,
     Plus,
     Save,
@@ -37,7 +35,6 @@
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
 
-  // --- 卡组状态：六个区域 ---
   let legendCards = $state<cardAndPrint[]>([])
   let championCards = $state<cardAndPrint[]>([])
   let mainDeckCards = $state<cardAndPrint[]>([])
@@ -53,7 +50,6 @@
   let saveDeckDescription = $state('')
   let showMoreMenu = $state(false)
   let showDeckStats = $state(false)
-  let showZoneSelector = $state(false)
 
   type DisplayMode = 'grouped' | 'single'
   let mainDeckDisplayMode = $state<DisplayMode>('grouped')
@@ -63,7 +59,6 @@
   type CardDisplayMode = 'text' | 'graphic'
   let cardDisplayMode = $state<CardDisplayMode>('text')
 
-  // 每个区域的独立显示模式
   let zoneDisplayModes = $state<Record<ZoneKey, CardDisplayMode>>({
     legend: 'text',
     champion: 'text',
@@ -73,9 +68,8 @@
     sideboard: 'text',
   })
 
-  // 全局显示模式（用于快速切换）
   let globalDisplayMode = $state<CardDisplayMode>('text')
-  let showDisplayModeMenu = $state(false)
+  let showDisplayModeAdvanced = $state(false)
 
   let showAllZoneMode = $state(true)
   let printModalPrintIndex = $state(0)
@@ -86,12 +80,10 @@
   } | null>(null)
   let showCurrentCardDetails = $state(false)
 
-  // --- 核心：未保存修改标记 (Dirty State) ---
   let isDirty = $state(false)
   let isSaving = $state(false)
   let confirmBack = $state(false)
 
-  // --- 拖拽调整宽度状态 ---
   let isMobile1 = $state(false)
   let revertLayout = $state(false)
   let rightPanelWidth = $state(50)
@@ -182,7 +174,6 @@
     const map = new Map<string, { card: cardAndPrint; count: number }>()
 
     for (const card of cards) {
-      // Print 不同的情况下不能合并，否则切换 Print 后无法准确知道数量
       const key = `${card.id}:${card.selectedPrints ?? ''}`
       const existing = map.get(key)
 
@@ -232,6 +223,7 @@
     return null
   }
 
+  // @unused: 调用已被注释掉，函数体从未执行
   function checkNameSubtitleLimit(card: cardAndPrint, targetZone: ZoneKey): string | null {
     const checkedZones: ZoneKey[] = ['champion', 'mainDeck', 'sideboard']
     if (!checkedZones.includes(targetZone)) return null
@@ -247,6 +239,7 @@
     return null
   }
 
+  // @unused: 调用已被注释掉，函数体从未执行
   function checkWeiWoLimit(card: cardAndPrint): string | null {
     if (!card.keyword?.includes('唯我')) return null
 
@@ -265,22 +258,10 @@
 
     const capacityError = checkZoneCapacity(selectedZone)
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
-    // if (capacityError && !isReplacable) {
-    //   message(capacityError)
-    //   return
-    // }
-
-    // const nameLimitError = checkNameSubtitleLimit(card, selectedZone)
-    // if (nameLimitError) {
-    //   message(nameLimitError)
-    //   return
-    // }
-
-    // const weiWoError = checkWeiWoLimit(card)
-    // if (weiWoError) {
-    //   message(weiWoError)
-    //   return
-    // }
+    if (capacityError && !isReplacable) {
+      message(capacityError)
+      return
+    }
 
     const defaultPrint =
       card.card_prints?.find((p) => p.is_default) ??
@@ -451,7 +432,6 @@
     if (grouped) {
       index = cards.findIndex((c) => c.id === card.id && c.selectedPrints === card.selectedPrints)
     } else {
-      // Single 模式只删除当前这一张实体卡
       index = cards.findIndex((c) => c === card)
     }
 
@@ -511,7 +491,6 @@
       if (!ignoreWarning) return
     }
 
-    // 校验通过后，不立即保存，先打开保存信息 Modal
     saveDeckName = deckName === '未命名卡组' ? '' : deckName
     saveDeckDescription = ''
     showSaveModal = true
@@ -632,7 +611,6 @@
       if (useVerticalResize) {
         const deltaY = event.clientY - startY
         let deltaPercent: number
-        // 【关键修复】加上负号：向上拖拽(deltaY<0) -> deltaPercent>0 -> 高度增加
         if (revertLayout) {
           deltaPercent = (deltaY / containerHeight) * 100
         } else {
@@ -641,20 +619,17 @@
 
         let newHeight = startSize + deltaPercent
 
-        // 1. Clamp (边界限制)：限制在 20% 到 85% 之间
-        // 如果你希望允许完全收起，可以把 20 改成 0
         const MIN_HEIGHT = 5
         const MAX_HEIGHT = 95
         newHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight))
 
-        // 2. Snap (吸附效果)
-        const SNAP_THRESHOLD_BOTTOM = 10 // 拖到小于 30% 时，自动收起
-        const SNAP_THRESHOLD_TOP = 85 // 拖到大于 80% 时，自动最大化
+        const SNAP_THRESHOLD_BOTTOM = 10
+        const SNAP_THRESHOLD_TOP = 85
 
         if (newHeight <= SNAP_THRESHOLD_BOTTOM) {
-          newHeight = 0 // 完全收起 (如果 MIN_HEIGHT 是 0 的话)
+          newHeight = 0
         } else if (newHeight >= SNAP_THRESHOLD_TOP) {
-          newHeight = 100 // 完全展开 (可选)
+          newHeight = 100
         }
 
         rightPanelHeight = newHeight
@@ -828,21 +803,29 @@
     removeCardQuantity(card, zone, grouped)
   }
 
-  // 更新全局显示模式（检查所有区域是否一致）
   function updateGlobalDisplayMode() {
     const modes = Object.values(zoneDisplayModes)
     const allSame = modes.every((m) => m === modes[0])
     if (allSame) {
       globalDisplayMode = modes[0]
     } else {
-      globalDisplayMode = 'text' // 或者保持当前，但显示为"混合"
+      globalDisplayMode = 'text'
     }
   }
 
-  // 获取区域的显示模式
+  // @unused: 已定义但从未在模板或脚本中调用
   function getZoneDisplayMode(zone: ZoneKey): CardDisplayMode {
     return zoneDisplayModes[zone] || 'text'
   }
+
+  const zoneDisplayConfig: { key: ZoneKey; label: string }[] = [
+    { key: 'legend', label: '传奇' },
+    { key: 'champion', label: '英雄' },
+    { key: 'mainDeck', label: '主牌堆' },
+    { key: 'battlefields', label: '战场' },
+    { key: 'runes', label: '符文' },
+    { key: 'sideboard', label: '备牌' },
+  ]
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
@@ -894,7 +877,6 @@
   class="deck-builder-layout"
   class:revert-layout={revertLayout && useVerticalResize}
 >
-  <!-- 左侧：卡池 -->
   <main class="card-pool-panel">
     <CardPool
       onCardClick={handleAddCard}
@@ -905,7 +887,6 @@
     />
   </main>
 
-  <!-- 中间：拖拽手柄 -->
   <button
     class="grip-button"
     class:resizing={isResizing}
@@ -923,14 +904,12 @@
     {/if}
   </button>
 
-  <!-- 右侧：卡组面板 -->
   <aside
     class="deck-panel"
     style:width={!isMobile1 ? `${rightPanelWidth}%` : undefined}
     style:height={isMobile1 ? `${rightPanelHeight}%` : undefined}
   >
     <div class="deck-header">
-      <!-- 1. 取消按钮 -->
       <button
         class="button button-text"
         style="margin-right: auto; color: var(--secondary-accent-color);"
@@ -939,15 +918,6 @@
         取消
       </button>
 
-      <button
-        class="button-icon"
-        onclick={() => (showDisplayModeMenu = !showDisplayModeMenu)}
-        title="切换显示模式"
-      >
-        {globalDisplayMode === 'text' ? '📝' : '🖼️'}
-      </button>
-
-      <!-- 2. 错误信息按钮 -->
       {#if hasErrors}
         <div
           class="button-icon button-danger"
@@ -959,7 +929,6 @@
         </div>
       {/if}
 
-      <!-- 3. 保存按钮 -->
       <button
         class="button {hasErrors ? 'button-danger' : 'button-primary'}"
         onclick={handleSave}
@@ -974,7 +943,6 @@
         <span>保存</span>
       </button>
 
-      <!-- 4. 更多选项按钮 -->
       <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title="更多选项">
         <EllipsisVerticalIcon size={16} />
       </button>
@@ -982,12 +950,32 @@
 
     <div class="zones-container">
       {#if showAllZoneMode || (!showAllZoneMode && (selectedZone === 'legend' || selectedZone === 'champion'))}
-        <!-- Legend Zone -->
         <div class="zone-section" id="legend-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
-              >传奇 ({legendCards.length}/{ZONE_CONFIG.legend.maxCount})</span
+              >传奇</span
             >
+            <div class="display-mode-switch">
+              <button
+                class:active={zoneDisplayModes.legend === 'text'}
+                onclick={() => {
+                  zoneDisplayModes.legend = 'text'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                文字
+              </button>
+
+              <button
+                class:active={zoneDisplayModes.legend === 'graphic'}
+                onclick={() => {
+                  zoneDisplayModes.legend = 'graphic'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                卡图
+              </button>
+            </div>
           </div>
           <div class="zone-list" class:graphic-mode={zoneDisplayModes.legend === 'graphic'}>
             {#each groupCards(legendCards) as group}
@@ -998,12 +986,32 @@
           </div>
         </div>
 
-        <!-- Champion Zone -->
         <div class="zone-section" id="champion-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
-              >选定英雄 ({championCards.length}/{ZONE_CONFIG.champion.maxCount})</span
+              >英雄</span
             >
+            <div class="display-mode-switch">
+              <button
+                class:active={zoneDisplayModes.champion === 'text'}
+                onclick={() => {
+                  zoneDisplayModes.champion = 'text'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                文字
+              </button>
+
+              <button
+                class:active={zoneDisplayModes.champion === 'graphic'}
+                onclick={() => {
+                  zoneDisplayModes.champion = 'graphic'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                卡图
+              </button>
+            </div>
           </div>
           <div class="zone-list" class:graphic-mode={zoneDisplayModes.champion === 'graphic'}>
             {#each groupCards(championCards) as group}
@@ -1016,27 +1024,50 @@
       {/if}
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'mainDeck')}
-        <!-- MainDeck Zone -->
         <div class="zone-section full-space" id="maindeck-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
               主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
             </span>
 
-            <div class="display-mode-switch">
-              <button
-                class:active={mainDeckDisplayMode === 'grouped'}
-                onclick={() => (mainDeckDisplayMode = 'grouped')}
-              >
-                合并
-              </button>
+            <div style="display: flex;column-gap: 5px; ">
+              <div class="display-mode-switch">
+                <button
+                  class:active={mainDeckDisplayMode === 'grouped'}
+                  onclick={() => (mainDeckDisplayMode = 'grouped')}
+                >
+                  合并
+                </button>
 
-              <button
-                class:active={mainDeckDisplayMode === 'single'}
-                onclick={() => (mainDeckDisplayMode = 'single')}
-              >
-                单张
-              </button>
+                <button
+                  class:active={mainDeckDisplayMode === 'single'}
+                  onclick={() => (mainDeckDisplayMode = 'single')}
+                >
+                  单张
+                </button>
+              </div>
+
+              <div class="display-mode-switch">
+                <button
+                  class:active={zoneDisplayModes.mainDeck === 'text'}
+                  onclick={() => {
+                    zoneDisplayModes.mainDeck = 'text'
+                    updateGlobalDisplayMode()
+                  }}
+                >
+                  文字
+                </button>
+
+                <button
+                  class:active={zoneDisplayModes.mainDeck === 'graphic'}
+                  onclick={() => {
+                    zoneDisplayModes.mainDeck = 'graphic'
+                    updateGlobalDisplayMode()
+                  }}
+                >
+                  卡图
+                </button>
+              </div>
             </div>
           </div>
           <div
@@ -1062,7 +1093,6 @@
       {/if}
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'battlefields')}
-        <!-- Battlefields Zone -->
         <div class="zone-section full-space" id="battlefields-zone">
           <div class="zone-header">
             <span
@@ -1072,6 +1102,28 @@
             >
               战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})
             </span>
+
+            <div class="display-mode-switch">
+              <button
+                class:active={zoneDisplayModes.battlefields === 'text'}
+                onclick={() => {
+                  zoneDisplayModes.battlefields = 'text'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                文字
+              </button>
+
+              <button
+                class:active={zoneDisplayModes.battlefields === 'graphic'}
+                onclick={() => {
+                  zoneDisplayModes.battlefields = 'graphic'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                卡图
+              </button>
+            </div>
           </div>
           <div
             class="zone-list multi-item max-3"
@@ -1086,13 +1138,35 @@
           </div>
         </div>
       {/if}
+
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'runes')}
-        <!-- Runes Zone -->
         <div class="zone-section full-space" id="runes-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
               >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
             >
+
+            <div class="display-mode-switch">
+              <button
+                class:active={zoneDisplayModes.runes === 'text'}
+                onclick={() => {
+                  zoneDisplayModes.runes = 'text'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                文字
+              </button>
+
+              <button
+                class:active={zoneDisplayModes.runes === 'graphic'}
+                onclick={() => {
+                  zoneDisplayModes.runes = 'graphic'
+                  updateGlobalDisplayMode()
+                }}
+              >
+                卡图
+              </button>
+            </div>
           </div>
           <div
             class="zone-list multi-item"
@@ -1109,7 +1183,6 @@
       {/if}
 
       {#if showAllZoneMode || (!showAllZoneMode && selectedZone === 'sideboard')}
-        <!-- Sideboard Zone -->
         <div class="zone-section full-space" id="sideboard-zone">
           <div class="zone-header">
             <span
@@ -1120,20 +1193,43 @@
               备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})
             </span>
 
-            <div class="display-mode-switch">
-              <button
-                class:active={sideboardDisplayMode === 'grouped'}
-                onclick={() => (sideboardDisplayMode = 'grouped')}
-              >
-                合并
-              </button>
+            <div style="display: flex;column-gap: 5px; ">
+              <div class="display-mode-switch">
+                <button
+                  class:active={sideboardDisplayMode === 'grouped'}
+                  onclick={() => (sideboardDisplayMode = 'grouped')}
+                >
+                  合并
+                </button>
 
-              <button
-                class:active={sideboardDisplayMode === 'single'}
-                onclick={() => (sideboardDisplayMode = 'single')}
-              >
-                单张
-              </button>
+                <button
+                  class:active={sideboardDisplayMode === 'single'}
+                  onclick={() => (sideboardDisplayMode = 'single')}
+                >
+                  单张
+                </button>
+              </div>
+              <div class="display-mode-switch">
+                <button
+                  class:active={zoneDisplayModes.sideboard === 'text'}
+                  onclick={() => {
+                    zoneDisplayModes.sideboard = 'text'
+                    updateGlobalDisplayMode()
+                  }}
+                >
+                  文字
+                </button>
+
+                <button
+                  class:active={zoneDisplayModes.sideboard === 'graphic'}
+                  onclick={() => {
+                    zoneDisplayModes.sideboard = 'graphic'
+                    updateGlobalDisplayMode()
+                  }}
+                >
+                  卡图
+                </button>
+              </div>
             </div>
           </div>
           <div
@@ -1264,7 +1360,6 @@
     closable={!isSaving}
     onclose={cancelSaveDeck}
   >
-    <!-- 默认 slot → modal-content -->
     <label class="save-modal-field">
       <span class="save-modal-label">
         卡组名称 <span class="required">*</span>
@@ -1296,7 +1391,6 @@
         disabled={isSaving}></textarea>
     </label>
 
-    <!-- footer snippet → modal-footer -->
     {#snippet footer()}
       <button class="save-modal-cancel" disabled={isSaving} onclick={cancelSaveDeck}> 取消 </button>
       <button
@@ -1337,7 +1431,6 @@
       </ul>
     </div>
 
-    <!-- footer snippet → modal-footer -->
     {#snippet footer()}
       <button class="save-modal-confirm" onclick={() => (showErrorModal = !showErrorModal)}>
         <span>了解</span>
@@ -1345,86 +1438,137 @@
     {/snippet}
   </CommonModal>
 
-  <!-- 更多选项 Modal -->
   <CommonModal
     open={showMoreMenu}
-    onclose={() => (showMoreMenu = false)}
+    onclose={() => {
+      showMoreMenu = false
+      showDisplayModeAdvanced = false
+    }}
     title="更多选项"
     subtitle="卡组管理工具"
     closable={true}
   >
     <div class="more-menu-content">
-      <!-- 1. 显示模式切换 - 文字/卡图 -->
-      <div class="more-menu-section">
-        <div class="more-menu-item more-menu-toggle-buttons">
-          <span class="toggle-label">
-            <span>显示模式</span>
-          </span>
-          <div class="toggle-button-group">
-            <button
-              class="toggle-btn {cardDisplayMode === 'text' ? 'active' : ''}"
-              onclick={() => {
-                cardDisplayMode = 'text'
-              }}
-            >
-              文字
-            </button>
-            <button
-              class="toggle-btn {cardDisplayMode === 'graphic' ? 'active' : ''}"
-              onclick={() => {
-                cardDisplayMode = 'graphic'
-              }}
-            >
-              卡图
-            </button>
-          </div>
+      <div class="more-menu-item more-menu-toggle">
+        <span class="toggle-label">
+          <span>{showAllZoneMode ? '显示所有区域' : '显示选定区域'}</span>
+        </span>
+        <div class="toggle-button-group">
+          <button
+            class="toggle-btn {showAllZoneMode ? 'active' : ''}"
+            onclick={() => {
+              showAllZoneMode = !showAllZoneMode
+            }}
+          >
+            所有
+          </button>
+          <button
+            class="toggle-btn {!showAllZoneMode ? 'active' : ''}"
+            onclick={() => {
+              showAllZoneMode = !showAllZoneMode
+            }}
+          >
+            选定
+          </button>
         </div>
       </div>
 
-      <!-- 2. 区域选择 - 可展开 -->
-      <div class="more-menu-section">
+      <div>
         <div
           role="presentation"
-          aria-label="区域卡牌展示模式"
-          class="more-menu-item more-menu-expandable"
-          onclick={() => {
-            showZoneSelector = !showZoneSelector
-          }}
+          aria-label="显示模式设置"
+          class="more-menu-item more-menu-expandable more-menu-toggle"
         >
           <span class="toggle-label">
-            <span>📌</span>
-            <span>选择区域</span>
+            <span>显示模式</span>
           </span>
           <div class="expand-control">
-            <span class="selected-zone-label">{ZONE_CONFIG[selectedZone].label}</span>
-            <ChevronRightIcon size={16} class="expand-icon {showZoneSelector ? 'expanded' : ''}" />
+            <div class="toggle-button-group">
+              <button
+                class="toggle-btn {globalDisplayMode === 'text' ? 'active' : ''}"
+                onclick={() => {
+                  globalDisplayMode = 'text'
+                  cardDisplayMode = 'text'
+                  Object.keys(zoneDisplayModes).forEach((key) => {
+                    zoneDisplayModes[key as ZoneKey] = 'text'
+                  })
+                }}
+              >
+                文字
+              </button>
+              <button
+                class="toggle-btn {globalDisplayMode === 'graphic' ? 'active' : ''}"
+                onclick={() => {
+                  globalDisplayMode = 'graphic'
+                  cardDisplayMode = 'graphic'
+                  Object.keys(zoneDisplayModes).forEach((key) => {
+                    zoneDisplayModes[key as ZoneKey] = 'graphic'
+                  })
+                }}
+              >
+                卡图
+              </button>
+            </div>
+            <ChevronRightIcon
+              onclick={() => {
+                showDisplayModeAdvanced = !showDisplayModeAdvanced
+              }}
+              size={16}
+              class="expand-icon {showDisplayModeAdvanced ? 'expanded' : ''}"
+            />
           </div>
         </div>
 
-        {#if showZoneSelector}
-          <div class="zone-selector-dropdown">
-            {#each Object.entries(ZONE_CONFIG) as [key, config]}
-              <button
-                class="zone-option {selectedZone === key ? 'active' : ''}"
-                onclick={() => {
-                  selectedZone = key as ZoneKey
-                  showZoneSelector = false
-                }}
-              >
-                <span class="zone-option-name">{config.name}</span>
-                <span class="zone-option-count"
-                  >({getZoneCards(key as ZoneKey).length}/{config.maxCount})</span
-                >
-                {#if selectedZone === key}
-                  <CheckIcon size={16} class="zone-check" />
-                {/if}
-              </button>
+        {#if showDisplayModeAdvanced}
+          <div class="display-mode-advanced">
+            {#each zoneDisplayConfig as zoneCfg}
+              <div class="display-mode-zone-row">
+                <span class="zone-label">
+                  {zoneCfg.label}
+                </span>
+                <div class="toggle-button-group">
+                  <button
+                    class="toggle-btn {zoneDisplayModes[zoneCfg.key] === 'text' ? 'active' : ''}"
+                    onclick={() => {
+                      zoneDisplayModes[zoneCfg.key] = 'text'
+                      updateGlobalDisplayMode()
+                    }}
+                  >
+                    文字
+                  </button>
+                  <button
+                    class="toggle-btn {zoneDisplayModes[zoneCfg.key] === 'graphic' ? 'active' : ''}"
+                    onclick={() => {
+                      zoneDisplayModes[zoneCfg.key] = 'graphic'
+                      updateGlobalDisplayMode()
+                    }}
+                  >
+                    卡图
+                  </button>
+                </div>
+              </div>
             {/each}
           </div>
         {/if}
       </div>
 
-      <!-- 3. 布局切换 -->
+      <div class="more-menu-item more-menu-input">
+        <span class="toggle-label">
+          <span>卡图列数</span>
+        </span>
+        <input
+          type="number"
+          min="2"
+          value={singleColumnCount}
+          oninput={(e) => {
+            const target = e.target as HTMLInputElement
+            singleColumnCount = parseInt(target.value || '4')
+          }}
+          class="number-input"
+          style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); text-align: center;"
+        />
+      </div>
+
       {#if useVerticalResize}
         <button
           class="more-menu-item"
@@ -1438,80 +1582,41 @@
         </button>
       {/if}
 
-      <!-- 4. 整理按钮 -->
-      <button
-        class="more-menu-item"
-        onclick={() => {
-          arrangeDecks()
-          showMoreMenu = false
-        }}
-      >
-        <ArrowDownAZIcon size={18} />
-        <span>整理卡组</span>
-      </button>
-
-      <!-- 5. 每行列数 (仅在卡图模式显示) -->
-      {#if cardDisplayMode === 'graphic'}
-        <div class="more-menu-item more-menu-input">
-          <span class="more-menu-label">
-            <span>每行列数</span>
-          </span>
-          <input
-            type="number"
-            min="2"
-            max="6"
-            value={singleColumnCount}
-            oninput={(e) => {
-              const target = e.target as HTMLInputElement
-              singleColumnCount = parseInt(target.value || '4')
-            }}
-            class="number-input"
-            style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); text-align: center;"
-          />
-        </div>
-      {/if}
-
-      <!-- 6. 显示所有区域切换 - Toggle -->
-      <div class="more-menu-item more-menu-toggle">
-        <span class="toggle-label">
-          <span>{showAllZoneMode ? '📁' : '📂'}</span>
-          <span>{showAllZoneMode ? '显示所有区域' : '专注当前区域'}</span>
-        </span>
+      <div style="justify-content: right;display: flex;gap: 10px;">
         <button
-          aria-label="区域模式"
-          class="toggle-switch {showAllZoneMode ? 'active' : ''}"
+          class="button button-md button-secondary"
           onclick={() => {
-            showAllZoneMode = !showAllZoneMode
+            arrangeDecks()
+            showMoreMenu = false
           }}
-          role="switch"
-          aria-checked={showAllZoneMode}
         >
-          <span class="toggle-slider"></span>
+          <span>整理卡组</span>
+        </button>
+        <button
+          class="button button-md button-secondary"
+          onclick={() => {
+            showDeckStats = !showDeckStats
+            showMoreMenu = false
+          }}
+        >
+          <span>卡组统计</span>
         </button>
       </div>
-
-      <!-- 7. 显示卡组统计 -->
-      <button
-        class="more-menu-item"
-        onclick={() => {
-          showDeckStats = !showDeckStats
-          showMoreMenu = false
-        }}
-      >
-        <span>📊</span>
-        <span>卡组统计</span>
-      </button>
     </div>
 
-    <!-- footer -->
     {#snippet footer()}
-      <button class="save-modal-confirm" onclick={() => (showMoreMenu = false)}>
+      <button
+        class="save-modal-confirm"
+        onclick={() => {
+          showMoreMenu = false
+          showDisplayModeAdvanced = false
+        }}
+      >
         <span>关闭</span>
       </button>
     {/snippet}
   </CommonModal>
 
-  <!-- 卡组统计 Modal -->
   <CommonModal
     open={showDeckStats}
     onclose={() => (showDeckStats = false)}
@@ -1562,201 +1667,6 @@
   </CommonModal>
 </div>
 
-<!-- 显示模式选择 Modal -->
-<CommonModal
-  open={showDisplayModeMenu}
-  onclose={() => (showDisplayModeMenu = false)}
-  title="区域显示模式"
-  subtitle="为每个区域单独设置显示方式"
-  closable={true}
->
-  <div class="display-mode-menu">
-    <!-- 全局快速切换 -->
-    <div class="display-mode-global">
-      <span class="global-label">🌐 全局切换</span>
-      <div class="display-mode-switch">
-        <button
-          class:active={globalDisplayMode === 'text'}
-          onclick={() => {
-            globalDisplayMode = 'text'
-            // 应用到所有区域
-            Object.keys(zoneDisplayModes).forEach((key) => {
-              zoneDisplayModes[key as ZoneKey] = 'text'
-            })
-          }}
-        >
-          📝 文字
-        </button>
-        <button
-          class:active={globalDisplayMode === 'graphic'}
-          onclick={() => {
-            globalDisplayMode = 'graphic'
-            // 应用到所有区域
-            Object.keys(zoneDisplayModes).forEach((key) => {
-              zoneDisplayModes[key as ZoneKey] = 'graphic'
-            })
-          }}
-        >
-          🖼️ 卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-divider"></div>
-
-    <!-- 各区域独立控制 -->
-    <div class="display-mode-item">
-      <span class="zone-label">⚔️ 传奇</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.legend === 'text'}
-          onclick={() => {
-            zoneDisplayModes.legend = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.legend === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.legend = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-item">
-      <span class="zone-label">👑 英雄</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.champion === 'text'}
-          onclick={() => {
-            zoneDisplayModes.champion = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.champion === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.champion = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-item">
-      <span class="zone-label">📚 主牌堆</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.mainDeck === 'text'}
-          onclick={() => {
-            zoneDisplayModes.mainDeck = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.mainDeck === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.mainDeck = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-item">
-      <span class="zone-label">🏛️ 战场</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.battlefields === 'text'}
-          onclick={() => {
-            zoneDisplayModes.battlefields = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.battlefields === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.battlefields = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-item">
-      <span class="zone-label">🔮 符文</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.runes === 'text'}
-          onclick={() => {
-            zoneDisplayModes.runes = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.runes === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.runes = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-
-    <div class="display-mode-item">
-      <span class="zone-label">📦 备牌</span>
-      <div class="display-mode-switch small">
-        <button
-          class:active={zoneDisplayModes.sideboard === 'text'}
-          onclick={() => {
-            zoneDisplayModes.sideboard = 'text'
-            updateGlobalDisplayMode()
-          }}
-        >
-          文字
-        </button>
-        <button
-          class:active={zoneDisplayModes.sideboard === 'graphic'}
-          onclick={() => {
-            zoneDisplayModes.sideboard = 'graphic'
-            updateGlobalDisplayMode()
-          }}
-        >
-          卡图
-        </button>
-      </div>
-    </div>
-  </div>
-
-  {#snippet footer()}
-    <button class="save-modal-confirm" onclick={() => (showDisplayModeMenu = false)}>
-      <span>完成</span>
-    </button>
-  {/snippet}
-</CommonModal>
-
 <style>
   .issues-list {
     list-style: none;
@@ -1801,6 +1711,7 @@
     flex-direction: column;
     background: var(--bg-primary);
     flex-shrink: 0;
+    container-type: inline-size;
   }
 
   .deck-header {
@@ -1831,32 +1742,14 @@
     cursor: not-allowed;
   }
 
-  @keyframes pulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
-    }
-    70% {
-      box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-    }
-  }
-
   .zones-container {
-    /* flex: 1; */
     overflow-y: auto;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    scroll-snap-type: y proximity;
   }
 
-  .deck-panel {
-    container-type: inline-size;
-  }
-
-  @container (max-width: 360.99px) {
+  @container (max-width: 310.99px) {
     .zones-container {
       grid-template-columns: 1fr;
     }
@@ -1875,6 +1768,10 @@
   }
 
   .zone-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     padding: 8px 1rem;
     background: var(--bg-secondary, #f9fafb);
     font-weight: 600;
@@ -1889,7 +1786,6 @@
     cursor: pointer;
   }
 
-  /* 列表容器调整间距 */
   .zone-list {
     display: grid;
     gap: 8px;
@@ -1929,7 +1825,6 @@
     transform: translateY(0);
   }
 
-  /* 图片层：铺满容器，作为底层背景 */
   .card-image {
     position: absolute;
     inset: 0;
@@ -1949,7 +1844,6 @@
     opacity: 1;
   }
 
-  /* 信息层：绝对定位在左侧，承载文字和渐变 */
   .card-info {
     position: absolute;
     left: 0;
@@ -1961,7 +1855,6 @@
     flex-direction: column;
     justify-content: center;
     padding-left: 16px;
-
     background: linear-gradient(
       90deg,
       rgba(15, 23, 42, 0.95) 0%,
@@ -1975,7 +1868,7 @@
     font-size: 15px;
     font-weight: 700;
     color: #ffffff;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); /* 文字阴影增加立体感 */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1984,11 +1877,10 @@
 
   .card-id {
     font-size: 11px;
-    color: #cbd5e1; /* 浅灰色 */
+    color: #cbd5e1;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }
 
-  /* 空状态样式保持 */
   .empty-zone {
     width: 100%;
     color: var(--text-secondary);
@@ -2052,14 +1944,11 @@
     display: flex;
     align-items: center;
     gap: 2px;
-
     height: 32px;
     padding: 2px;
-
     background: rgba(15, 23, 42, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 7px;
-
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);
   }
@@ -2085,18 +1974,14 @@
   .quantity-btn {
     width: 26px;
     height: 26px;
-
     display: flex;
     align-items: center;
     justify-content: center;
-
     border: none;
     border-radius: 5px;
-
     color: white;
     background: transparent;
     cursor: pointer;
-
     transition:
       background-color 0.15s,
       transform 0.15s;
@@ -2113,11 +1998,9 @@
   .card-count {
     min-width: 24px;
     padding: 0 4px;
-
     display: flex;
     align-items: center;
     justify-content: center;
-
     color: white;
     font-size: var(--text-base);
     font-weight: 700;
@@ -2128,26 +2011,12 @@
     font-size: var(--text-base);
   }
 
-  .zone-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-
-    padding: 8px 1rem;
-    background: var(--bg-secondary, #f9fafb);
-    font-weight: 600;
-    font-size: 13px;
-  }
-
   .display-mode-switch {
     display: flex;
     align-items: center;
     gap: 2px;
-
     padding: 2px;
     border-radius: 5px;
-
     background: var(--bg-primary);
     border: 1px solid var(--border-color, #e5e7eb);
   }
@@ -2155,12 +2024,9 @@
   .display-mode-switch button {
     border: none;
     border-radius: 4px;
-
     padding: 3px 7px;
-
     background: transparent;
     color: var(--text-secondary);
-
     font-size: 11px;
     cursor: pointer;
   }
@@ -2210,6 +2076,20 @@
     transform: none;
   }
 
+  @media (min-width: 1023.99px) {
+    .deck-panel {
+      min-width: 300px;
+    }
+  }
+
+  @media (min-width: 479.99px) {
+    @container (max-width: 320px) {
+      .zone-section .display-mode-switch {
+        display: none;
+      }
+    }
+  }
+
   @media (max-width: 479.99px) {
     ::-webkit-scrollbar {
       display: none;
@@ -2231,6 +2111,7 @@
     .deck-panel {
       width: 100% !important;
       min-height: 65px;
+      min-width: none;
       max-height: calc(100% - 26px);
       flex-direction: column-reverse;
       justify-content: space-between;
@@ -2255,31 +2136,6 @@
 
     .zone-list.multi-item {
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    }
-
-    /* .zone-list.graphic-mode {
-      --single-column-count: 4;
-      grid-template-columns: repeat(var(--single-column-count), 1fr);
-    } */
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(20px) scale(0.98);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0) scale(1);
-      opacity: 1;
     }
   }
 
@@ -2332,16 +2188,15 @@
 
   .print-slide-image {
     flex: 0 0 100%;
+    width: 70%;
     max-width: 260px;
     display: flex;
     justify-content: center;
     align-items: center;
   }
 
-  /* 针对 CardSimpleImage 渲染的 img 标签使用 :global 穿透 */
   :global(.print-slide-image img) {
     width: 100%;
-    /*aspect-ratio: 744/1040;*/
     max-height: 360px;
     object-fit: cover;
     border-radius: var(--radius-md);
@@ -2402,9 +2257,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* =========================================
-     Mobile Responsive (手机适配)
-     ========================================= */
   @media (max-width: 640px) {
     .print-slider {
       flex-direction: column;
@@ -2484,18 +2336,13 @@
   .save-modal-textarea {
     width: 100%;
     box-sizing: border-box;
-
     border: 1px solid var(--border-color, #d1d5db);
     border-radius: 7px;
-
     background: var(--bg-primary);
     color: var(--text-primary);
-
     font: inherit;
     font-size: 14px;
-
     outline: none;
-
     transition:
       border-color 0.15s,
       box-shadow 0.15s;
@@ -2509,7 +2356,6 @@
   .save-modal-textarea {
     min-height: 110px;
     padding: 10px 11px;
-
     resize: vertical;
     line-height: 1.5;
   }
@@ -2531,28 +2377,23 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+
   .save-modal-cancel,
   .save-modal-confirm {
     min-height: 36px;
-
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 7px;
-
     padding: 0 14px;
-
     border-radius: 7px;
-
     font-size: 13px;
     font-weight: 600;
-
     cursor: pointer;
   }
 
   .save-modal-cancel {
     border: 1px solid var(--border-color, #d1d5db);
-
     background: var(--bg-primary);
     color: var(--text-primary);
   }
@@ -2563,7 +2404,6 @@
 
   .save-modal-confirm {
     border: 1px solid var(--accent-color);
-
     background: var(--accent-color);
     color: var(--bg-primary);
   }
@@ -2586,24 +2426,11 @@
     }
   }
 
-  /* ========== 更多菜单样式 ========== */
   .more-menu-content {
     display: flex;
     flex-direction: column;
     gap: 4px;
     padding: 4px 0;
-  }
-
-  .more-menu-section {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 4px;
-    margin-bottom: 4px;
-  }
-
-  .more-menu-section:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-    margin-bottom: 0;
   }
 
   .more-menu-item {
@@ -2627,16 +2454,6 @@
 
   .more-menu-item:active {
     background-color: var(--bg-active);
-  }
-
-  /* ========== 显示模式切换 ========== */
-  .more-menu-toggle-buttons {
-    justify-content: space-between !important;
-    cursor: default !important;
-  }
-
-  .more-menu-toggle-buttons:hover {
-    background-color: transparent !important;
   }
 
   .toggle-button-group {
@@ -2674,13 +2491,25 @@
     background-color: color-mix(in oklab, var(--accent-color) 85%, black);
   }
 
-  /* ========== 区域选择器（可展开） ========== */
-  .more-menu-expandable {
-    cursor: pointer;
+  .display-mode-advanced {
+    padding: 4px 14px 10px 14px;
+    animation: slideDown 0.25s ease;
   }
 
-  .more-menu-expandable:hover {
-    background-color: var(--bg-hover);
+  .display-mode-zone-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+  }
+
+  .zone-label {
+    font-size: var(--text-base);
+    color: var(--text-primary);
+  }
+
+  .more-menu-expandable {
+    cursor: pointer;
   }
 
   .expand-control {
@@ -2690,27 +2519,17 @@
     margin-left: auto;
   }
 
-  .selected-zone-label {
-    font-size: var(--text-sm);
-    color: var(--accent-color);
-    font-weight: 500;
-  }
-
   :global(.expand-icon) {
     transition: transform 0.3s ease;
     color: var(--text-secondary);
   }
 
-  :global(.expand-icon.expanded) {
-    transform: rotate(90deg);
+  :global(.more-menu-expandable .expand-icon:hover) {
+    background-color: var(--bg-hover);
   }
 
-  .zone-selector-dropdown {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 4px 14px 8px 14px;
-    animation: slideDown 0.25s ease;
+  :global(.expand-icon.expanded) {
+    transform: rotate(90deg);
   }
 
   @keyframes slideDown {
@@ -2724,43 +2543,6 @@
     }
   }
 
-  .zone-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    width: 100%;
-    position: relative;
-  }
-
-  .zone-option:hover {
-    background-color: var(--bg-hover);
-  }
-
-  .zone-option.active {
-    background-color: color-mix(in oklab, var(--accent-color) 10%, transparent);
-    color: var(--accent-color);
-  }
-
-  .zone-option-name {
-    flex: 1;
-    text-align: left;
-    font-weight: 500;
-  }
-
-  .zone-option-count {
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-  }
-
-  /* ========== Toggle Switch ========== */
   .more-menu-toggle {
     justify-content: space-between !important;
     cursor: default !important;
@@ -2778,52 +2560,6 @@
     color: var(--text-primary);
   }
 
-  .toggle-switch {
-    position: relative;
-    width: 44px;
-    height: 24px;
-    background-color: var(--border-color);
-    border-radius: 12px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    flex-shrink: 0;
-    padding: 0;
-  }
-
-  .toggle-switch.active {
-    background-color: var(--accent-color);
-  }
-
-  .toggle-slider {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 20px;
-    height: 20px;
-    background-color: white;
-    border-radius: 50%;
-    transition: transform 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  }
-
-  .toggle-switch.active .toggle-slider {
-    transform: translateX(20px);
-  }
-
-  .toggle-switch:hover .toggle-slider {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  }
-
-  .toggle-switch:active .toggle-slider {
-    transform: scale(0.9);
-  }
-
-  .toggle-switch.active:active .toggle-slider {
-    transform: translateX(20px) scale(0.9);
-  }
-
-  /* ========== 输入框 ========== */
   .more-menu-input {
     justify-content: space-between !important;
     cursor: default !important;
@@ -2831,14 +2567,6 @@
 
   .more-menu-input:hover {
     background-color: transparent !important;
-  }
-
-  .more-menu-label {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
   }
 
   .number-input {
@@ -2862,7 +2590,6 @@
     opacity: 0.5;
   }
 
-  /* ========== 卡组统计 ========== */
   .deck-stats-content {
     display: flex;
     flex-direction: column;
@@ -2915,41 +2642,18 @@
     color: var(--accent-color);
   }
 
-  /* ========== 响应式 ========== */
   @media (max-width: 479.99px) {
     .more-menu-item {
       padding: 12px 14px;
       font-size: var(--text-base);
     }
 
-    .toggle-switch {
-      width: 48px;
-      height: 28px;
-    }
-
-    .toggle-slider {
-      width: 24px;
-      height: 24px;
-    }
-
-    .toggle-switch.active .toggle-slider {
-      transform: translateX(20px);
-    }
-
-    .toggle-switch:active .toggle-slider {
-      transform: scale(0.9);
-    }
-
-    .toggle-switch.active:active .toggle-slider {
-      transform: translateX(20px) scale(0.9);
-    }
-
-    .zone-option {
-      padding: 10px 12px;
-    }
-
     .stat-row {
       padding: 10px 12px;
+    }
+
+    .display-mode-zone-row {
+      padding: 8px 0;
     }
   }
 </style>

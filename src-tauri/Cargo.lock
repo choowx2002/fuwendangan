@@ -3,6 +3,26 @@
 version = 4
 
 [[package]]
+name = "Rune_Archive"
+version = "0.8.5"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-http",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-os",
+ "tauri-plugin-prevent-default",
+ "tauri-plugin-sql",
+ "tauri-plugin-store",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6918,24 +6938,4 @@ dependencies = [
  "serde",
  "syn 2.0.118",
  "winnow 1.0.3",
-]
-
-[[package]]
-name = "符文档案"
-version = "0.8.0"
-dependencies = [
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-http",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-os",
- "tauri-plugin-prevent-default",
- "tauri-plugin-sql",
- "tauri-plugin-store",
 ]

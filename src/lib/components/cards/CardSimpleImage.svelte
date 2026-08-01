@@ -60,9 +60,8 @@
 
   .rotate-wrapper {
     position: absolute;
-    top: 25%;
+    top: 50%;
     left: 50%;
-    /* DOM 宽高互换：宽=容器高，高=容器宽 */
     width: calc(100% * 744 / 1040);
     height: calc(100% * 1040 / 744);
     transform: translate(-50%, -50%) rotate(-90deg);

@@ -1,6 +1,6 @@
 [package]
-name = "符文档案"
-version = "0.8.0"
+name = "Rune_Archive"
+version = "0.8.5"
 description = "A Tauri App"
 authors = ["天龠wx"]
 edition = "2021"

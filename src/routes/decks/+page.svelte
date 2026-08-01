@@ -9,25 +9,12 @@
     type DeckListResult,
   } from '$lib/db'
   import { getRelativeTime } from '$lib/services/time-helper'
-  import {
-    Plus,
-    Search,
-    Funnel,
-    EllipsisVertical,
-    Copy,
-    Trash2,
-    PenLine,
-    Folder,
-    HeartIcon,
-  } from '@lucide/svelte'
+  import { Plus, Search, Funnel, Copy, Trash2, Folder, HeartIcon } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
-  import { stopPropagation } from 'svelte/legacy'
 
-  // 模拟卡组数据
   let allDecks = $state<DeckListResult[]>([])
 
-  // 筛选状态
   let searchQuery = $state('')
   let selectedFormat = $state('全部')
   let showFavoritesOnly = $state(false)
@@ -41,15 +28,11 @@
     '2v2（熔岩大厅）',
   ]
 
-  // 筛选后的卡组列表
   const filteredDecks = $derived(
     allDecks.filter((deck) => {
       const matchesSearch = deck.name.toLowerCase().includes(searchQuery.toLowerCase())
-
       const matchesFormat = selectedFormat === '全部' || deck.format === selectedFormat
-
       const matchesFavorite = !showFavoritesOnly || deck.is_favorite
-
       return matchesSearch && matchesFormat && matchesFavorite
     })
   )
@@ -84,7 +67,6 @@
 
     try {
       const newDeckId = await duplicateDeck(deckId)
-
       if (newDeckId) {
         message('复制成功！').then(init)
       }
@@ -95,9 +77,8 @@
   }
 
   const init = async () => {
-    const { decks, total } = await getDeckList()
+    const { decks } = await getDeckList()
     allDecks = decks
-    console.log(decks)
   }
 
   onMount(() => {
@@ -106,7 +87,6 @@
 
   beforeNavigate(({ from, cancel, type, delta }) => {
     const isBackward = type === 'popstate' && delta && delta < 0
-
     if (isBackward) {
       cancel()
       goto('/')
@@ -115,18 +95,16 @@
 </script>
 
 <div class="decks-page">
-  <!-- 页面头部 -->
   <header class="page-header">
     <div class="header-content">
       <p class="page-desc">管理你的所有卡组，共 {allDecks.length} 副</p>
     </div>
-    <button class="btn-primary new-deck-btn" onclick={() => goto('/decks/builder')}>
+    <button class="button button-primary" onclick={() => goto('/decks/builder')}>
       <Plus size={18} />
       <span>新建卡组</span>
     </button>
   </header>
 
-  <!-- 筛选工具栏 -->
   <section class="filter-bar">
     <div class="search-box">
       <div class="search-icon">
@@ -151,7 +129,7 @@
       </div>
 
       <button
-        class="favorite-filter btn-secondary"
+        class="button button-ghost favorite-filter"
         class:active={showFavoritesOnly}
         onclick={() => (showFavoritesOnly = !showFavoritesOnly)}
       >
@@ -161,7 +139,6 @@
     </div>
   </section>
 
-  <!-- 卡组网格 -->
   {#if filteredDecks.length === 0}
     <div class="empty-state">
       <Folder size={48} class="empty-icon" />
@@ -175,9 +152,7 @@
           class="deck-card"
           class:favorite={deck.is_favorite}
           role="presentation"
-          onclick={() => {
-            goto(`/decks/${deck.id}`)
-          }}
+          onclick={() => goto(`/decks/${deck.id}`)}
         >
           <div class="deck-header">
             <div class="deck-avatar">
@@ -190,9 +165,6 @@
               <h3 class="deck-name">{deck.name}</h3>
               <span class="deck-format-badge">{deck.format}</span>
             </div>
-            <!-- <button class="menu-btn" title="更多操作">
-              <EllipsisVertical size={18} />
-            </button> -->
           </div>
 
           <div class="deck-stats-row">
@@ -220,7 +192,7 @@
 
           <div class="deck-actions">
             <button
-              class="action-btn"
+              class="button-icon action-btn"
               onclick={(e) => {
                 e.stopPropagation()
                 duplicateDeckAsk(deck.name, deck.id)
@@ -230,7 +202,7 @@
               <Copy size={16} />
             </button>
             <button
-              class="action-btn"
+              class="button-icon action-btn"
               onclick={(e) => {
                 e.stopPropagation()
                 toggleFavoriteAction(deck.id)
@@ -244,7 +216,7 @@
               {/if}
             </button>
             <button
-              class="action-btn danger"
+              class="button-icon action-btn action-btn-danger"
               onclick={(e) => {
                 e.stopPropagation()
                 deleteDeckAsk(deck.name, deck.id)
@@ -273,7 +245,6 @@
     }
   }
 
-  /* 页面头部 */
   .page-header {
     display: flex;
     align-items: flex-start;
@@ -288,32 +259,9 @@
 
   .page-desc {
     font-size: var(--text-md);
-    /* color: var(--text-secondary); */
     margin: 0;
   }
 
-  .new-deck-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--text-primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-
-  .new-deck-btn:hover {
-    background: #2f2e29;
-    transform: translateY(-1px);
-  }
-
-  /* 筛选工具栏 */
   .filter-bar {
     display: flex;
     align-items: center;
@@ -352,7 +300,8 @@
   }
 
   .search-input:focus {
-    border-color: var(--text-primary);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-color) 15%, transparent);
   }
 
   .search-input::placeholder {
@@ -390,31 +339,17 @@
     min-width: 60px;
   }
 
-  .btn-secondary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: var(--text-base);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .btn-secondary:hover {
-    background: var(--bg-secondary);
-  }
-
-  .btn-secondary.active {
+  .favorite-filter.active {
     background: var(--text-primary);
     color: white;
     border-color: var(--text-primary);
   }
 
-  /* 空状态 */
+  .favorite-filter.active:hover {
+    background: #2f2e29;
+    color: white;
+  }
+
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -442,7 +377,6 @@
     margin: 0;
   }
 
-  /* 卡组网格 */
   .decks-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -465,6 +399,7 @@
     transition: all 0.15s;
     position: relative;
     overflow: hidden;
+    cursor: pointer;
   }
 
   .deck-card:hover {
@@ -515,29 +450,10 @@
     display: inline-block;
     font-size: var(--text-sm);
     padding: 2px 8px;
-    background: var(--bg-secondary);
-    border-radius: 4px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
   }
-
-  /* .menu-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border: none;
-    background: transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.1s;
-    flex-shrink: 0;
-  }
-
-  .menu-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  } */
 
   .deck-stats-row {
     display: flex;
@@ -598,26 +514,17 @@
   }
 
   .action-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
     width: 36px;
     height: 36px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
   }
 
   .action-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
     border-color: #d3d1cb;
   }
 
-  .action-btn.danger:hover {
+  .action-btn-danger:hover {
     background: #fee;
     color: #e03e3e;
     border-color: #fcc;
@@ -625,10 +532,11 @@
 
   .deck-avatar {
     height: 48px;
-    overflow: hidden;
     width: 48px;
-    border-radius: 99%;
+    overflow: hidden;
+    border-radius: 50%;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
   }
 
   :global(.deck-avatar > img) {
