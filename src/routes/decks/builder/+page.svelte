@@ -1,6 +1,5 @@
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
-  import type { CardBase, CardPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
   import { page } from '$app/state'
   import { onMount, tick } from 'svelte'
@@ -23,22 +22,22 @@
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
-  import { validateDeck } from '$lib/decks/deck-validator'
-  import { isMobile } from '$lib/services/os-serives'
+  import { validateDeck, checkZoneCapacity } from '$lib/decks/deck-validator'
+  import { convertDeckCardInput, compressDeckCards, flattenDeckCards } from '$lib/decks/deck-input'
+  import { groupCards } from '$lib/decks/group-cards'
+  import { isMobile } from '$lib/utils/os'
   import {
     createDeck,
     deleteDeck,
     saveDeckAsNewVersion,
     updateDeck,
     updateDeckLatestVersion,
-    type DeckCardInput,
     type DeckInput,
   } from '$lib/db'
   import { loadDeckForEdit } from '$lib/decks/deck-loader'
-  import CommonModal from '$lib/components/CommonModal.svelte'
-  import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
-
-  type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
+  import type { cardAndPrint } from '$lib/decks/types'
 
   let legendCards = $state<cardAndPrint[]>([])
   let championCards = $state<cardAndPrint[]>([])
@@ -108,16 +107,16 @@
   let animationFrame: number | null = null
   let pendingEvent: PointerEvent | null = null
 
-  function getAllDeckCards(): (cardAndPrint & { zone: string })[] {
-    return [
-      ...legendCards.map((card) => ({ ...card, zone: 'legend' })),
-      ...championCards.map((card) => ({ ...card, zone: 'champion' })),
-      ...mainDeckCards.map((card) => ({ ...card, zone: 'mainDeck' })),
-      ...battlefieldCards.map((card) => ({ ...card, zone: 'battlefields' })),
-      ...runeCards.map((card) => ({ ...card, zone: 'runes' })),
-      ...sideboardCards.map((card) => ({ ...card, zone: 'sideboard' })),
-    ]
-  }
+  const allDeckCards = $derived(
+    flattenDeckCards({
+      legendCards,
+      championCards,
+      mainDeckCards,
+      battlefieldCards,
+      runeCards,
+      sideboardCards,
+    })
+  )
 
   let deckIssues = $derived(
     validateDeck({
@@ -207,93 +206,13 @@
     }
   }
 
-  function groupCards(cards: cardAndPrint[]) {
-    const map = new Map<string, { card: cardAndPrint; count: number }>()
-
-    for (const card of cards) {
-      const key = `${card.id}:${card.selectedPrints ?? ''}`
-      const existing = map.get(key)
-
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(key, {
-          card,
-          count: 1,
-        })
-      }
-    }
-
-    return Array.from(map.values())
-  }
-
-  function checkZoneCapacity(targetZone: ZoneKey): string | null {
-    const config = ZONE_CONFIG[targetZone]
-    let currentCount: number
-
-    switch (targetZone) {
-      case 'legend':
-        currentCount = legendCards.length
-        break
-      case 'champion':
-        currentCount = championCards.length
-        break
-      case 'mainDeck':
-        currentCount = mainDeckCards.length
-        break
-      case 'battlefields':
-        currentCount = battlefieldCards.length
-        break
-      case 'runes':
-        currentCount = runeCards.length
-        break
-      case 'sideboard':
-        currentCount = sideboardCards.length
-        break
-      default:
-        currentCount = 0
-    }
-
-    if (currentCount >= config.maxCount) {
-      return `${config.name} 区域已达到最大容量 ${config.maxCount} 张！`
-    }
-    return null
-  }
-
-  // @unused: 调用已被注释掉，函数体从未执行
-  function checkNameSubtitleLimit(card: cardAndPrint, targetZone: ZoneKey): string | null {
-    const checkedZones: ZoneKey[] = ['champion', 'mainDeck', 'sideboard']
-    if (!checkedZones.includes(targetZone)) return null
-    if ((card.card_name_cn ?? '') + (card.sub_title_cn ?? '') === '小蜘蛛') return null
-    const cardIdentifier = `${card.card_name_cn || ''}|${card.sub_title_cn || ''}`
-    const currentTotalCount = [...championCards, ...mainDeckCards, ...sideboardCards].filter(
-      (c) => `${c.card_name_cn || ''}|${c.sub_title_cn || ''}` === cardIdentifier
-    ).length
-
-    if (currentTotalCount >= 3) {
-      return `根据《符文战场》规则，同名卡牌（${card.card_name_cn}${card.sub_title_cn ? ' - ' + card.sub_title_cn : ''}）在 Champion + MainDeck + Sideboard 中最多只能加入 3 张！`
-    }
-    return null
-  }
-
-  // @unused: 调用已被注释掉，函数体从未执行
-  function checkWeiWoLimit(card: cardAndPrint): string | null {
-    if (!card.keyword?.includes('唯我')) return null
-
-    const weiWoCount = getAllDeckCards().filter((c) => c.keyword?.includes('唯我')).length
-    if (weiWoCount >= 1) {
-      return `根据《符文战场》规则，关键字包含"唯我"的卡牌全局只能有一张！`
-    }
-    return null
-  }
-
   async function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
       message('该卡牌为禁卡，无法加入卡组！')
       return
     }
 
-    const capacityError = checkZoneCapacity(selectedZone)
+    const capacityError = checkZoneCapacity(selectedZone, getZoneCards(selectedZone).length)
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
     if (capacityError && !isReplacable) {
       message(capacityError)
@@ -478,35 +397,6 @@
     isDirty = true
   }
 
-  const convertDeckCardInput = (cards: (cardAndPrint & { zone: string })[]) => {
-    const deckCardInputs: DeckCardInput[] = []
-    for (const card of cards) {
-      const c: DeckCardInput = {
-        cardPrintId: card.selectedPrints ?? card.card_prints[0].id,
-        quantity: 1,
-        zone: card.zone!,
-      }
-      deckCardInputs.push(c)
-    }
-
-    return deckCardInputs
-  }
-
-  const compressDeckCards = (cards: DeckCardInput[]) => {
-    const compressed: DeckCardInput[] = []
-    for (const card of cards) {
-      const existing = compressed.find(
-        (c) => c.cardPrintId === card.cardPrintId && c.zone === card.zone
-      )
-      if (existing) {
-        existing.quantity += card.quantity
-      } else {
-        compressed.push(card)
-      }
-    }
-    return compressed
-  }
-
   async function handleSave() {
     if (hasErrors) {
       message('你的构筑存在问题哦')
@@ -549,7 +439,7 @@
       format: '1v1（比赛）',
     }
 
-    const convertedCards = convertDeckCardInput(getAllDeckCards())
+    const convertedCards = convertDeckCardInput(allDeckCards)
     const compressCards = compressDeckCards(convertedCards)
 
     let deckID: string | null = null
@@ -869,11 +759,6 @@
     }
   }
 
-  // @unused: 已定义但从未在模板或脚本中调用
-  function getZoneDisplayMode(zone: ZoneKey): CardDisplayMode {
-    return zoneDisplayModes[zone] || 'text'
-  }
-
   const zoneDisplayConfig: { key: ZoneKey; label: string }[] = [
     { key: 'legend', label: '传奇' },
     { key: 'champion', label: '英雄' },
@@ -949,7 +834,7 @@
     <CardPool
       onCardClick={handleAddCard}
       onMenuClick={handleRemoveOneCard}
-      deckCards={getAllDeckCards()}
+      deckCards={allDeckCards}
       showDeckCount={true}
       bind:zone={selectedZone}
     />
@@ -1725,7 +1610,7 @@
     <div class="deck-stats-content">
       <div class="stat-row">
         <span class="stat-label">总卡牌数</span>
-        <span class="stat-value">{getAllDeckCards().length}</span>
+        <span class="stat-value">{allDeckCards.length}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">传奇</span>
@@ -1769,7 +1654,7 @@
       <div class="stat-divider"></div>
       <div class="stat-row stat-total">
         <span class="stat-label">合计</span>
-        <span class="stat-value">{getAllDeckCards().length}</span>
+        <span class="stat-value">{allDeckCards.length}</span>
       </div>
     </div>
 

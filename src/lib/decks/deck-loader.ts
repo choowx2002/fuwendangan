@@ -3,10 +3,9 @@
  */
 
 import { getCardByPrintId, getDeckById, getLatestDeckCards, getPrintsByCardId } from '$lib/db'
-import type { CardBase, CardPrint, Deck } from '$lib/db'
-import type { ZoneKey } from '$lib/db/constants'
-
-type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
+import type { Deck } from '$lib/db'
+import type { ZoneKey } from './zone'
+import type { cardAndPrint } from './types'
 
 export interface LoadedDeckForEdit {
   deck: Deck

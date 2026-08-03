@@ -1,7 +1,7 @@
 <!-- src/routes/+layout.svelte -->
 <script lang="ts">
-  import AppShell from '../lib/components/AppShell.svelte'
-  import LoadingModal from '../lib/components/LoadingModal.svelte'
+  import AppShell from '../lib/components/layout/AppShell.svelte'
+  import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
   import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import '../app.css'

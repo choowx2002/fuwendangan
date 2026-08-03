@@ -16,7 +16,7 @@
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
   import CachedImage from './CachedImage.svelte'
-  import type { ZoneKey } from '$lib/db/constants'
+  import type { ZoneKey } from '$lib/decks/zone'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---

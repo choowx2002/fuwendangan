@@ -14,8 +14,8 @@
     type Lang,
   } from '$lib/stores/rules'
   import { ChevronLeft, Menu } from '@lucide/svelte'
-  import { isMobile } from '$lib/services/os-serives'
-  import { longpress } from '$lib/services/longpress'
+  import { isMobile } from '$lib/utils/os'
+  import { longpress } from '$lib/utils/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { goto } from '$app/navigation'
 

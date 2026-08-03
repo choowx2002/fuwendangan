@@ -1,4 +1,4 @@
-<!-- src/lib/components/cards/NumberRangeSlider.svelte -->
+<!-- src/lib/components/ui/NumberRangeSlider.svelte -->
 <script lang="ts">
   import type { NumberRange } from '$lib/db/types'
 

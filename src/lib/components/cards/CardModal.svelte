@@ -5,7 +5,7 @@
   import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
   import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
   import { showForeignCardArt, showTTSFeatures } from '$lib/stores/settings'
-  import { ttsState } from '$lib/stores/ui-store.svelte'
+  import { ttsState } from '$lib/stores/tts'
   import { sendToTTSTesting } from '$lib/services/tts-communication-service'
 
   interface Props {

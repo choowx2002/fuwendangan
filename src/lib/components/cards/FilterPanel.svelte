@@ -2,7 +2,7 @@
   import { Lock, X } from '@lucide/svelte'
   import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
-  import NumberRangeSlider from '../NumberRangeSlider.svelte'
+  import NumberRangeSlider from '../ui/NumberRangeSlider.svelte'
   import { iconLanguage } from '$lib/cards/config/constants'
 
   interface Props {

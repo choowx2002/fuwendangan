@@ -7,7 +7,7 @@ import {
 import { appLocalDataDir, join } from '@tauri-apps/api/path'
 import { message } from '@tauri-apps/plugin-dialog'
 import { setProgressStatus, uiState, hideLoading } from '$lib/stores/ui-store.svelte'
-import { isMobile } from '$lib/services/os-serives'
+import { isMobile } from '$lib/utils/os'
 import {
   isPermissionGranted,
   requestPermission,

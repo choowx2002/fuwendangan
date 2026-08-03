@@ -1,13 +1,18 @@
-export function longpress(node, options = {}) {
-  let timer
+interface LongpressOptions {
+  duration?: number
+  onLongPress?: (event: Event) => void
+}
+
+export function longpress(node: HTMLElement, options: LongpressOptions = {}) {
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   // Fallback to 500ms if no duration is specified
   const duration = options.duration || 500
   const callback = options.onLongPress
 
-  function handleStart(event) {
+  function handleStart(event: Event) {
     // Prevent launching on right clicks
-    if (event.type === 'mousedown' && event.button !== 0) return
+    if (event.type === 'mousedown' && (event as MouseEvent).button !== 0) return
 
     timer = setTimeout(() => {
       if (typeof callback === 'function') {

@@ -1,8 +1,8 @@
-<!-- src/lib/components/AppShell.svelte -->
+<!-- src/lib/components/layout/AppShell.svelte -->
 <script lang="ts">
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
-  import { sidebarState } from '../stores/ui-store.svelte'
+  import { sidebarState } from '../../stores/ui-store.svelte'
   import { page } from '$app/state'
   let { children } = $props()
   let isSidebarOpen = $state(false)

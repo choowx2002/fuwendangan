@@ -31,17 +31,17 @@
     isCardImageDownloading,
   } from '$lib/services/card-image-download-service'
   import { appConfigDir, appLocalDataDir, join } from '@tauri-apps/api/path'
-  import { invoke } from '@tauri-apps/api/core'
+  import { copyFile, writeTextFile, readTextFile } from '$lib/services/db-file-service'
   import { onMount } from 'svelte'
   import { setLoadStatus } from '$lib/stores/ui-store.svelte'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion as getAppVersion } from '@tauri-apps/api/app'
-  import { isMobile } from '$lib/services/os-serives'
+  import { isMobile } from '$lib/utils/os'
   import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
   import { Download, Upload, FileText, FileUp } from '@lucide/svelte'
-  import CommonModal from '$lib/components/CommonModal.svelte'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
 
   // --- 状态管理 ---
   let appVersion = $state('1.0.0')
@@ -303,7 +303,7 @@
 
     await closeDatabase()
     try {
-      await invoke('copy_file', { source: dbFilePath, dest })
+      await copyFile(dbFilePath, dest)
       await message('数据库备份成功！', { title: '备份', kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : '备份失败', { title: '备份', kind: 'error' })
@@ -336,7 +336,7 @@
 
     await closeDatabase()
     try {
-      await invoke('copy_file', { source: String(src), dest: dbFilePath })
+      await copyFile(String(src), dbFilePath)
       await message('数据库恢复成功！', { title: '恢复', kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : '恢复失败', { title: '恢复', kind: 'error' })
@@ -428,10 +428,7 @@
         })
       }
 
-      await invoke('write_text_file', {
-        path: dest,
-        content: JSON.stringify(data, null, 2),
-      })
+      await writeTextFile(dest, JSON.stringify(data, null, 2))
       await message(`已导出 ${data.decks.length} 副卡组！`, { title: '导出', kind: 'info' })
       showExportModal = false
     } catch (e) {
@@ -505,7 +502,7 @@
 
     let content: string
     try {
-      content = await invoke<string>('read_text_file', { path: String(src) })
+      content = await readTextFile(String(src))
     } catch (e) {
       await message(e instanceof Error ? e.message : '读取文件失败', {
         title: '导入',

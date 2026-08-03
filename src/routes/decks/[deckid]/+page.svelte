@@ -15,12 +15,12 @@
     computeTotalCards,
     type VersionDiffItem,
   } from '$lib/decks/version-diff'
-  import { getRelativeTime } from '$lib/services/time-helper'
-  import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
+  import { getRelativeTime } from '$lib/utils/time-helper'
+  import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { onMount } from 'svelte'
-  import { getCodeFromDeck } from '@piltoverarchive/riftbound-deck-codes'
-  import type { Deck as RiftboundDeck } from '@piltoverarchive/riftbound-deck-codes'
+  import { formatDeckExport } from '$lib/decks/deck-export'
+  import { buildDeckCode } from '$lib/decks/deck-code'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import {
     History,
@@ -273,41 +273,7 @@
     simPhase = 'idle'
   }
 
-  const EXPORT_ZONE_ORDER: ZoneKey[] = [
-    'legend',
-    'champion',
-    'mainDeck',
-    'battlefields',
-    'runes',
-    'sideboard',
-  ]
-
-  function sortForExport(list: DeckCardDetail[]): DeckCardDetail[] {
-    return [...list].sort((a, b) => {
-      if (b.quantity !== a.quantity) return b.quantity - a.quantity
-      const ac = a.print_code ?? ''
-      const bc = b.print_code ?? ''
-      return ac < bc ? -1 : ac > bc ? 1 : 0
-    })
-  }
-
-  const exportText = $derived.by(() => {
-    const blocks: string[] = []
-
-    for (const zone of EXPORT_ZONE_ORDER) {
-      const list = zoneCards[zone]
-      if (list.length === 0) continue
-
-      const lines = [`${ZONE_CONFIG[zone].name}:`]
-      for (const c of sortForExport(list)) {
-        const name = c.sub_title_en ? `${c.card_name_en} - ${c.sub_title_en}` : c.card_name_en
-        lines.push(`${c.quantity} ${name} [${c.print_code}]`)
-      }
-      blocks.push(lines.join('\n'))
-    }
-
-    return blocks.join('\n\n')
-  })
+  const exportText = $derived(formatDeckExport(zoneCards))
 
   function copyToClipboard() {
     navigator.clipboard.writeText(exportText)
@@ -317,27 +283,7 @@
     }, 2000)
   }
 
-  const deckCodeResult = $derived.by((): { code: string | null; error: string | null } => {
-    if (cards.length === 0) return { code: null, error: null }
-    try {
-      const toCodeList = (list: DeckCardDetail[]): RiftboundDeck =>
-        list.map((c) => ({ cardCode: c.print_code, count: c.quantity }))
-
-      const main = toCodeList([
-        ...legendCards,
-        ...mainCards,
-        ...runeCards,
-        ...battlefieldCards,
-        ...championCards,
-      ])
-      const side = toCodeList(sideboardCards)
-      const champion = championCards[0]?.print_code
-      const code = getCodeFromDeck(main, side, champion)
-      return { code, error: null }
-    } catch (e) {
-      return { code: null, error: e instanceof Error ? e.message : '生成失败' }
-    }
-  })
+  const deckCodeResult = $derived(buildDeckCode(zoneCards))
 
   function copyDeckCode() {
     if (!deckCodeResult.code) return

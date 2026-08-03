@@ -15,13 +15,8 @@
     X,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
-  import {
-    selectedTTSColor,
-    colorOptions,
-    type colorValue,
-    ttsState,
-    sidebarState,
-  } from '../stores/ui-store.svelte'
+  import { sidebarState } from '../../stores/ui-store.svelte'
+  import { selectedTTSColor, colorOptions, type colorValue, ttsState } from '../../stores/tts'
   import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { showTTSFeatures } from '$lib/stores/settings'
   import { uiState } from '$lib/stores/ui-store.svelte'

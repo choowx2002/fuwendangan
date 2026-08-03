@@ -8,7 +8,7 @@
     toggleFavorite,
     type DeckListResult,
   } from '$lib/db'
-  import { getRelativeTime } from '$lib/services/time-helper'
+  import { getRelativeTime } from '$lib/utils/time-helper'
   import { Plus, Search, Funnel, Copy, Trash2, Folder, HeartIcon } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'

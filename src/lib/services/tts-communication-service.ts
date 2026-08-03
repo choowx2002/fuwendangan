@@ -2,8 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { get } from 'svelte/store'
 import { deckToString } from '$lib/cards/utils/deckSerializer.js'
-import type { TTSState } from '$lib/stores/ui-store.svelte.js'
-import { ttsState, selectedTTSColor } from '$lib/stores/ui-store.svelte.js'
+import { ttsState, selectedTTSColor, type TTSState } from '$lib/stores/tts'
 import type { CardWithPrint } from '$lib/db'
 
 /**

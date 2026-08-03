@@ -3,10 +3,10 @@
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import type { CardBase } from '$lib/db/types'
-  import { ttsState } from '$lib/stores/ui-store.svelte'
+  import { ttsState } from '$lib/stores/tts'
   import { multiSpawn } from '$lib/services/tts-communication-service'
   import { beforeNavigate, goto } from '$app/navigation'
-  import { routeBackConfig } from '$lib/services/route-service'
+  import { routeBackConfig } from '$lib/utils/route-config'
 
   let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])

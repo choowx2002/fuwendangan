@@ -1,4 +1,4 @@
-// helpers/network.ts
+// utils/network.ts
 
 export interface NetworkStatus {
   online: boolean

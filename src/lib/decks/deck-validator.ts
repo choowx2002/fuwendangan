@@ -1,8 +1,6 @@
-// src/lib/utils/deck-validator.ts
-import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
-import type { CardBase, CardPrint } from '$lib/db/types'
-
-type cardAndPrint = CardBase & { card_prints: CardPrint[] } & { selectedPrints?: string }
+// src/lib/decks/deck-validator.ts
+import { ZONE_CONFIG, type ZoneKey } from './zone'
+import type { cardAndPrint } from './types'
 
 export interface DeckIssue {
   severity: 'error' | 'warning'
@@ -127,4 +125,12 @@ export function validateDeck(deck: {
   }
 
   return issues
+}
+
+export function checkZoneCapacity(zone: ZoneKey, currentCount: number): string | null {
+  const config = ZONE_CONFIG[zone]
+  if (currentCount >= config.maxCount) {
+    return `${config.name} 区域已达到最大容量 ${config.maxCount} 张！`
+  }
+  return null
 }

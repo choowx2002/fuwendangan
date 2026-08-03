@@ -1,4 +1,4 @@
-<!-- src/lib/components/Topbar.svelte -->
+<!-- src/lib/components/layout/Topbar.svelte -->
 <script lang="ts">
   import { Menu, Search, Bell } from '@lucide/svelte'
 
