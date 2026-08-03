@@ -45,6 +45,7 @@ export {
   saveCard,
   saveCards,
   getCardById,
+  getCardByPrintId,
   getCardCount,
   deleteCard,
   clearAllCards,

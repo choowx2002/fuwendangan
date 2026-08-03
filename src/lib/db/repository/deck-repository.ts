@@ -196,6 +196,8 @@ export interface DeckCard {
 export interface DeckCardDetail extends DeckCard {
   card_name_cn: string
   card_name_en: string
+  sub_title_cn: string | null
+  sub_title_en: string | null
   energy: number
   return_energy: number
   power: number
@@ -203,6 +205,22 @@ export interface DeckCardDetail extends DeckCard {
   print_code: string
   img_cdn: string
   rarity_name: string
+}
+
+/**
+ * 某版本中的卡牌（含版本归属，用于一次性加载全部版本的卡牌以计算差异）
+ */
+export interface DeckVersionCard {
+  deck_version_id: string
+  card_id: string // card_prints.id
+  quantity: number
+  zone: string
+  card_name_cn: string
+  card_name_en: string
+  sub_title_cn: string | null
+  sub_title_en: string | null
+  print_code: string
+  img_cdn: string | null
 }
 
 export async function saveDeckAsNewVersion(
@@ -257,6 +275,57 @@ export async function saveDeckAsNewVersion(
 }
 
 /**
+ * 覆盖更新指定卡组的最新版本卡牌内容（不新增版本）
+ */
+export async function updateDeckLatestVersion(
+  deckId: string,
+  cards: DeckCardInput[]
+): Promise<string> {
+  const db = await getDatabase()
+  const timestamp = now()
+
+  const latestVersionResult = await db.select<{ id: string }[]>(
+    `SELECT id FROM deck_versions WHERE deck_id = ? ORDER BY version_number DESC LIMIT 1`,
+    [deckId]
+  )
+
+  if (latestVersionResult.length === 0) {
+    return saveDeckAsNewVersion(deckId, cards)
+  }
+
+  const versionId = latestVersionResult[0].id
+
+  try {
+    await db.execute(`DELETE FROM deck_cards WHERE deck_version_id = ?`, [versionId])
+
+    if (cards.length > 0) {
+      const insertSql = `
+         INSERT INTO deck_cards (id, deck_version_id, card_id, quantity, zone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+       `
+      for (const card of cards) {
+        if (card.quantity > 0) {
+          await db.execute(insertSql, [
+            Snowflake.generate(),
+            versionId,
+            card.cardPrintId,
+            card.quantity,
+            card.zone,
+            timestamp,
+          ])
+        }
+      }
+    }
+
+    return versionId
+  } catch (error) {
+    console.error('[DECKS VERSION] 覆盖更新失败:', error)
+
+    throw error
+  }
+}
+
+/**
  * 使用 WITH (CTE) 语法，优雅地找出最新版本并关联查询
  */
 export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail[]> {
@@ -271,7 +340,7 @@ export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail
      )
      SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
-       cb.card_name_cn, cb.card_name_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list,
+       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id
@@ -305,7 +374,7 @@ export async function getDeckCardsByVersion(versionId: string): Promise<DeckCard
   const sql = `
      SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
-       cb.card_name_cn, cb.card_name_en, cb.energy, cb.power, cb.card_color_list,
+       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.power, cb.card_color_list,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id
@@ -316,6 +385,26 @@ export async function getDeckCardsByVersion(versionId: string): Promise<DeckCard
        cb.card_name_cn
    `
   return await db.select<DeckCardDetail[]>(sql, [versionId])
+}
+
+/**
+ * 一次性获取某个卡组所有版本的卡牌（用于版本历史差异对比，避免 N+1 查询）
+ */
+export async function getDeckVersionCards(deckId: string): Promise<DeckVersionCard[]> {
+  const db = await getDatabase()
+  const sql = `
+     SELECT
+       dc.deck_version_id, dc.card_id, dc.quantity, dc.zone,
+       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en,
+       cp.card_no_extend as print_code, cp.img_cdn
+     FROM deck_cards dc
+     JOIN deck_versions dv ON dc.deck_version_id = dv.id
+     JOIN card_prints cp ON dc.card_id = cp.id
+     JOIN cards_base cb ON cp.card_id = cb.id
+     WHERE dv.deck_id = ?
+   `
+  const results = await db.select<DeckVersionCard[]>(sql, [deckId])
+  return results ?? []
 }
 
 /**

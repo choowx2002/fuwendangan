@@ -2,6 +2,7 @@
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import type { CardBase, CardPrint } from '$lib/db/types'
   import { beforeNavigate, goto } from '$app/navigation'
+  import { page } from '$app/state'
   import { onMount, tick } from 'svelte'
   import {
     ArrowUpDownIcon,
@@ -27,9 +28,12 @@
     createDeck,
     deleteDeck,
     saveDeckAsNewVersion,
+    updateDeck,
+    updateDeckLatestVersion,
     type DeckCardInput,
     type DeckInput,
   } from '$lib/db'
+  import { loadDeckForEdit } from '$lib/decks/deck-loader'
   import CommonModal from '$lib/components/CommonModal.svelte'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
 
@@ -48,6 +52,7 @@
   let showSaveModal = $state(false)
   let saveDeckName = $state('未命名卡组')
   let saveDeckDescription = $state('')
+  let editingDeckId = $state<string | null>(null)
   let showMoreMenu = $state(false)
   let showDeckStats = $state(false)
 
@@ -165,10 +170,41 @@
 
     window.addEventListener('resize', updateLayoutMode)
 
+    const queryDeckId = page.url.searchParams.get('deckId')
+    if (queryDeckId) {
+      loadDeck(queryDeckId)
+    }
+
     return () => {
       window.removeEventListener('resize', updateLayoutMode)
     }
   })
+
+  async function loadDeck(deckId: string) {
+    try {
+      const loaded = await loadDeckForEdit(deckId)
+      if (!loaded) {
+        message('未找到该卡组')
+        goto('/decks')
+        return
+      }
+
+      editingDeckId = deckId
+      deckName = loaded.deck.name || '未命名卡组'
+      saveDeckName = loaded.deck.name || '未命名卡组'
+      saveDeckDescription = loaded.deck.description || ''
+      legendCards = loaded.legendCards
+      championCards = loaded.championCards
+      mainDeckCards = loaded.mainDeckCards
+      battlefieldCards = loaded.battlefieldCards
+      runeCards = loaded.runeCards
+      sideboardCards = loaded.sideboardCards
+      isDirty = false
+    } catch (error) {
+      console.error('加载卡组失败:', error)
+      message('加载卡组失败')
+    }
+  }
 
   function groupCards(cards: cardAndPrint[]) {
     const map = new Map<string, { card: cardAndPrint; count: number }>()
@@ -496,7 +532,7 @@
     showSaveModal = true
   }
 
-  async function confirmSaveDeck() {
+  async function confirmSaveDeck(mode: 'overwrite' | 'newVersion' = 'newVersion') {
     const name = saveDeckName.trim()
 
     if (!name) {
@@ -518,19 +554,38 @@
     let deckID: string | null = null
 
     try {
-      deckID = await createDeck(deckInfo)
+      if (editingDeckId) {
+        await updateDeck(editingDeckId, {
+          name,
+          description: saveDeckDescription.trim() || null,
+        })
 
-      if (deckID) {
-        await saveDeckAsNewVersion(deckID, compressCards)
+        if (mode === 'overwrite') {
+          await updateDeckLatestVersion(editingDeckId, compressCards)
+        } else {
+          await saveDeckAsNewVersion(editingDeckId, compressCards)
+        }
+
+        deckName = name
+        isDirty = false
+        showSaveModal = false
+
+        goto(`/decks/${editingDeckId}`)
+      } else {
+        deckID = await createDeck(deckInfo)
+
+        if (deckID) {
+          await saveDeckAsNewVersion(deckID, compressCards)
+        }
+
+        deckName = name
+        isDirty = false
+        showSaveModal = false
+
+        goto('/decks')
       }
-
-      deckName = name
-      isDirty = false
-      showSaveModal = false
-
-      goto('/decks')
     } catch (error) {
-      if (deckID) {
+      if (!editingDeckId && deckID) {
         try {
           await deleteDeck(deckID)
         } catch (deleteError) {
@@ -1393,19 +1448,48 @@
 
     {#snippet footer()}
       <button class="save-modal-cancel" disabled={isSaving} onclick={cancelSaveDeck}> 取消 </button>
-      <button
-        class="save-modal-confirm"
-        disabled={isSaving || !saveDeckName.trim()}
-        onclick={confirmSaveDeck}
-      >
-        {#if isSaving}
-          <LoaderCircle class="animate-spin" size={16} />
-          <span>保存中...</span>
-        {:else}
-          <Save size={16} />
-          <span>保存卡组</span>
-        {/if}
-      </button>
+      {#if editingDeckId}
+        <button
+          class="save-modal-confirm save-modal-overwrite"
+          disabled={isSaving || !saveDeckName.trim()}
+          onclick={() => confirmSaveDeck('overwrite')}
+        >
+          {#if isSaving}
+            <LoaderCircle class="animate-spin" size={16} />
+            <span>保存中...</span>
+          {:else}
+            <Save size={16} />
+            <span>覆盖当前卡组</span>
+          {/if}
+        </button>
+        <button
+          class="save-modal-confirm"
+          disabled={isSaving || !saveDeckName.trim()}
+          onclick={() => confirmSaveDeck('newVersion')}
+        >
+          {#if isSaving}
+            <LoaderCircle class="animate-spin" size={16} />
+            <span>保存中...</span>
+          {:else}
+            <Save size={16} />
+            <span>保存为新版本</span>
+          {/if}
+        </button>
+      {:else}
+        <button
+          class="save-modal-confirm"
+          disabled={isSaving || !saveDeckName.trim()}
+          onclick={() => confirmSaveDeck('newVersion')}
+        >
+          {#if isSaving}
+            <LoaderCircle class="animate-spin" size={16} />
+            <span>保存中...</span>
+          {:else}
+            <Save size={16} />
+            <span>保存卡组</span>
+          {/if}
+        </button>
+      {/if}
     {/snippet}
   </CommonModal>
 
@@ -2406,6 +2490,16 @@
     border: 1px solid var(--accent-color);
     background: var(--accent-color);
     color: var(--bg-primary);
+  }
+
+  .save-modal-confirm.save-modal-overwrite {
+    border: 1px solid var(--border-color, #d1d5db);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .save-modal-overwrite:hover:not(:disabled) {
+    background: var(--bg-hover);
   }
 
   .save-modal-confirm:hover:not(:disabled) {

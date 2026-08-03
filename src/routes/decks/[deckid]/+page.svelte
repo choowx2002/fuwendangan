@@ -4,10 +4,17 @@
   import {
     getDeckById,
     getDeckVersions,
+    getDeckVersionCards,
     getLatestDeckCards,
     type Deck,
     type DeckCardDetail,
+    type DeckVersionCard,
   } from '$lib/db/index.js'
+  import {
+    computeVersionDiff,
+    computeTotalCards,
+    type VersionDiffItem,
+  } from '$lib/decks/version-diff'
   import { getRelativeTime } from '$lib/services/time-helper'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/db/constants'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -26,6 +33,9 @@
     Tag,
     Check,
     FileCode,
+    Pencil,
+    Image as ImageIcon,
+    Type as TypeIcon,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -35,9 +45,61 @@
     created_at: string
   }
 
+  interface VersionRow {
+    version: DeckVersion
+    totalCards: number
+    isInitial: boolean
+    diff: VersionDiffItem[]
+  }
+
+  let expandedVersions = $state<Set<string>>(new Set())
+
+  function toggleVersionExpand(versionId: string) {
+    const next = new Set(expandedVersions)
+    if (next.has(versionId)) {
+      next.delete(versionId)
+    } else {
+      next.add(versionId)
+    }
+    expandedVersions = next
+  }
+
+  let imageModeItems = $state<Set<string>>(new Set())
+
+  function toggleDiffImage(key: string) {
+    const next = new Set(imageModeItems)
+    if (next.has(key)) {
+      next.delete(key)
+    } else {
+      next.add(key)
+    }
+    imageModeItems = next
+  }
+
+  const versionRows = $derived.by(() => {
+    const asc = [...versions].sort((a, b) => a.version_number - b.version_number)
+    const rows: VersionRow[] = []
+    let prevCards: DeckVersionCard[] = []
+
+    asc.forEach((version, index) => {
+      const versionCardsList = versionCards.filter((c) => c.deck_version_id === version.id)
+      const diff = index === 0 ? [] : computeVersionDiff(prevCards, versionCardsList)
+      rows.push({
+        version,
+        totalCards: computeTotalCards(versionCardsList),
+        isInitial: index === 0,
+        diff,
+      })
+      prevCards = versionCardsList
+    })
+
+    return rows.reverse()
+  })
+
   let deck = $state<Deck>()
   let cards = $state<DeckCardDetail[]>([])
   let versions = $state<DeckVersion[]>([])
+  let versionCards = $state<DeckVersionCard[]>([])
   let copied = $state(false)
   let codeCopied = $state(false)
 
@@ -50,6 +112,7 @@
     deck = data
     cards = await getLatestDeckCards(deckId)
     versions = await getDeckVersions(deckId)
+    versionCards = await getDeckVersionCards(deckId)
   }
 
   beforeNavigate(({ from, cancel, type, delta }) => {
@@ -160,6 +223,10 @@
 
   function fmt(n: number): string {
     return n % 1 === 0 ? String(n) : n.toFixed(1)
+  }
+
+  function displayName(card: DeckCardDetail): string {
+    return card.sub_title_cn ? `${card.card_name_cn} - ${card.sub_title_cn}` : card.card_name_cn
   }
 
   // ===== 双模式曲线（法力 / 符能）=====
@@ -346,7 +413,6 @@
     })
   }
 
-  // TODO add subtitle
   const exportText = $derived.by(() => {
     const blocks: string[] = []
 
@@ -356,7 +422,8 @@
 
       const lines = [`${ZONE_CONFIG[zone].name}:`]
       for (const c of sortForExport(list)) {
-        lines.push(`${c.quantity} ${c.card_name_en} [${c.print_code}]`)
+        const name = c.sub_title_en ? `${c.card_name_en} - ${c.sub_title_en}` : c.card_name_en
+        lines.push(`${c.quantity} ${name} [${c.print_code}]`)
       }
       blocks.push(lines.join('\n'))
     }
@@ -433,6 +500,13 @@
     </div>
 
     <div class="deck-actions">
+      <button
+        class="button button-secondary"
+        onclick={() => goto(`/decks/builder?deckId=${page.params.deckid}`)}
+      >
+        <Pencil size={14} />
+        编辑卡组
+      </button>
       <button class="button button-ghost">复制套牌</button>
       <button class="button button-primary">保存新版本</button>
     </div>
@@ -664,7 +738,7 @@
                       />
                     </div>
                     <div class="card-details">
-                      <div class="card-name">{card.card_name_cn}</div>
+                      <div class="card-name">{displayName(card)}</div>
                       <div class="card-stats">
                         <span class="stat energy"><Zap size={14} /> {card.energy ?? '-'}</span>
                         <span class="stat power"><Sword size={14} /> {card.power ?? '-'}</span>
@@ -686,7 +760,7 @@
                       />
                     </div>
                     <div class="card-details">
-                      <div class="card-name">{card.card_name_cn}</div>
+                      <div class="card-name">{displayName(card)}</div>
                       <div class="card-meta">x{card.quantity} • {card.rarity_name}</div>
                     </div>
                   </li>
@@ -705,7 +779,7 @@
                       />
                     </div>
                     <div class="card-info">
-                      <div class="name">{card.card_name_cn}</div>
+                      <div class="name">{displayName(card)}</div>
                       <div class="sub">{card.card_name_en} • {card.print_code}</div>
                     </div>
                     <div class="card-stats-inline">
@@ -724,13 +798,78 @@
     <aside class="version-sidebar">
       <h3><History size={18} /> 版本历史</h3>
       <ul class="version-list">
-        {#each versions as version}
+        {#each versionRows as row (row.version.id)}
+          {@const expanded = expandedVersions.has(row.version.id)}
+          {@const visibleDiff = expanded ? row.diff : row.diff.slice(0, 5)}
           <li class="version-item">
             <div class="version-top">
-              <span class="version-number">v{version.version_number}</span>
-              <span class="version-date">{new Date(version.created_at).toLocaleDateString()}</span>
+              <span class="version-number">v{row.version.version_number}</span>
+              <span class="version-date"
+                >{new Date(row.version.created_at).toLocaleDateString()}</span
+              >
             </div>
-            <div class="version-note">{version.note || '无备注'}</div>
+            <div class="version-note">{row.version.note || '无备注'}</div>
+            <div class="version-stats">总卡数: <strong>{row.totalCards}</strong></div>
+            {#if row.isInitial}
+              <div class="version-diff version-diff-initial">初始版本</div>
+            {:else if row.diff.length === 0}
+              <div class="version-diff version-diff-empty">无卡牌变化</div>
+            {:else}
+              <ul class="version-diff">
+                {#each visibleDiff as item (row.version.id + item.kind + item.card_id)}
+                  {@const itemKey = `${row.version.id}:${item.kind}:${item.card_id}`}
+                  {@const imageMode = imageModeItems.has(itemKey)}
+                  <li
+                    class="diff-item"
+                    class:diff-add={item.kind === 'added' || item.kind === 'increased'}
+                    class:diff-remove={item.kind === 'removed' || item.kind === 'decreased'}
+                  >
+                    <button
+                      class="diff-image-toggle"
+                      type="button"
+                      title={imageMode ? '显示文字' : '显示卡图'}
+                      onclick={() => toggleDiffImage(itemKey)}
+                    >
+                      {#if imageMode}
+                        <TypeIcon size={12} />
+                      {:else}
+                        <ImageIcon size={12} />
+                      {/if}
+                    </button>
+                    {#if imageMode}
+                      <div class="diff-image">
+                        <CardSimpleImage
+                          url={item.img_cdn}
+                          name={`${item.card_id}-${item.print_code}`}
+                          isLandscape={item.isLandscape}
+                        />
+                      </div>
+                    {:else}
+                      <span class="diff-text">
+                        {#if item.kind === 'added'}
+                          新增 {item.name} x{item.qty}
+                        {:else if item.kind === 'removed'}
+                          移除 {item.name} x{item.qty}
+                        {:else if item.kind === 'increased'}
+                          {item.name} +{item.delta}
+                        {:else}
+                          {item.name} -{item.delta}
+                        {/if}
+                      </span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+              {#if row.diff.length > 5}
+                <button
+                  class="diff-toggle"
+                  type="button"
+                  onclick={() => toggleVersionExpand(row.version.id)}
+                >
+                  {expanded ? '收起' : `…共 ${row.diff.length} 项变化`}
+                </button>
+              {/if}
+            {/if}
           </li>
         {:else}
           <li class="empty-hint">暂无版本历史</li>
@@ -1475,6 +1614,106 @@
     font-size: var(--text-sm);
     color: var(--text-secondary);
     line-height: 1.4;
+  }
+
+  .version-stats {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  .version-stats strong {
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  .version-diff {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .version-diff-initial,
+  .version-diff-empty {
+    font-size: var(--text-xs);
+    font-style: italic;
+    color: var(--text-tertiary);
+    margin-top: 8px;
+  }
+
+  .diff-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .diff-image-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    padding: 0;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s,
+      background 0.15s;
+  }
+
+  .diff-image-toggle:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background: color-mix(in oklab, var(--accent-color) 8%, transparent);
+  }
+
+  .diff-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .diff-image {
+    flex: 1;
+    min-width: 0;
+    max-width: 96px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+  }
+
+  .diff-add {
+    color: #16a34a;
+  }
+
+  .diff-remove {
+    color: #dc2626;
+  }
+
+  .diff-toggle {
+    margin-top: 6px;
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+    color: var(--accent-color);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .diff-toggle:hover {
+    background: var(--bg-hover);
   }
 
   .empty-hint {

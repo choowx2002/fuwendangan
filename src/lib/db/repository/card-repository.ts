@@ -78,6 +78,20 @@ export async function getCardById(id: string): Promise<CardBase | null> {
 }
 
 /**
+ * 根据卡图 ID 反查对应的卡牌基础数据
+ */
+export async function getCardByPrintId(printId: string): Promise<CardBase | null> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT cb.* FROM ${TABLES.CARDS_BASE} cb JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id WHERE cp.id = $1`,
+    [printId]
+  )
+
+  if (results.length === 0) return null
+  return mapRowToCard(results[0])
+}
+
+/**
  * 获取所有卡牌数量
  */
 export async function getCardCount(): Promise<number> {
