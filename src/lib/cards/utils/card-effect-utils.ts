@@ -1,4 +1,6 @@
 import { getIcon } from '$lib/db/repository/icon-repository'
+import { isTauri } from '$lib/db'
+import { preloadImage } from '$lib/services/image-cache-service'
 
 /**
  * 将卡牌效果文本中的 {{关键字}} 替换成图片或符号。
@@ -23,13 +25,20 @@ export async function renderCardEffect(text: string) {
       // 如果是对象结构
       if (typeof item === 'object' && item.url) {
         if (item.url.startsWith('blob:') || /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(item.url)) {
+          let imgSrc = item.url
+
+          if (isTauri && !item.url.startsWith('blob:')) {
+            const cached = await preloadImage(item.url, item.name_zh || key)
+            if (cached) imgSrc = cached
+          }
+
           return {
             start: m.index ?? 0,
             end: (m.index ?? 0) + match.length,
             value:
               item.isWhite === 'true'
-                ? `<img src="${item.url}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px; mix-blend-mode: difference">`
-                : `<img src="${item.url}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px;">`,
+                ? `<img src="${imgSrc}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px; mix-blend-mode: difference">`
+                : `<img src="${imgSrc}" alt="${item.name_zh || key}" style="height: 15px;vertical-align: text-bottom; margin: 0 2px;">`,
           }
         }
 
