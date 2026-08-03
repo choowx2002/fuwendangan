@@ -71,11 +71,21 @@ export {
 } from './repository/rules-repository'
 
 export {
+  getIcon,
+  getIcons,
+  saveIcons,
+  clearIcons,
+  clearIconCache,
+} from './repository/icon-repository'
+
+export {
   saveFilterOptions,
   getFilterOptions,
   clearFilterOptions,
 } from './repository/filter-repository'
 export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
+export { getTableCounts, getTableSizes } from './repository/stats'
+export { clearCardData } from './repository/maintenance'
 export * from './repository/deck-repository'
 // ==================== 服务层 (Service) ====================
 export { searchCards } from './service/search-service'

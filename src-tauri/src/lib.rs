@@ -92,6 +92,40 @@ fn start_tts_listener(window: tauri::Window) {
         }
     });
 }
+/// 复制文件（用于数据库备份/恢复）
+#[tauri::command(async)]
+async fn copy_file(source: String, dest: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::copy(&source, &dest)
+            .map(|_| ())
+            .map_err(|e| format!("复制文件失败 ({} -> {}): {}", source, dest, e))
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
+/// 写入文本文件（用于导出数据）
+#[tauri::command(async)]
+async fn write_text_file(path: String, content: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::write(&path, content)
+            .map_err(|e| format!("写入文件失败 ({}): {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
+/// 读取文本文件（用于导入数据）
+#[tauri::command(async)]
+async fn read_text_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::read_to_string(&path)
+            .map_err(|e| format!("读取文件失败 ({}): {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
 #[cfg(debug_assertions)]
 fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     use tauri_plugin_prevent_default::Flags;
@@ -126,7 +160,10 @@ pub fn run() {
             greet,
             check_tts_connections,
             send_to_tts,
-            start_tts_listener
+            start_tts_listener,
+            copy_file,
+            write_text_file,
+            read_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

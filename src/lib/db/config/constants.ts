@@ -11,6 +11,7 @@ export const TABLES = {
   VERSION: 'version',
   ICONS: 'icons',
   DECKS: 'decks',
+  DECK_VERSIONS: 'deck_versions',
   DECK_CARDS: 'deck_cards',
   RULES: 'rules',
 } as const

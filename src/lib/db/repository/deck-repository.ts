@@ -158,6 +158,46 @@ export async function deleteDeck(id: string): Promise<boolean> {
   return true
 }
 
+/**
+ * 清空所有套牌（级联删除版本与卡牌引用）
+ */
+export async function deleteAllDecks(): Promise<boolean> {
+  const db = await getDatabase()
+  await db.execute(`DELETE FROM ${TABLES.DECKS}`)
+  return true
+}
+
+/**
+ * 清理冗余版本：每个卡组仅保留最新版本，删除其余版本及其卡牌引用
+ */
+export async function cleanupDeckVersions(): Promise<number> {
+  const db = await getDatabase()
+
+  const result = await db.select<{ deleted: number }[]>(
+    `SELECT COUNT(*) as deleted
+     FROM deck_versions
+     WHERE id NOT IN (
+       SELECT id FROM (
+         SELECT id, ROW_NUMBER() OVER(PARTITION BY deck_id ORDER BY version_number DESC) as rn
+         FROM deck_versions
+       ) WHERE rn = 1
+     )`
+  )
+  const deleted = result[0]?.deleted ?? 0
+
+  await db.execute(
+    `DELETE FROM deck_versions
+     WHERE id NOT IN (
+       SELECT id FROM (
+         SELECT id, ROW_NUMBER() OVER(PARTITION BY deck_id ORDER BY version_number DESC) as rn
+         FROM deck_versions
+       ) WHERE rn = 1
+     )`
+  )
+
+  return deleted
+}
+
 export async function toggleFavorite(id: string): Promise<boolean> {
   const db = await getDatabase()
   const timestamp = now()
@@ -701,4 +741,132 @@ export async function duplicateDeck(deckId: string): Promise<string> {
     console.error('[DUPLICATE DECK] failed:', error)
     throw error
   }
+}
+
+/**
+ * JSON 导入的卡组数据（对应导出功能生成的 decks-export 文件）
+ */
+export interface ImportDeckPayload {
+  name: string
+  description?: string | null
+  format?: string | null
+  cover_image?: string | null
+  is_favorite?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+  versions: {
+    version_number: number
+    note?: string | null
+    created_at?: string | null
+    cards: {
+      card_id: string
+      print_code?: string | null
+      quantity: number
+      zone: string
+    }[]
+  }[]
+}
+
+export interface ImportDecksResult {
+  imported: number
+  missingCards: number
+}
+
+/**
+ * 导入卡组（生成全新的 ID，保留名称/版本号/备注等元数据）
+ */
+export async function importDecksFromJson(
+  decks: ImportDeckPayload[],
+  options: { latestOnly?: boolean; filterMissingCards?: boolean } = {}
+): Promise<ImportDecksResult> {
+  const db = await getDatabase()
+  const timestamp = now()
+  const { latestOnly = false, filterMissingCards = true } = options
+
+  let idByPrintId: Set<string> = new Set()
+  let idByPrintCode = new Map<string, string>()
+  if (filterMissingCards) {
+    const rows = await db.select<{ id: string; card_no_extend: string; language: string }[]>(
+      `SELECT id, card_no_extend, language FROM ${TABLES.CARD_PRINTS}
+       ORDER BY (language = 'SC') DESC, print_order ASC`
+    )
+    idByPrintId = new Set(rows.map((r) => r.id))
+    for (const r of rows) {
+      if (r.language !== 'SC' || !r.card_no_extend) continue
+      if (!idByPrintCode.has(r.card_no_extend)) {
+        idByPrintCode.set(r.card_no_extend, r.id)
+      }
+    }
+  }
+
+  let imported = 0
+  let missingCards = 0
+
+  for (const deck of decks) {
+    if (!deck.name) continue
+
+    const deckId = Snowflake.generate()
+    await db.execute(
+      `INSERT INTO ${TABLES.DECKS} (id, name, description, format, cover_image, is_favorite, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        deckId,
+        deck.name,
+        deck.description ?? null,
+        deck.format ?? null,
+        deck.cover_image ?? null,
+        deck.is_favorite ? 1 : 0,
+        deck.created_at ?? timestamp,
+        deck.updated_at ?? timestamp,
+      ]
+    )
+
+    let versions = deck.versions ?? []
+    if (latestOnly && versions.length > 0) {
+      const maxVersion = Math.max(...versions.map((v) => v.version_number))
+      versions = versions.filter((v) => v.version_number === maxVersion)
+    }
+
+    for (const version of versions) {
+      const versionId = Snowflake.generate()
+      await db.execute(
+        `INSERT INTO ${TABLES.DECK_VERSIONS} (id, deck_id, version_number, note, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          versionId,
+          deckId,
+          version.version_number,
+          version.note ?? null,
+          version.created_at ?? timestamp,
+        ]
+      )
+
+      const cards = version.cards ?? []
+      for (const card of cards) {
+        if (!card.card_id || card.quantity <= 0 || !card.zone) continue
+
+        let resolvedId = card.card_id
+        if (filterMissingCards) {
+          if (!idByPrintId.has(card.card_id)) {
+            const byCode = card.print_code ? idByPrintCode.get(card.print_code) : undefined
+            if (!byCode) {
+              missingCards++
+              continue
+            }
+            resolvedId = byCode
+          }
+        }
+
+        await db.execute(
+          `INSERT INTO ${TABLES.DECK_CARDS} (id, deck_version_id, card_id, quantity, zone, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [Snowflake.generate(), versionId, resolvedId, card.quantity, card.zone, timestamp]
+        )
+      }
+    }
+
+    imported++
+  }
+
+  return { imported, missingCards }
 }
