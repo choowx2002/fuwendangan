@@ -236,6 +236,24 @@ BUTTON
   pointer-events: none;
 }
 
+/* 危险描边按钮 - 用于删除等操作的次要形态 */
+.button-danger-outline {
+  background: transparent;
+  border-color: #e03e3e;
+  color: #e03e3e;
+}
+.button-danger-outline:hover {
+  background: rgba(224, 62, 62, 0.08);
+}
+.button-danger-outline:active {
+  background: rgba(224, 62, 62, 0.16);
+}
+.button-danger-outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* 按钮尺寸变体 */
 .button-sm {
   padding: 4px 12px;

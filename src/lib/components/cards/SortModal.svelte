@@ -79,7 +79,7 @@
 </script>
 
 <!-- 外部触发按钮 (带 Badge) -->
-<button class="trigger" onclick={openModal}>
+<button class="button button-ghost trigger" onclick={openModal}>
   <svg class="trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M3 6h18M3 12h18M3 18h18" />
   </svg>
@@ -205,15 +205,22 @@
       <!-- Modal Footer -->
       <div class="modal-footer">
         <div>
-          <button class="btn text-btn" onclick={addSort}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="button button-text" onclick={addSort}>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              width="16"
+              height="16"
+            >
               <path d="M12 5v14M5 12h14" />
             </svg>
             添加排序条件
           </button>
         </div>
 
-        <button class="btn primary-btn" onclick={closeModal}> 完成 </button>
+        <button class="button button-primary" onclick={closeModal}> 完成 </button>
       </div>
     </div>
   </div>
@@ -225,24 +232,7 @@
   }
 
   .trigger {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-    box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.05);
     margin-left: auto;
-  }
-
-  .trigger:hover {
-    background: var(--bg-hover);
-    border-color: #d3d1cb;
   }
 
   .trigger-icon {
@@ -459,42 +449,6 @@
     padding: 12px 20px 16px;
     border-top: 1px solid var(--border-color);
     gap: 12px;
-  }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 4px;
-    font-size: var(--text-base);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.1s;
-  }
-  .btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  .text-btn {
-    background: transparent;
-    color: var(--text-primary);
-  }
-  .text-btn:hover {
-    background: var(--bg-secondary);
-  }
-
-  .primary-btn {
-    background: var(--accent-color);
-    color: #ffffff;
-  }
-  .primary-btn:hover {
-    opacity: 0.9;
-  }
-  .primary-btn:active {
-    opacity: 0.8;
   }
 
   /* 滚动条美化 (Notion 风格) */

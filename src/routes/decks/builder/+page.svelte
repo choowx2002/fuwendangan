@@ -22,6 +22,7 @@
   } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import { validateDeck } from '$lib/decks/deck-validator'
   import { isMobile } from '$lib/services/os-serives'
   import {
@@ -881,6 +882,18 @@
     { key: 'runes', label: '符文' },
     { key: 'sideboard', label: '备牌' },
   ]
+
+  const mainDeckStatCards = $derived(mainDeckCards.map((card) => ({ ...card, quantity: 1 })))
+
+  const typeTotals = $derived.by(() => {
+    const totals: Record<string, number> = {}
+    mainDeckCards.forEach((card) => {
+      card.card_category?.forEach((cat) => {
+        totals[cat] = (totals[cat] || 0) + 1
+      })
+    })
+    return Object.entries(totals).sort((a, b) => b[1] - a[1])
+  })
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
@@ -1366,7 +1379,7 @@
       {#snippet footer()}
         <div class="print-quantity-control">
           <button
-            class="save-btn"
+            class="button button-primary button-sm"
             onclick={() => (showCurrentCardDetails = !showCurrentCardDetails)}
           >
             {showCurrentCardDetails ? '收起' : '详情'}
@@ -1397,7 +1410,7 @@
           </button>
 
           <button
-            class="save-btn"
+            class="button button-primary button-sm"
             disabled={printModalTarget?.card.selectedPrints === currentPrint.id}
             onclick={() => changePrintsId(currentPrint.id)}
           >
@@ -1447,10 +1460,12 @@
     </label>
 
     {#snippet footer()}
-      <button class="save-modal-cancel" disabled={isSaving} onclick={cancelSaveDeck}> 取消 </button>
+      <button class="button button-ghost footer-btn" disabled={isSaving} onclick={cancelSaveDeck}>
+        取消
+      </button>
       {#if editingDeckId}
         <button
-          class="save-modal-confirm save-modal-overwrite"
+          class="button button-ghost footer-btn"
           disabled={isSaving || !saveDeckName.trim()}
           onclick={() => confirmSaveDeck('overwrite')}
         >
@@ -1463,7 +1478,7 @@
           {/if}
         </button>
         <button
-          class="save-modal-confirm"
+          class="button button-primary footer-btn"
           disabled={isSaving || !saveDeckName.trim()}
           onclick={() => confirmSaveDeck('newVersion')}
         >
@@ -1477,7 +1492,7 @@
         </button>
       {:else}
         <button
-          class="save-modal-confirm"
+          class="button button-primary footer-btn"
           disabled={isSaving || !saveDeckName.trim()}
           onclick={() => confirmSaveDeck('newVersion')}
         >
@@ -1516,7 +1531,7 @@
     </div>
 
     {#snippet footer()}
-      <button class="save-modal-confirm" onclick={() => (showErrorModal = !showErrorModal)}>
+      <button class="button button-primary" onclick={() => (showErrorModal = !showErrorModal)}>
         <span>了解</span>
       </button>
     {/snippet}
@@ -1655,7 +1670,7 @@
 
       {#if useVerticalResize}
         <button
-          class="more-menu-item"
+          class="button button-text more-menu-item"
           onclick={() => {
             revertLayout = !revertLayout
             showMoreMenu = false
@@ -1690,7 +1705,7 @@
 
     {#snippet footer()}
       <button
-        class="save-modal-confirm"
+        class="button button-primary"
         onclick={() => {
           showMoreMenu = false
           showDisplayModeAdvanced = false
@@ -1737,6 +1752,21 @@
         <span class="stat-value">{sideboardCards.length}</span>
       </div>
       <div class="stat-divider"></div>
+      <div class="stats-section-title">费用 / 颜色</div>
+      <CostCurveChart cards={mainDeckStatCards} />
+      <div class="stat-divider"></div>
+      <div class="stats-section-title">类型统计（主牌堆）</div>
+      {#if typeTotals.length === 0}
+        <div class="stats-empty">主牌堆暂无卡牌</div>
+      {:else}
+        {#each typeTotals as [cat, count]}
+          <div class="stat-row">
+            <span class="stat-label">{cat}</span>
+            <span class="stat-value">{count}</span>
+          </div>
+        {/each}
+      {/if}
+      <div class="stat-divider"></div>
       <div class="stat-row stat-total">
         <span class="stat-label">合计</span>
         <span class="stat-value">{getAllDeckCards().length}</span>
@@ -1744,7 +1774,7 @@
     </div>
 
     {#snippet footer()}
-      <button class="save-modal-confirm" onclick={() => (showDeckStats = false)}>
+      <button class="button button-primary" onclick={() => (showDeckStats = false)}>
         <span>了解</span>
       </button>
     {/snippet}
@@ -1805,25 +1835,6 @@
     gap: 8px;
     align-items: center;
     justify-content: flex-end;
-  }
-
-  .save-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--accent-color);
-    color: var(--bg-primary);
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
-  }
-
-  .save-btn:disabled {
-    background: #9ca3af;
-    cursor: not-allowed;
   }
 
   .zones-container {
@@ -2462,59 +2473,12 @@
     cursor: not-allowed;
   }
 
-  .save-modal-cancel,
-  .save-modal-confirm {
+  .footer-btn {
     min-height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 0 14px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .save-modal-cancel {
-    border: 1px solid var(--border-color, #d1d5db);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .save-modal-cancel:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-
-  .save-modal-confirm {
-    border: 1px solid var(--accent-color);
-    background: var(--accent-color);
-    color: var(--bg-primary);
-  }
-
-  .save-modal-confirm.save-modal-overwrite {
-    border: 1px solid var(--border-color, #d1d5db);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .save-modal-overwrite:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-
-  .save-modal-confirm:hover:not(:disabled) {
-    filter: brightness(0.95);
-  }
-
-  .save-modal-cancel:disabled,
-  .save-modal-confirm:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   @media (max-width: 479.99px) {
-    .save-modal-cancel,
-    .save-modal-confirm {
+    .footer-btn {
       min-height: 42px;
       flex: 1;
     }
@@ -2689,6 +2653,21 @@
     flex-direction: column;
     gap: 6px;
     padding: 4px 0;
+  }
+
+  .stats-section-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 6px 12px 2px 12px;
+  }
+
+  .stats-empty {
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+    font-style: italic;
+    text-align: center;
+    padding: 8px 12px;
   }
 
   .stat-row {

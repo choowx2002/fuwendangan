@@ -21,9 +21,9 @@
   import { onMount } from 'svelte'
   import { getCodeFromDeck } from '@piltoverarchive/riftbound-deck-codes'
   import type { Deck as RiftboundDeck } from '@piltoverarchive/riftbound-deck-codes'
+  import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import {
     History,
-    ChartBar,
     ChartPie,
     Dices,
     Copy,
@@ -151,131 +151,9 @@
     sideboard: sideboardCards.reduce((s, c) => s + c.quantity, 0),
   })
 
-  // ===== 颜色解析 =====
-  const COLOR_ORDER = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'neutral']
-
-  const COLOR_VARS: Record<string, string> = {
-    red: 'var(--card-color-red)',
-    orange: 'var(--card-color-orange)',
-    yellow: 'var(--card-color-yellow)',
-    green: 'var(--card-color-green)',
-    blue: 'var(--card-color-blue)',
-    purple: 'var(--card-color-purple)',
-    neutral: 'var(--card-color-neutral)',
-  }
-
-  const COLOR_LABELS: Record<string, string> = {
-    red: '红',
-    orange: '橙',
-    yellow: '黄',
-    green: '绿',
-    blue: '蓝',
-    purple: '紫',
-    neutral: '无色',
-  }
-
-  function normalizeColor(raw: string): string {
-    const map: Record<string, string> = {
-      red: 'red',
-      红: 'red',
-      红色: 'red',
-      orange: 'orange',
-      橙: 'orange',
-      橙色: 'orange',
-      yellow: 'yellow',
-      黄: 'yellow',
-      黄色: 'yellow',
-      green: 'green',
-      绿: 'green',
-      绿色: 'green',
-      blue: 'blue',
-      蓝: 'blue',
-      蓝色: 'blue',
-      purple: 'purple',
-      紫: 'purple',
-      紫色: 'purple',
-    }
-    return map[raw.toLowerCase()] ?? 'neutral'
-  }
-
-  function parseColorList(raw: string | null | undefined): string[] {
-    if (!raw) return ['neutral']
-    let str = raw.trim()
-    if (!str) return ['neutral']
-
-    if (str.startsWith('[')) {
-      try {
-        const arr = JSON.parse(str.replace(/'/g, '"'))
-        if (Array.isArray(arr) && arr.length > 0) {
-          return arr.map((c) => normalizeColor(String(c).trim()))
-        }
-      } catch {
-        // fall through to split
-      }
-    }
-
-    const parts = str
-      .split(/[,，、|;]/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    return parts.length > 0 ? parts.map(normalizeColor) : ['neutral']
-  }
-
-  function fmt(n: number): string {
-    return n % 1 === 0 ? String(n) : n.toFixed(1)
-  }
-
   function displayName(card: DeckCardDetail): string {
     return card.sub_title_cn ? `${card.card_name_cn} - ${card.sub_title_cn}` : card.card_name_cn
   }
-
-  // ===== 双模式曲线（法力 / 符能）=====
-  type CurveMode = 'energy' | 'return_energy'
-  let curveMode = $state<CurveMode>('energy')
-
-  const costCurve = $derived.by(() => {
-    const buckets: Record<number, Record<string, number>> = {}
-
-    mainCards.forEach((c) => {
-      const value = curveMode === 'energy' ? (c.energy ?? 0) : (c.return_energy ?? 0)
-      if (!buckets[value]) buckets[value] = {}
-
-      const colors = parseColorList(c.card_color_list)
-      const share = c.quantity / colors.length
-
-      colors.forEach((color) => {
-        buckets[value][color] = (buckets[value][color] || 0) + share
-      })
-    })
-
-    return Object.entries(buckets)
-      .map(([key, colors]) => ({
-        value: Number(key),
-        total: Object.values(colors).reduce((s, n) => s + n, 0),
-        colors,
-      }))
-      .sort((a, b) => a.value - b.value)
-  })
-
-  const maxCurveTotal = $derived(Math.max(...costCurve.map((p) => p.total), 1))
-
-  const colorTotals = $derived.by(() => {
-    const totals: Record<string, number> = {}
-    mainCards.forEach((c) => {
-      const colors = parseColorList(c.card_color_list)
-      const share = c.quantity / colors.length
-      colors.forEach((color) => {
-        totals[color] = (totals[color] || 0) + share
-      })
-    })
-    return totals
-  })
-
-  const colorLegend = $derived(
-    Object.entries(colorTotals)
-      .map(([color, count]) => ({ color, count }))
-      .sort((a, b) => b.count - a.count)
-  )
 
   const compositionStats = $derived.by(() => {
     const mainTotal = zoneCounts.mainDeck
@@ -514,67 +392,7 @@
 
   <section class="analysis-dashboard">
     <div class="analysis-card curve-card">
-      <div class="analysis-card-header">
-        <ChartBar size={18} />
-        <h3>{curveMode === 'energy' ? '法力曲线' : '符能曲线'}</h3>
-        <div class="button-group curve-toggle">
-          <button
-            class="button button-secondary"
-            class:active={curveMode === 'energy'}
-            onclick={() => (curveMode = 'energy')}
-          >
-            法力
-          </button>
-          <button
-            class="button button-secondary"
-            class:active={curveMode === 'return_energy'}
-            onclick={() => (curveMode = 'return_energy')}
-          >
-            符能
-          </button>
-        </div>
-      </div>
-
-      <div class="chart-container">
-        {#if costCurve.length === 0}
-          <span class="empty-text">主卡组暂无卡牌</span>
-        {:else}
-          {#each costCurve as point (point.value)}
-            <div
-              class="bar-wrapper"
-              title="{curveMode === 'energy' ? '法力' : '符能'} {point.value}：共 {fmt(
-                point.total
-              )} 张"
-            >
-              <div class="bar-track">
-                <div class="bar-stack" style="height: {(point.total / maxCurveTotal) * 100}%">
-                  <span class="bar-value">{fmt(point.total)}</span>
-                  {#each COLOR_ORDER.filter((c) => point.colors[c]) as color (color)}
-                    <div
-                      class="bar-segment"
-                      style="height: {(point.colors[color] / point.total) *
-                        100}%; background: {COLOR_VARS[color]}"
-                    ></div>
-                  {/each}
-                </div>
-              </div>
-              <span class="bar-label">{point.value}</span>
-            </div>
-          {/each}
-        {/if}
-      </div>
-
-      {#if colorLegend.length > 0}
-        <div class="color-legend">
-          {#each colorLegend as item (item.color)}
-            <span class="legend-item">
-              <span class="legend-dot" style="background: {COLOR_VARS[item.color]}"></span>
-              {COLOR_LABELS[item.color]}
-              <strong>{fmt(item.count)}</strong>
-            </span>
-          {/each}
-        </div>
-      {/if}
+      <CostCurveChart cards={mainCards} />
     </div>
 
     <div class="analysis-card">
@@ -862,7 +680,7 @@
               </ul>
               {#if row.diff.length > 5}
                 <button
-                  class="diff-toggle"
+                  class="button button-text button-sm"
                   type="button"
                   onclick={() => toggleVersionExpand(row.version.id)}
                 >
@@ -1006,131 +824,6 @@
   /* ===== 曲线卡片 ===== */
   .curve-card {
     grid-column: span 2;
-  }
-
-  .curve-toggle {
-    margin-left: auto;
-  }
-
-  .curve-toggle .button {
-    min-height: 26px;
-    padding: 3px 12px;
-    font-size: var(--text-xs);
-    gap: 4px;
-  }
-
-  .chart-container {
-    display: flex;
-    align-items: flex-end;
-    height: 150px;
-    gap: 6px;
-    padding-top: 24px;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .bar-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-    height: 100%;
-    cursor: default;
-  }
-
-  .bar-track {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
-
-  .bar-stack {
-    position: relative;
-    width: 100%;
-    max-width: 34px;
-    display: flex;
-    flex-direction: column-reverse;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    overflow: visible;
-    transform-origin: bottom center;
-    transition:
-      height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.15s ease;
-  }
-
-  .bar-segment {
-    width: 100%;
-    min-height: 2px;
-    opacity: 0.9;
-    transition:
-      height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.15s ease;
-  }
-
-  .bar-segment:first-of-type {
-    border-radius: 0 0 1px 1px;
-  }
-
-  .bar-segment:last-of-type {
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  }
-
-  .bar-wrapper:hover .bar-segment {
-    opacity: 1;
-  }
-
-  .bar-wrapper:hover .bar-stack {
-    transform: scaleX(1.12);
-  }
-
-  .bar-value {
-    position: absolute;
-    top: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    color: var(--accent-color);
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .bar-label {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin-top: 6px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .color-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 16px;
-    margin-top: 14px;
-  }
-
-  .legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-
-  .legend-item strong {
-    color: var(--text-primary);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    flex-shrink: 0;
   }
 
   /* ===== 起手模拟 ===== */
@@ -1701,34 +1394,11 @@
     color: #dc2626;
   }
 
-  .diff-toggle {
-    margin-top: 6px;
-    padding: 2px 8px;
-    font-size: var(--text-xs);
-    color: var(--accent-color);
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .diff-toggle:hover {
-    background: var(--bg-hover);
-  }
-
   .empty-hint {
     color: var(--text-tertiary);
     font-style: italic;
     font-size: var(--text-sm);
     padding: 12px 0;
-  }
-
-  .empty-text {
-    color: var(--text-tertiary);
-    font-size: var(--text-xs);
-    width: 100%;
-    text-align: center;
-    align-self: center;
   }
 
   @media (max-width: 900px) {

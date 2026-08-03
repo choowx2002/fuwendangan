@@ -238,10 +238,10 @@
         <footer class="modal-footer">
           <div>
             <span class="count">{activeFilters.length} 项已激活</span>
-            <button class="clear-btn" onclick={handleClearAll}>重置</button>
+            <button class="button button-text" onclick={handleClearAll}>重置</button>
           </div>
 
-          <button class="apply-btn" onclick={onClose}>完成</button>
+          <button class="button button-primary" onclick={onClose}>完成</button>
         </footer>
       </div>
     </div>
@@ -348,31 +348,6 @@
   .count {
     font-size: var(--text-sm);
     color: var(--text-secondary);
-  }
-
-  .apply-btn {
-    padding: 8px 20px;
-    background: var(--accent-color);
-    color: var(--bg-primary);
-    border: none;
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-
-  .clear-btn {
-    background: transparent;
-    border: none;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    color: #c5221f;
-  }
-
-  .apply-btn:hover {
-    opacity: 0.9;
   }
 
   /* ================= 内部元素样式 ================= */

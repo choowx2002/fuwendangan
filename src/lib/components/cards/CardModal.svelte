@@ -175,7 +175,7 @@
             </div>
           {/if}
           {#if $ttsState.sendPort && $showTTSFeatures}
-            <button onclick={spawnCard} class="tts-btn">生成</button>
+            <button onclick={spawnCard} class="button button-secondary button-sm">生成</button>
           {/if}
         </aside>
 
@@ -705,21 +705,5 @@
 
   ::-webkit-scrollbar {
     display: none;
-  }
-  .tts-btn {
-    padding: 4px 10px;
-    font-size: var(--text-sm);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-    font-weight: bold;
-  }
-  .tts-btn:hover {
-    background: var(--bg-hover);
-    border-color: #d3d1cb;
   }
 </style>

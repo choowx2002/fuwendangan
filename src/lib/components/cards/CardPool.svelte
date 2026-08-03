@@ -418,7 +418,7 @@
       {/if}
       <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
 
-      <button class="filter-toggle-btn" onclick={() => (isFilterOpen = true)}>
+      <button class="button button-ghost" onclick={() => (isFilterOpen = true)}>
         <SlidersHorizontal size={18} />
         <span>筛选</span>
         {#if totalActiveCount > 0}
@@ -566,26 +566,6 @@
 
   .search-wrapper {
     flex: 1;
-  }
-
-  .filter-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-    box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.05);
-  }
-
-  .filter-toggle-btn:hover {
-    background: var(--bg-hover);
-    border-color: #d3d1cb;
   }
 
   .badge {

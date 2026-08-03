@@ -292,7 +292,7 @@
         </span>
       </div>
       <button
-        class="btn btn-secondary"
+        class="button button-secondary"
         onclick={checkCardDataUpdate}
         disabled={cardDataUpdateStatus === 'checking'}
       >
@@ -319,7 +319,7 @@
         <span class="setting-label">反馈文档</span>
         <span class="setting-desc">打开反馈页面，提交 Bug 或功能建议。</span>
       </div>
-      <button class="btn btn-outline" onclick={openHelpDoc}> 访问链接 ↗ </button>
+      <button class="button button-ghost" onclick={openHelpDoc}> 访问链接 ↗ </button>
     </div>
   </section>
 
@@ -349,7 +349,7 @@
     </div>
 
     <div class="db-actions">
-      <button class="btn btn-danger-outline" disabled={onloadInfo} onclick={handleResetDb}>
+      <button class="button button-danger-outline" disabled={onloadInfo} onclick={handleResetDb}>
         重置数据库
       </button>
     </div>
@@ -364,7 +364,7 @@
         <span class="setting-label">卡牌资源下载</span>
         <span class="setting-desc">下载所有中文卡图作为缓存</span>
       </div>
-      <button class="btn btn-outline" onclick={startDownloadAll}> 开始下载 </button>
+      <button class="button button-ghost" onclick={startDownloadAll}> 开始下载 </button>
     </div>
 
     <div class="setting-item">
@@ -388,7 +388,11 @@
     </div> -->
 
     <div class="db-actions">
-      <button class="btn btn-danger-outline" disabled={onloadInfo} onclick={handleResetImageCache}>
+      <button
+        class="button button-danger-outline"
+        disabled={onloadInfo}
+        onclick={handleResetImageCache}
+      >
         重置卡图缓存
       </button>
     </div>
@@ -492,61 +496,6 @@
   .text-error {
     color: #e03e3e;
   } /* Notion 红 */
-
-  /* 按钮基础样式 */
-  .btn {
-    padding: 6px 14px;
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    transition:
-      background-color 0.15s,
-      border-color 0.15s;
-    border: none;
-    white-space: nowrap;
-    line-height: 1.5;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  /*
-  .btn-primary {
-    background: var(--accent-color);
-    color: #ffffff;
-  }
-  .btn-primary:hover:not(:disabled) {
-    background: #0e6b62;
-  }*/
-
-  .btn-secondary {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-active);
-  }
-
-  .btn-outline {
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-  }
-  .btn-outline:hover {
-    background: var(--bg-hover);
-    border-color: #aeaca6;
-  }
-
-  .btn-danger-outline {
-    background: transparent;
-    border: 1px solid #e03e3e;
-    color: #e03e3e;
-  }
-  .btn-danger-outline:hover {
-    background: rgba(224, 62, 62, 0.08);
-  }
 
   /* 操作组 */
   /*.update-actions,*/

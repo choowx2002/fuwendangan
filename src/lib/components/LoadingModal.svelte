@@ -88,21 +88,21 @@
     </div>
 
     {#if status === 'error' && onRetry}
-      <button class="retry-btn" onclick={onRetry}>
+      <button class="button button-secondary" onclick={onRetry}>
         <RefreshCw size={16} />
         <span>重试</span>
       </button>
     {/if}
 
     {#if status === 'error'}
-      <button class="retry-btn" onclick={hideLoading}>
+      <button class="button button-secondary" onclick={hideLoading}>
         <X size={16} />
         <span>关闭</span>
       </button>
     {/if}
 
     {#if status === 'downloading' && onCancel}
-      <button class="cancel-btn" onclick={onCancel}>
+      <button class="button button-text" onclick={onCancel}>
         <X size={16} />
         <span>取消下载</span>
       </button>
@@ -198,29 +198,6 @@
     line-height: 1.5;
   }
 
-  .retry-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: var(--text-primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .retry-btn:hover {
-    background: #2f2e29;
-    transform: translateY(-1px);
-  }
-
-  .retry-btn:active {
-    transform: translateY(0);
-  }
   .progress-wrapper {
     margin: 20px 0 24px;
   }
@@ -246,22 +223,5 @@
     background: var(--text-primary);
     border-radius: inherit;
     transition: width 0.2s ease;
-  }
-
-  .cancel-btn {
-    margin-left: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-  }
-
-  .cancel-btn:hover {
-    background: var(--bg-secondary);
   }
 </style>

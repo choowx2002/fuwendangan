@@ -279,7 +279,7 @@
         <div class="toc-section">
           <div class="toc-label">搜索结果 ({searchResults.length})</div>
           {#each searchResults as r}
-            <button class="toc-item" onclick={() => scrollToRule(r.rule_number)}>
+            <button class="button button-text toc-item" onclick={() => scrollToRule(r.rule_number)}>
               <span class="toc-num">{r.rule_number}</span>
               <span class="toc-title" class:heading={r.is_heading}>
                 {$lang === 'en' ? r.text_en : r.text_zh}
