@@ -38,6 +38,17 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.rules)
   await db.execute(TABLE_DEFINITIONS.version)
   await migrateDeckCardsPrintCode(db)
+  await migrateDecksTags(db)
+}
+
+/**
+ * 迁移：为 decks 增加自定义标签列 tags（JSON 数组字符串）
+ */
+async function migrateDecksTags(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(decks)`)
+  if (!cols.some((c) => c.name === 'tags')) {
+    await db.execute(`ALTER TABLE decks ADD COLUMN tags TEXT`)
+  }
 }
 
 /**

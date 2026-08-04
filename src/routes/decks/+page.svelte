@@ -19,17 +19,77 @@
   let searchQuery = $state('')
   let selectedFormat = $state('全部')
   let showFavoritesOnly = $state(false)
+  let activeTags = $state<string[]>([])
+  let tagMatchMode = $state<'all' | 'any'>('all')
+  let showTagSuggestions = $state(false)
+  let activeSuggestionIndex = $state(-1)
 
   export const formats = ['全部', ...DECK_FORMATS]
 
+  const allTags = $derived(
+    [...new Set(allDecks.flatMap((d) => d.tags ?? []))].sort((a, b) => a.localeCompare(b))
+  )
+
+  const tagSuggestions = $derived.by(() => {
+    if (!searchQuery.trim()) return []
+    const q = searchQuery.trim().toLowerCase()
+    return allTags
+      .filter((t) => t.toLowerCase().includes(q) && !activeTags.includes(t))
+      .slice(0, 8)
+  })
+
   const filteredDecks = $derived(
     allDecks.filter((deck) => {
-      const matchesSearch = deck.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const q = searchQuery.trim().toLowerCase()
+      const deckTags = deck.tags ?? []
+      const matchesSearch =
+        !q ||
+        deck.name.toLowerCase().includes(q) ||
+        deckTags.some((t) => t.toLowerCase().includes(q))
       const matchesFormat = selectedFormat === '全部' || deck.format === selectedFormat
       const matchesFavorite = !showFavoritesOnly || deck.is_favorite
-      return matchesSearch && matchesFormat && matchesFavorite
+      const matchesTags =
+        activeTags.length === 0 ||
+        (tagMatchMode === 'all'
+          ? activeTags.every((t) => deckTags.includes(t))
+          : activeTags.some((t) => deckTags.includes(t)))
+      return matchesSearch && matchesFormat && matchesFavorite && matchesTags
     })
   )
+
+  function addTag(tag: string) {
+    if (!tag || activeTags.includes(tag)) return
+    activeTags = [...activeTags, tag]
+    searchQuery = ''
+    showTagSuggestions = false
+    activeSuggestionIndex = -1
+  }
+
+  function removeTag(tag: string) {
+    activeTags = activeTags.filter((t) => t !== tag)
+  }
+
+  function handleTagKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      showTagSuggestions = false
+      return
+    }
+    if (tagSuggestions.length === 0) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      activeSuggestionIndex = (activeSuggestionIndex + 1) % tagSuggestions.length
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      activeSuggestionIndex =
+        activeSuggestionIndex <= 0 ? tagSuggestions.length - 1 : activeSuggestionIndex - 1
+    } else if (event.key === 'Enter') {
+      const idx = activeSuggestionIndex >= 0 ? activeSuggestionIndex : 0
+      if (tagSuggestions[idx]) {
+        event.preventDefault()
+        addTag(tagSuggestions[idx])
+      }
+    }
+  }
 
   async function toggleFavoriteAction(deckId: string) {
     await toggleFavorite(deckId)
@@ -100,16 +160,45 @@
   </header>
 
   <section class="filter-bar">
-    <div class="search-box">
+    <div
+      class="search-box"
+      onfocusout={(e) => {
+        const next = e.relatedTarget as Node | null
+        if (next && (e.currentTarget as HTMLElement).contains(next)) return
+        showTagSuggestions = false
+      }}
+    >
       <div class="search-icon">
         <Search size={18} />
       </div>
       <input
         type="text"
-        placeholder="搜索卡组名称..."
+        placeholder="搜索卡组名称或标签..."
         bind:value={searchQuery}
         class="search-input"
+        onfocus={() => (showTagSuggestions = true)}
+        oninput={() => {
+          showTagSuggestions = true
+          activeSuggestionIndex = -1
+        }}
+        onkeydown={handleTagKeydown}
       />
+      {#if showTagSuggestions && tagSuggestions.length > 0}
+        <div class="tag-suggest-popdown">
+          {#each tagSuggestions as tag, i (tag)}
+            <button
+              type="button"
+              class="suggestion-item"
+              class:active={i === activeSuggestionIndex}
+              onmousedown={(e) => e.preventDefault()}
+              onclick={() => addTag(tag)}
+            >
+              <span class="tag-text">{tag}</span>
+              <span class="tag-hint">回车/点击添加为筛选条件</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div class="filter-controls">
@@ -132,6 +221,43 @@
       </button>
     </div>
   </section>
+
+  {#if activeTags.length > 0}
+    <div class="tag-filter-bar">
+      <div class="tag-match-toggle">
+        <button
+          class="tag-mode-btn"
+          class:active={tagMatchMode === 'all'}
+          onclick={() => (tagMatchMode = 'all')}
+        >
+          全部满足
+        </button>
+        <button
+          class="tag-mode-btn"
+          class:active={tagMatchMode === 'any'}
+          onclick={() => (tagMatchMode = 'any')}
+        >
+          任一满足
+        </button>
+      </div>
+      <div class="active-tags">
+        {#each activeTags as tag (tag)}
+          <span class="active-tag-chip">
+            {tag}
+            <button
+              type="button"
+              class="active-tag-remove"
+              onclick={() => removeTag(tag)}
+              aria-label="移除标签"
+            >
+              ×
+            </button>
+          </span>
+        {/each}
+      </div>
+      <button class="clear-tags-btn" onclick={() => (activeTags = [])}>清除</button>
+    </div>
+  {/if}
 
   {#if filteredDecks.length === 0}
     <div class="empty-state">
@@ -183,6 +309,17 @@
               <span class="stat-value time">{getRelativeTime(deck.updated_at!)}</span>
             </div>
           </div>
+
+          {#if deck.tags && deck.tags.length > 0}
+            <div class="deck-tag-row">
+              {#each deck.tags.slice(0, 3) as tag (tag)}
+                <span class="deck-tag-chip">{tag}</span>
+              {/each}
+              {#if deck.tags.length > 3}
+                <span class="deck-tag-more">+{deck.tags.length - 3}</span>
+              {/if}
+            </div>
+          {/if}
 
           <div class="deck-actions">
             <button
@@ -538,5 +675,178 @@
     transform: scale(2);
     object-fit: cover;
     object-position: center 10px;
+  }
+
+  .tag-suggest-popdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    overflow: hidden;
+    animation: slideDown 0.15s ease;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .suggestion-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+    text-align: left;
+  }
+
+  .suggestion-item:hover,
+  .suggestion-item.active {
+    background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+  }
+
+  .tag-text {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tag-hint {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .tag-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: -12px 0 20px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+  }
+
+  .tag-match-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+  }
+
+  .tag-mode-btn {
+    padding: 4px 10px;
+    font-size: var(--text-sm);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .tag-mode-btn.active {
+    background: var(--accent-color);
+    color: var(--bg-primary);
+    font-weight: 500;
+  }
+
+  .active-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .active-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: var(--text-sm);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 45%, transparent);
+    color: var(--text-primary);
+  }
+
+  .active-tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .active-tag-remove:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: var(--text-primary);
+  }
+
+  .clear-tags-btn {
+    padding: 4px 10px;
+    font-size: var(--text-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .clear-tags-btn:hover {
+    border-color: #d3d1cb;
+    color: var(--text-primary);
+  }
+
+  .deck-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: -6px 0 12px 0;
+  }
+
+  .deck-tag-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    font-size: var(--text-sm);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
+    color: var(--text-secondary);
+  }
+
+  .deck-tag-more {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    align-self: center;
   }
 </style>

@@ -82,6 +82,7 @@ export const TABLE_DEFINITIONS = {
       description TEXT,
       format TEXT,
       cover_image TEXT,
+      tags TEXT,
       is_favorite INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT

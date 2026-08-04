@@ -132,6 +132,8 @@
   let editDescription = $state('')
   let editFormat = $state('')
   let editFavorite = $state(false)
+  let editTags = $state<string[]>([])
+  let editTagInput = $state('')
   let savingInfo = $state(false)
   let editingNoteVersionId = $state<string | null>(null)
   let editNoteValue = $state('')
@@ -230,7 +232,25 @@
     editDescription = deck.description ?? ''
     editFormat = deck.format ?? ''
     editFavorite = deck.is_favorite
+    editTags = deck.tags ? [...deck.tags] : []
+    editTagInput = ''
     showEditInfoModal = true
+  }
+
+  function addEditTag() {
+    const tag = editTagInput.trim().replace(/^#/, '')
+    if (!tag) {
+      editTagInput = ''
+      return
+    }
+    if (!editTags.includes(tag)) {
+      editTags = [...editTags, tag]
+    }
+    editTagInput = ''
+  }
+
+  function removeEditTag(tag: string) {
+    editTags = editTags.filter((t) => t !== tag)
   }
 
   async function saveEditInfo() {
@@ -241,6 +261,7 @@
         name: editName.trim(),
         description: editDescription.trim() || null,
         format: editFormat.trim() || null,
+        tags: editTags,
         is_favorite: editFavorite ? 1 : 0,
       })
       const updated = await getDeckById(deck.id)
@@ -695,6 +716,13 @@
         {/if}
       </div>
       <p class="deck-description">{deck?.description || '暂无描述'}</p>
+      {#if deck?.tags && deck.tags.length > 0}
+        <div class="deck-tags">
+          {#each deck.tags as tag (tag)}
+            <span class="deck-tag-chip">{tag}</span>
+          {/each}
+        </div>
+      {/if}
       <div class="deck-meta">
         <span>总卡牌数: <strong>{totalCardCount}</strong></span>
         <span class="divider">•</span>
@@ -1289,7 +1317,7 @@
 <CommonModal
   open={showEditInfoModal}
   title="编辑卡组信息"
-  subtitle="修改名称、描述、格式与收藏状态"
+  subtitle="修改名称、描述、格式、标签与收藏状态"
   closable={!savingInfo}
   onclose={() => (showEditInfoModal = false)}
 >
@@ -1333,6 +1361,47 @@
       {/each}
     </select>
   </label>
+
+  <div class="edit-info-field">
+    <span class="edit-info-label">标签</span>
+    {#if editTags.length > 0}
+      <div class="edit-info-tags">
+        {#each editTags as tag (tag)}
+          <span class="edit-info-tag-chip">
+            {tag}
+            <button
+              type="button"
+              class="edit-info-tag-remove"
+              disabled={savingInfo}
+              onclick={() => removeEditTag(tag)}
+              aria-label="移除标签"
+            >
+              ×
+            </button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+    <div class="edit-info-tag-input-wrap">
+      <input
+        class="edit-info-input edit-info-tag-input"
+        type="text"
+        placeholder="输入标签后按 Enter 或逗号添加"
+        maxlength="20"
+        bind:value={editTagInput}
+        disabled={savingInfo}
+        onkeydown={(event) => {
+          if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault()
+            addEditTag()
+          }
+        }}
+        onblur={() => {
+          if (editTagInput.trim()) addEditTag()
+        }}
+      />
+    </div>
+  </div>
 
   <label class="edit-info-favorite">
     <input type="checkbox" bind:checked={editFavorite} disabled={savingInfo} />
@@ -1453,6 +1522,23 @@
     margin: 8px 0 16px 0;
     font-size: var(--text-base);
     line-height: 1.5;
+  }
+
+  .deck-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: -4px 0 12px 0;
+  }
+
+  .deck-tag-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    font-size: var(--text-sm);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 40%, transparent);
+    color: var(--text-primary);
   }
 
   .deck-meta {
@@ -2136,6 +2222,7 @@
     }
     .deck-actions {
       width: 100%;
+      flex-wrap: wrap-reverse;
     }
     .deck-actions .button {
       flex: 1;
@@ -2169,7 +2256,7 @@
       min-height: 120px;
     }
     .card-grid:not(.landscape-grid) {
-      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
     }
   }
 
@@ -2542,5 +2629,50 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .edit-info-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .edit-info-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 13px;
+    border-radius: var(--radius-sm, 6px);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 40%, transparent);
+    color: var(--text-primary);
+  }
+
+  .edit-info-tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .edit-info-tag-remove:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: var(--text-primary);
+  }
+
+  .edit-info-tag-input-wrap {
+    display: flex;
+    gap: 8px;
   }
 </style>

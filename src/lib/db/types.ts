@@ -102,6 +102,7 @@ export interface Deck {
   description: string | null
   format: string | null
   cover_image: string | null
+  tags: string[]
   is_favorite: boolean
   created_at: string | null
   updated_at: string | null
@@ -121,8 +122,9 @@ export interface DeckCard {
 }
 
 // SQLite 存储模型
-export interface SqliteDeck extends Omit<Deck, 'is_favorite'> {
+export interface SqliteDeck extends Omit<Deck, 'is_favorite' | 'tags'> {
   is_favorite: number
+  tags: string | null
 }
 
 export type FilterStatus = 'unselected' | 'include' | 'must' | 'exclude'

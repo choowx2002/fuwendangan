@@ -210,12 +210,37 @@ export function buildOrderBy(sortByList?: SortKeyItem[]) {
 }
 
 /**
+ * 辅助函数：将 Deck 标签数组序列化为 SQLite 存储的 JSON 字符串
+ */
+export function serializeTags(tags?: string[] | null): string | null {
+  if (!tags || tags.length === 0) return null
+  return JSON.stringify(tags)
+}
+
+/**
+ * 辅助函数：将 SQLite 存储的 JSON 字符串解析为标签数组
+ */
+export function parseTags(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((t): t is string => typeof t === 'string')
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+/**
  * 辅助函数：将 SQLite Deck 行数据反序列化为前端使用的 Deck 模型
  */
 export function mapRowToDeck(row: any): Deck {
   return {
     ...row,
     is_favorite: row.is_favorite === 1,
+    tags: parseTags(row.tags),
   }
 }
 
@@ -236,6 +261,7 @@ export function toSqliteDeck(deck: Deck): SqliteDeck {
   return {
     ...deck,
     is_favorite: deck.is_favorite ? 1 : 0,
+    tags: serializeTags(deck.tags),
   }
 }
 

@@ -102,6 +102,8 @@ export {
   toSqliteModel,
   toSqliteDeck,
   toSqliteDeckCard,
+  serializeTags,
+  parseTags,
   getBestPrint,
   buildSearchParams,
   buildOrderBy,

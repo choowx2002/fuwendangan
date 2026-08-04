@@ -5,6 +5,7 @@
 import type { Deck } from '../types'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
+import { parseTags, serializeTags } from '../helper'
 import { Snowflake } from '@theinternetfolks/snowflake'
 
 export interface DeckInput {
@@ -12,6 +13,7 @@ export interface DeckInput {
   description?: string | null
   format?: string | null
   cover_image?: string | null
+  tags?: string[]
   is_favorite?: number
 }
 
@@ -31,8 +33,8 @@ export async function createDeck(input: DeckInput): Promise<string> {
   const timestamp = now()
 
   const sql = `
-     INSERT INTO ${TABLES.DECKS} (id, name, description, format, cover_image, is_favorite, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     INSERT INTO ${TABLES.DECKS} (id, name, description, format, cover_image, tags, is_favorite, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
    `
 
   await db.execute(sql, [
@@ -41,6 +43,7 @@ export async function createDeck(input: DeckInput): Promise<string> {
     input.description ?? null,
     input.format ?? null,
     input.cover_image ?? null,
+    serializeTags(input.tags),
     input.is_favorite ?? 0, // 默认不收藏
     timestamp,
     timestamp,
@@ -57,7 +60,9 @@ export async function getDeckById(id: string): Promise<Deck | null> {
   const sql = `SELECT * FROM ${TABLES.DECKS} WHERE id = ?`
 
   const results = await db.select<Deck[]>(sql, [id])
-  return results.length > 0 ? results[0] : null
+  if (results.length === 0) return null
+  const row = results[0] as any
+  return { ...row, tags: parseTags(row.tags) }
 }
 
 /**
@@ -96,7 +101,8 @@ export async function getDecks(options?: {
   // 默认按更新时间倒序排列
   sql += ` ORDER BY updated_at DESC`
 
-  return await db.select<Deck[]>(sql, params)
+  const rows = await db.select<Deck[]>(sql, params)
+  return rows.map((row) => ({ ...row, tags: parseTags((row as any).tags) }))
 }
 
 /**
@@ -125,6 +131,10 @@ export async function updateDeck(id: string, input: Partial<DeckInput>): Promise
   if (input.cover_image !== undefined) {
     fields.push(`cover_image = ?`)
     params.push(input.cover_image)
+  }
+  if (input.tags !== undefined) {
+    fields.push(`tags = ?`)
+    params.push(serializeTags(input.tags))
   }
   if (input.is_favorite !== undefined) {
     fields.push(`is_favorite = ?`)
@@ -518,6 +528,7 @@ export interface DeckListResult {
   description: string | null
   format: string | null
   cover_image: string | null
+  tags: string[]
   is_favorite: number
   created_at: string
   updated_at: string
@@ -639,6 +650,7 @@ export async function getDeckList(
       d.description, 
       d.format, 
       d.cover_image, 
+      d.tags,
       d.is_favorite, 
       d.created_at, 
       d.updated_at,
@@ -655,7 +667,8 @@ export async function getDeckList(
   `
 
   const dataParams = [...params, limit, offset]
-  const decks = await db.select<DeckListResult[]>(dataSql, dataParams)
+  const rawDecks = await db.select<DeckListResult[]>(dataSql, dataParams)
+  const decks = rawDecks.map((row) => ({ ...row, tags: parseTags((row as any).tags) }))
 
   // 4. 查询总数 (用于前端分页组件)
   // 复用相同的 WHERE 条件以确保总数与当前页数据匹配
@@ -688,6 +701,7 @@ export async function duplicateDeck(deckId: string): Promise<string> {
     }
 
     const sourceDeck = decks[0]
+    const sourceTags = parseTags((sourceDeck as any).tags)
 
     // 2. Create new deck
     await db.execute(
@@ -698,11 +712,12 @@ export async function duplicateDeck(deckId: string): Promise<string> {
         description,
         format,
         cover_image,
+        tags,
         is_favorite,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         newDeckId,
@@ -710,6 +725,7 @@ export async function duplicateDeck(deckId: string): Promise<string> {
         sourceDeck.description,
         sourceDeck.format,
         sourceDeck.cover_image,
+        serializeTags(sourceTags),
         0, // duplicated deck should not keep favorite
         timestamp,
         timestamp,
@@ -809,6 +825,7 @@ export interface ImportDeckPayload {
   description?: string | null
   format?: string | null
   cover_image?: string | null
+  tags?: string[]
   is_favorite?: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -867,14 +884,15 @@ export async function importDecksFromJson(
 
     const deckId = Snowflake.generate()
     await db.execute(
-      `INSERT INTO ${TABLES.DECKS} (id, name, description, format, cover_image, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${TABLES.DECKS} (id, name, description, format, cover_image, tags, is_favorite, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         deckId,
         deck.name,
         deck.description ?? null,
         deck.format ?? null,
         deck.cover_image ?? null,
+        serializeTags(deck.tags),
         deck.is_favorite ? 1 : 0,
         deck.created_at ?? timestamp,
         deck.updated_at ?? timestamp,
