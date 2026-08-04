@@ -14,6 +14,8 @@ export const TABLES = {
   DECK_VERSIONS: 'deck_versions',
   DECK_CARDS: 'deck_cards',
   RULES: 'rules',
+  MATCH_RECORDS: 'match_records',
+  MATCH_GAMES: 'match_games',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]

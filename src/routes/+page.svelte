@@ -1,35 +1,22 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
   import { page } from '$app/state'
-  import { getCardCount } from '$lib/db'
+  import { getCardCount, getDeckList, getMatchStatsForDecks } from '$lib/db'
   import { setLoadStatus, hideLoading } from '$lib/stores/ui-store.svelte'
+  import { getRelativeTime } from '$lib/utils/time-helper'
   import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
-  // 模拟数据
-  const recentDecks = [
-    {
-      name: '红绿快攻 (RG Aggro)',
-      format: '标准',
-      wins: 12,
-      losses: 4,
-      updated: '2小时前',
-    },
-    {
-      name: '蓝白控制 (WU Control)',
-      format: '薪传',
-      wins: 8,
-      losses: 7,
-      updated: '昨天',
-    },
-    {
-      name: '勇得中速 (Jund Midrange)',
-      format: '摩登',
-      wins: 15,
-      losses: 5,
-      updated: '3天前',
-    },
-  ]
+  interface HomeDeck {
+    id: string
+    name: string
+    format: string | null
+    wins: number
+    losses: number
+    updated: string
+  }
+
+  let recentDecks = $state<HomeDeck[]>([])
 
   const quickTools = [
     {
@@ -67,6 +54,23 @@
   onMount(async () => {
     try {
       await getCardCount()
+    } catch (error) {}
+    try {
+      const { decks } = await getDeckList()
+      const stats = await getMatchStatsForDecks(decks.map((d) => d.id))
+      recentDecks = decks
+        .slice(0, 5)
+        .map((d) => {
+          const s = stats.get(d.id)
+          return {
+            id: d.id,
+            name: d.name,
+            format: d.format,
+            wins: s?.wins ?? 0,
+            losses: s?.losses ?? 0,
+            updated: d.updated_at ? getRelativeTime(d.updated_at) : '未知',
+          }
+        })
     } catch (error) {}
   })
 </script>
@@ -125,10 +129,12 @@
     <div class="deck-list">
       {#each recentDecks as deck}
         <!-- svelte-ignore a11y_invalid_attribute -->
-        <a href="#" class="deck-item">
+        <a href="/decks/{deck.id}" class="deck-item">
           <div class="deck-main">
             <span class="deck-name">{deck.name}</span>
-            <span class="deck-format">{deck.format}</span>
+            {#if deck.format}
+              <span class="deck-format">{deck.format}</span>
+            {/if}
           </div>
           <div class="deck-stats">
             <span class="stat win">{deck.wins}胜</span>
@@ -136,6 +142,8 @@
             <span class="stat time">{deck.updated}</span>
           </div>
         </a>
+      {:else}
+        <p class="deck-empty">暂无卡组，去创建一个吧。</p>
       {/each}
     </div>
   </section>
@@ -307,6 +315,14 @@
   }
   .deck-item:hover {
     background: var(--bg-secondary);
+  }
+
+  .deck-empty {
+    margin: 0;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
   }
 
   .deck-main {

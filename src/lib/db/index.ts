@@ -24,6 +24,14 @@ export type {
   CardWithPrint,
   DeckCard,
   SqliteDeck,
+  MatchRecord,
+  MatchGame,
+  SqliteMatchGame,
+  MatchSummary,
+  MatchWithGames,
+  MatchInput,
+  MatchGameInput,
+  MatchWinType,
 } from './types'
 
 // ==================== 配置 ====================
@@ -87,6 +95,16 @@ export { getVersion, saveVersion, clearVersion } from './repository/version-repo
 export { getTableCounts, getTableSizes } from './repository/stats'
 export { clearCardData } from './repository/maintenance'
 export * from './repository/deck-repository'
+export {
+  createMatch,
+  updateMatch,
+  getMatchById,
+  getMatchesByDeck,
+  deleteMatch,
+  getDeckMatchStats,
+  getMatchStatsForDecks,
+  getMatchGroups,
+} from './repository/match-record-repository'
 // ==================== 服务层 (Service) ====================
 export { searchCards } from './service/search-service'
 export { initializeDatabase } from './service/sync-service'

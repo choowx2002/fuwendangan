@@ -132,8 +132,50 @@ export const TABLE_DEFINITIONS = {
   )
   `,
 
+  match_records: `
+    CREATE TABLE IF NOT EXISTS match_records (
+      id TEXT PRIMARY KEY,
+      deck_id TEXT NOT NULL,
+      group_name TEXT,
+      opponent_name TEXT,
+      opponent_deck TEXT,
+      opp_legend_id TEXT,
+      opp_legend_print_id TEXT,
+      opp_legend_name TEXT,
+      opp_legend_image TEXT,
+      deck_version_id TEXT,
+      deck_version_number INTEGER,
+      best_of INTEGER,
+      note TEXT,
+      played_at TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE
+    )
+  `,
+
+  match_games: `
+    CREATE TABLE IF NOT EXISTS match_games (
+      id TEXT PRIMARY KEY,
+      match_id TEXT NOT NULL,
+      game_number INTEGER NOT NULL,
+      my_score INTEGER,
+      opp_score INTEGER,
+      win_type TEXT NOT NULL DEFAULT 'normal',
+      is_win INTEGER NOT NULL,
+      is_first INTEGER,
+      win_reason TEXT,
+      log TEXT,
+      created_at TEXT,
+      FOREIGN KEY(match_id) REFERENCES match_records(id) ON DELETE CASCADE,
+      UNIQUE(match_id, game_number)
+    )
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
+    DROP TABLE IF EXISTS match_games;
+    DROP TABLE IF EXISTS match_records;
     DROP TABLE IF EXISTS decks;
     DROP TABLE IF EXISTS deck_versions;
     DROP TABLE IF EXISTS deck_cards;

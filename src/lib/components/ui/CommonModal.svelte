@@ -10,6 +10,8 @@
     /** 点击遮罩是否关闭 */
     closeOnOverlay?: boolean
     footerCentered?: boolean
+    /** 自定义弹窗宽度 */
+    width?: string
     /** 关闭回调 */
     onclose?: () => void
     /** 自定义 header 区域（覆盖默认 title/subtitle） */
@@ -27,6 +29,7 @@
     closable = true,
     closeOnOverlay = true,
     footerCentered = false,
+    width,
     onclose,
     header,
     children,
@@ -59,6 +62,8 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       class="modal"
+      class:modal-wide={typeof width === 'string'}
+      style:width={width}
       role="dialog"
       aria-modal="true"
       aria-label={title || undefined}

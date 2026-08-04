@@ -15,6 +15,11 @@
     type DeckVersionCard,
     type CardBase,
     type CardPrint,
+    getDeckMatchStats,
+    getMatchesByDeck,
+    deleteMatch,
+    type MatchSummary,
+    type MatchWithGames,
   } from '$lib/db/index.js'
   import { DECK_FORMATS } from '$lib/decks/format'
   import {
@@ -32,7 +37,7 @@
   import { parseColorList } from '$lib/cards/utils/cost-curve-utils'
   import { isTauri, isWeb } from '$lib/db'
   import { writeText, writeImage } from '@tauri-apps/plugin-clipboard-manager'
-  import { save, open } from '@tauri-apps/plugin-dialog'
+  import { save, open, ask } from '@tauri-apps/plugin-dialog'
   import { writeTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
   import {
     buildProxyPdf,
@@ -51,6 +56,7 @@
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
+  import MatchRecordModal from '$lib/components/decks/MatchRecordModal.svelte'
   import {
     History,
     ChartPie,
@@ -65,6 +71,11 @@
     Square,
     Image as ImageIcon,
     X,
+    Swords,
+    Plus,
+    ChevronRight,
+    Trash2,
+    PencilLine,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -146,6 +157,30 @@
     runes: true,
     sideboard: true,
   })
+
+  let matchRecords = $state<MatchWithGames[]>([])
+  let matchStats = $state<MatchSummary | null>(null)
+  let showMatchModal = $state(false)
+  let editingMatch = $state<MatchWithGames | null>(null)
+  let expandedMatchIds = $state<Set<string>>(new Set())
+
+  function toggleMatchExpand(id: string) {
+    const next = new Set(expandedMatchIds)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    expandedMatchIds = next
+  }
+
+  function matchSummaryText(match: MatchWithGames): string {
+    const wins = match.games.filter((g) => g.is_win).length
+    const losses = match.games.filter((g) => !g.is_win).length
+    const draws = match.games.length - wins - losses
+    if (draws > 0) return `${wins} 胜 ${losses} 负 ${draws} 平`
+    return `${wins} : ${losses}`
+  }
 
   let imageSortList = $state<SortKeyItem[]>([
     { id: 1, name: 'card_color_list', isAsc: true, order: 1 },
@@ -306,7 +341,40 @@
     cards = await getLatestDeckCards(deckId)
     versions = await getDeckVersions(deckId)
     versionCards = await getDeckVersionCards(deckId)
+    await loadMatches(deckId)
   }
+
+  const loadMatches = async (deckId: string) => {
+    const [records, stats] = await Promise.all([
+      getMatchesByDeck(deckId),
+      getDeckMatchStats(deckId),
+    ])
+    matchRecords = records
+    matchStats = stats
+  }
+
+  function openCreateMatch() {
+    editingMatch = null
+    showMatchModal = true
+  }
+
+  function openEditMatch(match: MatchWithGames) {
+    editingMatch = match
+    showMatchModal = true
+  }
+
+  async function confirmDeleteMatch(match: MatchWithGames) {
+    const confirm = await ask(`确定删除这场对局吗？小局记录将一并删除。`, {
+      kind: 'warning',
+      okLabel: '删除',
+      cancelLabel: '取消',
+    })
+    if (!confirm) return
+    await deleteMatch(match.id)
+    await loadMatches(deck?.id ?? '')
+  }
+
+  const recentMatches = $derived(matchRecords.slice(0, 5))
 
   beforeNavigate(({ from, cancel, type, delta }) => {
     const isBackward = type === 'popstate' && delta && delta < 0
@@ -493,24 +561,32 @@
   const exportText = $derived(formatDeckExport(zoneCards))
   const deckCodeResult = $derived(buildDeckCode(zoneCards))
 
-  const shareFormats = $derived([
-    { id: 'text', label: '纯文本', description: '标准格式，便于分享或导入外部工具。' },
+  const shareFormats = [
+    {
+      id: 'text',
+      label: '纯文本',
+      description: '标准格式，便于分享或导入外部工具。',
+      support: ['export', 'copy'],
+    },
     {
       id: 'code',
-      label: 'Riftbound 卡组代码',
+      label: 'Piltover Archive卡组代码',
       description: '含主牌堆、符文、备牌与选定英雄，可导入 Piltover Archive 等工具。',
+      support: ['export', 'copy'],
     },
     {
       id: 'pdf',
       label: 'PROXY 打印 PDF',
       description: 'A4 竖版 3×3 代牌，含主牌堆、战场、符文与备牌，可打印裁剪。',
+      support: ['export'],
     },
     {
       id: 'image',
       label: '卡组图案',
       description: '生成卡组清单图片（英雄、符文与主/备牌），可导出 PNG 或复制到剪贴板。',
+      support: ['export', 'copy'],
     },
-  ])
+  ]
 
   function currentShareText(): string {
     if (shareFormat === 'code') return deckCodeResult.code ?? ''
@@ -771,6 +847,182 @@
   </header>
 
   <section class="analysis-dashboard">
+    <section class="match-section">
+      <div class="match-section-header">
+        <div class="match-section-title">
+          <Swords size={18} />
+          <h2>对局记录</h2>
+          {#if matchStats}
+            <span class="match-winrate-badge">
+              胜率 {matchStats.games > 0
+                ? Math.round((matchStats.wins / matchStats.games) * 100)
+                : 0}%
+            </span>
+          {/if}
+        </div>
+        <div class="match-section-actions">
+          <button
+            class="button button-ghost button-sm"
+            onclick={() => goto(`/decks/${page.params.deckid}/records`)}
+          >
+            查看全部 <ChevronRight size={14} />
+          </button>
+          <button class="button button-primary button-sm" onclick={openCreateMatch}>
+            <Plus size={14} /> 记录对局
+          </button>
+        </div>
+      </div>
+
+      {#if matchStats}
+        <div class="match-summary">
+          <div class="summary-item">
+            <span class="summary-value">{matchStats.matches}</span>
+            <span class="summary-label">场次</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value">{matchStats.games}</span>
+            <span class="summary-label">小局</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value summary-win">{matchStats.wins}</span>
+            <span class="summary-label">胜</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value summary-loss">{matchStats.losses}</span>
+            <span class="summary-label">负</span>
+          </div>
+          {#if matchStats.draws > 0}
+            <div class="summary-item">
+              <span class="summary-value">{matchStats.draws}</span>
+              <span class="summary-label">平</span>
+            </div>
+          {/if}
+          {#if matchStats.first_games > 0}
+            <div class="summary-item">
+              <span class="summary-value summary-win">
+                {Math.round((matchStats.first_wins / matchStats.first_games) * 100)}%
+              </span>
+              <span class="summary-label">先手胜率</span>
+            </div>
+          {/if}
+          {#if matchStats.second_games > 0}
+            <div class="summary-item">
+              <span class="summary-value summary-loss">
+                {Math.round((matchStats.second_wins / matchStats.second_games) * 100)}%
+              </span>
+              <span class="summary-label">后手胜率</span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      {#if recentMatches.length > 0}
+        <ul class="match-list">
+          {#each recentMatches as match (match.id)}
+            {@const expanded = expandedMatchIds.has(match.id)}
+            <li class="match-item">
+              <div
+                class="match-item-header"
+                role="presentation"
+                onclick={() => toggleMatchExpand(match.id)}
+              >
+                <span class="match-item-date">
+                  {match.played_at ? new Date(match.played_at).toLocaleDateString() : '未填日期'}
+                </span>
+                <span class="match-item-opponent">{match.opponent_name || '无名对手'}</span>
+                {#if match.group_name}
+                  <span class="match-group-badge">{match.group_name}</span>
+                {/if}
+                {#if match.best_of}
+                  <span class="match-bestof-badge">BO{match.best_of}</span>
+                {/if}
+                {#if match.deck_version_number}
+                  <span class="match-version-badge">v{match.deck_version_number.toFixed(1)}</span>
+                {/if}
+                <span class="match-item-result">{matchSummaryText(match)}</span>
+                <span class="match-item-chevron" class:rotate={expanded}>
+                  <ChevronRight size={14} />
+                </span>
+              </div>
+              {#if expanded}
+                <div class="match-item-detail">
+                  {#if match.note}
+                    <p class="match-note">{match.note}</p>
+                  {/if}
+                  {#if match.opp_legend_name}
+                    <div class="match-legend-row">
+                      <CardSimpleImage
+                        url={match.opp_legend_image}
+                        name={`${match.opp_legend_id ?? 'none'}-${match.opp_legend_print_id ?? 'none'}`}
+                        className="match-legend-thumb"
+                      />
+                      <span class="match-legend-label">对手传奇：</span>
+                      <span class="match-legend-name">{match.opp_legend_name}</span>
+                    </div>
+                  {/if}
+                  <ul class="game-list">
+                    {#each match.games as game (game.id)}
+                      <li class="game-item">
+                        <span class="game-number-badge">第 {game.game_number} 局</span>
+                        {#if game.is_first !== null}
+                          <span
+                            class="game-turn-badge"
+                            class:first={game.is_first}
+                            class:second={!game.is_first}
+                          >
+                            {game.is_first ? '先手' : '后手'}
+                          </span>
+                        {/if}
+                        <span class="game-score">
+                          {#if game.my_score !== null && game.opp_score !== null}
+                            {game.my_score} : {game.opp_score}
+                          {:else}
+                            未记比分
+                          {/if}
+                        </span>
+                        <span class="game-result" class:win={game.is_win} class:loss={!game.is_win}>
+                          {game.is_win ? '胜' : '负'}
+                        </span>
+                        {#if game.win_type === 'concede'}
+                          <span class="game-special-badge">对方认输</span>
+                        {:else if game.win_type === 'special'}
+                          <span class="game-special-badge special">特殊胜利</span>
+                        {/if}
+                        {#if game.win_reason}
+                          <span class="game-reason">{game.win_reason}</span>
+                        {/if}
+                      </li>
+                      {#if game.log}
+                        <li class="game-log">📝 {game.log}</li>
+                      {/if}
+                    {/each}
+                  </ul>
+                  <div class="match-item-actions">
+                    <button
+                      class="button button-text button-sm"
+                      onclick={() => openEditMatch(match)}
+                    >
+                      <PencilLine size={13} /> 编辑
+                    </button>
+                    <button
+                      class="button button-text button-sm"
+                      onclick={() => confirmDeleteMatch(match)}
+                    >
+                      <Trash2 size={13} /> 删除
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <div class="match-empty">
+          <p>还没有对局记录，点击「记录对局」开始记录你的第一场对局吧。</p>
+        </div>
+      {/if}
+    </section>
+
     <div class="analysis-card curve-card">
       <CostCurveChart cards={mainCards} />
     </div>
@@ -1102,32 +1354,33 @@
 <CommonModal
   open={showShareModal !== null}
   title={showShareModal === 'export' ? '导出卡组' : '复制卡组'}
-  subtitle="选择要导出/复制的格式"
   onclose={() => (showShareModal = null)}
 >
   <div class="share-format-list">
     {#each shareFormats as format (format.id)}
-      <button
-        type="button"
-        class="share-format-option"
-        class:selected={shareFormat === format.id}
-        onclick={() => {
-          shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image'
-          if (format.id === 'pdf') {
-            pdfZones = {
-              legend: true,
-              champion: true,
-              mainDeck: true,
-              battlefields: true,
-              runes: true,
-              sideboard: true,
+      {#if format.support.includes(showShareModal!)}
+        <button
+          type="button"
+          class="share-format-option"
+          class:selected={shareFormat === format.id}
+          onclick={() => {
+            shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image'
+            if (format.id === 'pdf') {
+              pdfZones = {
+                legend: true,
+                champion: true,
+                mainDeck: true,
+                battlefields: true,
+                runes: true,
+                sideboard: true,
+              }
             }
-          }
-        }}
-      >
-        <span class="share-format-label">{format.label}</span>
-        <span class="share-format-desc">{format.description}</span>
-      </button>
+          }}
+        >
+          <span class="share-format-label">{format.label}</span>
+          <span class="share-format-desc">{format.description}</span>
+        </button>
+      {/if}
     {/each}
   </div>
 
@@ -1462,6 +1715,14 @@
 
 <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
+<MatchRecordModal
+  open={showMatchModal}
+  deckId={deck?.id ?? ''}
+  editing={editingMatch}
+  onclose={() => (showMatchModal = false)}
+  onSaved={() => loadMatches(deck?.id ?? '')}
+/>
+
 <style>
   .deck-builder-container {
     max-width: 1280px;
@@ -1786,6 +2047,7 @@
     width: 100%;
     padding: unset;
     margin: unset;
+    border: unset;
   }
 
   .card-zone h3 {
@@ -1960,7 +2222,7 @@
 
   .landscape-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-width: 640px;
+    /* max-width: 640px; */
     margin: 0 auto;
   }
 
@@ -2200,9 +2462,11 @@
   }
 
   @media (max-width: 900px) {
+    .sim-card,
     .curve-card {
       grid-column: span 1;
     }
+
     .hero-card-slot {
       grid-template-columns: 1fr 1fr 1fr;
     }
@@ -2674,5 +2938,332 @@
   .edit-info-tag-input-wrap {
     display: flex;
     gap: 8px;
+  }
+
+  .match-section {
+    grid-column: 1 / -1;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+  }
+
+  .match-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  :global(.match-legend-thumb) {
+    width: 28px;
+    height: 38px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .match-legend-label {
+    color: var(--text-secondary);
+  }
+
+  .match-legend-name {
+    font-weight: 600;
+  }
+
+  .match-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .match-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .match-section-title h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+  }
+
+  .match-section-title :global(svg) {
+    color: var(--accent-color, #4f46e5);
+  }
+
+  .match-winrate-badge {
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent-color, #4f46e5) 12%, transparent);
+  }
+
+  .match-section-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .match-summary {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+    padding: 14px 18px;
+    background: var(--bg-hover);
+    border-radius: 10px;
+  }
+
+  .summary-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .summary-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .summary-value.summary-win {
+    color: #16a34a;
+  }
+
+  .summary-value.summary-loss {
+    color: #dc2626;
+  }
+
+  .summary-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .match-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .match-item {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-primary);
+  }
+
+  .match-item-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+
+  .match-item-header:hover {
+    background: var(--bg-hover);
+  }
+
+  .match-item-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .match-item-opponent {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .match-group-badge,
+  .match-bestof-badge {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .match-group-badge {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent-color, #4f46e5) 14%, transparent);
+  }
+
+  .match-bestof-badge {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+  }
+
+  .match-version-badge {
+    font-size: var(--text-sm);
+    padding: 2px 5px;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent-color, #4f46e5) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-color, #4f46e5) 25%, transparent);
+  }
+
+  .game-turn-badge {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .game-turn-badge.first {
+    color: #fff;
+    background: #2563eb;
+  }
+
+  .game-turn-badge.second {
+    color: #fff;
+    background: #ea580c;
+  }
+
+  .match-item-result {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
+  .match-item-header :global(svg) {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .match-item-chevron {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+  }
+
+  .match-item-chevron.rotate {
+    transform: rotate(90deg);
+  }
+
+  .match-item-detail {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+  }
+
+  .match-note {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .game-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .game-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+
+  .game-number-badge {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    white-space: nowrap;
+  }
+
+  .game-score {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .game-result {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .game-result.win {
+    color: #fff;
+    background: #16a34a;
+  }
+
+  .game-result.loss {
+    color: #fff;
+    background: #dc2626;
+  }
+
+  .game-special-badge {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    color: #92400e;
+    background: #fef3c7;
+    white-space: nowrap;
+  }
+
+  .game-special-badge.special {
+    color: #7c3aed;
+    background: #ede9fe;
+  }
+
+  .game-reason {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .game-log {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    padding: 4px 0 2px 42px;
+    white-space: pre-wrap;
+  }
+
+  .match-item-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 10px;
+  }
+
+  .match-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    background: var(--bg-hover);
+    border-radius: 10px;
+    margin-top: 16px;
   }
 </style>

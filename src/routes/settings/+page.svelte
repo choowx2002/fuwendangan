@@ -17,6 +17,7 @@
     clearVersion,
     getDeckVersions,
     getDeckVersionCards,
+    getMatchesByDeck,
     getDatabase,
     closeDatabase,
     importDecksFromJson,
@@ -392,6 +393,7 @@
         type: 'decks-export',
         exportMode,
         exportedAt: new Date().toISOString(),
+        matchRecords: true,
         decks: [] as unknown[],
       }
 
@@ -422,9 +424,36 @@
           ]
         }
 
+        const matches = await getMatchesByDeck(deck.id)
         data.decks.push({
           ...deck,
           versions: picked,
+          matches: matches.map((m) => ({
+            group_name: m.group_name,
+            opponent_name: m.opponent_name,
+            opponent_deck: m.opponent_deck,
+            opp_legend_id: m.opp_legend_id,
+            opp_legend_print_id: m.opp_legend_print_id,
+            opp_legend_name: m.opp_legend_name,
+            opp_legend_image: m.opp_legend_image,
+            deck_version_id: m.deck_version_id,
+            deck_version_number: m.deck_version_number,
+            best_of: m.best_of,
+            note: m.note,
+            played_at: m.played_at,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+            games: m.games.map((g) => ({
+              game_number: g.game_number,
+              my_score: g.my_score,
+              opp_score: g.opp_score,
+              win_type: g.win_type,
+              is_win: g.is_win,
+              is_first: g.is_first,
+              win_reason: g.win_reason,
+              log: g.log,
+            })),
+          })),
         })
       }
 
@@ -467,6 +496,43 @@
             })),
         }))
 
+      const cleanMatches = (Array.isArray(d.matches) ? d.matches : [])
+        .filter((m: any) => m && Array.isArray(m.games) && m.games.length > 0)
+        .map((m: any) => ({
+          group_name: m.group_name ?? null,
+          opponent_name: m.opponent_name ?? null,
+          opponent_deck: m.opponent_deck ?? null,
+          opp_legend_id: m.opp_legend_id ?? null,
+          opp_legend_print_id: m.opp_legend_print_id ?? null,
+          opp_legend_name: m.opp_legend_name ?? null,
+          opp_legend_image: m.opp_legend_image ?? null,
+          deck_version_id: m.deck_version_id ?? null,
+          deck_version_number:
+            typeof m.deck_version_number === 'number' ? m.deck_version_number : null,
+          best_of: typeof m.best_of === 'number' ? m.best_of : null,
+          note: m.note ?? null,
+          played_at: m.played_at ?? null,
+          created_at: m.created_at ?? null,
+          updated_at: m.updated_at ?? null,
+          games: m.games
+            .filter((g: any) => g && typeof g.game_number === 'number')
+            .map((g: any) => ({
+              game_number: g.game_number,
+              my_score: g.my_score ?? null,
+              opp_score: g.opp_score ?? null,
+              win_type: g.win_type ?? 'normal',
+              is_win: !!g.is_win,
+              is_first:
+                g.is_first === true || g.is_first === 1
+                  ? true
+                  : g.is_first === false || g.is_first === 0
+                    ? false
+                    : null,
+              win_reason: g.win_reason ?? null,
+              log: g.log ?? null,
+            })),
+        }))
+
       decks.push({
         name: d.name,
         description: d.description ?? null,
@@ -479,6 +545,7 @@
         created_at: d.created_at ?? null,
         updated_at: d.updated_at ?? null,
         versions: cleanVersions,
+        matches: cleanMatches,
       })
     }
     return decks

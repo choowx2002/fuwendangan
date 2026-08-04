@@ -2,10 +2,11 @@
  * 卡组数据仓储层
  */
 
-import type { Deck } from '../types'
+import type { Deck, MatchWinType } from '../types'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
 import { parseTags, serializeTags } from '../helper'
+import { createMatch } from './match-record-repository'
 import { Snowflake } from '@theinternetfolks/snowflake'
 
 export interface DeckInput {
@@ -840,6 +841,34 @@ export interface ImportDeckPayload {
       zone: string
     }[]
   }[]
+  matches?: ImportMatchPayload[]
+}
+
+export interface ImportMatchPayload {
+  group_name?: string | null
+  opponent_name?: string | null
+  opponent_deck?: string | null
+  opp_legend_id?: string | null
+  opp_legend_print_id?: string | null
+  opp_legend_name?: string | null
+  opp_legend_image?: string | null
+  deck_version_id?: string | null
+  deck_version_number?: number | null
+  best_of?: number | null
+  note?: string | null
+  played_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  games: {
+    game_number: number
+    my_score: number | null
+    opp_score: number | null
+    win_type: MatchWinType
+    is_win: boolean
+    is_first?: boolean | null
+    win_reason?: string | null
+    log?: string | null
+  }[]
 }
 
 export interface ImportDecksResult {
@@ -905,8 +934,10 @@ export async function importDecksFromJson(
       versions = versions.filter((v) => v.version_number === maxVersion)
     }
 
+    const versionIdByNumber = new Map<number, string>()
     for (const version of versions) {
       const versionId = Snowflake.generate()
+      versionIdByNumber.set(version.version_number, versionId)
       await db.execute(
         `INSERT INTO ${TABLES.DECK_VERSIONS} (id, deck_id, version_number, note, created_at)
          VALUES (?, ?, ?, ?, ?)`,
@@ -951,6 +982,61 @@ export async function importDecksFromJson(
           ]
         )
       }
+    }
+
+    const matches = deck.matches ?? []
+    for (const match of matches) {
+      const games = (match.games ?? [])
+        .filter((g) => g && typeof g.game_number === 'number')
+        .map((g) => {
+          const rawFirst = g.is_first as boolean | number | null | undefined
+          return {
+            game_number: g.game_number,
+            my_score: g.my_score ?? null,
+            opp_score: g.opp_score ?? null,
+            win_type: g.win_type ?? 'normal',
+            is_win: !!g.is_win,
+            is_first:
+              rawFirst === true || rawFirst === 1
+                ? true
+                : rawFirst === false || rawFirst === 0
+                  ? false
+                  : null,
+            win_reason: g.win_reason ?? null,
+            log: g.log ?? null,
+          }
+        })
+      if (games.length === 0) continue
+
+      let resolvedVersionId: string | null = null
+      let resolvedVersionNumber: number | null = null
+      if (match.deck_version_number != null && versionIdByNumber.has(match.deck_version_number)) {
+        resolvedVersionId = versionIdByNumber.get(match.deck_version_number) ?? null
+        resolvedVersionNumber = match.deck_version_number
+      } else if (versionIdByNumber.size > 0) {
+        const maxNum = Math.max(...versionIdByNumber.keys())
+        resolvedVersionId = versionIdByNumber.get(maxNum) ?? null
+        resolvedVersionNumber = maxNum
+      }
+
+      await createMatch(
+        {
+          deck_id: deckId,
+          group_name: match.group_name ?? null,
+          opponent_name: match.opponent_name ?? null,
+          opponent_deck: match.opponent_deck ?? null,
+          opp_legend_id: match.opp_legend_id ?? null,
+          opp_legend_print_id: match.opp_legend_print_id ?? null,
+          opp_legend_name: match.opp_legend_name ?? null,
+          opp_legend_image: match.opp_legend_image ?? null,
+          deck_version_id: resolvedVersionId,
+          deck_version_number: resolvedVersionNumber,
+          best_of: match.best_of ?? null,
+          note: match.note ?? null,
+          played_at: match.played_at ?? null,
+        },
+        games
+      )
     }
 
     imported++

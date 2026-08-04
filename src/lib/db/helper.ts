@@ -66,6 +66,7 @@ export function toSqliteModel(card: CardBase): SqliteCardBase {
 export interface BestPrint {
   url: string
   fallbackUrl: string | null
+  id: string | null
 }
 
 /**
@@ -95,6 +96,7 @@ export function getBestPrint(card: CardBase & { card_prints?: CardPrint[] }): Be
   return {
     url: best.img_cdn || '',
     fallbackUrl: best.tts_cdn || null,
+    id: best.id || null,
   }
 }
 

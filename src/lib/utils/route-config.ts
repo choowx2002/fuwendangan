@@ -19,4 +19,5 @@ export const routeBackConfig: Record<string, RouteConfig> = {
 
   // 可以扩展嵌套页面
   '/decks/builder': { backTo: '/decks', description: '编辑卡组 → 我的卡组' },
+  '/decks/:deckid/records': { backTo: '/decks', description: '对局记录 → 我的卡组' },
 }

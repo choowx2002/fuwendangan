@@ -6,6 +6,7 @@
     duplicateDeck,
     getDeckList,
     toggleFavorite,
+    getMatchStatsForDecks,
     type DeckListResult,
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
@@ -15,6 +16,7 @@
   import { onMount } from 'svelte'
 
   let allDecks = $state<DeckListResult[]>([])
+  let matchStatsMap = $state<Map<string, import('$lib/db/types').MatchSummary>>(new Map())
 
   let searchQuery = $state('')
   let selectedFormat = $state('全部')
@@ -133,6 +135,7 @@
   const init = async () => {
     const { decks } = await getDeckList()
     allDecks = decks
+    matchStatsMap = await getMatchStatsForDecks(decks.map((d) => d.id))
   }
 
   onMount(() => {
@@ -268,6 +271,7 @@
   {:else}
     <div class="decks-grid">
       {#each filteredDecks as deck (deck.id)}
+        {@const s = matchStatsMap.get(deck.id)}
         <div
           class="deck-card"
           class:favorite={deck.is_favorite}
@@ -299,9 +303,13 @@
             <div class="stat-item">
               <span class="stat-label">战绩</span>
               <span class="stat-value record">
-                <span class="win">1</span>
-                <span class="separator">-</span>
-                <span class="loss">0</span>
+                {#if s && s.games > 0}
+                  <span class="win">{s.wins}</span>
+                  <span class="separator">-</span>
+                  <span class="loss">{s.losses}</span>
+                {:else}
+                  <span class="muted">-</span>
+                {/if}
               </span>
             </div>
             <div class="stat-item" title={new Date(deck.updated_at!).toLocaleString()}>
@@ -631,6 +639,10 @@
   .stat-value .separator {
     color: var(--text-tertiary);
     font-weight: 400;
+  }
+
+  .stat-value .muted {
+    color: var(--text-tertiary);
   }
 
   .stat-value.time {

@@ -267,3 +267,97 @@ export interface RuleBooks {
 export interface TreeNode extends Rule {
   children: TreeNode[]
 }
+
+// ==================== 对局记录 ====================
+
+export type MatchWinType = 'normal' | 'concede' | 'special'
+
+// 一场对局（可能包含多场小局，如 BO3）
+export interface MatchRecord {
+  id: string
+  deck_id: string
+  group_name: string | null
+  opponent_name: string | null
+  opponent_deck: string | null
+  opp_legend_id: string | null
+  opp_legend_print_id: string | null
+  opp_legend_name: string | null
+  opp_legend_image: string | null
+  deck_version_id: string | null
+  deck_version_number: number | null
+  best_of: number | null
+  note: string | null
+  played_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SqliteMatchRecord extends MatchRecord {}
+
+// 一小局
+export interface MatchGame {
+  id: string
+  match_id: string
+  game_number: number
+  my_score: number | null
+  opp_score: number | null
+  win_type: MatchWinType
+  is_win: boolean
+  is_first: boolean | null
+  win_reason: string | null
+  log: string | null
+  created_at: string | null
+}
+
+export interface SqliteMatchGame extends Omit<MatchGame, 'is_win' | 'is_first'> {
+  is_win: number
+  is_first: number | null
+}
+
+// 对局统计摘要
+export interface MatchSummary {
+  deck_id: string
+  matches: number
+  games: number
+  wins: number
+  losses: number
+  draws: number
+  first_games: number
+  first_wins: number
+  second_games: number
+  second_wins: number
+}
+
+// 单场对局（含小局）聚合
+export interface MatchWithGames extends MatchRecord {
+  games: MatchGame[]
+}
+
+// 创建对局输入
+export interface MatchInput {
+  deck_id: string
+  group_name?: string | null
+  opponent_name?: string | null
+  opponent_deck?: string | null
+  opp_legend_id?: string | null
+  opp_legend_print_id?: string | null
+  opp_legend_name?: string | null
+  opp_legend_image?: string | null
+  deck_version_id?: string | null
+  deck_version_number?: number | null
+  best_of?: number | null
+  note?: string | null
+  played_at?: string | null
+}
+
+// 创建小局输入
+export interface MatchGameInput {
+  game_number: number
+  my_score: number | null
+  opp_score: number | null
+  win_type: MatchWinType
+  is_win: boolean
+  is_first: boolean | null
+  win_reason?: string | null
+  log?: string | null
+}

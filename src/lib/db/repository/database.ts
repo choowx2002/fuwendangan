@@ -37,8 +37,57 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.deck_cards)
   await db.execute(TABLE_DEFINITIONS.rules)
   await db.execute(TABLE_DEFINITIONS.version)
+  await db.execute(TABLE_DEFINITIONS.match_records)
+  await db.execute(TABLE_DEFINITIONS.match_games)
+  await migrateMatchRecordsOppLegend(db)
+  await migrateMatchRecordsDeckVersion(db)
+  await migrateMatchGamesIsFirst(db)
   await migrateDeckCardsPrintCode(db)
   await migrateDecksTags(db)
+}
+
+/**
+ * 迁移：为 match_records 增加对手传奇快照列（老库补列）
+ */
+async function migrateMatchRecordsOppLegend(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(match_records)`)
+  const additions: Record<string, string> = {
+    opp_legend_id: 'TEXT',
+    opp_legend_print_id: 'TEXT',
+    opp_legend_name: 'TEXT',
+    opp_legend_image: 'TEXT',
+  }
+  for (const [name, type] of Object.entries(additions)) {
+    if (!cols.some((c) => c.name === name)) {
+      await db.execute(`ALTER TABLE match_records ADD COLUMN ${name} ${type}`)
+    }
+  }
+}
+
+/**
+ * 迁移：为 match_records 增加卡组版本关联列（老库补列）
+ */
+async function migrateMatchRecordsDeckVersion(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(match_records)`)
+  const additions: Record<string, string> = {
+    deck_version_id: 'TEXT',
+    deck_version_number: 'INTEGER',
+  }
+  for (const [name, type] of Object.entries(additions)) {
+    if (!cols.some((c) => c.name === name)) {
+      await db.execute(`ALTER TABLE match_records ADD COLUMN ${name} ${type}`)
+    }
+  }
+}
+
+/**
+ * 迁移：为 match_games 增加先手标记列（1=我方先手，0=对方先手，老库补列）
+ */
+async function migrateMatchGamesIsFirst(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(match_games)`)
+  if (!cols.some((c) => c.name === 'is_first')) {
+    await db.execute(`ALTER TABLE match_games ADD COLUMN is_first INTEGER`)
+  }
 }
 
 /**
