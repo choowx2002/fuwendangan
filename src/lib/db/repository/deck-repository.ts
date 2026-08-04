@@ -1057,7 +1057,12 @@ export async function repointDeckCardReferences(): Promise<number> {
   const db = await getDatabase()
 
   const prints = await db.select<
-    { id: string; card_no_extend: string | null; language: string | null; print_order: number | null }[]
+    {
+      id: string
+      card_no_extend: string | null
+      language: string | null
+      print_order: number | null
+    }[]
   >(
     `SELECT id, card_no_extend, language, print_order FROM ${TABLES.CARD_PRINTS}
      ORDER BY (language = 'SC') DESC, print_order ASC`
@@ -1116,10 +1121,11 @@ export async function repointDeckCardReferences(): Promise<number> {
     const keeper = list.find((r) => r.card_id === targetId) ?? list[0]
     const sumQuantity = list.reduce((sum, r) => sum + r.quantity, 0)
 
-    await db.execute(
-      `UPDATE ${TABLES.DECK_CARDS} SET card_id = ?, quantity = ? WHERE id = ?`,
-      [targetId, sumQuantity, keeper.id]
-    )
+    await db.execute(`UPDATE ${TABLES.DECK_CARDS} SET card_id = ?, quantity = ? WHERE id = ?`, [
+      targetId,
+      sumQuantity,
+      keeper.id,
+    ])
     for (const r of list) {
       if (r.id !== keeper.id) {
         await db.execute(`DELETE FROM ${TABLES.DECK_CARDS} WHERE id = ?`, [r.id])

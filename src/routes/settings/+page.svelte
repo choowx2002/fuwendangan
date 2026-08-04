@@ -538,9 +538,7 @@
         description: d.description ?? null,
         format: d.format ?? null,
         cover_image: d.cover_image ?? null,
-        tags: Array.isArray(d.tags)
-          ? d.tags.filter((t: any) => typeof t === 'string')
-          : [],
+        tags: Array.isArray(d.tags) ? d.tags.filter((t: any) => typeof t === 'string') : [],
         is_favorite: !!d.is_favorite,
         created_at: d.created_at ?? null,
         updated_at: d.updated_at ?? null,

@@ -80,33 +80,73 @@ export async function createMatch(input: MatchInput, games: MatchGameInput[]): P
 /**
  * 更新一场对局（更新场次信息并重建小局）
  */
-export async function updateMatch(matchId: string, input: Partial<MatchInput>, games: MatchGameInput[]): Promise<boolean> {
+export async function updateMatch(
+  matchId: string,
+  input: Partial<MatchInput>,
+  games: MatchGameInput[]
+): Promise<boolean> {
   const db = await getDatabase()
   const fields: string[] = []
   const params: any[] = []
 
-  if (input.deck_id !== undefined) { fields.push(`deck_id = ?`); params.push(input.deck_id) }
-  if (input.group_name !== undefined) { fields.push(`group_name = ?`); params.push(input.group_name ?? null) }
-  if (input.opponent_name !== undefined) { fields.push(`opponent_name = ?`); params.push(input.opponent_name ?? null) }
-  if (input.opponent_deck !== undefined) { fields.push(`opponent_deck = ?`); params.push(input.opponent_deck ?? null) }
-  if (input.opp_legend_id !== undefined) { fields.push(`opp_legend_id = ?`); params.push(input.opp_legend_id ?? null) }
-  if (input.opp_legend_print_id !== undefined) { fields.push(`opp_legend_print_id = ?`); params.push(input.opp_legend_print_id ?? null) }
-  if (input.opp_legend_name !== undefined) { fields.push(`opp_legend_name = ?`); params.push(input.opp_legend_name ?? null) }
-  if (input.opp_legend_image !== undefined) { fields.push(`opp_legend_image = ?`); params.push(input.opp_legend_image ?? null) }
-  if (input.deck_version_id !== undefined) { fields.push(`deck_version_id = ?`); params.push(input.deck_version_id ?? null) }
-  if (input.deck_version_number !== undefined) { fields.push(`deck_version_number = ?`); params.push(input.deck_version_number ?? null) }
-  if (input.best_of !== undefined) { fields.push(`best_of = ?`); params.push(input.best_of ?? null) }
-  if (input.note !== undefined) { fields.push(`note = ?`); params.push(input.note ?? null) }
-  if (input.played_at !== undefined) { fields.push(`played_at = ?`); params.push(input.played_at ?? null) }
+  if (input.deck_id !== undefined) {
+    fields.push(`deck_id = ?`)
+    params.push(input.deck_id)
+  }
+  if (input.group_name !== undefined) {
+    fields.push(`group_name = ?`)
+    params.push(input.group_name ?? null)
+  }
+  if (input.opponent_name !== undefined) {
+    fields.push(`opponent_name = ?`)
+    params.push(input.opponent_name ?? null)
+  }
+  if (input.opponent_deck !== undefined) {
+    fields.push(`opponent_deck = ?`)
+    params.push(input.opponent_deck ?? null)
+  }
+  if (input.opp_legend_id !== undefined) {
+    fields.push(`opp_legend_id = ?`)
+    params.push(input.opp_legend_id ?? null)
+  }
+  if (input.opp_legend_print_id !== undefined) {
+    fields.push(`opp_legend_print_id = ?`)
+    params.push(input.opp_legend_print_id ?? null)
+  }
+  if (input.opp_legend_name !== undefined) {
+    fields.push(`opp_legend_name = ?`)
+    params.push(input.opp_legend_name ?? null)
+  }
+  if (input.opp_legend_image !== undefined) {
+    fields.push(`opp_legend_image = ?`)
+    params.push(input.opp_legend_image ?? null)
+  }
+  if (input.deck_version_id !== undefined) {
+    fields.push(`deck_version_id = ?`)
+    params.push(input.deck_version_id ?? null)
+  }
+  if (input.deck_version_number !== undefined) {
+    fields.push(`deck_version_number = ?`)
+    params.push(input.deck_version_number ?? null)
+  }
+  if (input.best_of !== undefined) {
+    fields.push(`best_of = ?`)
+    params.push(input.best_of ?? null)
+  }
+  if (input.note !== undefined) {
+    fields.push(`note = ?`)
+    params.push(input.note ?? null)
+  }
+  if (input.played_at !== undefined) {
+    fields.push(`played_at = ?`)
+    params.push(input.played_at ?? null)
+  }
 
   if (fields.length > 0) {
     fields.push(`updated_at = ?`)
     params.push(now())
     params.push(matchId)
-    await db.execute(
-      `UPDATE ${TABLES.MATCH_RECORDS} SET ${fields.join(', ')} WHERE id = ?`,
-      params
-    )
+    await db.execute(`UPDATE ${TABLES.MATCH_RECORDS} SET ${fields.join(', ')} WHERE id = ?`, params)
   }
 
   await db.execute(`DELETE FROM ${TABLES.MATCH_GAMES} WHERE match_id = ?`, [matchId])
@@ -274,7 +314,17 @@ export async function getMatchStatsForDecks(deckIds: string[]): Promise<Map<stri
   }
 
   const gameRows = await db.select<
-    { deck_id: string; games: number; wins: number; losses: number; draws: number; first_games: number; first_wins: number; second_games: number; second_wins: number }[]
+    {
+      deck_id: string
+      games: number
+      wins: number
+      losses: number
+      draws: number
+      first_games: number
+      first_wins: number
+      second_games: number
+      second_wins: number
+    }[]
   >(
     `SELECT r.deck_id,
             COUNT(g.id) as games,
@@ -312,12 +362,33 @@ export async function getMatchStatsForDecks(deckIds: string[]): Promise<Map<stri
 /**
  * 统计单卡组小局汇总
  */
-async function getGameAggregates(deckId: string): Promise<
-  Pick<MatchSummary, 'games' | 'wins' | 'losses' | 'draws' | 'first_games' | 'first_wins' | 'second_games' | 'second_wins'>
+async function getGameAggregates(
+  deckId: string
+): Promise<
+  Pick<
+    MatchSummary,
+    | 'games'
+    | 'wins'
+    | 'losses'
+    | 'draws'
+    | 'first_games'
+    | 'first_wins'
+    | 'second_games'
+    | 'second_wins'
+  >
 > {
   const db = await getDatabase()
   const rows = await db.select<
-    { games: number; wins: number; losses: number; draws: number; first_games: number; first_wins: number; second_games: number; second_wins: number }[]
+    {
+      games: number
+      wins: number
+      losses: number
+      draws: number
+      first_games: number
+      first_wins: number
+      second_games: number
+      second_wins: number
+    }[]
   >(
     `SELECT COUNT(g.id) as games,
             COALESCE(SUM(CASE WHEN g.is_win = 1 THEN 1 ELSE 0 END), 0) as wins,

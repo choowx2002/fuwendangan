@@ -24,18 +24,24 @@
       label: '生命计数器',
       desc: '双人对战计分',
       color: '#e03e3e',
+      href: '/tools',
+      disabled: false,
     },
     {
       icon: Coins,
       label: '掷币/掷骰',
       desc: '随机数生成',
       color: '#d9730d',
+      href: '/tools',
+      disabled: false,
     },
     {
       icon: TrendingUp,
       label: '胜率统计',
       desc: '查看近期战绩',
       color: '#0f7b6c',
+      href: '',
+      disabled: true,
     },
   ]
 
@@ -58,19 +64,17 @@
     try {
       const { decks } = await getDeckList()
       const stats = await getMatchStatsForDecks(decks.map((d) => d.id))
-      recentDecks = decks
-        .slice(0, 5)
-        .map((d) => {
-          const s = stats.get(d.id)
-          return {
-            id: d.id,
-            name: d.name,
-            format: d.format,
-            wins: s?.wins ?? 0,
-            losses: s?.losses ?? 0,
-            updated: d.updated_at ? getRelativeTime(d.updated_at) : '未知',
-          }
-        })
+      recentDecks = decks.slice(0, 5).map((d) => {
+        const s = stats.get(d.id)
+        return {
+          id: d.id,
+          name: d.name,
+          format: d.format,
+          wins: s?.wins ?? 0,
+          losses: s?.losses ?? 0,
+          updated: d.updated_at ? getRelativeTime(d.updated_at) : '未知',
+        }
+      })
     } catch (error) {}
   })
 </script>
@@ -106,16 +110,28 @@
     </div>
     <div class="tools-grid">
       {#each quickTools as tool}
-        <!-- svelte-ignore a11y_invalid_attribute -->
-        <a href="#" class="tool-card">
-          <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
-            <tool.icon size={22} />
+        {#if tool.disabled}
+          <div class="tool-card tool-card-disabled" title="暂未开放">
+            <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
+              <tool.icon size={22} />
+            </div>
+            <div class="tool-info">
+              <span class="tool-label">{tool.label}</span>
+              <span class="tool-desc">{tool.desc}</span>
+            </div>
+            <span class="tool-badge">暂未开放</span>
           </div>
-          <div class="tool-info">
-            <span class="tool-label">{tool.label}</span>
-            <span class="tool-desc">{tool.desc}</span>
-          </div>
-        </a>
+        {:else}
+          <a href={tool.href} class="tool-card">
+            <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
+              <tool.icon size={22} />
+            </div>
+            <div class="tool-info">
+              <span class="tool-label">{tool.label}</span>
+              <span class="tool-desc">{tool.desc}</span>
+            </div>
+          </a>
+        {/if}
       {/each}
     </div>
   </section>
@@ -267,6 +283,27 @@
     background: var(--bg-secondary);
     border-color: #d3d1cb;
     transform: translateY(-1px);
+  }
+
+  .tool-card-disabled {
+    opacity: 0.55;
+    position: relative;
+    cursor: not-allowed;
+  }
+  .tool-card-disabled:hover {
+    border-color: var(--border-color);
+    transform: none;
+  }
+
+  .tool-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    color: var(--text-tertiary);
   }
 
   .tool-icon {

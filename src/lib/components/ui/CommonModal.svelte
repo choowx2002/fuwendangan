@@ -63,7 +63,7 @@
     <div
       class="modal"
       class:modal-wide={typeof width === 'string'}
-      style:width={width}
+      style:width
       role="dialog"
       aria-modal="true"
       aria-label={title || undefined}

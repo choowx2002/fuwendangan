@@ -35,9 +35,7 @@
   const tagSuggestions = $derived.by(() => {
     if (!searchQuery.trim()) return []
     const q = searchQuery.trim().toLowerCase()
-    return allTags
-      .filter((t) => t.toLowerCase().includes(q) && !activeTags.includes(t))
-      .slice(0, 8)
+    return allTags.filter((t) => t.toLowerCase().includes(q) && !activeTags.includes(t)).slice(0, 8)
   })
 
   const filteredDecks = $derived(
