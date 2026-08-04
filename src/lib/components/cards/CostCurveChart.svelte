@@ -120,7 +120,6 @@
   .toggle-button-group {
     display: flex;
     gap: 2px;
-    padding: 2px;
     border-radius: var(--radius-sm);
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);

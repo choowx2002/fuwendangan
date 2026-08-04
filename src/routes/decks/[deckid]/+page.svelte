@@ -8,12 +8,15 @@
     getLatestDeckCards,
     getCardByPrintId,
     getPrintsByCardId,
+    updateDeck,
+    updateDeckVersionNote,
     type Deck,
     type DeckCardDetail,
     type DeckVersionCard,
     type CardBase,
     type CardPrint,
   } from '$lib/db/index.js'
+  import { DECK_FORMATS } from '$lib/decks/format'
   import {
     computeVersionDiff,
     computeTotalCards,
@@ -40,6 +43,7 @@
     buildDeckImage,
     downloadImageInWeb,
     writeImageToPath,
+    dataUrlToBytes,
     DECK_IMAGE_SORT_FIELDS,
   } from '$lib/services/deck-image-service'
   import SortModal from '$lib/components/cards/SortModal.svelte'
@@ -56,10 +60,10 @@
     Tag,
     Pencil,
     Download,
+    Settings2,
     Check,
     Square,
     Image as ImageIcon,
-    Type as TypeIcon,
     X,
   } from '@lucide/svelte'
 
@@ -89,16 +93,10 @@
     expandedVersions = next
   }
 
-  let imageModeItems = $state<Set<string>>(new Set())
-
-  function toggleDiffImage(key: string) {
-    const next = new Set(imageModeItems)
-    if (next.has(key)) {
-      next.delete(key)
-    } else {
-      next.add(key)
-    }
-    imageModeItems = next
+  function diffBadgeLabel(item: VersionDiffItem): string {
+    if (item.kind === 'increased') return `+${item.delta}`
+    if (item.kind === 'decreased') return `-${item.delta}`
+    return `×${item.qty}`
   }
 
   const versionRows = $derived.by(() => {
@@ -129,6 +127,15 @@
   let shareFormat = $state<'text' | 'code' | 'pdf' | 'image'>('text')
   let exporting = $state(false)
   let exportProgress = $state(0)
+  let showEditInfoModal = $state(false)
+  let editName = $state('')
+  let editDescription = $state('')
+  let editFormat = $state('')
+  let editFavorite = $state(false)
+  let savingInfo = $state(false)
+  let editingNoteVersionId = $state<string | null>(null)
+  let editNoteValue = $state('')
+  let savingNote = $state(false)
   let pdfZones = $state<Record<ZoneKey, boolean>>({
     legend: true,
     champion: true,
@@ -145,9 +152,17 @@
   ])
 
   const IMAGE_BG_PRESETS = ['#ffffff', '#f3f4f6', '#1f2937', '#111827']
+  const IMAGE_MASK_PRESETS = ['#1e3a8a', '#1d4ed8', '#111827', '#ffffff']
+  const IMAGE_TEXT_PRESETS = ['', '#111827', '#f9fafb', '#6b7280']
   let imageBgColor = $state('#ffffff')
   let imageBgImage = $state<string | null>(null)
   let imageBgOverlay = $state(55)
+  let imageMaskColor = $state('#1e3a8a')
+  let imageTextColor = $state('')
+  let imagePreviewUrl = $state<string | null>(null)
+  let imagePreviewing = $state(false)
+  let previewGenerated = false
+  let previewRegenTimer: ReturnType<typeof setTimeout> | undefined
   let bgFileInput = $state<HTMLInputElement | null>(null)
 
   async function pickBackgroundImage() {
@@ -199,6 +214,65 @@
 
   function togglePdfZone(zone: ZoneKey) {
     pdfZones = { ...pdfZones, [zone]: !pdfZones[zone] }
+  }
+
+  const editFormatOptions = $derived(() => {
+    const options: string[] = [...DECK_FORMATS]
+    if (deck?.format && !options.includes(deck.format)) {
+      options.unshift(deck.format)
+    }
+    return options
+  })
+
+  function openEditInfo() {
+    if (!deck) return
+    editName = deck.name
+    editDescription = deck.description ?? ''
+    editFormat = deck.format ?? ''
+    editFavorite = deck.is_favorite
+    showEditInfoModal = true
+  }
+
+  async function saveEditInfo() {
+    if (!deck || !editName.trim()) return
+    savingInfo = true
+    try {
+      await updateDeck(deck.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || null,
+        format: editFormat.trim() || null,
+        is_favorite: editFavorite ? 1 : 0,
+      })
+      const updated = await getDeckById(deck.id)
+      if (updated) deck = updated
+      showEditInfoModal = false
+    } catch (error) {
+      console.error('[DeckInfo] 保存卡组信息失败:', error)
+    } finally {
+      savingInfo = false
+    }
+  }
+
+  function openEditNote(version: DeckVersion) {
+    editingNoteVersionId = version.id
+    editNoteValue = version.note ?? ''
+    savingNote = false
+  }
+
+  async function saveEditNote() {
+    if (!editingNoteVersionId) return
+    savingNote = true
+    try {
+      await updateDeckVersionNote(editingNoteVersionId, editNoteValue.trim() || null)
+      versions = versions.map((v) =>
+        v.id === editingNoteVersionId ? { ...v, note: editNoteValue.trim() || null } : v
+      )
+      editingNoteVersionId = null
+    } catch (error) {
+      console.error('[DeckInfo] 保存版本备注失败:', error)
+    } finally {
+      savingNote = false
+    }
   }
 
   const init = async (deckId: string) => {
@@ -258,6 +332,24 @@
     const colors = parseColorList(card.card_color_list)
     return colors[0] ?? 'neutral'
   }
+
+  const mergedRunes = $derived.by(() => {
+    const map = new Map<string, { card: DeckCardDetail; quantity: number }>()
+    for (const slot of runeCards) {
+      const color = runeColorName(slot)
+      const existing = map.get(color)
+      if (existing) {
+        existing.quantity += slot.quantity
+      } else {
+        map.set(color, { card: slot, quantity: slot.quantity })
+      }
+    }
+    return [...map.entries()].map(([color, value]) => ({
+      color,
+      card: value.card,
+      quantity: value.quantity,
+    }))
+  })
 
   const compositionStats = $derived.by(() => {
     const mainTotal = zoneCounts.mainDeck
@@ -419,23 +511,67 @@
     return exportText.length > 0
   }
 
-  async function buildDeckImageDataUrl(): Promise<string> {
-    return await buildDeckImage({
+  function currentDeckBackground() {
+    return {
+      color: imageBgColor,
+      imageUrl: imageBgImage ?? undefined,
+      overlay: imageBgImage ? imageBgOverlay / 100 : undefined,
+      maskColor: imageMaskColor,
+    }
+  }
+
+  function currentDeckImageOptions() {
+    return {
       deckName: deck?.name,
       cards,
       sortRules: imageSortList,
-      background: {
-        color: imageBgColor,
-        imageUrl: imageBgImage ?? undefined,
-        overlay: imageBgImage ? imageBgOverlay / 100 : undefined,
-      },
+      background: currentDeckBackground(),
+      textColor: imageTextColor || undefined,
+    }
+  }
+
+  async function buildDeckImageDataUrl(): Promise<string> {
+    return await buildDeckImage({
+      ...currentDeckImageOptions(),
       onProgress: (p) => (exportProgress = p),
     })
   }
 
+  async function generateImagePreview() {
+    imagePreviewing = true
+    try {
+      imagePreviewUrl = await buildDeckImage(currentDeckImageOptions())
+      previewGenerated = true
+    } catch (error) {
+      console.error('[DeckImage] 生成预览失败:', error)
+      imagePreviewUrl = null
+    } finally {
+      imagePreviewing = false
+    }
+  }
+
+  function schedulePreviewRegen() {
+    if (!previewGenerated) return
+    if (previewRegenTimer) clearTimeout(previewRegenTimer)
+    previewRegenTimer = setTimeout(() => {
+      previewRegenTimer = undefined
+      generateImagePreview()
+    }, 500)
+  }
+
+  $effect(() => {
+    imageBgColor
+    imageBgImage
+    imageBgOverlay
+    imageMaskColor
+    imageTextColor
+    imageSortList
+    schedulePreviewRegen()
+  })
+
   async function copyDeckImage(dataUrl: string): Promise<void> {
     if (isTauri) {
-      await writeImage(dataUrl)
+      await writeImage(dataUrlToBytes(dataUrl))
       return
     }
     const blob = await (await fetch(dataUrl)).blob()
@@ -577,7 +713,7 @@
     <div class="deck-actions">
       <button
         class="button button-ghost"
-        title="复制套牌"
+        title="复制卡组"
         onclick={() => {
           shareFormat = 'text'
           showShareModal = 'copy'
@@ -593,110 +729,25 @@
         }}
       >
         <Download size={16} />
-        导出
+      </button>
+      <button class="button button-ghost" disabled={!deck} onclick={openEditInfo}>
+        <Pencil size={16} />
       </button>
       <button
         class="button button-primary"
         onclick={() => goto(`/decks/builder?deckId=${page.params.deckid}`)}
       >
-        <Pencil size={14} />
         编辑卡组
       </button>
     </div>
   </header>
-
-  <section class="hero-strip">
-    <div class="hero-cards">
-      <div class="hero-card-slot">
-        <h3>
-          {ZONE_CONFIG.legend.label}
-          <span class="count-badge">1 / {ZONE_CONFIG.legend.maxCount}</span>
-        </h3>
-        {#if legendCards[0]}
-          <button
-            type="button"
-            class="hero-card"
-            title={displayName(legendCards[0])}
-            onclick={() => openCardModal(legendCards[0])}
-          >
-            <div class="hero-card-img">
-              <CardSimpleImage
-                url={legendCards[0].img_cdn}
-                name={`${legendCards[0].card_base_id}-${legendCards[0].print_id}`}
-                isLandscape={false}
-              />
-            </div>
-          </button>
-        {:else}
-          <div class="hero-card hero-placeholder">该卡位为空</div>
-        {/if}
-      </div>
-
-      <div class="hero-card-slot">
-        <h3>
-          {ZONE_CONFIG.champion.label}
-          <span class="count-badge">1 / {ZONE_CONFIG.champion.maxCount}</span>
-        </h3>
-        {#if championCards[0]}
-          <button
-            type="button"
-            class="hero-card"
-            title={displayName(championCards[0])}
-            onclick={() => openCardModal(championCards[0])}
-          >
-            <div class="hero-card-img">
-              <CardSimpleImage
-                url={championCards[0].img_cdn}
-                name={`${championCards[0].card_base_id}-${championCards[0].print_id}`}
-                isLandscape={false}
-              />
-            </div>
-          </button>
-        {:else}
-          <div class="hero-card hero-placeholder">该卡位为空</div>
-        {/if}
-      </div>
-
-      <div class="runes-zone">
-        <h3>
-          {ZONE_CONFIG.runes.label}
-          <span class="count-badge">{runeCards.length} / {ZONE_CONFIG.runes.maxCount}</span>
-        </h3>
-        {#if runeCards.length > 0}
-          <ul class="rune-list">
-            {#each runeCards as slot, i (slot.card_id)}
-              {@const color = runeColorName(slot)}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <li class="rune-row" onclick={() => openCardModal(slot)}>
-                {#if color === 'neutral'}
-                  <span class="rune-icon-fallback" title={displayName(slot)}></span>
-                {:else}
-                  <img
-                    src={`/runes/${color}.svg`}
-                    alt={color}
-                    title={displayName(slot)}
-                    width="36"
-                    height="36"
-                  />
-                {/if}
-                <span class="rune-count">×{slot.quantity}</span>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <div class="hero-placeholder rune-placeholder">暂无符文</div>
-        {/if}
-      </div>
-    </div>
-  </section>
 
   <section class="analysis-dashboard">
     <div class="analysis-card curve-card">
       <CostCurveChart cards={mainCards} />
     </div>
 
-    <div class="analysis-card">
+    <!-- <div class="analysis-card">
       <div class="analysis-card-header">
         <ChartPie size={18} />
         <h3>卡牌构成</h3>
@@ -717,7 +768,7 @@
           ></div>
         </div>
       </div>
-    </div>
+    </div> -->
 
     <div class="analysis-card sim-card">
       <div class="analysis-card-header">
@@ -786,6 +837,102 @@
     </div>
   </section>
 
+  <section class="hero-strip">
+    <div class="hero-cards">
+      <div class="hero-card-slot">
+        {#if legendCards[0]}
+          <button
+            type="button"
+            class="hero-card"
+            title={displayName(legendCards[0])}
+            onclick={() => openCardModal(legendCards[0])}
+          >
+            <div class="hero-card-img">
+              <CardSimpleImage
+                url={legendCards[0].img_cdn}
+                name={`${legendCards[0].card_base_id}-${legendCards[0].print_id}`}
+                isLandscape={false}
+              />
+            </div>
+          </button>
+        {:else}
+          <div class="hero-card hero-placeholder">该卡位为空</div>
+        {/if}
+        {#if championCards[0]}
+          <button
+            type="button"
+            class="hero-card"
+            title={displayName(championCards[0])}
+            onclick={() => openCardModal(championCards[0])}
+          >
+            <div class="hero-card-img">
+              <CardSimpleImage
+                url={championCards[0].img_cdn}
+                name={`${championCards[0].card_base_id}-${championCards[0].print_id}`}
+                isLandscape={false}
+              />
+            </div>
+          </button>
+        {:else}
+          <div class="hero-card hero-placeholder">该卡位为空</div>
+        {/if}
+
+        {#if mergedRunes.length > 0}
+          <ul class="rune-list">
+            {#each mergedRunes as rune, i (rune.color)}
+              {@const color = rune.color}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+              <li class="rune-row" onclick={() => openCardModal(rune.card)}>
+                {#if color === 'neutral'}
+                  <span class="rune-icon-fallback" title={displayName(rune.card)}></span>
+                {:else}
+                  <img
+                    src={`/runes/${color}.svg`}
+                    alt={color}
+                    title={displayName(rune.card)}
+                    width="36"
+                    height="36"
+                  />
+                {/if}
+                <span class="rune-count">×{rune.quantity}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <div class="hero-placeholder rune-placeholder">暂无符文</div>
+        {/if}
+
+        {#if battlefieldCards.length > 0}
+          <section class="card-zone">
+            <ul class="card-grid landscape-grid">
+              {#each battlefieldCards as card}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <li class="card-item landscape-item" onclick={() => openCardModal(card)}>
+                  <!-- <div class="qty-badge">x{card.quantity}</div> -->
+                  <div class="card-img-wrapper landscape">
+                    <CardSimpleImage
+                      url={card.img_cdn}
+                      name={`${card.card_base_id}-${card.print_id}`}
+                      isLandscape={true}
+                    />
+                  </div>
+                  <!-- <div class="card-details">
+                    <span class="card-name">{card.card_name_cn}</span>
+                    {#if card.sub_title_cn}
+                      <span class="card-subtitle"> {card.sub_title_cn}</span>
+                    {/if}
+                  </div> -->
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+      </div>
+    </div>
+  </section>
+
   <div class="builder-layout">
     <main class="card-list-section">
       {#if mainCards.length > 0}
@@ -809,45 +956,12 @@
                     isLandscape={false}
                   />
                 </div>
-                <div class="card-details">
+                <!-- <div class="card-details">
                   <span class="card-name">{card.card_name_cn}</span>
                   {#if card.sub_title_cn}
                     <span class="card-subtitle"> {card.sub_title_cn}</span>
                   {/if}
-                </div>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      {#if battlefieldCards.length > 0}
-        <section class="card-zone">
-          <h3>
-            {ZONE_CONFIG.battlefields.label}
-            <span class="count-badge">
-              {zoneCounts.battlefields} / {ZONE_CONFIG.battlefields.maxCount}
-            </span>
-          </h3>
-          <ul class="card-grid landscape-grid">
-            {#each battlefieldCards as card}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <li class="card-item landscape-item" onclick={() => openCardModal(card)}>
-                <div class="qty-badge">x{card.quantity}</div>
-                <div class="card-img-wrapper landscape">
-                  <CardSimpleImage
-                    url={card.img_cdn}
-                    name={`${card.card_base_id}-${card.print_id}`}
-                    isLandscape={true}
-                  />
-                </div>
-                <div class="card-details">
-                  <span class="card-name">{card.card_name_cn}</span>
-                  {#if card.sub_title_cn}
-                    <span class="card-subtitle"> {card.sub_title_cn}</span>
-                  {/if}
-                </div>
+                </div> -->
               </li>
             {/each}
           </ul>
@@ -875,12 +989,12 @@
                     isLandscape={false}
                   />
                 </div>
-                <div class="card-details">
+                <!-- <div class="card-details">
                   <span class="card-name">{card.card_name_cn}</span>
                   {#if card.sub_title_cn}
                     <span class="card-subtitle"> {card.sub_title_cn}</span>
                   {/if}
-                </div>
+                </div> -->
               </li>
             {/each}
           </ul>
@@ -901,7 +1015,17 @@
                 >{new Date(row.version.created_at).toLocaleDateString()}</span
               >
             </div>
-            <div class="version-note">{row.version.note || '无备注'}</div>
+            <div class="version-note-row">
+              <div class="version-note">{row.version.note || '无备注'}</div>
+              <button
+                type="button"
+                class="icon-btn note-edit-btn"
+                title="编辑备注"
+                onclick={() => openEditNote(row.version)}
+              >
+                <Pencil size={13} />
+              </button>
+            </div>
             <div class="version-stats">总卡数: <strong>{row.totalCards}</strong></div>
             {#if row.isInitial}
               <div class="version-diff version-diff-initial">初始版本</div>
@@ -910,26 +1034,12 @@
             {:else}
               <ul class="version-diff">
                 {#each visibleDiff as item (row.version.id + item.kind + item.card_id)}
-                  {@const itemKey = `${row.version.id}:${item.kind}:${item.card_id}`}
-                  {@const imageMode = imageModeItems.has(itemKey)}
                   <li
                     class="diff-item"
                     class:diff-add={item.kind === 'added' || item.kind === 'increased'}
                     class:diff-remove={item.kind === 'removed' || item.kind === 'decreased'}
                   >
-                    <button
-                      class="diff-image-toggle"
-                      type="button"
-                      title={imageMode ? '显示文字' : '显示卡图'}
-                      onclick={() => toggleDiffImage(itemKey)}
-                    >
-                      {#if imageMode}
-                        <TypeIcon size={12} />
-                      {:else}
-                        <ImageIcon size={12} />
-                      {/if}
-                    </button>
-                    {#if imageMode}
+                    <div class="diff-image-wrap">
                       <div class="diff-image">
                         <CardSimpleImage
                           url={item.img_cdn}
@@ -937,19 +1047,8 @@
                           isLandscape={item.isLandscape}
                         />
                       </div>
-                    {:else}
-                      <span class="diff-text">
-                        {#if item.kind === 'added'}
-                          新增 {item.name} x{item.qty}
-                        {:else if item.kind === 'removed'}
-                          移除 {item.name} x{item.qty}
-                        {:else if item.kind === 'increased'}
-                          {item.name} +{item.delta}
-                        {:else}
-                          {item.name} -{item.delta}
-                        {/if}
-                      </span>
-                    {/if}
+                      <span class="diff-qty-badge">{diffBadgeLabel(item)}</span>
+                    </div>
                   </li>
                 {/each}
               </ul>
@@ -974,7 +1073,7 @@
 
 <CommonModal
   open={showShareModal !== null}
-  title={showShareModal === 'export' ? '导出套牌' : '复制套牌'}
+  title={showShareModal === 'export' ? '导出卡组' : '复制卡组'}
   subtitle="选择要导出/复制的格式"
   onclose={() => (showShareModal = null)}
 >
@@ -1033,6 +1132,29 @@
 
   {#if shareFormat === 'image'}
     <div class="image-sort-section">
+      <div class="image-sort-title">预览</div>
+      {#if imagePreviewUrl}
+        <div class="image-preview-box">
+          <img class="image-preview-img" src={imagePreviewUrl} alt="卡组图案预览" />
+          {#if imagePreviewing}
+            <div class="image-preview-loading">正在更新预览...</div>
+          {/if}
+        </div>
+      {:else}
+        <p class="image-sort-desc">先预览生成效果，再导出或复制。</p>
+        <button
+          type="button"
+          class="button button-secondary button-sm"
+          disabled={imagePreviewing || cards.length === 0}
+          onclick={generateImagePreview}
+        >
+          <ImageIcon size={14} />
+          {imagePreviewing ? '生成中...' : '生成预览'}
+        </button>
+      {/if}
+    </div>
+
+    <div class="image-sort-section">
       <div class="image-sort-title">背景</div>
       <div class="image-bg-color-row">
         {#each IMAGE_BG_PRESETS as preset (preset)}
@@ -1050,6 +1172,37 @@
           class="bg-color-picker"
           bind:value={imageBgColor}
           title="自定义背景色"
+        />
+      </div>
+      <div class="image-bg-color-row">
+        <span class="overlay-label">字体颜色</span>
+        {#each IMAGE_TEXT_PRESETS as preset (preset)}
+          {#if preset === ''}
+            <button
+              type="button"
+              class="bg-swatch bg-swatch-auto"
+              class:selected={imageTextColor === ''}
+              title="自动（跟随背景深浅）"
+              onclick={() => (imageTextColor = '')}
+            >
+              A
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="bg-swatch"
+              class:selected={imageTextColor === preset}
+              style={`background: ${preset}`}
+              aria-label={preset}
+              onclick={() => (imageTextColor = preset)}
+            ></button>
+          {/if}
+        {/each}
+        <input
+          type="color"
+          class="bg-color-picker"
+          bind:value={imageTextColor}
+          title="自定义字体颜色"
         />
       </div>
       <div class="image-bg-image-row">
@@ -1072,8 +1225,27 @@
         {/if}
       </div>
       {#if imageBgImage}
+        <div class="image-bg-color-row">
+          <span class="overlay-label">遮罩颜色</span>
+          {#each IMAGE_MASK_PRESETS as preset (preset)}
+            <button
+              type="button"
+              class="bg-swatch"
+              class:selected={imageMaskColor === preset}
+              style={`background: ${preset}`}
+              aria-label={preset}
+              onclick={() => (imageMaskColor = preset)}
+            ></button>
+          {/each}
+          <input
+            type="color"
+            class="bg-color-picker"
+            bind:value={imageMaskColor}
+            title="自定义遮罩颜色"
+          />
+        </div>
         <div class="image-bg-overlay-row">
-          <span class="overlay-label">白色遮罩 {imageBgOverlay}%</span>
+          <span class="overlay-label">遮罩强度 {imageBgOverlay}%</span>
           <input type="range" min="0" max="100" step="5" bind:value={imageBgOverlay} />
         </div>
       {/if}
@@ -1113,6 +1285,111 @@
     progress={exportProgress}
   />
 {/if}
+
+<CommonModal
+  open={showEditInfoModal}
+  title="编辑卡组信息"
+  subtitle="修改名称、描述、格式与收藏状态"
+  closable={!savingInfo}
+  onclose={() => (showEditInfoModal = false)}
+>
+  <label class="edit-info-field">
+    <span class="edit-info-label">
+      卡组名称 <span class="edit-info-required">*</span>
+    </span>
+    <input
+      class="edit-info-input"
+      type="text"
+      placeholder="卡组名称"
+      maxlength="100"
+      bind:value={editName}
+      disabled={savingInfo}
+      onkeydown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          saveEditInfo()
+        }
+      }}
+    />
+  </label>
+
+  <label class="edit-info-field">
+    <span class="edit-info-label">描述</span>
+    <textarea
+      class="edit-info-textarea"
+      placeholder="简单描述一下这个卡组……"
+      maxlength="500"
+      rows="4"
+      bind:value={editDescription}
+      disabled={savingInfo}></textarea>
+  </label>
+
+  <label class="edit-info-field">
+    <span class="edit-info-label">格式</span>
+    <select class="edit-info-select" bind:value={editFormat} disabled={savingInfo}>
+      <option value="">无（未知格式）</option>
+      {#each editFormatOptions() as format (format)}
+        <option value={format}>{format}</option>
+      {/each}
+    </select>
+  </label>
+
+  <label class="edit-info-favorite">
+    <input type="checkbox" bind:checked={editFavorite} disabled={savingInfo} />
+    <span> 收藏 </span>
+  </label>
+
+  {#snippet footer()}
+    <button
+      class="button button-ghost"
+      disabled={savingInfo}
+      onclick={() => (showEditInfoModal = false)}
+    >
+      取消
+    </button>
+    <button
+      class="button button-primary"
+      disabled={savingInfo || !editName.trim()}
+      onclick={saveEditInfo}
+    >
+      {savingInfo ? '保存中...' : '保存'}
+    </button>
+  {/snippet}
+</CommonModal>
+
+<CommonModal
+  open={editingNoteVersionId !== null}
+  title="编辑版本备注"
+  subtitle={editingNoteVersionId
+    ? `v${versions.find((v) => v.id === editingNoteVersionId)?.version_number ?? ''}`
+    : ''}
+  closable={!savingNote}
+  onclose={() => (editingNoteVersionId = null)}
+>
+  <label class="edit-info-field">
+    <span class="edit-info-label">备注</span>
+    <textarea
+      class="edit-info-textarea"
+      placeholder="为这个版本补充一些说明……"
+      maxlength="300"
+      rows="4"
+      bind:value={editNoteValue}
+      disabled={savingNote}></textarea>
+  </label>
+
+  {#snippet footer()}
+    <button
+      class="button button-ghost"
+      disabled={savingNote}
+      onclick={() => (editingNoteVersionId = null)}
+    >
+      取消
+    </button>
+    <button class="button button-primary" disabled={savingNote} onclick={saveEditNote}>
+      {savingNote ? '保存中...' : '保存'}
+    </button>
+  {/snippet}
+</CommonModal>
 
 <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
@@ -1267,16 +1544,17 @@
     align-content: flex-start;
     margin-bottom: 16px;
     min-height: 116px;
-    max-height: 250px;
+    /* max-height: 250px; */
     overflow-y: auto;
     padding: 2px;
+    column-gap: 2%;
     grid-template-columns: 1fr 1fr 1fr 1fr;
     justify-items: center;
   }
 
   .sim-card-face {
     position: relative;
-    width: 78px;
+    /* width: 78px; */
     padding: 0;
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -1366,7 +1644,7 @@
   }
 
   /* ===== 构成 / 导出 ===== */
-  .stat-list {
+  /* .stat-list {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1400,7 +1678,7 @@
     background: var(--accent-color);
     border-radius: 9999px;
     transition: width 0.4s ease;
-  }
+  } */
 
   .builder-layout {
     display: grid;
@@ -1415,6 +1693,13 @@
     padding: 20px;
     margin-bottom: 24px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .card-zone:has(> .landscape-grid) {
+    grid-column: 4 / -1;
+    width: 100%;
+    padding: unset;
+    margin: unset;
   }
 
   .card-zone h3 {
@@ -1447,30 +1732,17 @@
     margin-bottom: 24px;
   }
 
-  .hero-cards {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px;
-  }
-
   .hero-card-slot {
     background: #ffffff;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 20px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  }
-
-  .hero-card-slot h3 {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     align-items: center;
-    gap: 8px;
-    margin: 0 0 16px 0;
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-color);
+    gap: 20px;
+    justify-items: center;
   }
 
   .hero-card {
@@ -1485,8 +1757,8 @@
   }
 
   .hero-card-img {
-    width: 160px;
-    flex-shrink: 0;
+    width: 100%;
+    max-width: 160px;
     aspect-ratio: 744 / 1040;
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -1505,7 +1777,6 @@
   :global(.hero-card-img img) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
     display: block;
   }
 
@@ -1523,25 +1794,6 @@
   }
 
   /* ===== 符文 ===== */
-  .runes-zone {
-    background: #ffffff;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 20px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  }
-
-  .runes-zone h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 0 16px 0;
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-color);
-  }
 
   .rune-list {
     list-style: none;
@@ -1594,12 +1846,12 @@
   /* ===== 主牌堆卡图 + 数量角标 ===== */
   .qty-badge {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
+    bottom: 0;
+    right: 0;
     z-index: 2;
     min-width: 36px;
     height: 28px;
-    padding: 0 8px;
+    padding: 8px 4px 8px 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1607,13 +1859,13 @@
     font-weight: 700;
     color: #ffffff;
     background: var(--accent-color);
-    border-radius: 9999px;
+    border-top-left-radius: 9999px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 16px;
     list-style: none;
     padding: 0;
@@ -1621,7 +1873,9 @@
   }
 
   .landscape-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 640px;
+    margin: 0 auto;
   }
 
   .card-item {
@@ -1659,7 +1913,7 @@
     display: block;
   }
 
-  .card-details {
+  /* .card-details {
     padding: 8px 10px;
     white-space: nowrap;
     overflow: hidden;
@@ -1677,7 +1931,7 @@
     display: inline;
     font-size: var(--text-xs);
     color: var(--text-tertiary);
-  }
+  } */
 
   .version-sidebar {
     background: #ffffff;
@@ -1730,10 +1984,30 @@
     color: var(--text-tertiary);
   }
 
+  .version-note-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .version-note {
     font-size: var(--text-sm);
     color: var(--text-secondary);
     line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  .note-edit-btn {
+    flex: none;
+    color: var(--text-tertiary);
+    opacity: 0.6;
+  }
+
+  .note-edit-btn:hover {
+    color: var(--accent-color);
+    opacity: 1;
   }
 
   .version-stats {
@@ -1752,8 +2026,8 @@
     padding: 0;
     margin: 8px 0 0 0;
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .version-diff-initial,
@@ -1765,43 +2039,31 @@
   }
 
   .diff-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    font-size: var(--text-xs);
-    line-height: 1.4;
-    word-break: break-word;
+    flex: none;
   }
 
-  .diff-image-toggle {
-    display: inline-flex;
+  .diff-image-wrap {
+    position: relative;
+    flex: none;
+  }
+
+  .diff-qty-badge {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px 0 7px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    margin-top: 1px;
-    padding: 0;
-    color: var(--text-tertiary);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    cursor: pointer;
-    transition:
-      color 0.15s,
-      border-color 0.15s,
-      background 0.15s;
-  }
-
-  .diff-image-toggle:hover {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
-    background: color-mix(in oklab, var(--accent-color) 8%, transparent);
-  }
-
-  .diff-text {
-    flex: 1;
-    min-width: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    background: var(--accent-color);
+    border-top-left-radius: 9999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
   .diff-image {
@@ -1826,12 +2088,12 @@
     aspect-ratio: auto;
   }
 
-  .diff-add {
-    color: #16a34a;
+  .diff-add .diff-qty-badge {
+    background: #16a34a;
   }
 
-  .diff-remove {
-    color: #dc2626;
+  .diff-remove .diff-qty-badge {
+    background: #dc2626;
   }
 
   .empty-hint {
@@ -1841,19 +2103,30 @@
     padding: 12px 0;
   }
 
-  @media (max-width: 900px) {
-    .curve-card {
-      grid-column: span 1;
+  @media (max-width: 1100px) {
+    .hero-card-slot {
+      grid-template-columns: 1fr 1fr 1fr;
     }
-    .hero-cards {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .runes-zone {
+
+    .card-zone:has(> .landscape-grid) {
       grid-column: 1 / -1;
     }
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 900px) {
+    .curve-card {
+      grid-column: span 1;
+    }
+    .hero-card-slot {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .card-zone:has(> .landscape-grid) {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 479.99px) {
     .deck-builder-container {
       padding: 16px;
     }
@@ -1868,16 +2141,20 @@
       flex: 1;
     }
     .analysis-dashboard {
-      grid-template-columns: 1fr;
+      display: flex;
+      flex-direction: column;
     }
     .landscape-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
     }
-    .hero-cards {
-      grid-template-columns: 1fr;
+    .hero-card-slot {
+      grid-template-columns: 1fr 1fr;
     }
-    .runes-zone {
-      grid-column: auto;
+    .rune-list {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      justify-content: space-evenly;
+      width: 100%;
     }
     .hero-card {
       flex-direction: column;
@@ -2037,6 +2314,35 @@
     margin-left: 0;
   }
 
+  /* ===== 卡组图案预览 ===== */
+  .image-preview-box {
+    position: relative;
+    margin-top: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+  }
+
+  .image-preview-img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .image-preview-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(2px);
+  }
+
   /* ===== 卡组图案背景 ===== */
   .image-bg-color-row {
     display: flex;
@@ -2063,6 +2369,20 @@
   .bg-swatch.selected {
     border-color: var(--accent-color);
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 30%, transparent);
+  }
+
+  .bg-swatch-auto {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: linear-gradient(135deg, #f9fafb 50%, #111827 50%);
+  }
+
+  .bg-swatch-auto:hover {
+    color: var(--text-primary);
   }
 
   .bg-color-picker {
@@ -2129,5 +2449,98 @@
 
   .hidden-file-input {
     display: none;
+  }
+
+  /* ===== 编辑卡组信息 ===== */
+  .edit-info-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .edit-info-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .edit-info-required {
+    color: #ef4444;
+  }
+
+  .edit-info-input,
+  .edit-info-textarea,
+  .edit-info-select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 7px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .edit-info-input {
+    height: 40px;
+    padding: 0 11px;
+  }
+
+  .edit-info-textarea {
+    min-height: 90px;
+    padding: 10px 11px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  .edit-info-select {
+    height: 40px;
+    padding: 0 11px;
+  }
+
+  .edit-info-input::placeholder,
+  .edit-info-textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.65;
+  }
+
+  .edit-info-input:focus,
+  .edit-info-textarea:focus,
+  .edit-info-select:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 15%, transparent);
+  }
+
+  .edit-info-input:disabled,
+  .edit-info-textarea:disabled,
+  .edit-info-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .edit-info-favorite {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .edit-info-favorite input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-color);
+  }
+
+  .edit-info-favorite span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 </style>

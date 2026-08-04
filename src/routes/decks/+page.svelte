@@ -9,6 +9,7 @@
     type DeckListResult,
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
+  import { DECK_FORMATS } from '$lib/decks/format'
   import { Plus, Search, Funnel, Copy, Trash2, Folder, HeartIcon } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
@@ -19,14 +20,7 @@
   let selectedFormat = $state('全部')
   let showFavoritesOnly = $state(false)
 
-  export const formats = [
-    '全部',
-    '1v1（决斗）',
-    '1v1（比赛）',
-    '3 人乱斗（遭遇战）',
-    '4 人乱斗（全面战争）',
-    '2v2（熔岩大厅）',
-  ]
+  export const formats = ['全部', ...DECK_FORMATS]
 
   const filteredDecks = $derived(
     allDecks.filter((deck) => {

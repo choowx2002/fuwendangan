@@ -32,6 +32,7 @@
     saveDeckAsNewVersion,
     updateDeck,
     updateDeckLatestVersion,
+    updateDeckLatestVersionNote,
     type DeckInput,
   } from '$lib/db'
   import { loadDeckForEdit } from '$lib/decks/deck-loader'
@@ -52,6 +53,7 @@
   let showSaveModal = $state(false)
   let saveDeckName = $state('未命名卡组')
   let saveDeckDescription = $state('')
+  let saveDeckNote = $state('')
   let editingDeckId = $state<string | null>(null)
   let showMoreMenu = $state(false)
   let showDeckStats = $state(false)
@@ -420,6 +422,7 @@
 
     saveDeckName = deckName === '未命名卡组' ? '' : deckName
     saveDeckDescription = ''
+    saveDeckNote = ''
     showSaveModal = true
   }
 
@@ -448,13 +451,17 @@
       if (editingDeckId) {
         await updateDeck(editingDeckId, {
           name,
-          description: saveDeckDescription.trim() || null,
         })
 
         if (mode === 'overwrite') {
           await updateDeckLatestVersion(editingDeckId, compressCards)
+
+          const note = saveDeckNote.trim()
+          if (note) {
+            await updateDeckLatestVersionNote(editingDeckId, note)
+          }
         } else {
-          await saveDeckAsNewVersion(editingDeckId, compressCards)
+          await saveDeckAsNewVersion(editingDeckId, compressCards, saveDeckNote.trim() || undefined)
         }
 
         deckName = name
@@ -1309,7 +1316,7 @@
   <CommonModal
     open={showSaveModal}
     title="保存卡组"
-    subtitle="为你的卡组设置名称和描述"
+    subtitle={editingDeckId ? '为你的卡组设置名称和备注' : '为你的卡组设置名称和描述'}
     closable={!isSaving}
     onclose={cancelSaveDeck}
   >
@@ -1333,16 +1340,29 @@
       />
     </label>
 
-    <label class="save-modal-field">
-      <span class="save-modal-label">Description</span>
-      <textarea
-        class="save-modal-textarea"
-        placeholder="简单描述一下这个卡组……"
-        maxlength="500"
-        rows="5"
-        bind:value={saveDeckDescription}
-        disabled={isSaving}></textarea>
-    </label>
+    {#if editingDeckId}
+      <label class="save-modal-field">
+        <span class="save-modal-label">备注</span>
+        <textarea
+          class="save-modal-textarea"
+          placeholder="为这个版本补充一些说明……"
+          maxlength="300"
+          rows="5"
+          bind:value={saveDeckNote}
+          disabled={isSaving}></textarea>
+      </label>
+    {:else}
+      <label class="save-modal-field">
+        <span class="save-modal-label">Description</span>
+        <textarea
+          class="save-modal-textarea"
+          placeholder="简单描述一下这个卡组……"
+          maxlength="500"
+          rows="5"
+          bind:value={saveDeckDescription}
+          disabled={isSaving}></textarea>
+      </label>
+    {/if}
 
     {#snippet footer()}
       <button class="button button-ghost footer-btn" disabled={isSaving} onclick={cancelSaveDeck}>

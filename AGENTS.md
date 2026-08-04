@@ -176,9 +176,9 @@ async fn async_command() -> Result<serde_json::Value, String> {
 
 ## 提交代码前检查清单
 
-- [ ] 运行 `pnpm check`（svelte-check）无类型错误。
-- [ ] 运行 `pnpm format` 或 `pnpm format:check` 通过 prettier。
-- [ ] `cargo check`（在 `src-tauri/` 下）通过，无 warning 遗留。
+- [ ] 前端改动：可运行 `pnpm check`。
+- [ ] Rust 改动：可运行 `cargo check`。
+- [ ] 仅在失败时输出关键错误，不要粘贴完整日志。
 - [ ] 未混入 Tauri v1 API（`@tauri-apps/api/tauri`、`window.__TAURI__`）。
 - [ ] 新增的 Tauri 插件在 Cargo.toml、package.json、capabilities 三处都已登记。
 - [ ] 新增权限已写入 `src-tauri/capabilities/default.json`。

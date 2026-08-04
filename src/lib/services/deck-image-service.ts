@@ -34,6 +34,7 @@ export interface DeckBackground {
   color: string
   imageUrl?: string
   overlay?: number
+  maskColor?: string
 }
 
 interface ImgJob {
@@ -43,8 +44,8 @@ interface ImgJob {
 }
 
 interface RuneItem {
-  slot: DeckCardDetail
   color: string
+  quantity: number
   label: string
   x: number
   y: number
@@ -65,6 +66,7 @@ export interface DeckImageOptions {
   cards: DeckCardDetail[]
   sortRules: SortKeyItem[]
   background?: DeckBackground
+  textColor?: string
   onProgress?: (percent: number) => void
 }
 
@@ -207,7 +209,7 @@ function drawQtyBadge(
   qty: number,
   theme: Theme
 ): void {
-  if (qty <= 1) return
+  if (qty < 1) return
   ctx.font = '600 20px sans-serif'
   const label = `×${qty}`
   const bw = ctx.measureText(label).width + 14
@@ -227,9 +229,19 @@ function gridHeight(count: number): number {
   return rows * CARD_H + (rows - 1) * GAP
 }
 
+function groupRunesByColor(runes: DeckCardDetail[]): { color: string; quantity: number }[] {
+  const counts = new Map<string, number>()
+  for (const slot of runes) {
+    const colors = parseColorList(slot.card_color_list)
+    const color = normalizeColor(colors[0] ?? 'neutral')
+    counts.set(color, (counts.get(color) ?? 0) + slot.quantity)
+  }
+  return [...counts.entries()].map(([color, quantity]) => ({ color, quantity }))
+}
+
 function layoutRunes(
   ctx: CanvasRenderingContext2D,
-  runes: DeckCardDetail[],
+  runes: { color: string; quantity: number }[],
   startX: number,
   startY: number,
   maxX: number
@@ -237,17 +249,15 @@ function layoutRunes(
   const items: RuneItem[] = []
   let x = startX
   let y = startY
-  for (const slot of runes) {
-    const colors = parseColorList(slot.card_color_list)
-    const color = normalizeColor(colors[0] ?? 'neutral')
+  for (const rune of runes) {
     ctx.font = RUNE_FONT
-    const label = `×${slot.quantity}`
+    const label = `×${rune.quantity}`
     const width = RUNE_ICON + 8 + ctx.measureText(label).width + 16
     if (x > startX && x + width > maxX) {
       x = startX
       y += RUNE_ICON + RUNE_GAP
     }
-    items.push({ slot, color, label, x, y })
+    items.push({ color: rune.color, quantity: rune.quantity, label, x, y })
     x += width
   }
   return { items, bottom: items.length ? y + RUNE_ICON : startY }
@@ -335,6 +345,10 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
 
   const background = options.background ?? { color: '#ffffff' }
   const theme = buildTheme(background.color)
+  if (options.textColor) {
+    theme.name = options.textColor
+    theme.secondary = options.textColor
+  }
 
   const canvas = document.createElement('canvas')
   canvas.width = WIDTH * SCALE
@@ -344,7 +358,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
   // 排版计算（依赖 ctx.measureText）
   const heroTop = PAD + (40 + SECTION_GAP)
   const runeStartY = heroTop + (heroCards.length ? HERO_H + GAP : 0)
-  const runeLayout = layoutRunes(ctx, runeCards, PAD, runeStartY, WIDTH - PAD)
+  const runeLayout = layoutRunes(ctx, groupRunesByColor(runeCards), PAD, runeStartY, WIDTH - PAD)
 
   const heroStripH =
     heroCards.length || runeCards.length
@@ -378,7 +392,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
     if (bgImage) drawCoverImage(ctx, bgImage, 0, 0, WIDTH, height)
     if (background.overlay != null && background.overlay > 0) {
       ctx.globalAlpha = background.overlay
-      ctx.fillStyle = '#ffffff'
+      ctx.fillStyle = background.maskColor ?? '#ffffff'
       ctx.fillRect(0, 0, WIDTH, height)
       ctx.globalAlpha = 1
     }

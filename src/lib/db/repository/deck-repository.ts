@@ -370,6 +370,44 @@ export async function updateDeckLatestVersion(
 }
 
 /**
+ * 更新指定卡组最新版本的备注
+ */
+export async function updateDeckLatestVersionNote(
+  deckId: string,
+  note: string | null
+): Promise<boolean> {
+  const db = await getDatabase()
+
+  const result = await db.execute(
+    `UPDATE deck_versions
+     SET note = ?
+     WHERE deck_id = ? AND version_number = (
+       SELECT MAX(version_number) FROM deck_versions WHERE deck_id = ?
+     )`,
+    [note, deckId, deckId]
+  )
+
+  return result.rowsAffected > 0
+}
+
+/**
+ * 更新指定版本的备注
+ */
+export async function updateDeckVersionNote(
+  versionId: string,
+  note: string | null
+): Promise<boolean> {
+  const db = await getDatabase()
+
+  const result = await db.execute(`UPDATE deck_versions SET note = ? WHERE id = ?`, [
+    note,
+    versionId,
+  ])
+
+  return result.rowsAffected > 0
+}
+
+/**
  * 使用 WITH (CTE) 语法，优雅地找出最新版本并关联查询
  */
 export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail[]> {
