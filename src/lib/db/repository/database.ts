@@ -37,6 +37,23 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.deck_cards)
   await db.execute(TABLE_DEFINITIONS.rules)
   await db.execute(TABLE_DEFINITIONS.version)
+  await migrateDeckCardsPrintCode(db)
+}
+
+/**
+ * 迁移：为 deck_cards 增加稳定键 print_code（card_prints.card_no_extend 快照），
+ * 并回填已有数据，用于卡图 id 变更后修复卡组引用
+ */
+async function migrateDeckCardsPrintCode(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(deck_cards)`)
+  if (!cols.some((c) => c.name === 'print_code')) {
+    await db.execute(`ALTER TABLE deck_cards ADD COLUMN print_code TEXT`)
+  }
+  await db.execute(
+    `UPDATE deck_cards
+     SET print_code = (SELECT cp.card_no_extend FROM card_prints cp WHERE cp.id = deck_cards.card_id)
+     WHERE print_code IS NULL`
+  )
 }
 
 /**

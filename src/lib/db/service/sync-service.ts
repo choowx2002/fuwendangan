@@ -10,6 +10,7 @@ import * as printRepo from '../repository/print-repository'
 import * as iconRepo from '../repository/icon-repository'
 import * as versionRepo from '../repository/version-repository'
 import * as ruleRepo from '../repository/rules-repository'
+import { repointDeckCardReferences } from '../repository/deck-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState } from '$lib/stores/ui-store.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
@@ -33,6 +34,8 @@ export async function initializeDatabase(): Promise<void> {
       return
     }
     await getDatabase()
+    // 启动时兜底修复卡组引用（清空数据 / 远端换 id 后的残留）
+    await repointDeckCardReferences()
     const localVersion = await versionRepo.getVersion()
 
     let needsSync = true
@@ -62,11 +65,11 @@ export async function initializeDatabase(): Promise<void> {
  */
 async function performSync(remoteVersion: any): Promise<void> {
   console.log('[DB] 开始获取 cards')
-  const cards = await remoteApi.fetchUpdatedCards()
+  const cards = await remoteApi.fetchAllCards()
   console.log('[DB] 结束获取 cards')
 
   console.log('[DB] 开始获取 prints')
-  const prints = await remoteApi.fetchAllPrints()
+  const prints = await remoteApi.fetchAllPrints(true)
   console.log('[DB] 结束获取 prints')
 
   console.log('[DB] 开始获取 icons')
@@ -77,13 +80,12 @@ async function performSync(remoteVersion: any): Promise<void> {
   const rules = await remoteApi.fetchAllRules()
   console.log('[DB] 结束获取 rules')
 
-  console.log('[DB] 开始同步 cards')
+  console.log('[DB] 开始同步 cards（全量替换，清理失效旧数据）')
+  await cardRepo.clearAllCards()
+  await printRepo.clearAllPrints()
   await cardRepo.saveCards(cards)
-  console.log('[DB] 结束同步 cards')
-
-  console.log('[DB] 开始同步 prints')
   await printRepo.saveCardPrints(prints)
-  console.log('[DB] 结束同步 prints')
+  console.log('[DB] 结束同步 cards')
 
   console.log('[DB] 开始同步 icons')
   await iconRepo.saveIcons(icons)
@@ -92,6 +94,10 @@ async function performSync(remoteVersion: any): Promise<void> {
   console.log('[DB] 开始同步 rules')
   await ruleRepo.saveRules(rules)
   console.log('[DB] 结束同步 rules')
+
+  console.log('[DB] 开始修复卡组中的卡牌引用')
+  const repointed = await repointDeckCardReferences()
+  console.log(`[DB] 修复卡组引用 ${repointed} 行`)
 
   await updateFilterOptions()
   await versionRepo.saveVersion(remoteVersion)

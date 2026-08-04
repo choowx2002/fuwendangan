@@ -22,8 +22,11 @@ export function flattenDeckCards(zones: {
 export function convertDeckCardInput(cards: (cardAndPrint & { zone: string })[]): DeckCardInput[] {
   const deckCardInputs: DeckCardInput[] = []
   for (const card of cards) {
+    const printId = card.selectedPrints ?? card.card_prints[0].id
+    const print = card.card_prints.find((p) => p.id === printId)
     const c: DeckCardInput = {
-      cardPrintId: card.selectedPrints ?? card.card_prints[0].id,
+      cardPrintId: printId,
+      printCode: print?.card_no_extend ?? card.card_prints[0]?.card_no_extend ?? '',
       quantity: 1,
       zone: card.zone!,
     }

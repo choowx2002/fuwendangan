@@ -212,6 +212,7 @@ export async function toggleFavorite(id: string): Promise<boolean> {
 //DECK VERSION
 export interface DeckCardInput {
   cardPrintId: string
+  printCode: string
   quantity: number
   zone: string
 }
@@ -228,6 +229,7 @@ export interface DeckCard {
   id: string
   deck_id: string
   card_id: string // 注意：这里实际存的是 card_prints 的 id
+  print_code: string | null // card_prints.card_no_extend 的稳定快照，用于 id 变更后修复引用
   quantity: number
   zone: string // 例如 'main', 'sideboard'
   created_at: string
@@ -293,8 +295,8 @@ export async function saveDeckAsNewVersion(
 
     if (cards.length > 0) {
       const insertSql = `
-         INSERT INTO deck_cards (id, deck_version_id, card_id, quantity, zone, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+         INSERT INTO deck_cards (id, deck_version_id, card_id, print_code, quantity, zone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
        `
       for (const card of cards) {
         if (card.quantity > 0) {
@@ -302,6 +304,7 @@ export async function saveDeckAsNewVersion(
             Snowflake.generate(),
             newVersionId,
             card.cardPrintId,
+            card.printCode || null,
             card.quantity,
             card.zone,
             timestamp,
@@ -344,8 +347,8 @@ export async function updateDeckLatestVersion(
 
     if (cards.length > 0) {
       const insertSql = `
-         INSERT INTO deck_cards (id, deck_version_id, card_id, quantity, zone, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+         INSERT INTO deck_cards (id, deck_version_id, card_id, print_code, quantity, zone, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
        `
       for (const card of cards) {
         if (card.quantity > 0) {
@@ -353,6 +356,7 @@ export async function updateDeckLatestVersion(
             Snowflake.generate(),
             versionId,
             card.cardPrintId,
+            card.printCode || null,
             card.quantity,
             card.zone,
             timestamp,
@@ -770,13 +774,22 @@ export async function duplicateDeck(deckId: string): Promise<string> {
             id,
             deck_version_id,
             card_id,
+            print_code,
             quantity,
             zone,
             created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           `,
-          [Snowflake.generate(), newVersionId, card.card_id, card.quantity, card.zone, timestamp]
+          [
+            Snowflake.generate(),
+            newVersionId,
+            card.card_id,
+            card.print_code ?? null,
+            card.quantity,
+            card.zone,
+            timestamp,
+          ]
         )
       }
     }
@@ -830,6 +843,7 @@ export async function importDecksFromJson(
 
   let idByPrintId: Set<string> = new Set()
   let idByPrintCode = new Map<string, string>()
+  let codeByPrintId = new Map<string, string>()
   if (filterMissingCards) {
     const rows = await db.select<{ id: string; card_no_extend: string; language: string }[]>(
       `SELECT id, card_no_extend, language FROM ${TABLES.CARD_PRINTS}
@@ -837,6 +851,7 @@ export async function importDecksFromJson(
     )
     idByPrintId = new Set(rows.map((r) => r.id))
     for (const r of rows) {
+      codeByPrintId.set(r.id, r.card_no_extend)
       if (r.language !== 'SC' || !r.card_no_extend) continue
       if (!idByPrintCode.has(r.card_no_extend)) {
         idByPrintCode.set(r.card_no_extend, r.id)
@@ -891,6 +906,7 @@ export async function importDecksFromJson(
         if (!card.card_id || card.quantity <= 0 || !card.zone) continue
 
         let resolvedId = card.card_id
+        let resolvedCode = card.print_code ?? codeByPrintId.get(card.card_id) ?? null
         if (filterMissingCards) {
           if (!idByPrintId.has(card.card_id)) {
             const byCode = card.print_code ? idByPrintCode.get(card.print_code) : undefined
@@ -899,13 +915,22 @@ export async function importDecksFromJson(
               continue
             }
             resolvedId = byCode
+            resolvedCode = card.print_code ?? codeByPrintId.get(byCode) ?? null
           }
         }
 
         await db.execute(
-          `INSERT INTO ${TABLES.DECK_CARDS} (id, deck_version_id, card_id, quantity, zone, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [Snowflake.generate(), versionId, resolvedId, card.quantity, card.zone, timestamp]
+          `INSERT INTO ${TABLES.DECK_CARDS} (id, deck_version_id, card_id, print_code, quantity, zone, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            Snowflake.generate(),
+            versionId,
+            resolvedId,
+            resolvedCode,
+            card.quantity,
+            card.zone,
+            timestamp,
+          ]
         )
       }
     }
@@ -914,4 +939,89 @@ export async function importDecksFromJson(
   }
 
   return { imported, missingCards }
+}
+
+/**
+ * 修复卡组中失效的卡牌引用：
+ * 本地卡牌数据被清空后重新同步、或远端 Supabase 数据整体换 ID 重建时，
+ * deck_cards.card_id 指向的 card_prints.id 可能已不存在。
+ * 依据 deck_cards.print_code（card_prints.card_no_extend 的稳定快照）将失效引用
+ * 重新指向当前存在的卡图 ID；同一版本同一分区内冲突的引用合并数量。
+ * 返回被修复的卡牌引用行数。
+ */
+export async function repointDeckCardReferences(): Promise<number> {
+  const db = await getDatabase()
+
+  const prints = await db.select<
+    { id: string; card_no_extend: string | null; language: string | null; print_order: number | null }[]
+  >(
+    `SELECT id, card_no_extend, language, print_order FROM ${TABLES.CARD_PRINTS}
+     ORDER BY (language = 'SC') DESC, print_order ASC`
+  )
+  if (prints.length === 0) return 0
+
+  const currentIds = new Set(prints.map((p) => p.id))
+  const codeToId = new Map<string, string>()
+  for (const p of prints) {
+    if (!p.card_no_extend || codeToId.has(p.card_no_extend)) continue
+    codeToId.set(p.card_no_extend, p.id)
+  }
+
+  const rows = await db.select<
+    {
+      id: string
+      deck_version_id: string
+      card_id: string
+      print_code: string | null
+      quantity: number
+      zone: string
+    }[]
+  >(`SELECT id, deck_version_id, card_id, print_code, quantity, zone FROM ${TABLES.DECK_CARDS}`)
+
+  const groups = new Map<string, typeof rows>()
+  let repointed = 0
+
+  for (const row of rows) {
+    let targetId = row.card_id
+    if (!currentIds.has(row.card_id)) {
+      const byCode = row.print_code ? codeToId.get(row.print_code) : undefined
+      if (!byCode) continue
+      targetId = byCode
+      repointed++
+    }
+    const key = `${row.deck_version_id}|${row.zone}|${targetId}`
+    const list = groups.get(key)
+    if (list) list.push(row)
+    else groups.set(key, [row])
+  }
+
+  for (const [key, list] of groups) {
+    if (list.length === 1) {
+      const row = list[0]
+      if (!currentIds.has(row.card_id)) {
+        const targetId = key.slice(key.lastIndexOf('|') + 1)
+        await db.execute(`UPDATE ${TABLES.DECK_CARDS} SET card_id = ? WHERE id = ?`, [
+          targetId,
+          row.id,
+        ])
+      }
+      continue
+    }
+
+    const targetId = key.slice(key.lastIndexOf('|') + 1)
+    const keeper = list.find((r) => r.card_id === targetId) ?? list[0]
+    const sumQuantity = list.reduce((sum, r) => sum + r.quantity, 0)
+
+    await db.execute(
+      `UPDATE ${TABLES.DECK_CARDS} SET card_id = ?, quantity = ? WHERE id = ?`,
+      [targetId, sumQuantity, keeper.id]
+    )
+    for (const r of list) {
+      if (r.id !== keeper.id) {
+        await db.execute(`DELETE FROM ${TABLES.DECK_CARDS} WHERE id = ?`, [r.id])
+      }
+    }
+  }
+
+  return repointed
 }

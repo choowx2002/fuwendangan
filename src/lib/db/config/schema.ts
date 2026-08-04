@@ -105,6 +105,7 @@ export const TABLE_DEFINITIONS = {
       id TEXT PRIMARY KEY,
       deck_version_id TEXT NOT NULL,
       card_id TEXT NOT NULL,
+      print_code TEXT,
       quantity INTEGER DEFAULT 1,
       zone TEXT NOT NULL,
       created_at TEXT,

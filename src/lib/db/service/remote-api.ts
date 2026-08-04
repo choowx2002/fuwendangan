@@ -71,7 +71,6 @@ export async function fetchUpdatedCards(): Promise<CardBase[]> {
   const pageSize = 500
   let hasMore = true
   let latestAt = await getLatestUpdateCardTime()
-  console.log('Latest At Cards', latestAt)
   // let latestAt = null
 
   while (hasMore) {
@@ -101,16 +100,15 @@ export async function fetchUpdatedCards(): Promise<CardBase[]> {
 
 /**
  * 获取所有卡图数据（分页拉取）
+ * forceFull = true 时始终全量拉取（用于全量同步/对账）
  */
-export async function fetchAllPrints(): Promise<CardPrint[]> {
+export async function fetchAllPrints(forceFull = false): Promise<CardPrint[]> {
   const supabase = getSupabaseClient()
   const totalData: CardPrint[] = []
   let page = 0
   const pageSize = 1000
   let hasMore = true
-  let latestAt = await getLatestUpdatePrintTime()
-  console.log('Latest At', latestAt)
-  // let latestAt = null
+  let latestAt = forceFull ? '' : await getLatestUpdatePrintTime()
   while (hasMore) {
     if (latestAt) {
       const { data, count, error } = await supabase

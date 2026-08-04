@@ -112,6 +112,7 @@ export interface DeckCard {
   id: string
   deck_id: string
   card_id: string
+  print_code?: string | null
   quantity: number
   zone: string
   created_at: string | null
