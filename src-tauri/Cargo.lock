@@ -6,6 +6,7 @@ version = 4
 name = "Rune_Archive"
 version = "0.8.5"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "tauri",

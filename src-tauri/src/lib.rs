@@ -126,6 +126,18 @@ async fn read_text_file(path: String) -> Result<String, String> {
     .map_err(|e| format!("线程错误: {}", e))?
 }
 
+/// 读取图片文件，返回 base64（用于卡组图案的本地背景图）
+#[tauri::command(async)]
+async fn read_image_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::read(&path)
+            .map(|bytes| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes))
+            .map_err(|e| format!("读取图片失败 ({}): {}", path, e))
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
 #[cfg(debug_assertions)]
 fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     use tauri_plugin_prevent_default::Flags;
@@ -163,7 +175,8 @@ pub fn run() {
             start_tts_listener,
             copy_file,
             write_text_file,
-            read_text_file
+            read_text_file,
+            read_image_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

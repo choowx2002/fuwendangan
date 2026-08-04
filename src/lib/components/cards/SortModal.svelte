@@ -4,7 +4,7 @@
   import { fade, fly } from 'svelte/transition'
 
   // --- 数据与状态 ---
-  const fields = [
+  const DEFAULT_FIELDS = [
     { value: 'card_no', label: '编号' },
     { value: 'card_category', label: '类型' },
     { value: 'card_color_list', label: '颜色' },
@@ -13,17 +13,17 @@
     { value: 'return_energy', label: '符能' },
   ]
 
-  let idCounter = 0
-  // let sortByList = [
-  //     { id: ++idCounter, name: "card_no", isAsc: true, order: 1 },
-  // ];
-
   interface SortModalProps {
     sortByList: SortKeyItem[]
-    onChangeSubmit: () => void
+    onChangeSubmit?: () => void
+    fields?: { value: string; label: string }[]
   }
 
-  let { sortByList = $bindable([]), onChangeSubmit }: SortModalProps = $props()
+  let {
+    sortByList = $bindable([]),
+    onChangeSubmit,
+    fields = DEFAULT_FIELDS,
+  }: SortModalProps = $props()
 
   let isSortModalOpen = $state(false)
 
@@ -65,7 +65,7 @@
 
   function closeModal() {
     isSortModalOpen = false
-    onChangeSubmit()
+    onChangeSubmit?.()
   }
 
   function openModal() {
@@ -262,7 +262,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 10001;
     backdrop-filter: blur(2px);
   }
 

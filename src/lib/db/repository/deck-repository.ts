@@ -234,6 +234,8 @@ export interface DeckCard {
 }
 
 export interface DeckCardDetail extends DeckCard {
+  card_base_id: string
+  print_id: string
   card_name_cn: string
   card_name_en: string
   sub_title_cn: string | null
@@ -253,6 +255,8 @@ export interface DeckCardDetail extends DeckCard {
 export interface DeckVersionCard {
   deck_version_id: string
   card_id: string // card_prints.id
+  card_base_id: string
+  print_id: string
   quantity: number
   zone: string
   card_name_cn: string
@@ -380,6 +384,7 @@ export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail
      )
      SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
+       cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
      FROM deck_cards dc
@@ -414,6 +419,7 @@ export async function getDeckCardsByVersion(versionId: string): Promise<DeckCard
   const sql = `
      SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
+       cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.power, cb.card_color_list,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
      FROM deck_cards dc
@@ -435,6 +441,7 @@ export async function getDeckVersionCards(deckId: string): Promise<DeckVersionCa
   const sql = `
      SELECT
        dc.deck_version_id, dc.card_id, dc.quantity, dc.zone,
+       cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en,
        cp.card_no_extend as print_code, cp.img_cdn
      FROM deck_cards dc

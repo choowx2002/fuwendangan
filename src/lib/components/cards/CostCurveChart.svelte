@@ -34,16 +34,16 @@
   <div class="cost-curve-header">
     <ChartBar size={18} />
     <h3>{curveMode === 'energy' ? '法力曲线' : '符能曲线'}</h3>
-    <div class="curve-toggle">
+    <div class="toggle-button-group curve-toggle">
       <button
-        class="button button-secondary"
+        class="toggle-btn"
         class:active={curveMode === 'energy'}
         onclick={() => (curveMode = 'energy')}
       >
         法力
       </button>
       <button
-        class="button button-secondary"
+        class="toggle-btn"
         class:active={curveMode === 'return_energy'}
         onclick={() => (curveMode = 'return_energy')}
       >
@@ -115,19 +115,42 @@
 
   .curve-toggle {
     margin-left: auto;
+  }
+
+  .toggle-button-group {
     display: flex;
     gap: 2px;
     padding: 2px;
     border-radius: var(--radius-sm);
-    background: var(--bg-primary);
+    background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
   }
 
-  .curve-toggle .button {
+  .toggle-btn {
+    padding: 4px 14px;
     min-height: 26px;
-    padding: 3px 12px;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    background: transparent;
+    color: var(--text-secondary);
     font-size: var(--text-xs);
-    gap: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .toggle-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .toggle-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+  }
+
+  .toggle-btn.active:hover {
+    background-color: color-mix(in oklab, var(--accent-color) 85%, black);
   }
 
   .chart-container {

@@ -5,6 +5,8 @@
 
 export interface DiffCard {
   card_id: string
+  card_base_id?: string | null
+  print_id?: string | null
   quantity: number
   card_name_cn?: string | null
   card_name_en?: string | null
@@ -23,6 +25,8 @@ export interface VersionDiffItem {
   qty: number
   delta: number
   card_id: string
+  card_base_id: string | null
+  print_id: string | null
   print_code: string | null
   img_cdn: string | null
   isLandscape: boolean
@@ -57,6 +61,8 @@ function toItem(kind: DiffKind, card: DiffCard, qty: number, delta: number): Ver
     qty,
     delta,
     card_id: card.card_id,
+    card_base_id: card.card_base_id ?? null,
+    print_id: card.print_id ?? null,
     print_code: card.print_code ?? null,
     img_cdn: card.img_cdn ?? null,
     isLandscape: card.zone ? LANDSCAPE_ZONES.has(card.zone) : false,
