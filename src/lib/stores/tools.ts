@@ -14,8 +14,23 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
 
+function isActionEntry(v: unknown): v is ActionEntry {
+  if (!isObject(v)) return false
+  return (
+    (v.side === 'me' || v.side === 'opp') &&
+    (v.delta === 1 || v.delta === -1) &&
+    typeof v.mePoints === 'number' &&
+    typeof v.oppPoints === 'number' &&
+    typeof v.time === 'string'
+  )
+}
+
 function isGameRecord(v: unknown): v is GameRecord {
   if (!isObject(v)) return false
+  const actions = (v as any).actions
+  if (actions !== undefined && (!Array.isArray(actions) || !actions.every(isActionEntry))) {
+    return false
+  }
   return (
     typeof v.gameNumber === 'number' &&
     (v.winner === 'me' || v.winner === 'opp') &&
@@ -43,6 +58,15 @@ export function persistentWritable<T>(key: string, defaultValue: T) {
   return s
 }
 
+/** 计分动作日志（每个 +1/-1 操作） */
+export interface ActionEntry {
+  time: string
+  side: 'me' | 'opp'
+  delta: number
+  mePoints: number
+  oppPoints: number
+}
+
 export interface GameRecord {
   gameNumber: number
   winner: 'me' | 'opp'
@@ -50,6 +74,7 @@ export interface GameRecord {
   oppScore: number
   winType: 'normal' | 'special' | 'concede'
   time: string
+  actions?: ActionEntry[]
 }
 
 export interface ScoreCounterState {
@@ -61,7 +86,13 @@ export interface ScoreCounterState {
   oppName: string
   deckId: string
   opponentName: string
+  opponentDeck: string
+  oppLegendId: string | null
+  oppLegendPrintId: string | null
+  oppLegendName: string | null
+  oppLegendImage: string | null
   bestOf: string
+  currentActions: ActionEntry[]
 }
 
 const DEFAULT_SCORE_STATE: ScoreCounterState = {
@@ -73,7 +104,13 @@ const DEFAULT_SCORE_STATE: ScoreCounterState = {
   oppName: '对方',
   deckId: '',
   opponentName: '',
+  opponentDeck: '',
+  oppLegendId: null,
+  oppLegendPrintId: null,
+  oppLegendName: null,
+  oppLegendImage: null,
   bestOf: '3',
+  currentActions: [],
 }
 
 function isValidState(v: unknown): v is ScoreCounterState {
@@ -94,5 +131,17 @@ getStore().then(async (store) => {
     await store.set('scoreCounter', DEFAULT_SCORE_STATE)
     await store.save()
     scoreCounterState.set(DEFAULT_SCORE_STATE)
+  } else if (value !== undefined) {
+    const normalized: ScoreCounterState = {
+      ...DEFAULT_SCORE_STATE,
+      ...value,
+      currentActions: value.currentActions ?? [],
+      opponentDeck: value.opponentDeck ?? '',
+      oppLegendId: value.oppLegendId ?? null,
+      oppLegendPrintId: value.oppLegendPrintId ?? null,
+      oppLegendName: value.oppLegendName ?? null,
+      oppLegendImage: value.oppLegendImage ?? null,
+    }
+    scoreCounterState.set(normalized)
   }
 })

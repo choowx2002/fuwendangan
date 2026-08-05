@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { getDeckList, getDeckVersions, createMatch, type DeckListResult } from '$lib/db'
-  import { scoreCounterState, type GameRecord, type ScoreCounterState } from '$lib/stores/tools'
+  import { getDeckList, getDeckVersions, createMatch, searchCards, getBestPrint, type DeckListResult } from '$lib/db'
+  import { scoreCounterState, type GameRecord, type ActionEntry } from '$lib/stores/tools'
+  import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import {
     Coins,
     Dice6,
@@ -10,15 +13,27 @@
     History,
     Trophy,
     RotateCcw,
-    ChevronLeft,
     Flag,
+    SlidersHorizontal,
+    Search,
+    X,
+    FlipVertical2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   let decks = $state<DeckListResult[]>([])
   let decksLoaded = $state(false)
 
-  let historyOpen = $state(true)
+  let historyOpen = $state(false)
+
+  let settingsOpen = $state(false)
+  let rngOpen = $state(false)
+  let rngMode = $state<'dice' | 'coin'>('dice')
+  let viewFlipped = $state(false)
+
+  let allLegends = $state<CardBase[]>([])
+  let legendLoading = $state(false)
+  let oppLegendQuery = $state('')
 
   let coinResult = $state<'正面' | '反面' | null>(null)
   let coinFlipping = $state(false)
@@ -33,8 +48,10 @@
   const games = $derived($scoreCounterState.games)
   const meWins = $derived(games.filter((g) => g.winner === 'me').length)
   const oppWins = $derived(games.filter((g) => g.winner === 'opp').length)
+  const matchTargetWins = $derived(bestOfTarget[$scoreCounterState.bestOf] ?? 0)
   const mePoints = $derived($scoreCounterState.mePoints)
   const oppPoints = $derived($scoreCounterState.oppPoints)
+  const currentActions = $derived($scoreCounterState.currentActions ?? [])
 
   const meReached = $derived($scoreCounterState.mePoints >= $scoreCounterState.targetScore)
   const oppReached = $derived($scoreCounterState.oppPoints >= $scoreCounterState.targetScore)
@@ -58,6 +75,22 @@
 
   const matchOver = $derived(matchWinner !== null)
 
+  const oppLegendFiltered = $derived.by(() => {
+    const q = oppLegendQuery.trim().toLowerCase()
+    if (!q) return allLegends
+    return allLegends
+      .filter((c) =>
+        [c.card_name_cn, c.card_name_en, c.card_no].some((v) => v && v.toLowerCase().includes(q))
+      )
+      .slice(0, 50)
+  })
+
+  function nowTime() {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
+
   async function loadDecks() {
     try {
       const { decks: list } = await getDeckList({ limit: 500 })
@@ -69,12 +102,70 @@
     }
   }
 
+  async function loadLegends() {
+    if (legendLoading || allLegends.length > 0) return
+    legendLoading = true
+    try {
+      const res = await searchCards({
+        page: 1,
+        pageSize: 1000,
+        card_category: { include: ['传奇'] },
+      })
+      allLegends = res.data
+        .slice()
+        .sort((a, b) =>
+          (a.card_name_cn || a.card_name_en || a.card_no).localeCompare(
+            b.card_name_cn || b.card_name_en || b.card_no,
+            'zh'
+          )
+        )
+    } catch (error) {
+      allLegends = []
+    } finally {
+      legendLoading = false
+    }
+  }
+
+  function pickOppLegend(card: CardBase) {
+    const print = getBestPrint(card)
+    scoreCounterState.update((s) => ({
+      ...s,
+      oppLegendId: card.id,
+      oppLegendPrintId: print?.id ?? null,
+      oppLegendName: card.card_name_cn || card.card_name_en || '',
+      oppLegendImage: print?.url || '',
+    }))
+  }
+
+  function clearOppLegend() {
+    scoreCounterState.update((s) => ({
+      ...s,
+      oppLegendId: null,
+      oppLegendPrintId: null,
+      oppLegendName: null,
+      oppLegendImage: null,
+    }))
+  }
+
   function adjustPoints(side: 'me' | 'opp', delta: number) {
     scoreCounterState.update((s) => {
       const next = Math.max(0, (side === 'me' ? s.mePoints : s.oppPoints) + delta)
-      const updated: ScoreCounterState = { ...s }
-      updated[side === 'me' ? 'mePoints' : 'oppPoints'] = next
-      return updated
+      if (next === (side === 'me' ? s.mePoints : s.oppPoints) && delta < 0) return s
+      const mePoints = side === 'me' ? next : s.mePoints
+      const oppPoints = side === 'opp' ? next : s.oppPoints
+      const entry: ActionEntry = {
+        time: nowTime(),
+        side,
+        delta,
+        mePoints,
+        oppPoints,
+      }
+      return {
+        ...s,
+        mePoints,
+        oppPoints,
+        currentActions: [...(s.currentActions ?? []), entry],
+      }
     })
   }
 
@@ -97,8 +188,15 @@
           hour: '2-digit',
           minute: '2-digit',
         }),
+        actions: s.currentActions ?? [],
       }
-      return { ...s, games: [...s.games, record], mePoints: 0, oppPoints: 0 }
+      return {
+        ...s,
+        games: [...s.games, record],
+        mePoints: 0,
+        oppPoints: 0,
+        currentActions: [],
+      }
     })
   }
 
@@ -124,6 +222,7 @@
         mePoints: last.myScore,
         oppPoints: last.oppScore,
         games: s.games.slice(0, -1),
+        currentActions: last.actions ?? [],
       }
     })
   }
@@ -141,6 +240,7 @@
       mePoints: 0,
       oppPoints: 0,
       games: [],
+      currentActions: [],
     }))
   }
 
@@ -184,6 +284,11 @@
         {
           deck_id: s.deckId,
           opponent_name: s.opponentName.trim() || null,
+          opponent_deck: s.opponentDeck.trim() || null,
+          opp_legend_id: s.oppLegendId,
+          opp_legend_print_id: s.oppLegendPrintId,
+          opp_legend_name: s.oppLegendName,
+          opp_legend_image: s.oppLegendImage,
           deck_version_id: deckVersionId,
           deck_version_number: deckVersionNumber,
           best_of: s.bestOf === '' ? null : Number(s.bestOf),
@@ -192,7 +297,13 @@
         gameInputs
       )
       await message('对局已保存到卡组记录！', { title: '保存成功', kind: 'info' })
-      scoreCounterState.update((st) => ({ ...st, mePoints: 0, oppPoints: 0, games: [] }))
+      scoreCounterState.update((st) => ({
+        ...st,
+        mePoints: 0,
+        oppPoints: 0,
+        games: [],
+        currentActions: [],
+      }))
     } catch (error) {
       console.error('[Tools] 保存对局失败:', error)
       await message('保存失败，请重试', { title: '保存失败', kind: 'error' })
@@ -224,19 +335,33 @@
 
   onMount(() => {
     loadDecks()
+    loadLegends()
   })
 </script>
 
 <div class="tools-page">
-  <header class="page-header">
-    <h1 class="page-title">对战工具</h1>
-    <p class="page-desc">计分器 · 掷币 / 掷骰</p>
-  </header>
-
   <section class="section">
     <div class="section-header">
-      <h2 class="section-title">计分器</h2>
+      <!-- <h2 class="section-title">计分器</h2> -->
       <div class="section-actions">
+        <button class="button button-ghost button-sm" onclick={() => (rngOpen = true)}>
+          <Dice6 size={16} /> 掷骰 / 掷币
+        </button>
+        <button class="button button-ghost button-sm" onclick={() => (settingsOpen = true)}>
+          <SlidersHorizontal size={16} /> 设置
+        </button>
+        <button class="button button-ghost button-sm" onclick={() => (historyOpen = true)}>
+          <History size={16} /> 历史记录
+          {#if games.length > 0}<span class="history-btn-badge">{games.length}</span>{/if}
+        </button>
+        <button
+          class="button button-ghost button-sm"
+          class:active={viewFlipped}
+          title="翻转视角"
+          onclick={() => (viewFlipped = !viewFlipped)}
+        >
+          <FlipVertical2 size={16} /> 翻转
+        </button>
         <button
           class="button button-ghost button-sm"
           onclick={revertLastGame}
@@ -248,40 +373,6 @@
           <RotateCcw size={14} /> 重置
         </button>
       </div>
-    </div>
-
-    <div class="config-bar">
-      <label class="field">
-        <span class="field-label">我方卡组</span>
-        <select class="input select" bind:value={$scoreCounterState.deckId} disabled={!decksLoaded}>
-          <option value="">不关联（仅记分）</option>
-          {#each decks as deck (deck.id)}
-            <option value={deck.id}>{deck.name}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">对手</span>
-        <input
-          class="input"
-          type="text"
-          placeholder="选填"
-          maxlength="50"
-          bind:value={$scoreCounterState.opponentName}
-        />
-      </label>
-      <label class="field">
-        <span class="field-label">赛制</span>
-        <select class="input select" bind:value={$scoreCounterState.bestOf}>
-          <option value="1">BO1（1 胜）</option>
-          <option value="3">BO3（2 胜）</option>
-          <option value="5">BO5（3 胜）</option>
-        </select>
-      </label>
-      <label class="field target-field">
-        <span class="field-label">目标分</span>
-        <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
-      </label>
     </div>
 
     {#if matchOver}
@@ -309,16 +400,6 @@
       </div>
     {/if}
 
-    <div class="match-score-strip">
-      <span class="match-score-side" class:lead={meWins > oppWins} class:eq={meWins === oppWins}>
-        {meWins}
-      </span>
-      <span class="match-score-sep">:</span>
-      <span class="match-score-side" class:lead={oppWins > meWins} class:eq={meWins === oppWins}>
-        {oppWins}
-      </span>
-    </div>
-
     {#if gameOver}
       <div class="game-end-banner">
         {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
@@ -338,29 +419,43 @@
       </div>
     {/if}
 
-    <div class="scoreboards">
-      <div class="scoreboard" class:winner-side={mePoints >= $scoreCounterState.targetScore}>
-        <input
-          class="score-name"
-          type="text"
-          maxlength="12"
-          placeholder="我方"
-          bind:value={$scoreCounterState.meName}
-        />
+    <div class="scoreboards" class:flipped={viewFlipped}>
+      <div class="scoreboard me-board" class:winner-side={mePoints >= $scoreCounterState.targetScore}>
+        <div class="score-name-row">
+          <input
+            class="score-name"
+            type="text"
+            maxlength="12"
+            placeholder="我方"
+            bind:value={$scoreCounterState.meName}
+          />
+          <div class="match-dots">
+            {#each Array(matchTargetWins) as _, i}
+              <span class="match-dot" class:won={i < meWins}></span>
+            {/each}
+          </div>
+        </div>
         <span class="score-number">{$scoreCounterState.mePoints}</span>
         <div class="score-controls">
           <button class="score-btn add" onclick={() => adjustPoints('me', 1)}>+1</button>
           <button class="score-btn minus" onclick={() => adjustPoints('me', -1)}>-1</button>
         </div>
       </div>
-      <div class="scoreboard" class:winner-side={oppPoints >= $scoreCounterState.targetScore}>
-        <input
-          class="score-name"
-          type="text"
-          maxlength="12"
-          placeholder="对方"
-          bind:value={$scoreCounterState.oppName}
-        />
+      <div class="scoreboard opp-board" class:winner-side={oppPoints >= $scoreCounterState.targetScore}>
+        <div class="score-name-row">
+          <input
+            class="score-name"
+            type="text"
+            maxlength="12"
+            placeholder="对方"
+            bind:value={$scoreCounterState.oppName}
+          />
+          <div class="match-dots">
+            {#each Array(matchTargetWins) as _, i}
+              <span class="match-dot" class:won={i < oppWins}></span>
+            {/each}
+          </div>
+        </div>
         <span class="score-number">{$scoreCounterState.oppPoints}</span>
         <div class="score-controls">
           <button class="score-btn add" onclick={() => adjustPoints('opp', 1)}>+1</button>
@@ -378,86 +473,138 @@
       </button>
       <span class="score-tools-hint">手动结算当前小局（记为胜，不影响目标分检测）</span>
     </div>
-
-    <div class="history-panel">
-      <div class="history-header" role="presentation" onclick={() => (historyOpen = !historyOpen)}>
-        <div class="history-title">
-          <History size={14} />
-          <span>历史日志</span>
-          <span class="history-count">{games.length} 局</span>
-        </div>
-        <span class="history-chevron-wrap" class:collapse={!historyOpen}>
-          <ChevronLeft size={14} class="history-chevron" />
-        </span>
-      </div>
-      {#if historyOpen}
-        {#if games.length === 0 && mePoints === 0 && oppPoints === 0}
-          <p class="history-empty">还没有对局记录，用 +1/-1 开始计分</p>
-        {:else}
-          <ul class="history-list">
-            <li class="history-item history-inprogress">
-              <span class="history-time">进行中</span>
-              <span class="history-desc">
-                {$scoreCounterState.meName}
-                {mePoints} :
-                {oppPoints}
-                {$scoreCounterState.oppName}
-              </span>
-            </li>
-            {#each [...games].reverse() as g, i (g.gameNumber)}
-              <li class="history-item">
-                <span class="history-time">第 {g.gameNumber} 局</span>
-                <span class="history-desc">
-                  <span class="history-side" class:me={g.winner === 'me'}>
-                    {g.winner === 'me' ? $scoreCounterState.meName : $scoreCounterState.oppName}
-                  </span>
-                  <span class="history-score">
-                    {g.myScore} : {g.oppScore}
-                  </span>
-                  <span class="history-result" class:win={g.winner === 'me'}>
-                    {g.winner === 'me' ? '胜' : '负'}
-                  </span>
-                  {#if g.winType === 'special'}
-                    <span class="history-type">特殊胜利</span>
-                  {:else if g.winType === 'concede'}
-                    <span class="history-type">对方认输</span>
-                  {/if}
-                  <span class="history-time raw">· {g.time}</span>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {/if}
-    </div>
   </section>
 
-  <section class="section">
-    <div class="section-header">
-      <h2 class="section-title">掷币 / 掷骰</h2>
-    </div>
-
-    <div class="rng-grid">
-      <div class="rng-card">
-        <div class="rng-icon"><Coins size={20} /></div>
-        <h3 class="rng-title">掷硬币</h3>
-        <button class="coin" class:flipping={coinFlipping} onclick={flipCoin} aria-label="掷硬币">
-          <span class="coin-face">
-            {#if coinFlipping}
-              …
-            {:else}
-              {coinResult ?? '?'}
-            {/if}
+  <CommonModal
+    open={settingsOpen}
+    title="计分器设置"
+    subtitle="配置卡组、对手与赛制信息"
+    width="min(520px, 100%)"
+    onclose={() => (settingsOpen = false)}
+  >
+    <div class="settings-form">
+      <label class="field">
+        <span class="field-label">我方卡组</span>
+        <select class="input select" bind:value={$scoreCounterState.deckId} disabled={!decksLoaded}>
+          <option value="">不关联（仅记分）</option>
+          {#each decks as deck (deck.id)}
+            <option value={deck.id}>{deck.name}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">对手</span>
+        <input
+          class="input"
+          type="text"
+          placeholder="选填"
+          maxlength="50"
+          bind:value={$scoreCounterState.opponentName}
+        />
+      </label>
+      <label class="field">
+        <span class="field-label">对手卡组</span>
+        <input
+          class="input"
+          type="text"
+          placeholder="选填"
+          maxlength="50"
+          bind:value={$scoreCounterState.opponentDeck}
+        />
+      </label>
+      <div class="field legend-field">
+        <span class="field-label">对手传奇（选填）</span>
+        <div class="legend-search">
+          <Search size={14} class="legend-search-icon" />
+          <input
+            class="input"
+            type="text"
+            placeholder="搜索传奇卡牌…"
+            maxlength="50"
+            bind:value={oppLegendQuery}
+          />
+          {#if $scoreCounterState.oppLegendName}
+            <button
+              class="icon-btn legend-clear-btn"
+              type="button"
+              title="清除选择"
+              onclick={clearOppLegend}
+            >
+              <X size={14} />
+            </button>
+          {/if}
+        </div>
+        {#if legendLoading}
+          <span class="legend-hint">加载中…</span>
+        {:else if oppLegendFiltered.length === 0}
+          <span class="legend-hint">未找到匹配的传奇卡</span>
+        {:else}
+          <div class="legend-row">
+            {#each oppLegendFiltered as card (card.id)}
+              {@const best = getBestPrint(card)}
+              <button
+                type="button"
+                class="legend-item"
+                class:selected={$scoreCounterState.oppLegendId === card.id}
+                title={card.card_name_cn || card.card_name_en || card.card_no}
+                onclick={() => pickOppLegend(card)}
+              >
+                <CardSimpleImage
+                  url={best?.url}
+                  name={`${card.id}-${best?.id ?? 'none'}`}
+                  className="legend-thumb"
+                />
+              </button>
+            {/each}
+          </div>
+        {/if}
+        {#if $scoreCounterState.oppLegendName}
+          <span class="legend-selected-label">
+            已选：{$scoreCounterState.oppLegendName}
           </span>
-        </button>
-        <span class="rng-result" class:ready={coinResult !== null}>
-          {coinResult ?? '点击掷币'}
-        </span>
+        {/if}
       </div>
+      <label class="field">
+        <span class="field-label">赛制</span>
+        <select class="input select" bind:value={$scoreCounterState.bestOf}>
+          <option value="1">BO1（1 胜）</option>
+          <option value="3">BO3（2 胜）</option>
+          <option value="5">BO5（3 胜）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">目标分</span>
+        <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
+      </label>
+    </div>
+  </CommonModal>
 
-      <div class="rng-card">
-        <div class="rng-icon"><Dice6 size={20} /></div>
-        <h3 class="rng-title">投掷 d20</h3>
+  <CommonModal
+    open={rngOpen}
+    title="掷骰 / 掷币"
+    subtitle={rngMode === 'dice' ? '投掷 d20' : '掷硬币'}
+    width="min(480px, 100%)"
+    onclose={() => (rngOpen = false)}
+  >
+    <div class="rng-card">
+      <div class="rng-icon">{#if rngMode === 'dice'}<Dice6 size={20} />{:else}<Coins size={20} />{/if}</div>
+      <div class="toggle-button-group rng-toggle">
+        <button
+          class="toggle-btn"
+          class:active={rngMode === 'dice'}
+          onclick={() => (rngMode = 'dice')}
+        >
+          投掷 d20
+        </button>
+        <button
+          class="toggle-btn"
+          class:active={rngMode === 'coin'}
+          onclick={() => (rngMode = 'coin')}
+        >
+          掷硬币
+        </button>
+      </div>
+      {#if rngMode === 'dice'}
         <button class="dice" class:rolling={diceRolling} onclick={rollDice} aria-label="投掷骰子">
           <span class="dice-face">
             {#if diceRolling}
@@ -470,7 +617,20 @@
         <span class="rng-result" class:ready={diceResult !== null}>
           {diceResult !== null ? `掷出 ${diceResult}` : '点击投掷'}
         </span>
-      </div>
+      {:else}
+        <button class="coin" class:flipping={coinFlipping} onclick={flipCoin} aria-label="掷硬币">
+          <span class="coin-face">
+            {#if coinFlipping}
+              …
+            {:else}
+              {coinResult ?? '?'}
+            {/if}
+          </span>
+        </button>
+        <span class="rng-result" class:ready={coinResult !== null}>
+          {coinResult ?? '点击掷币'}
+        </span>
+      {/if}
     </div>
 
     <div class="history-panel">
@@ -480,32 +640,106 @@
       </div>
       <div class="rng-history">
         <div class="rng-history-col">
-          <span class="rng-history-label">硬币</span>
-          {#if coinHistory.length === 0}
-            <span class="rng-history-empty">—</span>
+          <span class="rng-history-label">{rngMode === 'dice' ? '骰子' : '硬币'}</span>
+          {#if rngMode === 'dice'}
+            {#if diceHistory.length === 0}
+              <span class="rng-history-empty">—</span>
+            {:else}
+              <div class="rng-history-chips">
+                {#each diceHistory as item, i (i)}
+                  <span class="chip dice-chip">{item}</span>
+                {/each}
+              </div>
+            {/if}
           {:else}
-            <div class="rng-history-chips">
-              {#each coinHistory as item, i (i)}
-                <span class="chip coin-chip">{item}</span>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <div class="rng-history-col">
-          <span class="rng-history-label">骰子</span>
-          {#if diceHistory.length === 0}
-            <span class="rng-history-empty">—</span>
-          {:else}
-            <div class="rng-history-chips">
-              {#each diceHistory as item, i (i)}
-                <span class="chip dice-chip">{item}</span>
-              {/each}
-            </div>
+            {#if coinHistory.length === 0}
+              <span class="rng-history-empty">—</span>
+            {:else}
+              <div class="rng-history-chips">
+                {#each coinHistory as item, i (i)}
+                  <span class="chip coin-chip">{item}</span>
+                {/each}
+              </div>
+            {/if}
           {/if}
         </div>
       </div>
     </div>
-  </section>
+  </CommonModal>
+
+  <CommonModal
+    open={historyOpen}
+    title="历史日志"
+    subtitle={`${games.length} 局`}
+    width="min(600px, 100%)"
+    onclose={() => (historyOpen = false)}
+  >
+    {#if games.length === 0 && mePoints === 0 && oppPoints === 0 && currentActions.length === 0}
+      <p class="history-empty">还没有对局记录，用 +1/-1 开始计分</p>
+    {:else}
+      <ul class="history-list">
+        <li class="history-item history-inprogress">
+          <span class="history-time">进行中</span>
+          <span class="history-desc">
+            {$scoreCounterState.meName}
+            {mePoints} :
+            {oppPoints}
+            {$scoreCounterState.oppName}
+          </span>
+        </li>
+        {#if currentActions.length > 0}
+          <li class="action-log">
+            {#each currentActions as act, i (i)}
+              <span class="action-entry" class:me={act.side === 'me'} class:opp={act.side === 'opp'}>
+                <span class="action-delta">{act.delta > 0 ? '+' : ''}{act.delta}</span>
+                <span class="action-side">
+                  {act.side === 'me' ? $scoreCounterState.meName : $scoreCounterState.oppName}
+                </span>
+                <span class="action-score">{act.mePoints} : {act.oppPoints}</span>
+                <span class="action-time">{act.time}</span>
+              </span>
+            {/each}
+          </li>
+        {/if}
+        {#each [...games].reverse() as g, i (g.gameNumber)}
+          <li class="history-item">
+            <span class="history-time">第 {g.gameNumber} 局</span>
+            <span class="history-desc">
+              <span class="history-side" class:me={g.winner === 'me'}>
+                {g.winner === 'me' ? $scoreCounterState.meName : $scoreCounterState.oppName}
+              </span>
+              <span class="history-score">
+                {g.myScore} : {g.oppScore}
+              </span>
+              <span class="history-result" class:win={g.winner === 'me'}>
+                {g.winner === 'me' ? '胜' : '负'}
+              </span>
+              {#if g.winType === 'special'}
+                <span class="history-type">特殊胜利</span>
+              {:else if g.winType === 'concede'}
+                <span class="history-type">对方认输</span>
+              {/if}
+              <span class="history-time raw">· {g.time}</span>
+            </span>
+          </li>
+          {#if g.actions && g.actions.length > 0}
+            <li class="action-log">
+              {#each g.actions as act, a (a)}
+                <span class="action-entry" class:me={act.side === 'me'} class:opp={act.side === 'opp'}>
+                  <span class="action-delta">{act.delta > 0 ? '+' : ''}{act.delta}</span>
+                  <span class="action-side">
+                    {act.side === 'me' ? $scoreCounterState.meName : $scoreCounterState.oppName}
+                  </span>
+                  <span class="action-score">{act.mePoints} : {act.oppPoints}</span>
+                  <span class="action-time">{act.time}</span>
+                </span>
+              {/each}
+            </li>
+          {/if}
+        {/each}
+      </ul>
+    {/if}
+  </CommonModal>
 </div>
 
 <style>
@@ -522,23 +756,6 @@
     }
   }
 
-  .page-header {
-    margin-bottom: 28px;
-  }
-
-  .page-title {
-    font-size: var(--text-hero);
-    font-weight: 700;
-    margin: 0 0 8px 0;
-    letter-spacing: -0.5px;
-  }
-
-  .page-desc {
-    font-size: var(--text-lg);
-    color: var(--text-secondary);
-    margin: 0;
-  }
-
   .section {
     margin-bottom: 36px;
   }
@@ -546,41 +763,170 @@
   .section-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: right;
     margin-bottom: 12px;
   }
 
-  .section-title {
+  /*.section-title {
     font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin: 0;
-  }
+  }*/
 
   .section-actions {
     display: flex;
     gap: 8px;
   }
 
-  .config-bar {
+  .history-btn-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    background: var(--accent-color);
+  }
+
+  .settings-form {
     display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding: 14px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .button-ghost.active {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  }
+
+  .legend-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  :global(.legend-search-icon) {
+    position: absolute;
+    left: 10px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+
+  .legend-search .input {
+    padding-left: 32px;
+  }
+
+  .legend-search .input:has(+ .legend-clear-btn) {
+    padding-right: 36px;
+  }
+
+  .legend-clear-btn {
+    position: absolute;
+    right: 6px;
+  }
+
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--danger-color, #dc2626);
+  }
+
+  .legend-hint {
+    padding: 6px 2px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 6px 2px 10px;
+    max-height: 176px;
+    scrollbar-width: thin;
+  }
+
+  .legend-row::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .legend-row::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+  }
+
+  .legend-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    width: 64px;
+    padding: 4px 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .legend-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .legend-item.selected {
+    border-color: var(--primary-color, #4f46e5);
+    background: var(--bg-hover);
+  }
+
+  :global(.legend-thumb) {
+    width: 44px;
+    aspect-ratio: 744 / 1040;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: var(--bg-hover);
+  }
+
+  .legend-selected-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-color);
   }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 1;
-    min-width: 160px;
   }
 
   .field-label {
@@ -612,10 +958,6 @@
 
   .select {
     appearance: auto;
-  }
-
-  .target-field {
-    max-width: 110px;
   }
 
   .match-end-banner {
@@ -667,34 +1009,6 @@
     font-weight: 600;
   }
 
-  .match-score-strip {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    margin-bottom: 16px;
-  }
-
-  .match-score-side {
-    font-size: 40px;
-    font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-  }
-  .match-score-side.lead {
-    color: var(--accent-color);
-  }
-  .match-score-side.eq {
-    color: var(--text-primary);
-  }
-
-  .match-score-sep {
-    font-size: 28px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-  }
-
   .score-tools-row {
     display: flex;
     align-items: center;
@@ -709,15 +1023,107 @@
   }
 
   .scoreboards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column-reverse;
     gap: 16px;
     margin-bottom: 16px;
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .opp-board {
+    transform: rotate(180deg);
+  }
+
+  .scoreboards.flipped {
+    flex-direction: column;
+  }
+
+  .scoreboards.flipped .opp-board {
+    transform: rotate(0deg);
+  }
+
+  .scoreboards.flipped .me-board {
+    transform: rotate(180deg);
   }
 
   @media (max-width: 620px) {
+    .tools-page {
+      height: 100%;
+      padding: 0;
+      max-width: none;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .section-header {
+      flex-shrink: 0;
+      justify-content: flex-start;
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-primary);
+    }
+
+    .section-actions {
+      flex-wrap: wrap;
+    }
+
+    .match-end-banner,
+    .game-end-banner {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 10px 12px;
+      border-left: none;
+      border-right: none;
+      border-radius: 0;
+    }
+
     .scoreboards {
-      grid-template-columns: 1fr;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 0;
+      margin: 0;
+      max-width: none;
+    }
+
+    .scoreboard {
+      flex: 1;
+      min-height: 0;
+      justify-content: center;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+    }
+
+    .scoreboard + .scoreboard {
+      border-top: none;
+    }
+
+    .score-tools-row {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border-color);
+      background: var(--bg-primary);
+    }
+
+    .score-tools-hint {
+      width: 100%;
     }
   }
 
@@ -738,9 +1144,18 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 15%, transparent);
   }
 
+  .score-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 260px;
+  }
+
   .score-name {
     width: 100%;
-    max-width: 220px;
+    min-width: 0;
     text-align: center;
     font-size: var(--text-lg);
     font-weight: 600;
@@ -755,6 +1170,32 @@
   .score-name:focus {
     border-color: var(--border-color);
     background: var(--bg-primary);
+  }
+
+  .match-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .match-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: transparent;
+    transition: all 0.2s ease;
+  }
+
+  .match-dot.won {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .opp-board .match-dot.won {
+    background: #e03e3e;
+    border-color: #e03e3e;
   }
 
   .score-number {
@@ -805,14 +1246,6 @@
     overflow: hidden;
   }
 
-  .history-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    cursor: pointer;
-  }
-
   .history-title {
     display: flex;
     align-items: center;
@@ -820,20 +1253,6 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
-  }
-
-  .history-count {
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--text-tertiary);
-  }
-
-  .history-chevron-wrap {
-    display: inline-flex;
-    transition: transform 0.2s;
-  }
-  .history-chevron-wrap.collapse {
-    transform: rotate(-90deg);
   }
 
   .history-empty {
@@ -848,9 +1267,6 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    border-top: 1px solid var(--border-color);
-    max-height: 220px;
-    overflow-y: auto;
   }
 
   .history-item {
@@ -930,17 +1346,49 @@
     white-space: nowrap;
   }
 
-  .rng-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
+  .action-log {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 16px 10px 76px;
+    font-size: 12px;
+    border-top: 1px solid rgba(205, 205, 203, 0.3);
   }
 
-  @media (max-width: 620px) {
-    .rng-grid {
-      grid-template-columns: 1fr;
-    }
+  .action-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .action-delta {
+    font-weight: 700;
+    min-width: 18px;
+  }
+  .action-entry.me .action-delta {
+    color: #0f7b6c;
+  }
+  .action-entry.opp .action-delta {
+    color: #e03e3e;
+  }
+
+  .action-side {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .action-score {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .action-time {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
   }
 
   .rng-card {
@@ -948,6 +1396,7 @@
     flex-direction: column;
     align-items: center;
     gap: 12px;
+    width: 100%;
     padding: 24px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -965,10 +1414,39 @@
     color: var(--accent-color);
   }
 
-  .rng-title {
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
+  .toggle-button-group {
+    display: flex;
+    gap: 2px;
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+  }
+
+  .toggle-btn {
+    padding: 4px 14px;
+    min-height: 26px;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .toggle-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .toggle-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+  }
+
+  .toggle-btn.active:hover {
+    background-color: color-mix(in oklab, var(--accent-color) 85%, black);
   }
 
   .coin {
@@ -1058,9 +1536,9 @@
   }
 
   .rng-history {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     padding: 14px 16px;
     border-top: 1px solid var(--border-color);
   }
