@@ -3,6 +3,21 @@ use std::net::TcpStream;
 use std::time::Duration;
 use tauri::Emitter;
 
+use tauri::Manager;
+
+/// 通过 ContentResolver 读写 content:// URI 的 SAF 插件句柄。
+/// 仅在 Android 上存在；桌面端为 None。
+struct SafState {
+    #[cfg(target_os = "android")]
+    handle: Option<tauri::plugin::PluginHandle<tauri::Wry>>,
+    #[cfg(not(target_os = "android"))]
+    _never: (),
+}
+
+fn is_content_uri(path: &str) -> bool {
+    path.starts_with("content://")
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -93,8 +108,42 @@ fn start_tts_listener(window: tauri::Window) {
     });
 }
 /// 复制文件（用于数据库备份/恢复）
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
-async fn copy_file(source: String, dest: String) -> Result<(), String> {
+async fn copy_file(app: tauri::AppHandle, source: String, dest: String) -> Result<(), String> {
+    // Android SAF：源或目标为 content:// URI 时走 ContentResolver
+    #[cfg(target_os = "android")]
+    {
+        match (is_content_uri(&source), is_content_uri(&dest)) {
+            (false, true) => {
+                let bytes = tauri::async_runtime::spawn_blocking({
+                    let source = source.clone();
+                    move || {
+                        std::fs::read(&source)
+                            .map_err(|e| format!("读取文件失败 ({}): {}", source, e))
+                    }
+                })
+                .await
+                .map_err(|e| format!("线程错误: {}", e))??;
+                saf_write_bytes(&app, &dest, &bytes).await?;
+                return Ok(());
+            }
+            (true, false) => {
+                let base64 = saf_read_bytes(&app, &source).await?;
+                let bytes = base64_decode_standard(&base64)?;
+                tauri::async_runtime::spawn_blocking(move || {
+                    std::fs::write(&dest, &bytes)
+                        .map_err(|e| format!("写入文件失败 ({}): {}", dest, e))
+                })
+                .await
+                .map_err(|e| format!("线程错误: {}", e))??;
+                return Ok(());
+            }
+            (true, true) => return Err("Android 上不支持源与目标均为 content URI 的复制".into()),
+            (false, false) => {}
+        }
+    }
+
     tauri::async_runtime::spawn_blocking(move || {
         std::fs::copy(&source, &dest)
             .map(|_| ())
@@ -105,37 +154,155 @@ async fn copy_file(source: String, dest: String) -> Result<(), String> {
 }
 
 /// 写入文本文件（用于导出数据）
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
-async fn write_text_file(path: String, content: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        std::fs::write(&path, content)
-            .map_err(|e| format!("写入文件失败 ({}): {}", path, e))
-    })
-    .await
-    .map_err(|e| format!("线程错误: {}", e))?
+async fn write_text_file(app: tauri::AppHandle, path: String, content: String) -> Result<(), String> {
+    if is_content_uri(&path) {
+        #[cfg(target_os = "android")]
+        {
+            saf_write_bytes(&app, &path, content.as_bytes()).await
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            // content:// URI 仅在 Android 出现；在桌面端按普通路径处理
+            tauri::async_runtime::spawn_blocking(move || {
+                std::fs::write(&path, content).map_err(|e| format!("写入文件失败 ({}): {}", path, e))
+            })
+            .await
+            .map_err(|e| format!("线程错误: {}", e))?
+        }
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            std::fs::write(&path, content).map_err(|e| format!("写入文件失败 ({}): {}", path, e))
+        })
+        .await
+        .map_err(|e| format!("线程错误: {}", e))?
+    }
 }
 
 /// 读取文本文件（用于导入数据）
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
-async fn read_text_file(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        std::fs::read_to_string(&path)
-            .map_err(|e| format!("读取文件失败 ({}): {}", path, e))
-    })
-    .await
-    .map_err(|e| format!("线程错误: {}", e))?
+async fn read_text_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    if is_content_uri(&path) {
+        #[cfg(target_os = "android")]
+        {
+            let base64 = saf_read_bytes(&app, &path).await?;
+            let bytes = base64_decode_standard(&base64)?;
+            String::from_utf8(bytes).map_err(|e| format!("文本解码失败: {}", e))
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            tauri::async_runtime::spawn_blocking(move || {
+                std::fs::read_to_string(&path)
+                    .map_err(|e| format!("读取文件失败 ({}): {}", path, e))
+            })
+            .await
+            .map_err(|e| format!("线程错误: {}", e))?
+        }
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            std::fs::read_to_string(&path).map_err(|e| format!("读取文件失败 ({}): {}", path, e))
+        })
+        .await
+        .map_err(|e| format!("线程错误: {}", e))?
+    }
 }
 
 /// 读取图片文件，返回 base64（用于卡组图案的本地背景图）
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
-async fn read_image_file(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        std::fs::read(&path)
-            .map(|bytes| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes))
-            .map_err(|e| format!("读取图片失败 ({}): {}", path, e))
-    })
-    .await
-    .map_err(|e| format!("线程错误: {}", e))?
+async fn read_image_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    if is_content_uri(&path) {
+        #[cfg(target_os = "android")]
+        {
+            saf_read_bytes(&app, &path).await
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            tauri::async_runtime::spawn_blocking(move || {
+                std::fs::read(&path)
+                    .map(|bytes| {
+                        base64::Engine::encode(
+                            &base64::engine::general_purpose::STANDARD,
+                            &bytes,
+                        )
+                    })
+                    .map_err(|e| format!("读取图片失败 ({}): {}", path, e))
+            })
+            .await
+            .map_err(|e| format!("线程错误: {}", e))?
+        }
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            std::fs::read(&path)
+                .map(|bytes| {
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
+                })
+                .map_err(|e| format!("读取图片失败 ({}): {}", path, e))
+        })
+        .await
+        .map_err(|e| format!("线程错误: {}", e))?
+    }
+}
+
+/// 通过 SAF 插件向 content:// URI 写入字节（仅 Android）
+#[cfg(target_os = "android")]
+async fn saf_write_bytes(app: &tauri::AppHandle, uri: &str, bytes: &[u8]) -> Result<(), String> {
+    use serde_json::json;
+    let state = app.state::<SafState>();
+    let handle = state
+        .handle
+        .as_ref()
+        .ok_or_else(|| "SAF 插件未初始化".to_string())?;
+    let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
+    handle
+        .run_mobile_plugin_async::<()>("writeBytes", json!({ "uri": uri, "content": base64 }))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 通过 SAF 插件从 content:// URI 读取字节并返回 base64（仅 Android）
+#[cfg(target_os = "android")]
+async fn saf_read_bytes(app: &tauri::AppHandle, uri: &str) -> Result<String, String> {
+    use serde_json::json;
+    let state = app.state::<SafState>();
+    let handle = state
+        .handle
+        .as_ref()
+        .ok_or_else(|| "SAF 插件未初始化".to_string())?;
+    handle
+        .run_mobile_plugin_async::<String>("readBytes", json!({ "uri": uri }))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 解码 STANDARD base64（兼容 Kotlin 侧 NO_WRAP 编码）
+#[cfg(target_os = "android")]
+fn base64_decode_standard(input: &str) -> Result<Vec<u8>, String> {
+    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, input)
+        .map_err(|e| format!("base64 解码失败: {}", e))
+}
+
+/// SAF（Storage Access Framework）插件：Android 上注册 SAFPlugin（Kotlin）用于 content:// URI 读写。
+/// 桌面端为空插件，仅用于保持 Builder 结构一致。
+fn saf_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("saf")
+        .setup(|app, api| {
+            #[cfg(target_os = "android")]
+            {
+                let handle = api.register_android_plugin("com.tian_yue.fuwendangan", "SAFPlugin")?;
+                app.manage(SafState { handle: Some(handle) });
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                let _ = api;
+                app.manage(SafState { _never: () });
+            }
+            Ok(())
+        })
+        .build()
 }
 
 #[cfg(debug_assertions)]
@@ -168,6 +335,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(saf_plugin())
         .invoke_handler(tauri::generate_handler![
             greet,
             check_tts_connections,
