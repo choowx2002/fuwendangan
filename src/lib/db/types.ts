@@ -41,6 +41,8 @@ export interface CardPrint {
   artist: string | null
   print_order: number | null
   is_default: boolean | null
+  is_promo: boolean | null
+  is_custom: boolean | null
   created_at: string | null
   updated_at: string | null
 }
@@ -48,6 +50,17 @@ export interface CardPrint {
 export type CardWithPrint = CardBase & {
   card_prints: CardPrint
   quantity: number
+}
+
+// 搜索结果的卡牌，额外携带收藏聚合数量
+export type CardWithOwned = CardBase & {
+  card_prints?: CardPrint[]
+  ownedNormal: number
+  ownedFoil: number
+  ownedTotal: number
+  // 非 promo 变体总数与已拥有变体数（进度用）
+  ownedVariants: number
+  totalVariants: number
 }
 
 // 版本控制模型
@@ -83,16 +96,99 @@ export interface SqliteCardBase extends Omit<
   is_banned: number
 }
 
-export interface SqliteCardPrint extends Omit<CardPrint, 'is_default'> {
+export interface SqliteCardPrint extends Omit<CardPrint, 'is_default' | 'is_promo' | 'is_custom'> {
   is_default: number | null
+  is_promo: number | null
+  is_custom: number | null
 }
 
 export interface CardSearchResult {
-  data: CardBase[]
+  data: CardWithOwned[]
   total: number
   page: number
   pageSize: number
   totalPages: number
+}
+
+// ==================== 收藏模型 ====================
+
+export interface CollectionEntry {
+  id: string
+  card_id: string
+  card_no_extend: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface CollectionLang {
+  id: string
+  collection_id: string
+  language: string
+  normal_qty: number
+  foil_qty: number
+}
+
+export interface Series {
+  code: string
+  name_cn: string | null
+  name_en: string | null
+  release_order: number
+  is_standard: boolean
+  is_active: boolean
+  base_count: number
+  alt_count: number
+  overnum_count: number
+  rune_count: number
+  token_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type OwnershipType = 'all' | 'owned' | 'missing' | 'foil'
+export type CollectionSortKey = 'card_no' | 'rarity' | 'owned' | 'progress'
+
+export interface CollectionSort {
+  key: CollectionSortKey
+  isAsc: boolean
+}
+
+// 系列收藏统计（单系列）
+export interface SeriesStats {
+  code: string
+  nameCn: string | null
+  owned: { base: number; alt: number; overnum: number; rune: number; token: number }
+  counts: { base: number; alt: number; overnum: number; rune: number; token: number }
+  totalOwned: number
+  totalCount: number
+}
+
+export interface CollectionStats {
+  series: SeriesStats[]
+  promoOwned: number
+  foilOwned: number
+  overallOwned: number
+  overallCount: number
+}
+
+// 自定义 Promo 打印创建输入
+export interface CustomPrintInput {
+  cardId: string
+  cardNoExtend: string
+  extendRarityName: string
+  language: string
+  artist?: string | null
+  imgToken?: string | null
+  normalQty: number
+  foilQty: number
+}
+
+// 卡组持有检查结果
+export interface OwnershipCheckRow {
+  cardId: string
+  cardName: string
+  cardNo: string
+  needed: number
+  owned: number
 }
 
 // 卡组模型
@@ -165,6 +261,11 @@ export interface CardSearchParams {
   searchText?: string
   is_banned?: boolean
   sortByList?: SortKeyItem[]
+
+  // 收藏相关（收藏页使用）
+  ownership?: OwnershipType
+  collectionSort?: CollectionSort
+  includeOwned?: boolean
 
   // 数组类字段 (使用嵌套对象)
   region?: ArrayFilterParam

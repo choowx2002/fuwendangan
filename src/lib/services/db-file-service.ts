@@ -60,3 +60,30 @@ export async function writeBytesFile(
     await remove(relativePath, { baseDir: BaseDirectory.AppLocalData }).catch(() => {})
   }
 }
+
+/**
+ * 把用户选择的本地图片复制进卡图缓存目录（自定义打印使用，无扩展名，token 形如 custom-{id}）。
+ */
+export async function copyImageIntoCache(srcPath: string, token: string): Promise<boolean> {
+  try {
+    const localDataDir = await appLocalDataDir()
+    await ensureDir(CARD_IMAGE)
+    const dest = await join(localDataDir, CARD_IMAGE, token)
+    await copyFile(srcPath, dest)
+    return true
+  } catch (err) {
+    console.error('[db-file] 复制图片进缓存失败:', srcPath, err)
+    return false
+  }
+}
+
+/** 删除卡图缓存目录中的单个文件（自定义打印换图/删除时使用） */
+export async function deleteCachedImage(token: string): Promise<boolean> {
+  try {
+    await remove(await join(CARD_IMAGE, token), { baseDir: BaseDirectory.AppLocalData })
+    return true
+  } catch (err) {
+    console.error('[db-file] 删除缓存图片失败:', token, err)
+    return false
+  }
+}

@@ -13,12 +13,15 @@ import { TABLES } from '../config/constants'
 export async function saveCardPrint(print: CardPrint): Promise<void> {
   const db = await getDatabase()
   const isDefaultInt = print.is_default === null ? null : print.is_default ? 1 : 0
+  const isPromoInt = print.is_promo === null ? null : print.is_promo ? 1 : 0
+  const isCustomInt = print.is_custom === null ? null : print.is_custom ? 1 : 0
 
   await db.execute(
     `INSERT OR REPLACE INTO ${TABLES.CARD_PRINTS}
      (id, card_id, card_no_extend, rarity_name, extend_rarity_name, back_image,
-      language, img_cdn, tts_cdn, artist, print_order, is_default, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      language, img_cdn, tts_cdn, artist, print_order, is_default, is_promo, is_custom,
+      created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       print.id,
       print.card_id,
@@ -32,6 +35,8 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
       print.artist,
       print.print_order,
       isDefaultInt,
+      isPromoInt,
+      isCustomInt,
       print.created_at,
       print.updated_at,
     ]
@@ -106,11 +111,11 @@ export async function deletePrintsByCardId(cardId: string): Promise<void> {
 }
 
 /**
- * 清空所有卡图数据
+ * 清空所有卡图数据（保留用户自建打印 is_custom=1，防全量同步时丢失）
  */
 export async function clearAllPrints(): Promise<void> {
   const db = await getDatabase()
-  await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS}`)
+  await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS} WHERE is_custom IS NOT 1`)
 }
 
 /*

@@ -1,6 +1,7 @@
 import { getPrints } from '$lib/db'
 import {
   CARD_IMAGE,
+  localImgToken,
   getMissingCardPrints,
   loadImageFromAppFolder,
 } from '$lib/services/image-cache-service'
@@ -142,6 +143,12 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
       }
 
       const url = fileData.img_cdn ?? fileData.tts_cdn
+
+      // 本地图片（local://）不参与下载，跳过
+      if (localImgToken(url)) {
+        completed++
+        continue
+      }
 
       const result = await loadImageFromAppFolder(
         url,

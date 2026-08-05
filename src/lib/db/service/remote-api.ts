@@ -4,7 +4,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { AppVersion, CardBase, CardPrint, IconDB, Rule } from '../types'
+import type { AppVersion, CardBase, CardPrint, IconDB, Rule, Series } from '../types'
 import { getLatestUpdateCardTime } from '../repository/card-repository'
 import { getLatestUpdatePrintTime } from '../repository/print-repository'
 
@@ -155,6 +155,37 @@ export async function fetchAllIcons(): Promise<IconDB[]> {
     if (data) totalData.push(...data)
     if (count && data && data.length < pageSize) hasMore = false
     page++
+  }
+
+  return totalData
+}
+
+/**
+ * 获取所有系列数据（分页拉取）
+ * series 表未在远端创建时容错返回空数组，避免阻塞整体同步
+ */
+export async function fetchAllSeries(): Promise<Series[]> {
+  const supabase = getSupabaseClient()
+  const totalData: Series[] = []
+  let page = 0
+  const pageSize = 100
+  let hasMore = true
+
+  try {
+    while (hasMore) {
+      const { data, count, error } = await supabase
+        .from('series')
+        .select('*', { count: 'exact' })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (error) throw new Error(`获取系列数据失败：${error.message}`)
+      if (data) totalData.push(...data)
+      if (count && data && data.length < pageSize) hasMore = false
+      page++
+    }
+  } catch (err) {
+    console.warn('[remote] series 拉取失败（可能尚未建表），跳过：', err)
+    return []
   }
 
   return totalData

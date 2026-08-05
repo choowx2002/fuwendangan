@@ -36,6 +36,8 @@ export function mapRowToPrint(row: any): CardPrint {
     ...row,
     // 将 0/1/null 转回 boolean/null
     is_default: row.is_default === null ? null : row.is_default === 1,
+    is_promo: row.is_promo === null ? null : row.is_promo === 1,
+    is_custom: row.is_custom === null ? null : row.is_custom === 1,
   }
 }
 

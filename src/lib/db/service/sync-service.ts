@@ -10,6 +10,8 @@ import * as printRepo from '../repository/print-repository'
 import * as iconRepo from '../repository/icon-repository'
 import * as versionRepo from '../repository/version-repository'
 import * as ruleRepo from '../repository/rules-repository'
+import * as seriesRepo from '../repository/series-repository'
+import * as collectionRepo from '../repository/collection-repository'
 import { repointDeckCardReferences } from '../repository/deck-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState } from '$lib/stores/ui-store.svelte'
@@ -80,7 +82,11 @@ async function performSync(remoteVersion: any): Promise<void> {
   const rules = await remoteApi.fetchAllRules()
   console.log('[DB] 结束获取 rules')
 
-  console.log('[DB] 开始同步 cards（全量替换，清理失效旧数据）')
+  console.log('[DB] 开始获取 series')
+  const series = await remoteApi.fetchAllSeries()
+  console.log('[DB] 结束获取 series')
+
+  console.log('[DB] 开始同步 cards（全量替换，保留用户自建打印及其基础卡）')
   await cardRepo.clearAllCards()
   await printRepo.clearAllPrints()
   await cardRepo.saveCards(cards)
@@ -100,6 +106,16 @@ async function performSync(remoteVersion: any): Promise<void> {
   console.log(`[DB] 修复卡组引用 ${repointed} 行`)
 
   await updateFilterOptions()
+
+  console.log('[DB] 开始同步 series')
+  await seriesRepo.clearAllSeries()
+  await seriesRepo.saveSeries(series)
+  console.log('[DB] 结束同步 series')
+
+  console.log('[DB] 清理孤儿收藏数据')
+  await collectionRepo.cleanupOrphans()
+  console.log('[DB] 孤儿收藏清理完成')
+
   await versionRepo.saveVersion(remoteVersion)
 
   console.log(

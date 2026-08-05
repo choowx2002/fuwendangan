@@ -234,15 +234,6 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    /*
-     * 关键数学：
-     * 容器是横版 W×H (1040:744)
-     * 图片是竖版，旋转后需要视觉宽=H_visual, 视觉高=W_visual
-     * 所以 DOM 宽 = 容器高, DOM 高 = 容器宽
-     *
-     * width  的 100% = 父元素宽度 → × (744/1040) = 容器高度 ✓
-     * height 的 100% = 父元素高度 → × (1040/744) = 容器宽度 ✓
-     */
     width: calc(100% * 744 / 1040);
     height: calc(100% * 1040 / 744);
     transform: translate(-50%, -50%) rotate(-90deg);

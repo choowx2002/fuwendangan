@@ -39,11 +39,15 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.version)
   await db.execute(TABLE_DEFINITIONS.match_records)
   await db.execute(TABLE_DEFINITIONS.match_games)
+  await db.execute(TABLE_DEFINITIONS.collection)
+  await db.execute(TABLE_DEFINITIONS.collection_langs)
+  await db.execute(TABLE_DEFINITIONS.series)
   await migrateMatchRecordsOppLegend(db)
   await migrateMatchRecordsDeckVersion(db)
   await migrateMatchGamesIsFirst(db)
   await migrateDeckCardsPrintCode(db)
   await migrateDecksTags(db)
+  await migrateCardPrintsFlags(db)
 }
 
 /**
@@ -114,6 +118,21 @@ async function migrateDeckCardsPrintCode(db: Database): Promise<void> {
      SET print_code = (SELECT cp.card_no_extend FROM card_prints cp WHERE cp.id = deck_cards.card_id)
      WHERE print_code IS NULL`
   )
+}
+
+/**
+ * 迁移：为 card_prints 增加闪卡标记列 is_promo / 用户自建打印标记列 is_custom（老库补列）
+ */
+async function migrateCardPrintsFlags(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(card_prints)`)
+  for (const [name, type] of [
+    ['is_promo', 'INTEGER DEFAULT 0'],
+    ['is_custom', 'INTEGER DEFAULT 0'],
+  ] as const) {
+    if (!cols.some((c) => c.name === name)) {
+      await db.execute(`ALTER TABLE card_prints ADD COLUMN ${name} ${type}`)
+    }
+  }
 }
 
 /**

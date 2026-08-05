@@ -41,6 +41,46 @@ export const TABLE_DEFINITIONS = {
     )
   `,
 
+  collection: `
+    CREATE TABLE IF NOT EXISTS collection (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      card_no_extend TEXT NOT NULL,
+      created_at TEXT,
+      updated_at TEXT,
+      UNIQUE(card_id, card_no_extend)
+    )
+  `,
+
+  collection_langs: `
+    CREATE TABLE IF NOT EXISTS collection_langs (
+      id TEXT PRIMARY KEY,
+      collection_id TEXT NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+      language TEXT NOT NULL,
+      normal_qty INTEGER DEFAULT 0,
+      foil_qty INTEGER DEFAULT 0,
+      UNIQUE(collection_id, language)
+    )
+  `,
+
+  series: `
+    CREATE TABLE IF NOT EXISTS series (
+      code TEXT PRIMARY KEY,
+      name_cn TEXT,
+      name_en TEXT,
+      release_order INTEGER DEFAULT 0,
+      is_standard INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      base_count INTEGER DEFAULT 0,
+      alt_count INTEGER DEFAULT 0,
+      overnum_count INTEGER DEFAULT 0,
+      rune_count INTEGER DEFAULT 0,
+      token_count INTEGER DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
   filter_options: `
     CREATE TABLE IF NOT EXISTS filter_options (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -179,6 +219,9 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS decks;
     DROP TABLE IF EXISTS deck_versions;
     DROP TABLE IF EXISTS deck_cards;
+    DROP TABLE IF EXISTS collection_langs;
+    DROP TABLE IF EXISTS collection;
+    DROP TABLE IF EXISTS series;
     DROP TABLE IF EXISTS card_prints;
     DROP TABLE IF EXISTS cards_base;
     DROP TABLE IF EXISTS icons;

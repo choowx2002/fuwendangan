@@ -38,6 +38,18 @@ function urlToFilename(dataUrl: string, name: string = 'undefined'): string {
   return safeSegment(filename)
 }
 
+export const LOCAL_IMG_PREFIX = 'local://'
+
+/**
+ * 从 local:// 协议 URL 中提取缓存文件名（形如 local://custom-123 → custom-123）。
+ * 非 local:// 返回 null。
+ */
+export function localImgToken(url: string | null | undefined): string | null {
+  if (!url || !url.startsWith(LOCAL_IMG_PREFIX)) return null
+  const token = url.slice(LOCAL_IMG_PREFIX.length).replace(/\/+$/, '')
+  return token ? safeSegment(token) : null
+}
+
 async function safeRead(path: string): Promise<Uint8Array | null> {
   try {
     return await readFile(path, {
@@ -142,6 +154,16 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry 
 
 export const loadImageFromAppFolder = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
+
+  const localToken = localImgToken(url)
+  if (localToken) {
+    const targetPath = await join(CARD_IMAGE, localToken)
+    const bytes = await safeRead(targetPath)
+    if (!bytes) return null
+    const arrayBuffer = bytes.slice().buffer
+    const blob = new Blob([arrayBuffer], { type: 'image/*' })
+    return URL.createObjectURL(blob)
+  }
 
   const filename = urlToFilename(url, name)
   const targetPath = await join(CARD_IMAGE, filename)
@@ -253,6 +275,7 @@ export async function getMissingCardPrints(
   )
 
   const missing = cardPrints.filter((print) => {
+    if (localImgToken(print.img_cdn)) return false
     const expectedName = urlToFilename(
       print.img_cdn ?? print.tts_cdn,
       `${print.card_id}-${print.id || 'default'}`
@@ -290,20 +313,31 @@ export const deleteLocalImage = async (filename: string): Promise<boolean> => {
 export const clearLocalCache = async (): Promise<boolean> => {
   try {
     const imagesDir = CARD_IMAGE
-    const existsDir = await exists(imagesDir, {
+    const dirExists = await exists(imagesDir, {
       baseDir: BaseDirectory.AppLocalData,
     })
 
-    if (existsDir) {
-      await remove(imagesDir, {
+    if (!dirExists) return false
+
+    const entries = await readDir(imagesDir, {
+      baseDir: BaseDirectory.AppLocalData,
+    })
+
+    let removed = 0
+    for (const entry of entries) {
+      const fileName = entry.name
+      if (!fileName) continue
+      // 用户自建打印的本地图片（custom-*）不清除
+      if (fileName.startsWith('custom-')) continue
+      await remove(`${imagesDir}/${fileName}`, {
         baseDir: BaseDirectory.AppLocalData,
-        recursive: true,
-      })
-      await ensureDir(imagesDir)
-      console.log('[Cache] 本地缓存已清除')
-      return true
+      }).catch(() => {})
+      removed++
     }
-    return false
+
+    console.log(`[Cache] 本地缓存已清除（保留自定义卡图 ${entries.length - removed} 个）`)
+    clearMemoryCache()
+    return true
   } catch (error) {
     console.error('[Cache] 清除本地缓存失败:', error)
     return false
@@ -322,6 +356,19 @@ export const getCacheDirPath = async (): Promise<string> => {
  */
 export const preloadImage = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
+
+  const localToken = localImgToken(url)
+  if (localToken) {
+    const targetPath = await join(CARD_IMAGE, localToken)
+    const bytes = await safeRead(targetPath)
+    if (!bytes) return null
+    const arrayBuffer = bytes.slice().buffer
+    const blob = new Blob([arrayBuffer], { type: 'image/*' })
+    const objectUrl = URL.createObjectURL(blob)
+    cache.set(localToken, objectUrl)
+    return objectUrl
+  }
+
   const filename = urlToFilename(url, name)
 
   if (isInCache(filename)) {
@@ -368,6 +415,8 @@ export const getCachedFileNames = (): string[] => {
  */
 export const refreshCache = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
+  // local:// 自定义图由用户操作直接覆盖文件，不重新下载
+  if (localImgToken(url)) return null
   const filename = urlToFilename(url, name)
 
   removeFromCache(filename)

@@ -3,7 +3,12 @@
  * 提供统一的搜索接口，封装复杂的查询逻辑
  */
 
-import type { CardBase, CardPrint, CardSearchParams, CardSearchResult } from '../types'
+import type {
+  CardPrint,
+  CardSearchParams,
+  CardSearchResult,
+  CardWithOwned,
+} from '../types'
 import { getDatabase } from '../repository/database'
 import { buildOrderBy, mapRowToCard } from '../helper'
 import { TABLES } from '../config/constants'
@@ -127,20 +132,65 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     queryParams.push(safeText)
   }
 
+  // 收藏聚合子查询：按卡聚合已拥有数量（所有变体×语言）
+  const ownedAgg = `
+    SELECT col.card_id AS oc_card_id,
+      SUM(cl.normal_qty) AS owned_normal,
+      SUM(cl.foil_qty) AS owned_foil,
+      SUM(cl.normal_qty + cl.foil_qty) AS owned_total
+    FROM ${TABLES.COLLECTION} col
+    JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+    GROUP BY col.card_id
+  `
+  const variantAgg = `
+    SELECT p.card_id AS vc_card_id,
+      COUNT(DISTINCT p.card_no_extend) AS total_variants,
+      COUNT(DISTINCT CASE WHEN col.card_id IS NOT NULL THEN p.card_no_extend END) AS owned_variants
+    FROM ${TABLES.CARD_PRINTS} p
+    LEFT JOIN ${TABLES.COLLECTION} col
+      ON col.card_id = p.card_id AND col.card_no_extend = p.card_no_extend
+    WHERE COALESCE(p.is_promo, 0) != 1
+    GROUP BY p.card_id
+  `
+
+  const baseAlias = TABLES.CARDS_BASE
+
+  // 5. 收藏状态过滤（按卡聚合）
+  if (params.ownership) {
+    const alias = 'oc_agg'
+    const inner = `(SELECT 1 FROM (${ownedAgg}) ${alias} WHERE ${alias}.oc_card_id = ${baseAlias}.id`
+    if (params.ownership === 'owned') {
+      whereClauses.push(`EXISTS ${inner} AND ${alias}.owned_total > 0)`)
+    } else if (params.ownership === 'missing') {
+      whereClauses.push(`NOT EXISTS ${inner})`)
+    } else {
+      whereClauses.push(`EXISTS ${inner} AND ${alias}.owned_foil > 0)`)
+    }
+  }
+
   const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
 
   // 5. 获取总数
-  const countSql = `SELECT COUNT(*) as total FROM ${TABLES.CARDS_BASE} ${whereStr}`
+  const countSql = `SELECT COUNT(*) as total FROM ${baseAlias} ${whereStr}`
   const countResult = await db.select<{ total: number }[]>(countSql, queryParams)
   const total = countResult[0]?.total || 0
 
   // 6. 获取分页数据
   const offset = (page - 1) * pageSize
-  const orderBy = buildOrderBy(params.sortByList)
+  const orderBy = params.collectionSort
+    ? buildCollectionOrderBy(params.collectionSort, variantAgg)
+    : buildOrderBy(params.sortByList)
   const dataSql = `
-    SELECT ${TABLES.CARDS_BASE}.*
-    FROM ${TABLES.CARDS_BASE}
-    LEFT JOIN ${TABLES.CARD_PRINTS} ON ${TABLES.CARDS_BASE}.id = ${TABLES.CARD_PRINTS}.card_id
+    SELECT ${baseAlias}.*,
+      COALESCE(oc_agg.owned_normal, 0) AS owned_normal,
+      COALESCE(oc_agg.owned_foil, 0) AS owned_foil,
+      COALESCE(oc_agg.owned_total, 0) AS owned_total,
+      COALESCE(vc_agg.owned_variants, 0) AS owned_variants,
+      COALESCE(vc_agg.total_variants, 0) AS total_variants
+    FROM ${baseAlias}
+    LEFT JOIN (${ownedAgg}) oc_agg ON oc_agg.oc_card_id = ${baseAlias}.id
+    LEFT JOIN (${variantAgg}) vc_agg ON vc_agg.vc_card_id = ${baseAlias}.id
+    LEFT JOIN ${TABLES.CARD_PRINTS} ON ${baseAlias}.id = ${TABLES.CARD_PRINTS}.card_id
       AND ${TABLES.CARD_PRINTS}.is_default = 1
     ${whereStr}
     ${orderBy}
@@ -150,7 +200,14 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
   const rows = await db.select<any[]>(dataSql, dataParams)
 
   // 7. 反序列化主表数据
-  let cards = rows.map((row) => mapRowToCard(row))
+  let cards: CardWithOwned[] = rows.map((row) => ({
+    ...mapRowToCard(row),
+    ownedNormal: row.owned_normal ?? 0,
+    ownedFoil: row.owned_foil ?? 0,
+    ownedTotal: row.owned_total ?? 0,
+    ownedVariants: row.owned_variants ?? 0,
+    totalVariants: row.total_variants ?? 0,
+  }))
 
   // 8. 获取关联的卡图
   if (cards.length > 0) {
@@ -184,5 +241,47 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     page,
     pageSize,
     totalPages: Math.ceil(total / pageSize),
+  }
+}
+
+/**
+ * 收藏页排序：
+ * - card_no：按卡号
+ * - rarity：按稀有度层级（普通 < 不凡 < 稀有 < 史诗 < 异画 < 超编 < 签名超编）
+ * - owned：按已拥有数量
+ * - progress：按拥有进度（已拥有变体 / 全部非 promo 变体）
+ */
+function buildCollectionOrderBy(
+  sort: { key: string; isAsc: boolean },
+  variantAgg: string
+): string {
+  const dir = sort.isAsc ? 'ASC' : 'DESC'
+  const baseAlias = TABLES.CARDS_BASE
+
+  switch (sort.key) {
+    case 'card_no':
+      return `ORDER BY ${baseAlias}.card_no COLLATE NOCASE ${dir}`
+    case 'rarity':
+      return `ORDER BY CASE
+        WHEN ${baseAlias}.card_category LIKE '%指示物%' THEN 0
+        WHEN ${baseAlias}.card_category LIKE '%符文%' THEN 1
+        WHEN ${TABLES.CARD_PRINTS}.extend_rarity_name = '异画' THEN 6
+        WHEN ${TABLES.CARD_PRINTS}.extend_rarity_name = '超编' THEN 7
+        WHEN ${TABLES.CARD_PRINTS}.extend_rarity_name = '签名超编' THEN 8
+        WHEN ${TABLES.CARD_PRINTS}.rarity_name = '普通' THEN 2
+        WHEN ${TABLES.CARD_PRINTS}.rarity_name = '不凡' THEN 3
+        WHEN ${TABLES.CARD_PRINTS}.rarity_name = '稀有' THEN 4
+        WHEN ${TABLES.CARD_PRINTS}.rarity_name = '史诗' THEN 5
+        ELSE 9
+      END ${dir}, ${baseAlias}.card_no COLLATE NOCASE ASC`
+    case 'owned':
+      return `ORDER BY oc_agg.owned_total ${dir}, ${baseAlias}.card_no COLLATE NOCASE ASC`
+    case 'progress':
+      return `ORDER BY CASE
+        WHEN vc_agg.total_variants IS NULL OR vc_agg.total_variants = 0 THEN NULL
+        ELSE vc_agg.owned_variants * 1.0 / vc_agg.total_variants
+      END ${dir === 'ASC' ? 'ASC NULLS LAST' : 'DESC'}, ${baseAlias}.card_no COLLATE NOCASE ASC`
+    default:
+      return `ORDER BY ${baseAlias}.card_no COLLATE NOCASE ASC`
   }
 }

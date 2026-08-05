@@ -22,6 +22,7 @@ export type {
   SortKeyItem,
   Deck,
   CardWithPrint,
+  CardWithOwned,
   DeckCard,
   SqliteDeck,
   MatchRecord,
@@ -32,6 +33,16 @@ export type {
   MatchInput,
   MatchGameInput,
   MatchWinType,
+  CollectionEntry,
+  CollectionLang,
+  Series,
+  OwnershipType,
+  CollectionSortKey,
+  CollectionSort,
+  SeriesStats,
+  CollectionStats,
+  CustomPrintInput,
+  OwnershipCheckRow,
 } from './types'
 
 // ==================== 配置 ====================
@@ -94,6 +105,23 @@ export {
 export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
 export { getTableCounts, getTableSizes } from './repository/stats'
 export { clearCardData } from './repository/maintenance'
+export {
+  upsertLangQty,
+  getVariantLangs,
+  getCardCollection,
+  getCollectionStats,
+  createCustomPrint,
+  updateCustomPrintImg,
+  updateCustomPrint,
+  deleteCustomPrint,
+  checkDeckOwnership,
+  cleanupOrphans,
+} from './repository/collection-repository'
+export {
+  saveSeries,
+  clearAllSeries,
+  getAllSeries,
+} from './repository/series-repository'
 export * from './repository/deck-repository'
 export {
   createMatch,
@@ -109,7 +137,12 @@ export {
 export { searchCards } from './service/search-service'
 export { initializeDatabase } from './service/sync-service'
 export { updateFilterOptions } from './service/filter-service'
-export { fetchLatestVersion, fetchAllCards, fetchAllPrints } from './service/remote-api'
+export {
+  fetchLatestVersion,
+  fetchAllCards,
+  fetchAllPrints,
+  fetchAllSeries,
+} from './service/remote-api'
 
 // ==================== 工具函数 ====================
 export {

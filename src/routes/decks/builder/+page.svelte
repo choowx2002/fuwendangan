@@ -9,6 +9,7 @@
     ChevronRightIcon,
     ChevronUpIcon,
     CircleAlert,
+    CircleCheck,
     EllipsisVerticalIcon,
     GripHorizontal,
     GripVertical,
@@ -135,6 +136,28 @@
   let useVerticalResize = $state(false)
   let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
   let showErrorModal = $state(false)
+  let showOwnershipModal = $state(false)
+  let ownershipRows = $state<import('$lib/db').OwnershipCheckRow[]>([])
+  let loadingOwnership = $state(false)
+
+  async function runOwnershipCheck() {
+    if (allDeckCards.length === 0) {
+      message('卡组为空，无需检查')
+      return
+    }
+    loadingOwnership = true
+    showOwnershipModal = true
+    try {
+      const { checkDeckOwnership } = await import('$lib/db')
+      const items = allDeckCards.map((c) => ({
+        cardPrintId: c.selectedPrints ?? c.card_prints?.[0]?.id ?? '',
+        quantity: 1,
+      }))
+      ownershipRows = await checkDeckOwnership(items)
+    } finally {
+      loadingOwnership = false
+    }
+  }
 
   beforeNavigate(async (navigation) => {
     if (!navigation.to) {
@@ -211,6 +234,12 @@
   async function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
       message('该卡牌为禁卡，无法加入卡组！')
+      return
+    }
+
+    // Promo / 自定义打印不可入卡组
+    if (card.card_prints?.every((p) => p.is_promo || p.is_custom)) {
+      message('Promo/自定打印卡牌无法加入卡组')
       return
     }
 
@@ -903,6 +932,17 @@
         <span>保存</span>
       </button>
 
+      <button
+        class="button button-ghost"
+        onclick={runOwnershipCheck}
+        disabled={allDeckCards.length === 0}
+        style="min-width: auto;"
+        title="检查卡组卡牌是否已拥有"
+      >
+        <CircleCheck size={16} />
+        <span>持有检查</span>
+      </button>
+
       <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title="更多选项">
         <EllipsisVerticalIcon size={16} />
       </button>
@@ -1438,6 +1478,52 @@
     {#snippet footer()}
       <button class="button button-primary" onclick={() => (showErrorModal = !showErrorModal)}>
         <span>了解</span>
+      </button>
+    {/snippet}
+  </CommonModal>
+
+  <CommonModal
+    closeOnOverlay={true}
+    onclose={() => (showOwnershipModal = !showOwnershipModal)}
+    open={showOwnershipModal}
+    title="持有检查"
+  >
+    <div class="ownership-panel">
+      {#if loadingOwnership}
+        <div class="ownership-loading">
+          <LoaderCircle class="animate-spin" size={16} />
+          <span>检查中...</span>
+        </div>
+      {:else if ownershipRows.length === 0}
+        <p class="ownership-empty">检查完毕，全部持有。</p>
+      {:else}
+        <p class="ownership-hint">以下卡牌未足量拥有：</p>
+        <table class="ownership-table">
+          <thead>
+            <tr>
+              <th>卡牌</th>
+              <th>编号</th>
+              <th>持有</th>
+              <th>需要</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each ownershipRows as row (row.cardId)}
+              <tr>
+                <td class="cell-name">{row.cardName}</td>
+                <td class="cell-no">{row.cardNo}</td>
+                <td class="cell-owned" class:insufficient={row.owned < row.needed}>{row.owned}</td>
+                <td class="cell-needed">{row.needed}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+    </div>
+
+    {#snippet footer()}
+      <button class="button button-primary" onclick={() => (showOwnershipModal = false)}>
+        <span>关闭</span>
       </button>
     {/snippet}
   </CommonModal>
@@ -2380,6 +2466,59 @@
 
   .footer-btn {
     min-height: 36px;
+  }
+
+  .ownership-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .ownership-loading,
+  .ownership-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .ownership-hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .ownership-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .ownership-table th,
+  .ownership-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .ownership-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .cell-no {
+    color: var(--text-secondary);
+  }
+
+  .cell-owned {
+    font-weight: 600;
+  }
+
+  .cell-owned.insufficient {
+    color: #ef4444;
   }
 
   @media (max-width: 479.99px) {

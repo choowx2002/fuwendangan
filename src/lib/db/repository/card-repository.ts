@@ -111,11 +111,15 @@ export async function deleteCard(id: string): Promise<void> {
 }
 
 /**
- * 清空所有卡牌数据
+ * 清空所有卡牌数据（保留被用户自建打印引用的基础卡，防全量同步时自定义打印随基础卡丢失）
  */
 export async function clearAllCards(): Promise<void> {
   const db = await getDatabase()
-  await db.execute(`DELETE FROM ${TABLES.CARDS_BASE}`)
+  await db.execute(
+    `DELETE FROM ${TABLES.CARDS_BASE} WHERE id NOT IN (
+       SELECT DISTINCT card_id FROM ${TABLES.CARD_PRINTS} WHERE is_custom = 1
+     )`
+  )
 }
 
 /*

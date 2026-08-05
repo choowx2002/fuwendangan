@@ -16,6 +16,9 @@ export const TABLES = {
   RULES: 'rules',
   MATCH_RECORDS: 'match_records',
   MATCH_GAMES: 'match_games',
+  COLLECTION: 'collection',
+  COLLECTION_LANGS: 'collection_langs',
+  SERIES: 'series',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]
