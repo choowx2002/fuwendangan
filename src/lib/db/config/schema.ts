@@ -46,6 +46,8 @@ export const TABLE_DEFINITIONS = {
       id TEXT PRIMARY KEY,
       card_id TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
+      series_code TEXT,
+      last_edited_at TEXT,
       created_at TEXT,
       updated_at TEXT,
       UNIQUE(card_id, card_no_extend)
@@ -56,11 +58,35 @@ export const TABLE_DEFINITIONS = {
     CREATE TABLE IF NOT EXISTS collection_langs (
       id TEXT PRIMARY KEY,
       collection_id TEXT NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
-      language TEXT NOT NULL,
+      language_code TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'owned',
       normal_qty INTEGER DEFAULT 0,
       foil_qty INTEGER DEFAULT 0,
-      UNIQUE(collection_id, language)
+      created_at TEXT,
+      updated_at TEXT,
+      UNIQUE(collection_id, language_code)
     )
+  `,
+
+  idx_collection_series: `
+    CREATE INDEX IF NOT EXISTS idx_collection_series ON collection(series_code, last_edited_at)
+  `,
+
+  custom_languages: `
+    CREATE TABLE IF NOT EXISTS custom_languages (
+      code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  idx_collection_langs_language: `
+    CREATE INDEX IF NOT EXISTS idx_collection_langs_language ON collection_langs(language_code)
+  `,
+
+  idx_collection_langs_status: `
+    CREATE INDEX IF NOT EXISTS idx_collection_langs_status ON collection_langs(status)
   `,
 
   series: `
@@ -76,6 +102,7 @@ export const TABLE_DEFINITIONS = {
       overnum_count INTEGER DEFAULT 0,
       rune_count INTEGER DEFAULT 0,
       token_count INTEGER DEFAULT 0,
+      cover_image TEXT,
       created_at TEXT,
       updated_at TEXT
     )
@@ -221,6 +248,7 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS deck_cards;
     DROP TABLE IF EXISTS collection_langs;
     DROP TABLE IF EXISTS collection;
+    DROP TABLE IF EXISTS custom_languages;
     DROP TABLE IF EXISTS series;
     DROP TABLE IF EXISTS card_prints;
     DROP TABLE IF EXISTS cards_base;

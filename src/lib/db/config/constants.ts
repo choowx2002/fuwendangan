@@ -18,6 +18,7 @@ export const TABLES = {
   MATCH_GAMES: 'match_games',
   COLLECTION: 'collection',
   COLLECTION_LANGS: 'collection_langs',
+  CUSTOM_LANGUAGES: 'custom_languages',
   SERIES: 'series',
 } as const
 

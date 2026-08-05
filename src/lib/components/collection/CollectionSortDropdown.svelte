@@ -12,6 +12,7 @@
     { key: 'rarity', label: '稀有度' },
     { key: 'owned', label: '持有数' },
     { key: 'progress', label: '进度' },
+    { key: 'recent', label: '最近录入' },
   ]
 
   let open = $state(false)

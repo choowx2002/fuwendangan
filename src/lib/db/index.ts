@@ -35,6 +35,9 @@ export type {
   MatchWinType,
   CollectionEntry,
   CollectionLang,
+  CustomLanguage,
+  CollectionStatus,
+  CompletionModeId,
   Series,
   OwnershipType,
   CollectionSortKey,
@@ -43,11 +46,26 @@ export type {
   CollectionStats,
   CustomPrintInput,
   OwnershipCheckRow,
+  RecentCollectionCard,
+  MissingCardItem,
+  CollectionItem,
 } from './types'
 
 // ==================== 配置 ====================
 export { DB_NAME, TABLES, DEFAULT_PAGE_SIZE, DEFAULT_PAGE } from './config/constants'
 export { TABLE_DEFINITIONS } from './config/schema'
+export {
+  PRESET_LANGUAGE_CODES,
+  LANGUAGE_NAMES,
+  normalizePresetCode,
+  languageDisplayName,
+} from './config/languages'
+export {
+  COLLECTION_STATUSES,
+  resolveStatus,
+  shouldKeepLangRow,
+  shouldDeleteVariant,
+} from './config/collection-rules'
 
 // ==================== 环境检测 ====================
 export { isTauri, isWeb } from './env'
@@ -110,13 +128,27 @@ export {
   getVariantLangs,
   getCardCollection,
   getCollectionStats,
+  setLangStatus,
   createCustomPrint,
   updateCustomPrintImg,
   updateCustomPrint,
   deleteCustomPrint,
   checkDeckOwnership,
   cleanupOrphans,
+  getRecentCollectionCards,
+  getMissingCards,
+  bulkMarkOwned,
+  bulkIncrement,
+  bulkDeleteCollection,
+  type UpsertLangQtyOptions,
 } from './repository/collection-repository'
+export {
+  getCustomLanguages,
+  isLanguageCodeValid,
+  addCustomLanguage,
+  renameCustomLanguage,
+  deleteCustomLanguage,
+} from './repository/language-repository'
 export {
   saveSeries,
   clearAllSeries,
@@ -137,6 +169,11 @@ export {
 export { searchCards } from './service/search-service'
 export { initializeDatabase } from './service/sync-service'
 export { updateFilterOptions } from './service/filter-service'
+export {
+  COMPLETION_MODES,
+  getCompletionMode,
+  type CompletionMode,
+} from './service/completion-modes'
 export {
   fetchLatestVersion,
   fetchAllCards,

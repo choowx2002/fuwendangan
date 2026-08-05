@@ -12,6 +12,8 @@ import type {
 import { getDatabase } from '../repository/database'
 import { buildOrderBy, mapRowToCard } from '../helper'
 import { TABLES } from '../config/constants'
+import { getCompletionMode } from './completion-modes'
+import { getAllSeries } from '../repository/series-repository'
 
 /**
  * 执行卡牌搜索
@@ -101,6 +103,35 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     }
   }
 
+  // 3.5 收藏页：按卡图印刷系列过滤（card_no_extend 前 3 位，不依赖 cards_base.series_name）。
+  // 回退：该卡没有任何已知系列码前缀的非 promo 印刷时，才按 cards_base.series_name 匹配（防御）。
+  if (params.seriesCode && params.seriesCode.trim() !== '') {
+    const seriesList = await getAllSeries()
+    const knownCodes = seriesList.map((s) => s.code.toUpperCase())
+    const code = params.seriesCode.trim().toUpperCase()
+
+    const knownIn =
+      knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
+    whereClauses.push(`(
+      EXISTS (
+        SELECT 1 FROM ${TABLES.CARD_PRINTS} cp
+        WHERE cp.card_id = ${TABLES.CARDS_BASE}.id
+          AND COALESCE(cp.is_promo, 0) != 1
+          AND substr(upper(cp.card_no_extend), 1, 3) = ?
+      )
+      OR (
+        ${TABLES.CARDS_BASE}.series_name = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM ${TABLES.CARD_PRINTS} cp2
+          WHERE cp2.card_id = ${TABLES.CARDS_BASE}.id
+            AND COALESCE(cp2.is_promo, 0) != 1
+            AND substr(upper(cp2.card_no_extend), 1, 3) IN (${knownIn})
+        )
+      )
+    )`)
+    queryParams.push(code, code, ...knownCodes)
+  }
+
   // 4. 数值范围过滤
   const numberFields = ['power', 'energy', 'return_energy'] as const
   for (const field of numberFields) {
@@ -132,31 +163,53 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     queryParams.push(safeText)
   }
 
-  // 收藏聚合子查询：按卡聚合已拥有数量（所有变体×语言）
+  // 收藏聚合子查询：按卡聚合已拥有数量（仅 owned 状态，所有变体×语言）
   const ownedAgg = `
     SELECT col.card_id AS oc_card_id,
       SUM(cl.normal_qty) AS owned_normal,
       SUM(cl.foil_qty) AS owned_foil,
-      SUM(cl.normal_qty + cl.foil_qty) AS owned_total
+      SUM(cl.normal_qty + cl.foil_qty) AS owned_total,
+      MAX(col.last_edited_at) AS oc_last_edited
     FROM ${TABLES.COLLECTION} col
     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+    WHERE cl.status = 'owned'
     GROUP BY col.card_id
   `
+
+  // 变体完成度聚合：按完成度模式（默认 base）判定变体是否已拥有。
+  // 外层按卡聚合 total/owned 变体数，谓词来自 completion-modes 注册表。
+  const completion = getCompletionMode(params.completionMode)
+  const bucketCase = `CASE
+    WHEN cb.card_category LIKE '%符文%' THEN 'rune'
+    WHEN cb.card_category LIKE '%指示物%' THEN 'token'
+    WHEN MAX(p.extend_rarity_name) = '异画' THEN 'alt'
+    WHEN MAX(p.extend_rarity_name) IN ('超编', '签名超编') THEN 'overnum'
+    ELSE 'base'
+  END`
   const variantAgg = `
-    SELECT p.card_id AS vc_card_id,
-      COUNT(DISTINCT p.card_no_extend) AS total_variants,
-      COUNT(DISTINCT CASE WHEN col.card_id IS NOT NULL THEN p.card_no_extend END) AS owned_variants
-    FROM ${TABLES.CARD_PRINTS} p
-    LEFT JOIN ${TABLES.COLLECTION} col
-      ON col.card_id = p.card_id AND col.card_no_extend = p.card_no_extend
-    WHERE COALESCE(p.is_promo, 0) != 1
-    GROUP BY p.card_id
+    SELECT vc.card_id AS vc_card_id,
+      COUNT(*) AS total_variants,
+      COUNT(CASE WHEN vc.owned = 1 THEN 1 END) AS owned_variants
+    FROM (
+      SELECT p.card_id AS card_id, p.card_no_extend AS card_no_extend,
+        ${bucketCase} AS bucket,
+        MAX(CASE WHEN ${completion.ownedPredicate ?? '1=1'} THEN 1 ELSE 0 END) AS owned
+      FROM ${TABLES.CARD_PRINTS} p
+      LEFT JOIN ${TABLES.COLLECTION} col
+        ON col.card_id = p.card_id AND col.card_no_extend = p.card_no_extend
+      LEFT JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+      LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+      WHERE COALESCE(p.is_promo, 0) != 1
+      GROUP BY p.card_id, p.card_no_extend
+    ) vc
+    WHERE ${completion.bucketPredicate ?? '1=1'}
+    GROUP BY vc.card_id
   `
 
   const baseAlias = TABLES.CARDS_BASE
 
   // 5. 收藏状态过滤（按卡聚合）
-  if (params.ownership) {
+  if (params.ownership && params.ownership !== 'all') {
     const alias = 'oc_agg'
     const inner = `(SELECT 1 FROM (${ownedAgg}) ${alias} WHERE ${alias}.oc_card_id = ${baseAlias}.id`
     if (params.ownership === 'owned') {
@@ -166,6 +219,22 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     } else {
       whereClauses.push(`EXISTS ${inner} AND ${alias}.owned_foil > 0)`)
     }
+  }
+
+  // 5.5 收藏页：按变体桶过滤（与 variantAgg 相同的桶分类口径）
+  if (params.bucket && params.bucket.trim() !== '') {
+    const bucket = params.bucket.trim()
+    whereClauses.push(`EXISTS (
+      SELECT 1 FROM (
+        SELECT p.card_id AS card_id,
+          ${bucketCase} AS bucket
+        FROM ${TABLES.CARD_PRINTS} p
+        JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+        WHERE p.card_id = ${baseAlias}.id AND COALESCE(p.is_promo, 0) != 1
+        GROUP BY p.card_id, p.card_no_extend
+      ) b WHERE b.bucket = ?
+    )`)
+    queryParams.push(bucket)
   }
 
   const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
@@ -186,7 +255,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
       COALESCE(oc_agg.owned_foil, 0) AS owned_foil,
       COALESCE(oc_agg.owned_total, 0) AS owned_total,
       COALESCE(vc_agg.owned_variants, 0) AS owned_variants,
-      COALESCE(vc_agg.total_variants, 0) AS total_variants
+      COALESCE(vc_agg.total_variants, 0) AS total_variants,
+      oc_agg.oc_last_edited AS last_edited
     FROM ${baseAlias}
     LEFT JOIN (${ownedAgg}) oc_agg ON oc_agg.oc_card_id = ${baseAlias}.id
     LEFT JOIN (${variantAgg}) vc_agg ON vc_agg.vc_card_id = ${baseAlias}.id
@@ -207,6 +277,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     ownedTotal: row.owned_total ?? 0,
     ownedVariants: row.owned_variants ?? 0,
     totalVariants: row.total_variants ?? 0,
+    lastEdited: row.last_edited ?? null,
   }))
 
   // 8. 获取关联的卡图
@@ -250,6 +321,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
  * - rarity：按稀有度层级（普通 < 不凡 < 稀有 < 史诗 < 异画 < 超编 < 签名超编）
  * - owned：按已拥有数量
  * - progress：按拥有进度（已拥有变体 / 全部非 promo 变体）
+ * - recent：按最近录入时间（无记录排最后）
  */
 function buildCollectionOrderBy(
   sort: { key: string; isAsc: boolean },
@@ -281,6 +353,9 @@ function buildCollectionOrderBy(
         WHEN vc_agg.total_variants IS NULL OR vc_agg.total_variants = 0 THEN NULL
         ELSE vc_agg.owned_variants * 1.0 / vc_agg.total_variants
       END ${dir === 'ASC' ? 'ASC NULLS LAST' : 'DESC'}, ${baseAlias}.card_no COLLATE NOCASE ASC`
+    case 'recent':
+      return `ORDER BY oc_agg.oc_last_edited ${dir === 'ASC' ? 'ASC' : 'DESC'} NULLS LAST,
+        ${baseAlias}.card_no COLLATE NOCASE ASC`
     default:
       return `ORDER BY ${baseAlias}.card_no COLLATE NOCASE ASC`
   }

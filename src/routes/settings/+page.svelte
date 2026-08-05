@@ -21,6 +21,12 @@
     getDatabase,
     closeDatabase,
     importDecksFromJson,
+    getCustomLanguages,
+    addCustomLanguage,
+    renameCustomLanguage,
+    deleteCustomLanguage,
+    PRESET_LANGUAGE_CODES,
+    type CustomLanguage,
     type ImportDeckPayload,
   } from '$lib/db'
   import { showForeignCardArt as showFCA, showTTSFeatures } from '$lib/stores/settings'
@@ -80,6 +86,15 @@
   let pendingImportDecks = $state<ImportDeckPayload[]>([])
   let isImporting = $state(false)
 
+  // --- 自定义语言 ---
+  let customLangs = $state<CustomLanguage[]>([])
+  let newLangCode = $state('')
+  let newLangName = $state('')
+  let editingCode = $state('')
+  let editingName = $state('')
+  let langMsg = $state('')
+  let langMsgError = $state(false)
+
   // --- 常量 ---
   const HELP_DOC_URL =
     'https://wjp00vpskyvs.jp.larksuite.com/wiki/MeISwlCQeiiOK6kMxrujfVC2pcf?from=from_copylink'
@@ -101,6 +116,7 @@
     inMobile = await isMobile()
     appVersion = await getAppVersion()
     await loadDbInfo()
+    await loadCustomLangs()
   })
 
   // --- 逻辑函数 ---
@@ -733,6 +749,65 @@
     await loadDbInfo()
   }
 
+  // --- 自定义语言管理 ---
+  async function loadCustomLangs() {
+    customLangs = await getCustomLanguages()
+  }
+
+  async function addLang() {
+    langMsg = ''
+    langMsgError = false
+    try {
+      await addCustomLanguage(newLangCode, newLangName)
+      newLangCode = ''
+      newLangName = ''
+      await loadCustomLangs()
+      langMsg = '已添加自定义语言'
+    } catch (e) {
+      langMsgError = true
+      langMsg = e instanceof Error ? e.message : '添加失败'
+    }
+  }
+
+  function startEdit(lang: CustomLanguage) {
+    editingCode = lang.code
+    editingName = lang.name
+  }
+
+  async function saveRename(code: string) {
+    langMsg = ''
+    langMsgError = false
+    try {
+      await renameCustomLanguage(code, editingName)
+      editingCode = ''
+      await loadCustomLangs()
+      langMsg = '已重命名'
+    } catch (e) {
+      langMsgError = true
+      langMsg = e instanceof Error ? e.message : '重命名失败'
+    }
+  }
+
+  async function removeLang(code: string) {
+    langMsg = ''
+    langMsgError = false
+    const confirmed = await ask(`确定删除自定义语言 ${code} 吗？`, {
+      title: '删除自定义语言',
+      kind: 'warning',
+      okLabel: '删除',
+      cancelLabel: '取消',
+    })
+    if (!confirmed) return
+    try {
+      await deleteCustomLanguage(code)
+      await loadCustomLangs()
+      langMsg = '已删除'
+    } catch (e) {
+      langMsgError = true
+      langMsg = e instanceof Error ? e.message : '删除失败'
+    }
+  }
+
   beforeNavigate(({ from, cancel, type, delta }) => {
     const isBackward = type === 'popstate' && delta && delta < 0
 
@@ -1006,6 +1081,77 @@
         重置卡图缓存
       </button>
     </div>
+  </section>
+
+  <!-- 7. 自定义语言 -->
+  <section class="settings-card">
+    <h2 class="card-title">自定义语言</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">预设语言</span>
+        <span class="setting-desc">
+          {PRESET_LANGUAGE_CODES.join(' / ')}。收藏中的语言使用标准语言码，预设之外的语言可在此添加。
+        </span>
+      </div>
+    </div>
+
+    <div class="add-lang-row">
+      <input
+        class="settings-input lang-code-input"
+        bind:value={newLangCode}
+        placeholder="语言码，如 FR（2-6 位大写字母/数字）"
+      />
+      <input class="settings-input" bind:value={newLangName} placeholder="显示名，如 法语" />
+      <button class="button button-primary" onclick={addLang}>添加</button>
+    </div>
+
+    {#if langMsg}
+      <div class="lang-msg" class:lang-msg-error={langMsgError}>{langMsg}</div>
+    {/if}
+
+    {#if customLangs.length === 0}
+      <div class="lang-empty">暂无自定义语言</div>
+    {:else}
+      <div class="manage-list">
+        {#each customLangs as lang (lang.code)}
+          <div class="manage-row">
+            <div class="manage-info">
+              <span class="manage-title">{lang.code}</span>
+              <span class="manage-desc">
+                {#if editingCode === lang.code}
+                  <input class="settings-input" bind:value={editingName} placeholder="语言名称" />
+                {:else}
+                  {lang.name}
+                {/if}
+              </span>
+            </div>
+            <div class="lang-actions">
+              {#if editingCode === lang.code}
+                <button class="button button-ghost" onclick={() => saveRename(lang.code)}>
+                  保存
+                </button>
+                <button
+                  class="button button-ghost"
+                  onclick={() => {
+                    editingCode = ''
+                  }}
+                >
+                  取消
+                </button>
+              {:else}
+                <button class="button button-ghost" onclick={() => startEdit(lang)}>
+                  重命名
+                </button>
+                <button class="button button-danger-outline" onclick={() => removeLang(lang.code)}>
+                  删除
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   <CommonModal
@@ -1410,6 +1556,52 @@
 
   input:checked + .slider:before {
     transform: translateX(18px);
+  }
+
+  /* 自定义语言 */
+  .add-lang-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 0;
+    flex-wrap: wrap;
+  }
+
+  .settings-input {
+    flex: 1;
+    min-width: 160px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .lang-code-input {
+    flex: 0 1 220px;
+  }
+
+  .lang-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .lang-msg {
+    font-size: var(--text-sm);
+    color: #0f7b6c;
+    padding: 4px 0;
+  }
+
+  .lang-msg-error {
+    color: #e03e3e;
+  }
+
+  .lang-empty {
+    padding: 12px 0;
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
   }
 
   /* 导出卡组弹窗 */

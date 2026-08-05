@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CardPrint, CardWithOwned, CollectionLang } from '$lib/db'
-  import { getCardCollection, upsertLangQty } from '$lib/db'
+  import { getCardCollection, upsertLangQty, getCustomLanguages } from '$lib/db'
+  import { PRESET_LANGUAGE_CODES, languageDisplayName } from '$lib/db'
   import { X, Plus, Trash2, Pencil } from '@lucide/svelte'
   import CachedImage from '../cards/CachedImage.svelte'
   import FoilCard from '../cards/FoilCard.svelte'
@@ -34,13 +35,21 @@
   let variants = $state<VariantView[]>([])
   let selectedNo = $state('')
   let newLangInput = $state('SC')
+  let langOptions = $state<string[]>([...PRESET_LANGUAGE_CODES])
+  let customLangNames = $state(new Map<string, string>())
   let showCustomForm = $state(false)
   let editCustomPrint = $state<CardPrint | null>(null)
   let loadId = 0
 
   const selectedVariant = $derived(variants.find((v) => v.cardNoExtend === selectedNo))
 
-  const bucketRank: Record<VariantBucket, number> = { rune: 0, token: 1, base: 2, alt: 3, overnum: 4 }
+  const bucketRank: Record<VariantBucket, number> = {
+    rune: 0,
+    token: 1,
+    base: 2,
+    alt: 3,
+    overnum: 4,
+  }
 
   const sortedVariants = $derived(
     [...variants].sort(
@@ -51,6 +60,9 @@
 
   async function loadData() {
     if (!card) return
+    const customs = await getCustomLanguages()
+    customLangNames = new Map(customs.map((c) => [c.code, c.name]))
+    langOptions = [...PRESET_LANGUAGE_CODES, ...customs.map((c) => c.code)]
     const printList = card.card_prints ?? []
     const map = new Map<string, CardPrint[]>()
     for (const p of printList) {
@@ -60,7 +72,7 @@
     }
     const langMap = await getCardCollection(card.id)
 
-    const next: VariantView[] = Array.from(map.entries()).map(([no, prints]) => {
+    let next: VariantView[] = Array.from(map.entries()).map(([no, prints]) => {
       const langs = langMap.get(no) ?? []
       const bucket = classifyVariant(card.card_category, prints[0]?.extend_rarity_name)
       return {
@@ -91,11 +103,7 @@
     })
   })
 
-  function saveAndReload(
-    no: string,
-    lang: string,
-    patch: { normal?: number; foil?: number }
-  ) {
+  function saveAndReload(no: string, lang: string, patch: { normal?: number; foil?: number }) {
     void upsertLangQty(card!.id, no, lang, patch).then(() => {
       void loadData().then(() => {
         onChanged?.()
@@ -106,7 +114,7 @@
   function addLangTo(v: VariantView) {
     const lang = newLangInput.trim()
     if (!lang) return
-    if (v.langs.some((l) => l.language === lang)) return
+    if (v.langs.some((l) => l.language_code === lang)) return
     saveAndReload(v.cardNoExtend, lang, { normal: 0, foil: 0 })
     newLangInput = 'SC'
   }
@@ -154,24 +162,26 @@
 
       <div class="modal-body">
         <div class="preview-col">
-          {#if selectedVariant?.prints[0] && selectedVariant.hasFoil}
-            <FoilCard
-              print={selectedVariant.prints[0]}
-              cardName={card.card_name_cn ?? ''}
-              rarity={(selectedVariant.prints[0]?.extend_rarity_name ?? card.rarity_name) ?? ''}
-              size="md"
-            />
-          {:else if selectedVariant?.prints[0]}
-            <CachedImage
-              src={selectedVariant.prints[0].img_cdn ?? selectedVariant.prints[0].tts_cdn ?? ''}
-              name={`${card.id}-${selectedVariant.prints[0].id || 'default'}`}
-              fit="cover"
-              borderRadius="8px"
-              isHover={false}
-            />
-          {:else}
-            <div class="no-image">无图</div>
-          {/if}
+          <div class="preview-card">
+            {#if selectedVariant?.prints[0] && selectedVariant.hasFoil}
+              <FoilCard
+                print={selectedVariant.prints[0]}
+                cardName={card.card_name_cn ?? ''}
+                rarity={selectedVariant.prints[0]?.extend_rarity_name ?? card.rarity_name ?? ''}
+                size="md"
+              />
+            {:else if selectedVariant?.prints[0]}
+              <CachedImage
+                src={selectedVariant.prints[0].img_cdn ?? selectedVariant.prints[0].tts_cdn ?? ''}
+                name={`${card.id}-${selectedVariant.prints[0].id || 'default'}`}
+                fit="cover"
+                borderRadius="8px"
+                isHover={false}
+              />
+            {:else}
+              <div class="no-image">无图</div>
+            {/if}
+          </div>
 
           <div class="variant-tabs">
             {#each sortedVariants as v (v.cardNoExtend)}
@@ -205,50 +215,77 @@
                   {v.cardNoExtend}
                 </button>
                 <span class="chip">{BUCKET_LABELS[v.bucket]}</span>
+                {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no.toUpperCase().slice(0, 3)}
+                  <span class="chip proto">原型 {card.card_no}</span>
+                {/if}
                 {#if v.isCustom}
                   <span class="chip promo">自定</span>
                 {/if}
                 <span class="chip">{v.totalOwned}</span>
               </div>
 
+              {#if v.langs.length === 0}
+                <p class="empty-langs-hint">暂无收藏数量，选择语言后点「添加语言」</p>
+              {/if}
+
               {#each v.langs as l (l.id)}
                 <div class="lang-row">
-                  <span class="lang-name">{l.language}</span>
+                  <span class="lang-name"
+                    >{languageDisplayName(l.language_code, customLangNames)}</span
+                  >
                   <div class="stepper">
                     <button
                       onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language, {
+                        saveAndReload(v.cardNoExtend, l.language_code, {
                           normal: (l.normal_qty ?? 0) - 1,
-                        })
-                      }
-                    >-</button>
-                    <span class="qty">普 {(l.normal_qty ?? 0)}</span>
+                        })}>-</button
+                    >
+                    <span class="qty">普卡 {l.normal_qty ?? 0}</span>
                     <button
                       onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language, {
+                        saveAndReload(v.cardNoExtend, l.language_code, {
                           normal: (l.normal_qty ?? 0) + 1,
-                        })
-                      }
-                    >+</button>
+                        })}>+</button
+                    >
                     <span class="divider"></span>
                     <button
                       onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language, {
+                        saveAndReload(v.cardNoExtend, l.language_code, {
                           foil: (l.foil_qty ?? 0) - 1,
-                        })
-                      }
-                    >-</button>
-                    <span class="qty qty-foil">闪 {(l.foil_qty ?? 0)}</span>
+                        })}>-</button
+                    >
+                    <span class="qty qty-foil">闪卡 {l.foil_qty ?? 0}</span>
                     <button
                       onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language, {
+                        saveAndReload(v.cardNoExtend, l.language_code, {
                           foil: (l.foil_qty ?? 0) + 1,
-                        })
-                      }
-                    >+</button>
+                        })}>+</button
+                    >
                   </div>
                 </div>
               {/each}
+
+              <div class="add-lang-row">
+                <select
+                  class="lang-input"
+                  bind:value={newLangInput}
+                  title="选择要添加的语言"
+                >
+                  {#each langOptions as code (code)}
+                    {@const added = v.langs.some((l) => l.language_code === code)}
+                    <option value={code} disabled={added}>
+                      {languageDisplayName(code, customLangNames)}{added ? '（已添加）' : ''}
+                    </option>
+                  {/each}
+                </select>
+                <button
+                  class="btn-mini"
+                  onclick={() => addLangTo(v)}
+                  disabled={v.langs.some((l) => l.language_code === newLangInput)}
+                >
+                  <Plus size={13} /> 添加语言
+                </button>
+              </div>
 
               {#if isTauri && v.isCustom}
                 <div class="custom-actions">
@@ -264,22 +301,6 @@
           {/each}
 
           <div class="toolbar">
-            <input
-              class="lang-input"
-              placeholder="新语言，如 EN"
-              bind:value={newLangInput}
-              disabled={!selectedVariant}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' && selectedVariant) addLangTo(selectedVariant)
-              }}
-            />
-            <button
-              class="btn-mini"
-              onclick={() => selectedVariant && addLangTo(selectedVariant)}
-              disabled={!selectedVariant}
-            >
-              <Plus size={13} /> 语言
-            </button>
             <button class="btn-mini" onclick={openCreateCustom}>
               <Plus size={13} /> 自定打印
             </button>
@@ -483,6 +504,29 @@
     color: #a855f7;
   }
 
+  .chip.proto {
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #3b82f6;
+  }
+
+  .empty-langs-hint {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin: 0;
+  }
+
+  .add-lang-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px dashed var(--border-color);
+    padding-top: 8px;
+  }
+
+  .add-lang-row .lang-input {
+    flex: 1;
+  }
+
   .lang-row {
     display: flex;
     align-items: center;
@@ -493,7 +537,7 @@
   .lang-name {
     font-size: var(--text-sm);
     color: var(--text-secondary);
-    min-width: 32px;
+    min-width: 96px;
   }
 
   .stepper {
@@ -518,7 +562,7 @@
   }
 
   .qty {
-    min-width: 44px;
+    min-width: 56px;
     text-align: center;
     font-size: var(--text-sm);
   }
@@ -571,6 +615,7 @@
   .toolbar {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
   }
 
@@ -585,13 +630,115 @@
     font-size: var(--text-sm);
   }
 
+  select.lang-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .modal-content {
+    background: var(--bg-primary);
+    width: 100%;
+    max-width: min(960px, 100%);
+    max-height: 90vh;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .modal-body {
+    display: grid;
+    grid-template-columns: minmax(210px, 240px) minmax(0, 1fr);
+    gap: 24px;
+    padding: 18px 24px 24px;
+    overflow-y: auto;
+    align-items: start;
+  }
+
+  .preview-col {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* 关键：固定卡图比例，标准卡牌比例一般是 63:88 */
+  .preview-card {
+    width: min(100%, 230px);
+    aspect-ratio: 63 / 88;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+  }
+
+  /* 强制子组件根节点填满容器，避免 FoilCard / CachedImage 内部固定尺寸撑开 */
+  .preview-card > :global(*) {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: inherit;
+  }
+
+  /* 图片、canvas 等媒体内容统一 cover */
+  .preview-card :global(img),
+  .preview-card :global(canvas),
+  .preview-card :global(svg),
+  .preview-card :global(video) {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    display: block;
+  }
+
+  .no-image {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0;
+    background: var(--bg-secondary);
+    color: var(--text-tertiary);
+  }
+
+  .variant-tabs {
+    width: min(100%, 230px);
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .edit-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
   @media (max-width: 600.99px) {
     .modal-body {
-      flex-direction: column;
+      grid-template-columns: 1fr;
     }
 
+    .preview-card {
+      width: min(100%, 220px);
+    }
+
+    .variant-tabs {
+      width: min(100%, 220px);
+    }
+  }
+
+  @media (min-width: 601px) {
     .preview-col {
-      align-items: center;
+      position: sticky;
+      top: 0;
     }
   }
 </style>

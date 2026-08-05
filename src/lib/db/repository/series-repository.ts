@@ -16,6 +16,7 @@ function mapRowToSeries(row: any): Series {
     overnum_count: row.overnum_count ?? 0,
     rune_count: row.rune_count ?? 0,
     token_count: row.token_count ?? 0,
+    cover_image: row.cover_image ?? null,
   }
 }
 
@@ -28,8 +29,8 @@ export async function saveSeries(series: Series[]): Promise<void> {
     await db.execute(
       `INSERT OR REPLACE INTO ${TABLES.SERIES}
        (code, name_cn, name_en, release_order, is_standard, is_active,
-        base_count, alt_count, overnum_count, rune_count, token_count, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        base_count, alt_count, overnum_count, rune_count, token_count, cover_image, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         s.code,
         s.name_cn,
@@ -42,6 +43,7 @@ export async function saveSeries(series: Series[]): Promise<void> {
         s.overnum_count,
         s.rune_count,
         s.token_count,
+        s.cover_image ?? null,
         s.created_at,
         s.updated_at,
       ]

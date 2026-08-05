@@ -61,6 +61,8 @@ export type CardWithOwned = CardBase & {
   // 非 promo 变体总数与已拥有变体数（进度用）
   ownedVariants: number
   totalVariants: number
+  // 最近一次收藏录入时间（收藏页「最近录入」排序用）
+  lastEdited?: string | null
 }
 
 // 版本控制模型
@@ -112,10 +114,18 @@ export interface CardSearchResult {
 
 // ==================== 收藏模型 ====================
 
+/** 收藏状态：状态与语言行绑定（如 EN=Owned / SC=Wishlist 可共存） */
+export type CollectionStatus = 'owned' | 'wishlist' | 'ordered'
+
+/** 完成度模式 */
+export type CompletionModeId = 'base' | 'foil' | 'alt' | 'master'
+
 export interface CollectionEntry {
   id: string
   card_id: string
   card_no_extend: string
+  series_code: string | null
+  last_edited_at: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -123,9 +133,20 @@ export interface CollectionEntry {
 export interface CollectionLang {
   id: string
   collection_id: string
-  language: string
+  language_code: string
+  status: CollectionStatus
   normal_qty: number
   foil_qty: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+/** 自定义语言（预设 EN/SC/TC/JP/KR 之外由用户添加） */
+export interface CustomLanguage {
+  code: string
+  name: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface Series {
@@ -140,12 +161,13 @@ export interface Series {
   overnum_count: number
   rune_count: number
   token_count: number
+  cover_image?: string | null
   created_at: string | null
   updated_at: string | null
 }
 
 export type OwnershipType = 'all' | 'owned' | 'missing' | 'foil'
-export type CollectionSortKey = 'card_no' | 'rarity' | 'owned' | 'progress'
+export type CollectionSortKey = 'card_no' | 'rarity' | 'owned' | 'progress' | 'recent'
 
 export interface CollectionSort {
   key: CollectionSortKey
@@ -156,6 +178,7 @@ export interface CollectionSort {
 export interface SeriesStats {
   code: string
   nameCn: string | null
+  coverImage?: string | null
   owned: { base: number; alt: number; overnum: number; rune: number; token: number }
   counts: { base: number; alt: number; overnum: number; rune: number; token: number }
   totalOwned: number
@@ -168,6 +191,31 @@ export interface CollectionStats {
   foilOwned: number
   overallOwned: number
   overallCount: number
+}
+
+// 最近录入的收藏卡片（总览 Hero 用）
+export interface RecentCollectionCard {
+  cardId: string
+  cardNoExtend: string
+  seriesCode: string | null
+  lastEditedAt: string | null
+  cardNameCn: string | null
+  cardNo: string | null
+  ownedNormal: number
+  ownedFoil: number
+  imgCdn: string | null
+  ttsCdn: string | null
+}
+
+// 缺卡清单条目（导出用）：某卡的缺口（需拥有的非 promo 变体数 - 已拥有数）
+export interface MissingCardItem {
+  cardId: string
+  cardNo: string | null
+  cardNameCn: string | null
+  bucket: string
+  ownedVariants: number
+  totalVariants: number
+  missingVariants: number
 }
 
 // 自定义 Promo 打印创建输入
@@ -189,6 +237,12 @@ export interface OwnershipCheckRow {
   cardNo: string
   needed: number
   owned: number
+}
+
+// 收藏批量操作项（变体维度）
+export interface CollectionItem {
+  cardId: string
+  cardNoExtend: string
 }
 
 // 卡组模型
@@ -266,6 +320,11 @@ export interface CardSearchParams {
   ownership?: OwnershipType
   collectionSort?: CollectionSort
   includeOwned?: boolean
+  completionMode?: CompletionModeId
+  // 按卡图印刷系列过滤（card_no_extend 前 3 位，仅收藏页；不依赖 cards_base.series_name）
+  seriesCode?: string
+  // 按变体桶过滤（仅收藏页：base/alt/overnum/rune/token）
+  bucket?: string
 
   // 数组类字段 (使用嵌套对象)
   region?: ArrayFilterParam

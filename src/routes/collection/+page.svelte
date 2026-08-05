@@ -1,164 +1,123 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
-  import type {
-    CardWithOwned,
-    CollectionSort,
-    CollectionStats,
-    OwnershipType,
-  } from '$lib/db'
-  import { getCollectionStats, searchCards } from '$lib/db'
-  import CollectionStatsBar from '$lib/components/collection/CollectionStatsBar.svelte'
-  import CollectionSortDropdown from '$lib/components/collection/CollectionSortDropdown.svelte'
-  import CollectionGrid from '$lib/components/collection/CollectionGrid.svelte'
-  import CollectionModal from '$lib/components/collection/CollectionModal.svelte'
-
-  const PAGE_SIZE = 42
+  import type { CollectionStats, RecentCollectionCard } from '$lib/db'
+  import { getCollectionStats, getMissingCards, getRecentCollectionCards } from '$lib/db'
+  import { ClipboardCopy, Save } from '@lucide/svelte'
+  import {
+    buildMissingListText,
+    copyMissingList,
+    saveMissingList,
+  } from '$lib/collection/collection-export'
+  import CollectionHero from '$lib/components/collection/CollectionHero.svelte'
+  import SeriesCardGrid from '$lib/components/collection/SeriesCardGrid.svelte'
+  import GlobalCollectionSearch from '$lib/components/collection/GlobalCollectionSearch.svelte'
+  import EmptyState from '$lib/components/collection/EmptyState.svelte'
+  import { deriveSeriesCode } from '$lib/collection/collection-utils'
 
   let stats = $state<CollectionStats | null>(null)
-  let selectedSeries = $state('all')
-  let ownership = $state<OwnershipType>('all')
-  let sort = $state<CollectionSort>({ key: 'card_no', isAsc: true })
-  let searchText = $state('')
+  let recent = $state<RecentCollectionCard[]>([])
+  let loading = $state(true)
+  let toastMsg = $state('')
+  let toastTimer: ReturnType<typeof setTimeout> | undefined
 
-  let cards = $state<CardWithOwned[]>([])
-  let page = $state(1)
-  let total = $state(0)
-  let hasMore = $state(true)
-  let isLoading = $state(false)
-  let loadingMore = $state(false)
-  let selectedCard = $state<CardWithOwned | null>(null)
-  let refreshKey = $state(0)
-
-  const OWNERSHIP_OPTIONS: { key: OwnershipType; label: string }[] = [
-    { key: 'all', label: '全部' },
-    { key: 'owned', label: '已拥有' },
-    { key: 'missing', label: '未拥有' },
-    { key: 'foil', label: '有闪卡' },
-  ]
-
-  async function loadStats() {
-    stats = await getCollectionStats()
+  function showToast(msg: string) {
+    toastMsg = msg
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => (toastMsg = ''), 2200)
   }
 
-  async function runSearch(reset: boolean) {
-    if (reset) {
-      page = 1
-      cards = []
-    }
-    isLoading = reset ? true : isLoading
-    loadingMore = !reset
+  async function loadAll() {
+    loading = true
     try {
-      const params: Record<string, unknown> = {
-        page,
-        pageSize: PAGE_SIZE,
-        ownership,
-        collectionSort: sort,
-        includeOwned: true,
-      }
-      if (searchText.trim()) params.searchText = searchText.trim()
-      if (selectedSeries !== 'all') {
-        params.series_name = { include: [selectedSeries] }
-      }
-      const res = await searchCards(params as never)
-      total = res.total
-      hasMore = res.page < res.totalPages
-      cards = reset ? res.data : [...cards, ...res.data]
+      const [statsRes, recentRes] = await Promise.all([
+        getCollectionStats(),
+        getRecentCollectionCards(6),
+      ])
+      stats = statsRes
+      recent = recentRes
     } finally {
-      isLoading = false
-      loadingMore = false
+      loading = false
     }
   }
 
-  function loadMore() {
-    if (!hasMore || loadingMore || isLoading) return
-    page += 1
-    void runSearch(false)
+  function handleGlobalSelect(card: { card_prints?: { card_no_extend: string }[] }) {
+    const code = deriveSeriesCode(card.card_prints?.[0]?.card_no_extend)
+    if (code) {
+      void goto(`/collection/${code}`)
+    }
   }
 
-  $effect(() => {
-    if (refreshKey === 0) return
-    void loadStats()
-    void runSearch(true)
-  })
+  function handleRecentClick(c: RecentCollectionCard) {
+    if (c.seriesCode) void goto(`/collection/${c.seriesCode}`)
+  }
+
+  async function exportList(action: 'copy' | 'save') {
+    try {
+      const missing = await getMissingCards()
+      const text = buildMissingListText(
+        missing,
+        null,
+        stats?.overallOwned ?? 0,
+        stats?.overallCount ?? 0
+      )
+      const stamp = new Date().toISOString().slice(0, 10)
+      if (action === 'copy') {
+        const ok = await copyMissingList(text)
+        showToast(ok ? `已复制 ${missing.length} 条缺卡清单` : '复制失败，请重试')
+      } else {
+        const ok = await saveMissingList(text, `缺卡清单-全部系列-${stamp}.txt`)
+        if (ok) showToast(`已保存 ${missing.length} 条缺卡清单`)
+      }
+    } catch (err) {
+      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
+    }
+  }
 
   onMount(() => {
-    void loadStats()
-    void runSearch(true)
+    void loadAll()
   })
-
-  function handleSelectSeries(code: string) {
-    selectedSeries = code
-    void runSearch(true)
-  }
-
-  function refreshAll() {
-    void loadStats()
-    void runSearch(true)
-    refreshKey += 1
-  }
 </script>
 
 <div class="page-wrapper">
   <div class="page-header">
     <h1 class="page-title">收藏与闪卡</h1>
-  </div>
-
-  <div class="toolbar">
-    <div class="ownership-group">
-      {#each OWNERSHIP_OPTIONS as opt (opt.key)}
-        <button
-          class="seg-btn"
-          class:active={ownership === opt.key}
-          onclick={() => {
-            ownership = opt.key
-            void runSearch(true)
-          }}
-        >
-          {opt.label}
-        </button>
-      {/each}
+    <div class="header-tools">
+      <GlobalCollectionSearch onSelect={handleGlobalSelect} />
+      <button class="button button-ghost" onclick={() => exportList('copy')} title="复制缺卡清单">
+        <ClipboardCopy size={14} /> 复制清单
+      </button>
+      <button class="button button-ghost" onclick={() => exportList('save')} title="保存缺卡清单">
+        <Save size={14} /> 保存清单
+      </button>
     </div>
-
-    <input
-      class="search-input"
-      placeholder="搜索卡牌..."
-      bind:value={searchText}
-      onkeydown={(e) => {
-        if (e.key === 'Enter') void runSearch(true)
-      }}
-    />
-
-    <CollectionSortDropdown
-      {sort}
-      onChange={(s) => {
-        sort = s
-        void runSearch(true)
-      }}
-    />
   </div>
 
-  <div class="stats-area">
-    <CollectionStatsBar stats={stats ?? undefined} {selectedSeries} onSelectSeries={handleSelectSeries} />
+  <div class="hero-area">
+    <CollectionHero stats={stats ?? undefined} {recent} onRecentClick={handleRecentClick} />
   </div>
 
-  <div class="grid-area">
-    <CollectionGrid
-      {cards}
-      {isLoading}
-      {loadingMore}
-      {hasMore}
-      onCardClick={(card) => (selectedCard = card)}
-      onLoadMore={loadMore}
-    />
-    <div class="total-hint">共 {total} 张卡</div>
+  <div class="series-area">
+    {#if loading && !stats}
+      <div class="loading-tip">正在加载收藏进度...</div>
+    {:else if stats && stats.series.length === 0}
+      <EmptyState
+        title="还没有收藏记录"
+        description="去卡牌图鉴浏览全部卡牌，把拥有的卡录入收藏吧"
+        actionLabel="浏览卡牌图鉴"
+        onAction={() => void goto('/cards')}
+      />
+    {:else}
+      <SeriesCardGrid
+        series={stats?.series ?? []}
+        onSelect={(code) => void goto(`/collection/${code}`)}
+      />
+    {/if}
   </div>
 
-  <CollectionModal
-    card={selectedCard}
-    isOpen={!!selectedCard}
-    onClose={() => (selectedCard = null)}
-    onChanged={refreshAll}
-  />
+  {#if toastMsg}
+    <div class="toast">{toastMsg}</div>
+  {/if}
 </div>
 
 <style>
@@ -167,12 +126,15 @@
     flex-direction: column;
     height: 100%;
     padding: 20px 24px 0;
-    gap: 12px;
+    gap: 14px;
   }
 
   .page-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .page-title {
@@ -181,65 +143,55 @@
     color: var(--text-primary);
   }
 
-  .toolbar {
+  .header-tools {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
   }
 
-  .ownership-group {
-    display: flex;
-    gap: 4px;
-  }
-
-  .seg-btn {
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .seg-btn.active {
-    background: var(--accent-color);
-    color: white;
-    border-color: var(--accent-color);
-  }
-
-  .search-input {
-    flex: 1;
-    min-width: 180px;
-    max-width: 320px;
-    padding: 7px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .stats-area {
+  .hero-area {
     flex-shrink: 0;
+  }
+
+  .series-area {
+    flex: 1;
+    overflow-y: auto;
     border-top: 1px solid var(--border-color);
     padding-top: 12px;
   }
 
-  .grid-area {
-    flex: 1;
-    overflow-y: auto;
-    position: relative;
+  .loading-tip {
+    padding: 48px 0;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
   }
 
-  .total-hint {
-    position: absolute;
-    bottom: 8px;
-    left: 2px;
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    padding: 9px 18px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: var(--text-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    animation: toast-in 0.2s ease;
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   }
 
   @media (max-width: 600.99px) {
@@ -247,8 +199,8 @@
       padding: 12px 16px 0;
     }
 
-    .search-input {
-      max-width: none;
+    .header-tools {
+      width: 100%;
     }
   }
 </style>
