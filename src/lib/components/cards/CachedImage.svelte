@@ -25,6 +25,7 @@
   let error = $state(false)
   let showImgDownloadError = $state(false)
 
+  let intrinsicRatio = $state<string | undefined>(undefined)
   let currentObjectUrl: string | null = null
   let requestId = 0
   let containerElement = $state<HTMLDivElement | undefined>(undefined)
@@ -38,7 +39,7 @@
   }
 
   // 根据模式计算 aspect-ratio
-  const aspectRatio = $derived(isLandscape ? '1040 / 744' : '744 / 1040')
+  const finalAspectRatio = $derived(isLandscape ? '1040 / 744' : intrinsicRatio || '744 / 1040')
 
   function cleanupObjectUrl() {
     if (currentObjectUrl) {
@@ -64,6 +65,19 @@
       const url = await loadImageFromAppFolder(src, name)
       if (currentRequestId !== requestId) return
       if (url) {
+        try {
+          const probeImg = new Image()
+          probeImg.src = url
+          await probeImg.decode()
+
+          if (currentRequestId !== requestId) return
+
+          if (probeImg.naturalWidth && probeImg.naturalHeight) {
+            intrinsicRatio = `${probeImg.naturalWidth} / ${probeImg.naturalHeight}`
+          }
+        } catch (probeErr) {
+          console.warn('[CacheImage] 尺寸探测失败，将使用默认比例:', probeErr)
+        }
         cleanupObjectUrl()
         imageUrl = url
         currentObjectUrl = url
@@ -137,7 +151,7 @@
   style:height={height || 'auto'}
   style:border-radius={borderRadius}
   style:overflow="hidden"
-  style:aspect-ratio={aspectRatio}
+  style:aspect-ratio={finalAspectRatio}
   {style}
 >
   <!-- ★ 旋转 wrapper：仅在 isLandscape 时生效 -->
