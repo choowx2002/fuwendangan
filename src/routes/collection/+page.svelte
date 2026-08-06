@@ -2,13 +2,8 @@
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
-  import { getCollectionStats, getMissingCards, getRecentCollectionCards } from '$lib/db'
-  import { ClipboardCopy, Save } from '@lucide/svelte'
-  import {
-    buildMissingListText,
-    copyMissingList,
-    saveMissingList,
-  } from '$lib/collection/collection-export'
+  import { getCollectionStats, getRecentCollectionCards } from '$lib/db'
+  import { Save } from '@lucide/svelte'
   import CollectionHero from '$lib/components/collection/CollectionHero.svelte'
   import SeriesCardGrid from '$lib/components/collection/SeriesCardGrid.svelte'
   import GlobalCollectionSearch from '$lib/components/collection/GlobalCollectionSearch.svelte'
@@ -34,7 +29,6 @@
         getCollectionStats(),
         getRecentCollectionCards(6),
       ])
-      console.log(recentRes);
       stats = statsRes
       recent = recentRes
     } finally {
@@ -53,28 +47,6 @@
     if (c.seriesCode) void goto(`/collection/${c.seriesCode}`)
   }
 
-  async function exportList(action: 'copy' | 'save') {
-    try {
-      const missing = await getMissingCards()
-      const text = buildMissingListText(
-        missing,
-        null,
-        stats?.overallOwned ?? 0,
-        stats?.overallCount ?? 0
-      )
-      const stamp = new Date().toISOString().slice(0, 10)
-      if (action === 'copy') {
-        const ok = await copyMissingList(text)
-        showToast(ok ? `已复制 ${missing.length} 条缺卡清单` : '复制失败，请重试')
-      } else {
-        const ok = await saveMissingList(text, `缺卡清单-全部系列-${stamp}.txt`)
-        if (ok) showToast(`已保存 ${missing.length} 条缺卡清单`)
-      }
-    } catch (err) {
-      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
-    }
-  }
-
   onMount(() => {
     void loadAll()
   })
@@ -85,11 +57,12 @@
     <h1 class="page-title">收藏与闪卡</h1>
     <div class="header-tools">
       <GlobalCollectionSearch onSelect={handleGlobalSelect} />
-      <button class="button button-ghost" onclick={() => exportList('copy')} title="复制缺卡清单">
-        <ClipboardCopy size={14} /> 复制清单
-      </button>
-      <button class="button button-ghost" onclick={() => exportList('save')} title="保存缺卡清单">
-        <Save size={14} /> 保存清单
+      <button
+        class="button button-ghost"
+        onclick={() => void goto('/collection/missing')}
+        title="缺卡清单"
+      >
+        <Save size={14} /> 缺卡清单
       </button>
     </div>
   </div>

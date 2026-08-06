@@ -50,7 +50,7 @@ export type {
   CustomPrintInput,
   OwnershipCheckRow,
   RecentCollectionCard,
-  MissingCardItem,
+  MissingListRow,
   CollectionItem,
 } from './types'
 
@@ -139,11 +139,13 @@ export {
   checkDeckOwnership,
   cleanupOrphans,
   getRecentCollectionCards,
-  getMissingCards,
+  getMissingVariants,
+  getMissingListRarityOptions,
   bulkMarkOwned,
   bulkIncrement,
   bulkDeleteCollection,
   type UpsertLangQtyOptions,
+  type MissingListFilter,
 } from './repository/collection-repository'
 export {
   getCustomLanguages,

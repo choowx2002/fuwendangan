@@ -18,20 +18,14 @@
     bulkMarkOwned,
     getCardById,
     getCollectionStats,
-    getMissingCards,
     getPrintsByCardId,
     getVariantLangs,
     isTauri,
     searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
-  import { ArrowLeft, ClipboardCopy, ListChecks, Save, X } from '@lucide/svelte'
+  import { ArrowLeft, ListChecks, Save, X } from '@lucide/svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
-  import {
-    buildMissingListText,
-    copyMissingList,
-    saveMissingList,
-  } from '$lib/collection/collection-export'
   import BucketProgressBar from '$lib/components/collection/BucketProgressBar.svelte'
   import CollectionGrid from '$lib/components/collection/CollectionGrid.svelte'
   import CollectionModal from '$lib/components/collection/CollectionModal.svelte'
@@ -275,29 +269,6 @@
     }
   }
 
-  async function exportList(action: 'copy' | 'save') {
-    try {
-      const missing = await getMissingCards(seriesCode, activeBucket ?? undefined)
-      const seriesStatsForExport = seriesStats
-      const text = buildMissingListText(
-        missing,
-        seriesTitle,
-        seriesStatsForExport?.totalOwned ?? 0,
-        seriesStatsForExport?.totalCount ?? 0
-      )
-      const stamp = new Date().toISOString().slice(0, 10)
-      if (action === 'copy') {
-        const ok = await copyMissingList(text)
-        showToast(ok ? `已复制 ${missing.length} 条缺卡清单` : '复制失败，请重试')
-      } else {
-        const ok = await saveMissingList(text, `缺卡清单-${seriesCode}-${stamp}.txt`)
-        if (ok) showToast(`已保存 ${missing.length} 条缺卡清单`)
-      }
-    } catch (err) {
-      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
-    }
-  }
-
   async function openCard(card: VariantWithOwned) {
     try {
       const [base, prints] = await Promise.all([
@@ -366,11 +337,15 @@
           <ListChecks size={14} /> 批量
         {/if}
       </button>
-      <button class="button button-ghost" onclick={() => exportList('copy')} title="复制缺卡清单">
-        <ClipboardCopy size={14} /> 复制清单
-      </button>
-      <button class="button button-ghost" onclick={() => exportList('save')} title="保存缺卡清单">
-        <Save size={14} /> 保存清单
+      <button
+        class="button button-ghost"
+        onclick={() =>
+          void goto(
+            `/collection/missing?seriesCode=${seriesCode}${activeBucket ? `&bucket=${activeBucket}` : ''}`
+          )}
+        title="缺卡清单"
+      >
+        <Save size={14} /> 缺卡清单
       </button>
     </div>
   </div>

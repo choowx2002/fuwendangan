@@ -236,15 +236,14 @@ export interface RecentCollectionCard {
   printLang: string | null
 }
 
-// 缺卡清单条目（导出用）：某卡的缺口（需拥有的非 promo 变体数 - 已拥有数）
-export interface MissingCardItem {
+// 缺卡清单条目（导出用）：一个印刷变体一行（编号/名字/稀有度/拥有张数）
+export interface MissingListRow {
   cardId: string
   cardNo: string | null
+  cardNoExtend: string
   cardNameCn: string | null
-  bucket: string
-  ownedVariants: number
-  totalVariants: number
-  missingVariants: number
+  rarity: string | null
+  ownedQty: number
 }
 
 // 自定义 Promo 打印创建输入

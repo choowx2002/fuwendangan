@@ -5,7 +5,6 @@
   import { PRESET_LANGUAGE_CODES, languageDisplayName } from '$lib/db'
   import { X, Plus, Trash2, Pencil } from '@lucide/svelte'
   import CachedImage from '../cards/CachedImage.svelte'
-  import FoilCard from '../cards/FoilCard.svelte'
   import CustomPrintModal from './CustomPrintModal.svelte'
   import {
     type VariantBucket,
@@ -168,14 +167,7 @@
       <div class="modal-body">
         <div class="preview-col">
           <div class="preview-card">
-            {#if selectedVariant?.prints[0] && selectedVariant.hasFoil}
-              <FoilCard
-                print={selectedVariant.prints[0]}
-                cardName={card.card_name_cn ?? ''}
-                rarity={selectedVariant.prints[0]?.extend_rarity_name ?? card.rarity_name ?? ''}
-                size="md"
-              />
-            {:else if selectedVariant?.prints[0]}
+            {#if selectedVariant?.prints[0]}
               <CachedImage
                 src={selectedVariant.prints[0].img_cdn ?? selectedVariant.prints[0].tts_cdn ?? ''}
                 name={printCacheName(selectedVariant.prints[0])}

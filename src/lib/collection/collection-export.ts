@@ -1,16 +1,25 @@
 /**
  * 缺卡清单导出
- * 生成文本清单并复制到剪贴板或保存为 .txt（Tauri 环境走插件，Web 环境降级）。
+ * 生成文本清单并保存为 .txt（Tauri 环境走插件，Web 环境降级为浏览器下载）。
  */
 
-import type { MissingCardItem } from '$lib/db'
-import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
 import { isTauri } from '$lib/db/env'
 import { writeTextFile } from '$lib/services/db-file-service'
 
-/** 生成缺卡清单文本 */
+/** 缺卡清单导出行：一个印刷变体（编号/名字/稀有度/拥有数/需求量） */
+export interface MissingListTextRow {
+  cardNoExtend: string
+  cardNameCn: string | null
+  rarity: string | null
+  ownedQty: number
+  needed: number
+  /** 已集齐（拥有数 ≥ 需求），导出时行尾标记 */
+  satisfied?: boolean
+}
+
+/** 生成缺卡清单文本（每行一个印刷变体） */
 export function buildMissingListText(
-  items: MissingCardItem[],
+  items: MissingListTextRow[],
   seriesName: string | null,
   totalOwned: number,
   totalCount: number
@@ -25,14 +34,14 @@ export function buildMissingListText(
     lines.push('（无缺卡，全部集齐！）')
   } else {
     for (const item of items) {
-      const bucket = BUCKET_LABELS[item.bucket as keyof typeof BUCKET_LABELS] ?? item.bucket
+      const mark = item.satisfied ? '（已集齐）' : ''
       lines.push(
-        `[${bucket}] ${item.cardNo ?? ''} ${item.cardNameCn ?? ''}（缺 ${item.missingVariants}/${item.totalVariants}）`
+        `${item.cardNoExtend} ${item.cardNameCn ?? ''} ${item.rarity ?? ''} ${item.ownedQty}/${item.needed}${mark}`
       )
     }
   }
   lines.push('='.repeat(36))
-  lines.push(`合计 ${items.length} 张卡待补全`)
+  lines.push(`合计 ${items.length} 个变体`)
   return lines.join('\n')
 }
 
@@ -44,21 +53,6 @@ function downloadTextInWeb(text: string, name: string): void {
   anchor.download = name
   anchor.click()
   URL.revokeObjectURL(url)
-}
-
-/** 复制缺卡清单到剪贴板（返回是否成功） */
-export async function copyMissingList(text: string): Promise<boolean> {
-  try {
-    if (isTauri) {
-      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
-      await writeText(text)
-    } else {
-      await navigator.clipboard.writeText(text)
-    }
-    return true
-  } catch {
-    return false
-  }
 }
 
 /** 保存缺卡清单为 .txt 文件（返回是否成功） */

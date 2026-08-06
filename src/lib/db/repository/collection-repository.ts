@@ -14,7 +14,7 @@ import type {
   CollectionStatus,
   CompletionModeId,
   CustomPrintInput,
-  MissingCardItem,
+  MissingListRow,
   OwnershipCheckRow,
   RecentCollectionCard,
   SeriesStats,
@@ -750,59 +750,107 @@ export async function getRecentCollectionCards(limit = 6): Promise<RecentCollect
 }
 
 /**
- * 缺卡清单：按卡×桶聚合（仅非 promo 变体），返回仍缺变体的卡（owned < total）。
- * seriesCode 按卡图印刷系列码（card_no_extend 前 3 位）过滤；bucket 可选，仅导出该桶；不传则全量。
+ * 缺卡清单筛选（全部可选，不传则不过滤）
+ * - seriesCode：按卡图印刷系列码（card_no_extend 前 3 位大写）过滤
+ * - bucket：仅统计该桶（base/alt/overnum/rune/token）
+ * - rarities：变体扩展稀有度（card_prints.extend_rarity_name：平卡/异画/超编/签名超编）
+ * - categories：卡牌类型（cards_base.card_category，JSON 数组任一匹配）
+ * - colors：卡牌颜色（cards_base.card_color_list，JSON 数组任一匹配）
+ * - language：拥有数只统计指定语言（collection_langs.language_code）的行，不传则跨语言合计
  */
-export async function getMissingCards(
-  seriesCode?: string,
+export interface MissingListFilter {
+  seriesCode?: string
   bucket?: string
-): Promise<MissingCardItem[]> {
+  rarities?: string[]
+  categories?: string[]
+  colors?: string[]
+  language?: string
+}
+
+/** 缺卡清单稀有度选项（card_prints.extend_rarity_name 去重，固定顺序） */
+export async function getMissingListRarityOptions(): Promise<string[]> {
   const db = await getDatabase()
-  const seriesCond = seriesCode ? `AND substr(upper(p.card_no_extend), 1, 3) = ?` : ''
+  const rows = await db.select<{ rarity: string }[]>(
+    `SELECT DISTINCT extend_rarity_name AS rarity FROM ${TABLES.CARD_PRINTS}
+     WHERE extend_rarity_name IS NOT NULL AND extend_rarity_name != ''`
+  )
+  const order = ['平卡', '异画', '超编', '签名超编']
+  const values = rows.map((r) => r.rarity)
+  return order.filter((o) => values.includes(o)).concat(values.filter((v) => !order.includes(v)))
+}
+
+/**
+ * 缺卡清单（按印刷变体逐行）：返回符合筛选条件的每个非 promo 变体一行，
+ * 含拥有张数（所选语言行的普卡+闪卡合计，仅统计 owned 状态；不传语言则跨语言合计）。
+ * 拥有数在 collection（UNIQUE(card_no, card_no_extend)，变体 1:1）外层聚合，
+ * 避免 card_prints 多语言印刷行与 collection_langs 交叉造成笛卡尔积翻倍。
+ */
+export async function getMissingVariants(opts?: MissingListFilter): Promise<MissingListRow[]> {
+  const db = await getDatabase()
+  const innerConds: string[] = ['COALESCE(p3.is_promo, 0) != 1']
   const params: any[] = []
-  if (seriesCode) params.push(seriesCode.toUpperCase())
+
+  if (opts?.seriesCode) {
+    innerConds.push(`substr(upper(p3.card_no_extend), 1, 3) = ?`)
+    params.push(opts.seriesCode.toUpperCase())
+  }
+  if (opts?.rarities?.length) {
+    const ph = opts.rarities.map(() => '?').join(',')
+    innerConds.push(`p3.extend_rarity_name IN (${ph})`)
+    params.push(...opts.rarities)
+  }
+  if (opts?.categories?.length) {
+    const ph = opts.categories.map(() => '?').join(',')
+    innerConds.push(`EXISTS (SELECT 1 FROM json_each(cb3.card_category) WHERE value IN (${ph}))`)
+    params.push(...opts.categories)
+  }
+  if (opts?.colors?.length) {
+    const ph = opts.colors.map(() => '?').join(',')
+    innerConds.push(`EXISTS (SELECT 1 FROM json_each(cb3.card_color_list) WHERE value IN (${ph}))`)
+    params.push(...opts.colors)
+  }
+
+  const langCond = opts?.language ? ' AND cl.language_code = ?' : ''
+  if (opts?.language) params.push(opts.language)
 
   const sql = `SELECT cb.id AS card_id, cb.card_no, cb.card_name_cn,
-       vc.bucket AS bucket,
-       vc.owned AS owned_variants,
-       vc.total AS total_variants
+       v.card_no_extend AS card_no_extend, v.rarity AS rarity,
+       COALESCE(q.owned_qty, 0) AS owned_qty
      FROM (
-       SELECT p.card_id AS card_id,
+       SELECT p3.card_id AS card_id, p3.card_no_extend,
+         MAX(p3.extend_rarity_name) AS rarity,
          CASE
-           WHEN cb2.card_category LIKE '%符文%' THEN 'rune'
-           WHEN cb2.card_category LIKE '%指示物%' THEN 'token'
-           WHEN MAX(p2.extend_rarity_name) = '异画' THEN 'alt'
-           WHEN MAX(p2.extend_rarity_name) IN ('超编', '签名超编') THEN 'overnum'
+           WHEN MAX(cb3.card_category) LIKE '%符文%' THEN 'rune'
+           WHEN MAX(cb3.card_category) LIKE '%指示物%' THEN 'token'
+           WHEN MAX(p3.extend_rarity_name) = '异画' THEN 'alt'
+           WHEN MAX(p3.extend_rarity_name) IN ('超编', '签名超编') THEN 'overnum'
            ELSE 'base'
-         END AS bucket,
-         COUNT(*) AS total,
-         COUNT(CASE WHEN vc2.owned = 1 THEN 1 END) AS owned
-       FROM (
-         SELECT p3.card_id AS card_id, p3.card_no_extend,
-           MAX(CASE WHEN cl.status = 'owned' AND (cl.normal_qty > 0 OR cl.foil_qty > 0) THEN 1 ELSE 0 END) AS owned
-         FROM ${TABLES.CARD_PRINTS} p3
-         JOIN ${TABLES.CARDS_BASE} cb3 ON cb3.id = p3.card_id
-         LEFT JOIN ${TABLES.COLLECTION} col ON col.card_no = cb3.card_no AND col.card_no_extend = p3.card_no_extend
-         LEFT JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
-         WHERE COALESCE(p3.is_promo, 0) != 1 ${seriesCond}
-         GROUP BY p3.card_id, p3.card_no_extend
-       ) vc2
-       JOIN ${TABLES.CARD_PRINTS} p2 ON p2.card_id = vc2.card_id AND p2.card_no_extend = vc2.card_no_extend
-       JOIN ${TABLES.CARDS_BASE} cb2 ON cb2.id = vc2.card_id
-       GROUP BY p2.card_id, bucket
-     ) vc
-     JOIN ${TABLES.CARDS_BASE} cb ON cb.id = vc.card_id
-     WHERE vc.owned < vc.total ${bucket ? 'AND vc.bucket = ?' : ''}
-     ORDER BY cb.card_no COLLATE NOCASE ASC`
-  if (bucket) params.push(bucket)
+         END AS bucket
+       FROM ${TABLES.CARD_PRINTS} p3
+       JOIN ${TABLES.CARDS_BASE} cb3 ON cb3.id = p3.card_id
+       WHERE ${innerConds.join(' AND ')}
+       GROUP BY p3.card_id, p3.card_no_extend
+     ) v
+     JOIN ${TABLES.CARDS_BASE} cb ON cb.id = v.card_id
+     LEFT JOIN ${TABLES.COLLECTION} col
+       ON col.card_no = cb.card_no AND col.card_no_extend = v.card_no_extend
+     LEFT JOIN (
+       SELECT cl.collection_id AS cid,
+         SUM(CASE WHEN cl.status = 'owned'${langCond} THEN cl.normal_qty + cl.foil_qty ELSE 0 END) AS owned_qty
+       FROM ${TABLES.COLLECTION_LANGS} cl
+       GROUP BY cl.collection_id
+     ) q ON q.cid = col.id
+     ${opts?.bucket ? 'WHERE v.bucket = ?' : ''}
+     ORDER BY cb.card_no COLLATE NOCASE ASC, v.card_no_extend COLLATE NOCASE ASC`
+  if (opts?.bucket) params.push(opts.bucket)
+
   const rows = await db.select<any[]>(sql, params)
   return rows.map((r) => ({
     cardId: r.card_id,
     cardNo: r.card_no ?? null,
+    cardNoExtend: r.card_no_extend,
     cardNameCn: r.card_name_cn ?? null,
-    bucket: r.bucket as string,
-    ownedVariants: r.owned_variants ?? 0,
-    totalVariants: r.total_variants ?? 0,
-    missingVariants: (r.total_variants ?? 0) - (r.owned_variants ?? 0),
+    rarity: r.rarity ?? null,
+    ownedQty: r.owned_qty ?? 0,
   }))
 }
