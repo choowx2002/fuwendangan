@@ -1,4 +1,5 @@
 import { getPrints } from '$lib/db'
+import { printCacheName } from '$lib/db/helper'
 import {
   CARD_IMAGE,
   localImgToken,
@@ -152,7 +153,7 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
 
       const result = await loadImageFromAppFolder(
         url,
-        `${fileData.card_id}-${fileData?.id || 'default'}`
+        printCacheName(fileData)
       )
 
       if (!result) {

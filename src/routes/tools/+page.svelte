@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getDeckList, getDeckVersions, createMatch, searchCards, getBestPrint, type DeckListResult } from '$lib/db'
+  import { getDeckList, getDeckVersions, createMatch, searchCards, getBestPrint, printCacheName, type DeckListResult } from '$lib/db'
   import { scoreCounterState, type GameRecord, type ActionEntry } from '$lib/stores/tools'
   import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
@@ -551,7 +551,7 @@
               >
                 <CardSimpleImage
                   url={best?.url}
-                  name={`${card.id}-${best?.id ?? 'none'}`}
+                  name={printCacheName(best)}
                   className="legend-thumb"
                 />
               </button>

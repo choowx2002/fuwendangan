@@ -9,6 +9,7 @@
     getMatchGroups,
     searchCards,
     updateMatch,
+    printCacheName,
   } from '$lib/db/index.js'
   import type { CardBase, CardPrint, MatchWinType, MatchWithGames } from '$lib/db/types'
   import type { DeckVersion } from '$lib/db/index.js'
@@ -440,7 +441,7 @@
               >
                 <CardSimpleImage
                   url={best?.url}
-                  name={`${card.id}-${best?.id ?? 'none'}`}
+                  name={printCacheName(best)}
                   className="legend-thumb"
                 />
                 <!-- <span class="legend-item-name">

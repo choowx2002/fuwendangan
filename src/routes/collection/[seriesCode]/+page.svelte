@@ -3,27 +3,30 @@
   import { page } from '$app/state'
   import { onMount } from 'svelte'
   import type {
+    CardPrint,
     CardWithOwned,
     CollectionSort,
     CollectionStats,
     CollectionItem,
     OwnershipType,
     SeriesStats,
+    VariantWithOwned,
   } from '$lib/db'
   import {
     bulkDeleteCollection,
     bulkIncrement,
     bulkMarkOwned,
+    getCardById,
     getCollectionStats,
     getMissingCards,
+    getPrintsByCardId,
     getVariantLangs,
     isTauri,
-    searchCards,
+    searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
   import { ArrowLeft, ClipboardCopy, ListChecks, Save, X } from '@lucide/svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
-  import { deriveSeriesCode } from '$lib/collection/collection-utils'
   import {
     buildMissingListText,
     copyMissingList,
@@ -44,13 +47,14 @@
   let searchText = $state('')
   let activeBucket = $state<VariantBucket | null>(null)
 
-  let cards = $state<CardWithOwned[]>([])
+  let cards = $state<VariantWithOwned[]>([])
   let pageNum = $state(1)
   let total = $state(0)
   let hasMore = $state(true)
   let isLoading = $state(false)
   let loadingMore = $state(false)
-  let selectedCard = $state<CardWithOwned | null>(null)
+  let selectedCard = $state<(CardWithOwned & { card_prints?: CardPrint[] }) | null>(null)
+  let initialVariant = $state('')
 
   let batchMode = $state(false)
   let selectedIds = $state<Set<string>>(new Set())
@@ -130,12 +134,11 @@
         pageSize: PAGE_SIZE,
         ownership,
         collectionSort: sort,
-        includeOwned: true,
         seriesCode,
       }
       if (searchText.trim()) params.searchText = searchText.trim()
       if (activeBucket) params.bucket = activeBucket
-      const res = await searchCards(params as never)
+      const res = await searchCardVariants(params as never)
       total = res.total
       hasMore = res.page < res.totalPages
       cards = reset ? res.data : [...cards, ...res.data]
@@ -158,21 +161,22 @@
     void runSearch(true)
   }
 
-  function cardNoExtendOf(card: CardWithOwned): string | null {
-    return card.card_prints?.[0]?.card_no_extend ?? null
-  }
-
   function toggleBatchMode() {
     batchMode = !batchMode
     selectedIds = new Set()
   }
 
-  function toggleSelect(card: CardWithOwned) {
+  function variantKey(card: VariantWithOwned): string {
+    return `${card.cardId}:${card.cardNoExtend}`
+  }
+
+  function toggleSelect(card: VariantWithOwned) {
     const next = new Set(selectedIds)
-    if (next.has(card.id)) {
-      next.delete(card.id)
+    const key = variantKey(card)
+    if (next.has(key)) {
+      next.delete(key)
     } else {
-      next.add(card.id)
+      next.add(key)
     }
     selectedIds = next
   }
@@ -180,9 +184,8 @@
   function selectedItems(): CollectionItem[] {
     const items: CollectionItem[] = []
     for (const card of cards) {
-      if (!selectedIds.has(card.id)) continue
-      const no = cardNoExtendOf(card)
-      if (no) items.push({ cardId: card.id, cardNoExtend: no })
+      if (!selectedIds.has(variantKey(card))) continue
+      items.push({ cardNo: card.cardNo, cardNoExtend: card.cardNoExtend })
     }
     return items
   }
@@ -242,25 +245,19 @@
     }
   }
 
-  function quickInc(card: CardWithOwned) {
-    const no = cardNoExtendOf(card)
-    if (!no) return
-    const wasZero = card.ownedTotal === 0
+  function quickInc(card: VariantWithOwned) {
     card.ownedTotal += 1
     card.ownedNormal += 1
-    if (wasZero && card.ownedVariants < card.totalVariants) card.ownedVariants += 1
-    void bulkIncrement([{ cardId: card.id, cardNoExtend: no }]).catch((err) => {
+    void bulkIncrement([{ cardNo: card.cardNo, cardNoExtend: card.cardNoExtend }]).catch((err) => {
       showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
       void runSearch(true)
     })
     void loadStats()
   }
 
-  async function quickDec(card: CardWithOwned) {
-    const no = cardNoExtendOf(card)
-    if (!no) return
+  async function quickDec(card: VariantWithOwned) {
     try {
-      const langs = await getVariantLangs(card.id, no)
+      const langs = await getVariantLangs(card.cardNo, card.cardNoExtend)
       const row = langs
         .filter((l) => l.status === 'owned' && (l.normal_qty > 0 || l.foil_qty > 0))
         .sort((a, b) => ((b.updated_at ?? '') as string).localeCompare((a.updated_at ?? '') as string))[0]
@@ -270,7 +267,7 @@
       if (row.normal_qty > 0) card.ownedNormal -= 1
       else card.ownedFoil -= 1
       card.ownedTotal -= 1
-      await upsertLangQty(card.id, no, row.language_code, patch)
+      await upsertLangQty(card.cardNo, card.cardNoExtend, row.language_code, patch)
       void loadStats()
     } catch (err) {
       showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
@@ -298,6 +295,29 @@
       }
     } catch (err) {
       showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
+    }
+  }
+
+  async function openCard(card: VariantWithOwned) {
+    try {
+      const [base, prints] = await Promise.all([
+        getCardById(card.cardId),
+        getPrintsByCardId(card.cardId),
+      ])
+      if (!base) return
+      initialVariant = card.cardNoExtend
+      selectedCard = {
+        ...base,
+        card_prints: prints,
+        ownedNormal: card.ownedNormal,
+        ownedFoil: card.ownedFoil,
+        ownedTotal: card.ownedTotal,
+        ownedVariants: card.ownedTotal > 0 ? 1 : 0,
+        totalVariants: 1,
+        lastEdited: card.lastEdited,
+      }
+    } catch (err) {
+      showToast(`打开详情失败：${err instanceof Error ? err.message : '未知错误'}`)
     }
   }
 
@@ -385,7 +405,7 @@
 
     <input
       class="search-input"
-      placeholder="搜索卡牌..."
+      placeholder="搜索编号/画师/稀有度..."
       bind:value={searchText}
       onkeydown={(e) => {
         if (e.key === 'Enter') void runSearch(true)
@@ -410,13 +430,13 @@
       quickEdit
       {batchMode}
       selectedIds={selectedIds}
-      onCardClick={(card) => (selectedCard = card)}
+      onCardClick={openCard}
       onLoadMore={loadMore}
       onQuickInc={quickInc}
       onQuickDec={quickDec}
       onToggleSelect={toggleSelect}
     />
-    <div class="total-hint">共 {total} 张卡</div>
+    <div class="total-hint">共 {total} 个变体</div>
 
     {#if batchMode}
       <BatchToolbar
@@ -433,6 +453,7 @@
   <CollectionModal
     card={selectedCard}
     isOpen={!!selectedCard}
+    initialVariant={initialVariant}
     onClose={() => (selectedCard = null)}
     onChanged={refreshAll}
   />

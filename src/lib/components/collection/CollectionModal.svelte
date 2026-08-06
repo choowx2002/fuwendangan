@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CardPrint, CardWithOwned, CollectionLang } from '$lib/db'
   import { getCardCollection, upsertLangQty, getCustomLanguages } from '$lib/db'
+  import { printCacheName } from '$lib/db/helper'
   import { PRESET_LANGUAGE_CODES, languageDisplayName } from '$lib/db'
   import { X, Plus, Trash2, Pencil } from '@lucide/svelte'
   import CachedImage from '../cards/CachedImage.svelte'
@@ -18,9 +19,10 @@
     isOpen: boolean
     onClose: () => void
     onChanged: () => void
+    initialVariant?: string
   }
 
-  let { card, isOpen, onClose, onChanged }: Props = $props()
+  let { card, isOpen, onClose, onChanged, initialVariant }: Props = $props()
 
   interface VariantView {
     cardNoExtend: string
@@ -70,7 +72,7 @@
       if (!map.has(no)) map.set(no, [])
       map.get(no)!.push(p)
     }
-    const langMap = await getCardCollection(card.id)
+    const langMap = await getCardCollection(card.card_no)
 
     let next: VariantView[] = Array.from(map.entries()).map(([no, prints]) => {
       const langs = langMap.get(no) ?? []
@@ -86,7 +88,10 @@
       }
     })
     variants = next
-    selectedNo = next.find((v) => v.hasFoil)?.cardNoExtend ?? next[0]?.cardNoExtend ?? ''
+    selectedNo =
+      (initialVariant && next.some((v) => v.cardNoExtend === initialVariant)
+        ? initialVariant
+        : next.find((v) => v.hasFoil)?.cardNoExtend ?? next[0]?.cardNoExtend ?? '')
   }
 
   $effect(() => {
@@ -104,7 +109,7 @@
   })
 
   function saveAndReload(no: string, lang: string, patch: { normal?: number; foil?: number }) {
-    void upsertLangQty(card!.id, no, lang, patch).then(() => {
+    void upsertLangQty(card!.card_no, no, lang, patch).then(() => {
       void loadData().then(() => {
         onChanged?.()
       })
@@ -173,7 +178,7 @@
             {:else if selectedVariant?.prints[0]}
               <CachedImage
                 src={selectedVariant.prints[0].img_cdn ?? selectedVariant.prints[0].tts_cdn ?? ''}
-                name={`${card.id}-${selectedVariant.prints[0].id || 'default'}`}
+                name={printCacheName(selectedVariant.prints[0])}
                 fit="cover"
                 borderRadius="8px"
                 isHover={false}

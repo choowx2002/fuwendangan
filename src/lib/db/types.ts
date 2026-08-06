@@ -1,4 +1,6 @@
 // 基础卡牌模型 (与 Supabase 保持一致)
+import type { VariantBucket } from '$lib/cards/utils/variant-utils'
+
 export interface CardBase {
   id: string
   card_no: string
@@ -63,6 +65,30 @@ export type CardWithOwned = CardBase & {
   totalVariants: number
   // 最近一次收藏录入时间（收藏页「最近录入」排序用）
   lastEdited?: string | null
+}
+
+// 收藏页变体磁贴：以 card_prints 为数据源（一个变体 = card_no + card_no_extend），
+// 仅携带印刷层信息展示；cards_base 只在打开详情弹窗时按需关联。
+export interface VariantWithOwned {
+  cardId: string
+  // 基础卡编号（cards_base.card_no，稳定唯一），收藏写入与关联用
+  cardNo: string
+  cardNoExtend: string
+  // 代表印刷（SC > is_default > 首张）的展示信息
+  printId: string | null
+  // 代表印刷的语言码（缓存命名用，与 cardNoExtend 拼成稳定缓存键）
+  printLanguage: string | null
+  imgCdn: string | null
+  ttsCdn: string | null
+  rarityName: string | null
+  extendRarityName: string | null
+  bucket: VariantBucket
+  // cards_base 分类（JSON 数组），关联基础卡详情用
+  cardCategory: string[] | null
+  ownedNormal: number
+  ownedFoil: number
+  ownedTotal: number
+  lastEdited: string | null
 }
 
 // 版本控制模型
@@ -205,6 +231,9 @@ export interface RecentCollectionCard {
   ownedFoil: number
   imgCdn: string | null
   ttsCdn: string | null
+  printId: string
+  // 默认印刷的语言码（缓存命名用）
+  printLang: string | null
 }
 
 // 缺卡清单条目（导出用）：某卡的缺口（需拥有的非 promo 变体数 - 已拥有数）
@@ -241,7 +270,7 @@ export interface OwnershipCheckRow {
 
 // 收藏批量操作项（变体维度）
 export interface CollectionItem {
-  cardId: string
+  cardNo: string
   cardNoExtend: string
 }
 
@@ -345,6 +374,27 @@ export interface CardSearchParams {
   return_energy?: number | NumberRange
 }
 
+// 收藏页变体搜索参数（以 card_prints 为数据源）
+export interface CardVariantSearchParams {
+  page?: number
+  pageSize?: number
+  searchText?: string
+  ownership?: OwnershipType
+  collectionSort?: CollectionSort
+  // 按卡图印刷系列过滤（card_no_extend 前 3 位）
+  seriesCode?: string
+  // 按变体桶过滤（base/alt/overnum/rune/token）
+  bucket?: string
+}
+
+export interface CardVariantSearchResult {
+  data: VariantWithOwned[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export type FilterMode = 'include' | 'require' | 'exclude'
 
 export type FilterType =
@@ -443,6 +493,9 @@ export interface MatchRecord {
   opp_legend_print_id: string | null
   opp_legend_name: string | null
   opp_legend_image: string | null
+  // 对手传奇印刷的稳定编号/语言（查询时 JOIN card_prints 附带，用于缓存命名）
+  opp_legend_print_code?: string | null
+  opp_legend_lang?: string | null
   deck_version_id: string | null
   deck_version_number: number | null
   best_of: number | null

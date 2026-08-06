@@ -44,13 +44,13 @@ export const TABLE_DEFINITIONS = {
   collection: `
     CREATE TABLE IF NOT EXISTS collection (
       id TEXT PRIMARY KEY,
-      card_id TEXT NOT NULL,
+      card_no TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
       series_code TEXT,
       last_edited_at TEXT,
       created_at TEXT,
       updated_at TEXT,
-      UNIQUE(card_id, card_no_extend)
+      UNIQUE(card_no, card_no_extend)
     )
   `,
 
@@ -70,6 +70,14 @@ export const TABLE_DEFINITIONS = {
 
   idx_collection_series: `
     CREATE INDEX IF NOT EXISTS idx_collection_series ON collection(series_code, last_edited_at)
+  `,
+
+  idx_card_prints_variant: `
+    CREATE INDEX IF NOT EXISTS idx_card_prints_variant ON card_prints(card_id, card_no_extend)
+  `,
+
+  idx_collection_langs_collection: `
+    CREATE INDEX IF NOT EXISTS idx_collection_langs_collection ON collection_langs(collection_id)
   `,
 
   custom_languages: `

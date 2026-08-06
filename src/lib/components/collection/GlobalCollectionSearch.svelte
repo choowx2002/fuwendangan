@@ -3,6 +3,7 @@
   import { searchCards } from '$lib/db'
   import { Search, LoaderCircle, CornerDownLeft } from '@lucide/svelte'
   import CachedImage from '../cards/CachedImage.svelte'
+  import { printCacheName } from '$lib/db/helper'
   import { seriesCodeOfCard } from '$lib/collection/collection-utils'
 
   let {
@@ -79,7 +80,7 @@
             <div class="result-img">
               <CachedImage
                 src={card.card_prints?.[0]?.img_cdn ?? card.card_prints?.[0]?.tts_cdn ?? ''}
-                name={`${card.id}-${card.card_prints?.[0]?.id || 'default'}`}
+                name={printCacheName(card.card_prints?.[0])}
                 borderRadius="5px"
                 fit="cover"
                 isLandscape={false}

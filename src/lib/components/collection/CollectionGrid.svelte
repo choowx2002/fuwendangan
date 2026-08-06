@@ -1,26 +1,31 @@
 <script lang="ts">
-  import type { CardWithOwned } from '$lib/db'
+  import type { VariantWithOwned } from '$lib/db'
+  import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
   import CachedImage from '../cards/CachedImage.svelte'
   import { LoaderCircle, Plus, Minus, Check } from '@lucide/svelte'
   import SkeletonGrid from './SkeletonGrid.svelte'
   import EmptyState from './EmptyState.svelte'
 
   let {
-    cards = [] as CardWithOwned[],
+    cards = [] as VariantWithOwned[],
     isLoading = false,
     loadingMore = false,
     hasMore = false,
-    onCardClick = undefined as ((card: CardWithOwned) => void) | undefined,
+    onCardClick = undefined as ((card: VariantWithOwned) => void) | undefined,
     onLoadMore = undefined as (() => void) | undefined,
     quickEdit = false,
-    onQuickInc = undefined as ((card: CardWithOwned) => void) | undefined,
-    onQuickDec = undefined as ((card: CardWithOwned) => void) | undefined,
+    onQuickInc = undefined as ((card: VariantWithOwned) => void) | undefined,
+    onQuickDec = undefined as ((card: VariantWithOwned) => void) | undefined,
     batchMode = false,
     selectedIds = new Set<string>() as Set<string>,
-    onToggleSelect = undefined as ((card: CardWithOwned) => void) | undefined,
+    onToggleSelect = undefined as ((card: VariantWithOwned) => void) | undefined,
   } = $props()
 
   let sentinelEl = $state<HTMLElement | undefined>(undefined)
+
+  function cardKey(card: VariantWithOwned): string {
+    return `${card.cardId}:${card.cardNoExtend}`
+  }
 
   $effect(() => {
     const el = sentinelEl
@@ -36,26 +41,22 @@
   })
 </script>
 
-<div class="collection-grid">
+<div class="collection-grid" class:is-loading-container={isLoading && cards.length === 0}>
   {#if isLoading && cards.length === 0}
     <SkeletonGrid count={12} />
   {:else if cards.length === 0}
     <EmptyState
-      title="未找到匹配卡牌"
+      title="未找到匹配变体"
       description="试试调整筛选条件或搜索关键词"
     />
   {:else}
-    {#each cards as card (card.id)}
-      {@const need = card.totalVariants}
-      {@const owned = card.ownedVariants}
-      {@const insufficient = owned < need}
-      {@const selected = selectedIds.has(card.id)}
+    {#each cards as card (cardKey(card))}
+      {@const selected = selectedIds.has(cardKey(card))}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="tile"
         class:selected={selected}
-        class:banned={card.is_banned}
         role="button"
         tabindex="0"
         onclick={() => {
@@ -68,22 +69,22 @@
       >
         <div class="img-wrap">
           <CachedImage
-            src={card.card_prints?.[0]?.img_cdn ?? card.card_prints?.[0]?.tts_cdn ?? ''}
-            name={`${card.id}-${card.card_prints?.[0]?.id || 'default'}`}
+            src={card.imgCdn ?? card.ttsCdn ?? ''}
+            name={`${card.cardNoExtend}-${card.printLanguage ?? 'default'}`}
             borderRadius="6px"
             fit="cover"
             isLandscape={false}
           />
           {#if batchMode}
             <span class="select-badge" class:checked={selected}>
-              {#if selected}<Check size={11} />{/if}
+                {#if selected}<Check size={11} strokeWidth={'5'}/>{/if}
             </span>
           {:else}
             {#if card.ownedFoil > 0}
               <span class="foil-badge">闪</span>
             {/if}
             {#if card.ownedTotal > 0}
-              <span class="owned-badge">×{card.ownedTotal}</span>
+              <span class="owned-badge">{card.ownedTotal}</span>
             {/if}
           {/if}
 
@@ -92,7 +93,7 @@
               {#if card.ownedTotal > 0}
                 <button
                   class="step-btn"
-                  title="普卡 -1"
+                  title="-1"
                   onclick={(e) => {
                     e.stopPropagation()
                     onQuickDec?.(card)
@@ -104,13 +105,13 @@
                 <span class="step-qty">{card.ownedTotal}</span>
                 <button
                   class="step-btn inc"
-                  title="普卡 +1"
+                  title="+1"
                   onclick={(e) => {
                     e.stopPropagation()
                     onQuickInc?.(card)
                   }}
                 >
-                  <Plus size={12} />
+                  <Plus size={12}  />
                 </button>
               {:else}
                 <button
@@ -121,17 +122,21 @@
                     onQuickInc?.(card)
                   }}
                 >
-                  <Plus size={12} /> 拥有
+                  <Plus size={12} strokeWidth={'5'} />
                 </button>
               {/if}
             </div>
           {/if}
         </div>
-        <div class="tile-name">{card.card_name_cn}</div>
-        <small class="tile-no">{card.card_no}</small>
-        <div class="tile-owned" class:insufficient={insufficient}>
-          持有 {owned} / 需 {need}
+        <div class="tile-no-row">
+          <span class="tile-no">{card.cardNoExtend}</span>
+          {#if card.bucket !== 'base'}
+            <span class="bucket-chip">{BUCKET_LABELS[card.bucket]}</span>
+          {/if}
         </div>
+        <!-- <div class="tile-owned" class:insufficient={card.ownedTotal === 0}>
+          {card.ownedTotal > 0 ? `持有 ${card.ownedTotal}` : '未拥有'}
+        </div> -->
       </div>
     {/each}
 
@@ -153,6 +158,10 @@
     padding: 4px 2px 24px;
   }
 
+  .collection-grid.is-loading-container {
+      display: initial;
+  }
+
   .tile {
     display: flex;
     flex-direction: column;
@@ -172,11 +181,11 @@
     transform: translateY(-2px);
   }
 
-  .tile.selected {
+  /*.tile.selected {
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
     border-radius: 10px;
-  }
+  }*/
 
   .img-wrap {
     position: relative;
@@ -206,13 +215,21 @@
 
   .owned-badge {
     position: absolute;
-    bottom: 6px;
-    right: 6px;
-    padding: 2px 7px;
-    font-size: var(--text-xs);
-    border-radius: 99px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+    bottom: 0;
+    right: 0;
+    z-index: 2;
+    min-width: 36px;
+    height: 28px;
+    padding: 8px 4px 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-md);
+    font-weight: 700;
+    color: #ffffff;
+    background: var(--accent-color);
+    border-top-left-radius: 9999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
   .select-badge {
@@ -235,18 +252,36 @@
     border-color: var(--accent-color);
   }
 
-  .tile-name {
-    font-size: var(--text-sm);
-    line-height: 1.3;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  .tile-no-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .tile-no {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bucket-chip {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    font-size: 10px;
+    border-radius: 99px;
+    border: 1px solid var(--border-color);
     color: var(--text-secondary);
+    background: var(--bg-secondary);
+  }
+
+  /*.tile-rarity {
+    color: var(--text-secondary);
+    min-height: 1em;
   }
 
   .tile-owned {
@@ -256,11 +291,7 @@
 
   .tile-owned.insufficient {
     color: #ef4444;
-  }
-
-  .tile.banned .img-wrap {
-    filter: grayscale(0.7);
-  }
+  }*/
 
   .quick-stepper {
     position: absolute;
@@ -326,9 +357,9 @@
   .step-qty {
     min-width: 22px;
     text-align: center;
-    font-size: var(--text-xs);
+    font-size: var(--text-base);
     font-weight: 700;
-    color: #fff;
+    color: var(--bg-primary);
   }
 
   .sentinel {
@@ -340,7 +371,7 @@
     color: var(--text-secondary);
   }
 
-  @media (max-width: 600.99px) {
+  @media (max-width: 479.99px) {
     .collection-grid {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
@@ -349,6 +380,10 @@
     .quick-stepper {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    .owned-badge {
+        display: none;
     }
   }
 

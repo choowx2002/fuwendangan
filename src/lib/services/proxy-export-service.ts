@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import type { DeckCardDetail } from '$lib/db'
+import { printCacheName } from '$lib/db/helper'
 import { sortForExport } from '$lib/decks/deck-export'
 import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
 import { writeBytesFile } from './db-file-service'
@@ -60,7 +61,7 @@ function buildInstances(cards: DeckCardDetail[], zones: Set<ZoneKey>): ProxyInst
       for (let i = 0; i < c.quantity; i++) {
         instances.push({
           url: c.img_cdn,
-          cacheName: `${c.card_base_id}-${c.print_id}`,
+          cacheName: printCacheName({ card_no_extend: c.print_code, language: c.language }),
           label: displayName(c),
         })
       }

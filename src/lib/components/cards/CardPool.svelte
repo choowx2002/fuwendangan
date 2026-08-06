@@ -11,7 +11,7 @@
     SortKeyItem,
   } from '$lib/db/types'
   import { ChevronDown, ChevronUp, LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
-  import { buildSearchParams } from '$lib/db/helper'
+  import { buildSearchParams, printCacheName } from '$lib/db/helper'
   import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
@@ -450,7 +450,7 @@
           >
             <CachedImage
               src={defaultI?.img_cdn! ?? defaultI?.tts_cdn!}
-              name={`${card.id}-${defaultI?.id || 'default'}`}
+              name={printCacheName(defaultI)}
               borderRadius="6px"
               fit="cover"
               {isLandscape}

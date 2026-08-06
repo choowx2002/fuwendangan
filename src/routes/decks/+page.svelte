@@ -280,7 +280,7 @@
             <div class="deck-avatar">
               <CardSimpleImage
                 url={deck.legend_image}
-                name={`${deck.legend_id}-${deck.legend_print_id || 'default'}`}
+                name={`${deck.legend_print_code ?? 'default'}-${deck.legend_lang ?? 'default'}`}
               />
             </div>
             <div class="deck-info">

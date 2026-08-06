@@ -260,6 +260,7 @@ export interface DeckCardDetail extends DeckCard {
   print_code: string
   img_cdn: string
   rarity_name: string
+  language: string
 }
 
 /**
@@ -278,6 +279,7 @@ export interface DeckVersionCard {
   sub_title_en: string | null
   print_code: string
   img_cdn: string | null
+  language: string
 }
 
 export async function saveDeckAsNewVersion(
@@ -439,7 +441,7 @@ export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail
        dc.id, dc.card_id, dc.quantity, dc.zone,
        cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list,
-       cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
+       cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name, cp.language
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id
      JOIN cards_base cb ON cp.card_id = cb.id
@@ -474,7 +476,7 @@ export async function getDeckCardsByVersion(versionId: string): Promise<DeckCard
        dc.id, dc.card_id, dc.quantity, dc.zone,
        cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.power, cb.card_color_list,
-       cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name
+       cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name, cp.language
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id
      JOIN cards_base cb ON cp.card_id = cb.id
@@ -496,7 +498,7 @@ export async function getDeckVersionCards(deckId: string): Promise<DeckVersionCa
        dc.deck_version_id, dc.card_id, dc.quantity, dc.zone,
        cb.id as card_base_id, cp.id as print_id,
        cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en,
-       cp.card_no_extend as print_code, cp.img_cdn
+       cp.card_no_extend as print_code, cp.img_cdn, cp.language
      FROM deck_cards dc
      JOIN deck_versions dv ON dc.deck_version_id = dv.id
      JOIN card_prints cp ON dc.card_id = cp.id
@@ -542,6 +544,8 @@ export interface DeckListResult {
   legend_color_list?: string[] | null
   legend_image?: string | null
   legend_print_id: string
+  legend_print_code?: string | null
+  legend_lang?: string | null
 }
 
 export async function getDeckList(
@@ -630,7 +634,9 @@ export async function getDeckList(
         cb.sub_title_cn AS legend_sub,
         cb.champion_tag AS legend_champion_tag,
         cb.card_color_list AS legend_color_list,
-        cp.img_cdn AS legend_image
+        cp.img_cdn AS legend_image,
+        cp.card_no_extend AS legend_print_code,
+        cp.language AS legend_lang
 
       FROM LatestVersions lv
 

@@ -1,4 +1,5 @@
 import type { DeckCardDetail } from '$lib/db'
+import { printCacheName } from '$lib/db/helper'
 import type { SortKeyItem } from '$lib/db/types'
 import { ZONE_CONFIG } from '$lib/decks/zone'
 import { COLOR_ORDER, normalizeColor, parseColorList } from '$lib/cards/utils/cost-curve-utils'
@@ -298,7 +299,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
   // 收集需要加载的卡图
   const jobs: ImgJob[] = []
   const addJob = (card: DeckCardDetail) => {
-    const key = `${card.card_base_id}-${card.print_id}`
+    const key = `${card.print_code}-${card.language}`
     if (card.img_cdn && !jobs.some((j) => j.key === key)) {
       jobs.push({ key, url: card.img_cdn, cacheName: key })
     }
@@ -422,7 +423,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
   if (heroStripH > 0) {
     let x = PAD
     for (const card of heroCards) {
-      const key = `${card.card_base_id}-${card.print_id}`
+      const key = `${card.print_code}-${card.language}`
       drawCoverIn(ctx, imageMap.get(key) ?? null, x, y, HERO_W, HERO_H, theme.placeholder)
       drawQtyBadge(ctx, x, y, HERO_W, HERO_H, card.quantity, theme)
       x += HERO_W + GAP
@@ -457,7 +458,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
       const row = Math.floor(i / COLS)
       const x = PAD + col * (CARD_W + GAP)
       const cy = y + row * (CARD_H + GAP)
-      const key = `${card.card_base_id}-${card.print_id}`
+      const key = `${card.print_code}-${card.language}`
       drawCoverIn(ctx, imageMap.get(key) ?? null, x, cy, CARD_W, CARD_H, theme.placeholder)
       drawQtyBadge(ctx, x, cy, CARD_W, CARD_H, card.quantity, theme)
     })
@@ -477,7 +478,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
       const row = Math.floor(i / COLS)
       const x = PAD + col * (CARD_W + GAP)
       const cy = y + row * (CARD_H + GAP)
-      const key = `${card.card_base_id}-${card.print_id}`
+      const key = `${card.print_code}-${card.language}`
       drawCoverIn(ctx, imageMap.get(key) ?? null, x, cy, CARD_W, CARD_H, theme.placeholder)
       drawQtyBadge(ctx, x, cy, CARD_W, CARD_H, card.quantity, theme)
     })

@@ -22,6 +22,7 @@
   } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import { printCacheName } from '$lib/db/helper'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import { validateDeck, checkZoneCapacity } from '$lib/decks/deck-validator'
   import { convertDeckCardInput, compressDeckCards, flattenDeckCards } from '$lib/decks/deck-input'
@@ -834,7 +835,7 @@
     <div class="card-image">
       <CardSimpleImage
         url={selectedPrint?.img_cdn}
-        name={`${group.card.id}-${selectedPrint?.id || 'default'}`}
+        name={printCacheName(selectedPrint)}
         isLandscape={group.card.card_category?.findIndex((cat) => cat === '战场') !== -1}
       />
     </div>
@@ -1283,7 +1284,7 @@
           <div class="print-slide-image">
             <CardSimpleImage
               url={prints[printModalPrintIndex]?.img_cdn}
-              name={`${printModalTarget.card.id}-${currentPrint?.id}`}
+              name={printCacheName(prints[printModalPrintIndex])}
               isLandscape={printModalTarget.card.card_category?.findIndex(
                 (cat) => cat === '战场'
               ) !== -1}

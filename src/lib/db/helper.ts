@@ -69,6 +69,22 @@ export interface BestPrint {
   url: string
   fallbackUrl: string | null
   id: string | null
+  card_no_extend: string | null
+  language: string | null
+}
+
+/**
+ * 图片缓存文件名前缀（CachedImage / CardSimpleImage 的 name 用）：
+ * 格式为 {card_no_extend}-{language}（如 SC01-001-SC），
+ * 不依赖雪花 id，同步重建 id 后缓存不失效；缺字段时回退 print id / 'default'。
+ */
+export function printCacheName(
+  p: { card_no_extend?: string | null; language?: string | null; id?: string | null } | null | undefined
+): string {
+  if (p?.card_no_extend && p?.language) {
+    return `${p.card_no_extend}-${p.language.toUpperCase()}`
+  }
+  return p?.id || 'default'
 }
 
 /**
@@ -99,6 +115,8 @@ export function getBestPrint(card: CardBase & { card_prints?: CardPrint[] }): Be
     url: best.img_cdn || '',
     fallbackUrl: best.tts_cdn || null,
     id: best.id || null,
+    card_no_extend: best.card_no_extend || null,
+    language: best.language || null,
   }
 }
 

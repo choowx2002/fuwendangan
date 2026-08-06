@@ -953,7 +953,7 @@
                     <div class="match-legend-row">
                       <CardSimpleImage
                         url={match.opp_legend_image}
-                        name={`${match.opp_legend_id ?? 'none'}-${match.opp_legend_print_id ?? 'none'}`}
+                        name={`${match.opp_legend_print_code ?? match.opp_legend_id ?? 'none'}-${match.opp_legend_lang ?? match.opp_legend_print_id ?? 'none'}`}
                         className="match-legend-thumb"
                       />
                       <span class="match-legend-label">对手传奇：</span>
@@ -1075,7 +1075,7 @@
             >
               <CardSimpleImage
                 url={instance.card.img_cdn}
-                name={`${instance.card.card_base_id}-${instance.card.print_id}`}
+                name={`${instance.card.print_code}-${instance.card.language}`}
                 isLandscape={false}
               />
               {#if mulliganSelection.has(instance.uid)}
@@ -1130,7 +1130,7 @@
             <div class="hero-card-img">
               <CardSimpleImage
                 url={legendCards[0].img_cdn}
-                name={`${legendCards[0].card_base_id}-${legendCards[0].print_id}`}
+                name={`${legendCards[0].print_code}-${legendCards[0].language}`}
                 isLandscape={false}
               />
             </div>
@@ -1148,7 +1148,7 @@
             <div class="hero-card-img">
               <CardSimpleImage
                 url={championCards[0].img_cdn}
-                name={`${championCards[0].card_base_id}-${championCards[0].print_id}`}
+                name={`${championCards[0].print_code}-${championCards[0].language}`}
                 isLandscape={false}
               />
             </div>
@@ -1194,7 +1194,7 @@
                   <div class="card-img-wrapper landscape">
                     <CardSimpleImage
                       url={card.img_cdn}
-                      name={`${card.card_base_id}-${card.print_id}`}
+                      name={`${card.print_code}-${card.language}`}
                       isLandscape={true}
                     />
                   </div>
@@ -1232,7 +1232,7 @@
                 <div class="card-img-wrapper">
                   <CardSimpleImage
                     url={card.img_cdn}
-                    name={`${card.card_base_id}-${card.print_id}`}
+                    name={`${card.print_code}-${card.language}`}
                     isLandscape={false}
                   />
                 </div>
@@ -1265,7 +1265,7 @@
                 <div class="card-img-wrapper">
                   <CardSimpleImage
                     url={card.img_cdn}
-                    name={`${card.card_base_id}-${card.print_id}`}
+                    name={`${card.print_code}-${card.language}`}
                     isLandscape={false}
                   />
                 </div>
@@ -1323,7 +1323,7 @@
                       <div class="diff-image">
                         <CardSimpleImage
                           url={item.img_cdn}
-                          name={`${item.card_base_id}-${item.print_id}`}
+                          name={`${item.print_code}-${item.language}`}
                           isLandscape={item.isLandscape}
                         />
                       </div>

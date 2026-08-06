@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CardPrint } from '$lib/db'
+  import { printCacheName } from '$lib/db'
   import CachedImage from './CachedImage.svelte'
   import { Expand, X } from '@lucide/svelte'
 
@@ -95,7 +96,7 @@
     >
       <CachedImage
         src={print?.img_cdn ?? print?.tts_cdn ?? ''}
-        name={`${print?.card_id}-${print?.id || 'default'}`}
+        name={printCacheName(print)}
         fit="cover"
         borderRadius="8px"
         lazy={false}
@@ -122,7 +123,7 @@
       {#if print?.back_image}
         <CachedImage
           src={print.back_image}
-          name={`${print?.card_id}-${print?.id || 'default'}-back`}
+          name={`${printCacheName(print)}-back`}
           fit="cover"
           borderRadius="8px"
           lazy={false}
@@ -158,7 +159,7 @@
     >
       <CachedImage
         src={print?.img_cdn ?? print?.tts_cdn ?? ''}
-        name={`${print?.card_id}-${print?.id || 'default'}`}
+        name={printCacheName(print)}
         fit="cover"
         borderRadius="12px"
         lazy={false}

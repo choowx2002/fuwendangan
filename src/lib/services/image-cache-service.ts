@@ -10,6 +10,7 @@ import {
   stat,
 } from '@tauri-apps/plugin-fs'
 import { fetch } from '@tauri-apps/plugin-http'
+import { printCacheName } from '$lib/db/helper'
 // ==================== 类型定义 ====================
 
 export interface ImageItem {
@@ -278,7 +279,7 @@ export async function getMissingCardPrints(
     if (localImgToken(print.img_cdn)) return false
     const expectedName = urlToFilename(
       print.img_cdn ?? print.tts_cdn,
-      `${print.card_id}-${print.id || 'default'}`
+      printCacheName(print)
     )
 
     return !fileNames.has(expectedName)

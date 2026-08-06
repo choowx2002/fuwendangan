@@ -54,11 +54,14 @@ async function initializeTables(db: Database): Promise<void> {
   await migrateCollectionOrphans(db)
   await migrateCollectionLangsTimestamps(db)
   await migrateCollectionSeriesInfo(db)
+  await migrateCollectionCardNo(db)
   await migrateSeriesCover(db)
   // 索引依赖迁移后的列，须在迁移之后创建（老库 language_code 列此时才存在）
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
+  await db.execute(TABLE_DEFINITIONS.idx_card_prints_variant)
+  await db.execute(TABLE_DEFINITIONS.idx_collection_langs_collection)
 }
 
 /**
@@ -202,7 +205,7 @@ async function migrateCollectionOrphans(db: Database): Promise<void> {
   await db.execute(
     `DELETE FROM collection WHERE NOT EXISTS (
        SELECT 1 FROM card_prints p
-       WHERE p.card_id = collection.card_id AND p.card_no_extend = collection.card_no_extend
+       WHERE p.card_no_extend = collection.card_no_extend
      )`
   )
   await db.execute(
@@ -252,6 +255,32 @@ async function migrateCollectionSeriesInfo(db: Database): Promise<void> {
      )
      WHERE last_edited_at IS NULL`
   )
+}
+
+/**
+ * 迁移：collection 引用基础卡由 id 改为稳定编号 card_no（cards_base.card_no），
+ * 避免远端重建 id 后收藏行失效；存量库依据 cards_base.id 回填，无法回填的孤儿行删除。
+ */
+async function migrateCollectionCardNo(db: Database): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(collection)`)
+  if (cols.some((c) => c.name === 'card_no')) return
+
+  await db.execute(`ALTER TABLE collection ADD COLUMN card_no TEXT`)
+  await db.execute(
+    `UPDATE collection SET card_no = (SELECT cb.card_no FROM cards_base cb WHERE cb.id = collection.card_id)`
+  )
+  await db.execute(`DELETE FROM collection WHERE card_no IS NULL OR card_no = ''`)
+  await db.execute(
+    `DELETE FROM collection_langs WHERE collection_id NOT IN (SELECT id FROM collection)`
+  )
+
+  if (cols.some((c) => c.name === 'card_id')) {
+    try {
+      await db.execute(`ALTER TABLE collection DROP COLUMN card_id`)
+    } catch {
+      // 旧版 SQLite 不支持 DROP COLUMN，保留空列不影响逻辑
+    }
+  }
 }
 
 /**
@@ -309,6 +338,8 @@ export async function resetDatabase() {
     await db.execute(TABLE_DEFINITIONS.DROP)
     // await db.execute('DELETE FROM sqlite_sequence')
 
+    const { clearSeriesCache } = await import('./series-repository')
+    clearSeriesCache()
     await initializeTables(db)
   } catch (err) {
     throw err

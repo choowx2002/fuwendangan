@@ -295,7 +295,7 @@
                 <div class="record-legend-row">
                   <CardSimpleImage
                     url={match.opp_legend_image}
-                    name={`${match.opp_legend_id ?? 'none'}-${match.opp_legend_print_id ?? 'none'}`}
+                    name={`${match.opp_legend_print_code ?? match.opp_legend_id ?? 'none'}-${match.opp_legend_lang ?? match.opp_legend_print_id ?? 'none'}`}
                     className="record-legend-thumb"
                   />
                   <span class="record-legend-label">对手传奇：</span>

@@ -34,6 +34,7 @@
         getCollectionStats(),
         getRecentCollectionCards(6),
       ])
+      console.log(recentRes);
       stats = statsRes
       recent = recentRes
     } finally {

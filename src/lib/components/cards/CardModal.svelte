@@ -2,6 +2,7 @@
   import { X } from '@lucide/svelte'
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint, CardWithPrint } from '$lib/db'
+  import { printCacheName } from '$lib/db/helper'
   import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
   import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
   import { showForeignCardArt, showTTSFeatures } from '$lib/stores/settings'
@@ -116,7 +117,7 @@
             {#if selectedVersion[selectedIndex]}
               <CacheImage
                 src={selectedVersion[selectedIndex].img_cdn || ''}
-                name={`${card.id}-${selectedVersion[selectedIndex]?.id || 'default'}`}
+                name={printCacheName(selectedVersion[selectedIndex])}
                 alt={card.card_name_cn || ''}
                 fit="contain"
                 borderRadius="6px"
@@ -163,7 +164,7 @@
                 >
                   <CacheImage
                     src={v[0].img_cdn || ''}
-                    name={`${card.id}-${v[0]?.id || 'default'}`}
+                    name={printCacheName(v[0])}
                     alt={card.card_name_cn || ''}
                     fit="contain"
                     isHover={false}

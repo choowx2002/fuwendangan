@@ -191,7 +191,10 @@ async function insertGames(matchId: string, games: MatchGameInput[]): Promise<vo
 export async function getMatchById(matchId: string): Promise<MatchWithGames | null> {
   const db = await getDatabase()
   const rows = await db.select<MatchRecord[]>(
-    `SELECT * FROM ${TABLES.MATCH_RECORDS} WHERE id = ?`,
+    `SELECT m.*, cp.card_no_extend AS opp_legend_print_code, cp.language AS opp_legend_lang
+     FROM ${TABLES.MATCH_RECORDS} m
+     LEFT JOIN ${TABLES.CARD_PRINTS} cp ON cp.id = m.opp_legend_print_id
+     WHERE m.id = ?`,
     [matchId]
   )
   if (rows.length === 0) return null
@@ -206,9 +209,11 @@ export async function getMatchById(matchId: string): Promise<MatchWithGames | nu
 export async function getMatchesByDeck(deckId: string): Promise<MatchWithGames[]> {
   const db = await getDatabase()
   const rows = await db.select<MatchRecord[]>(
-    `SELECT * FROM ${TABLES.MATCH_RECORDS}
-     WHERE deck_id = ?
-     ORDER BY created_at DESC`,
+    `SELECT m.*, cp.card_no_extend AS opp_legend_print_code, cp.language AS opp_legend_lang
+     FROM ${TABLES.MATCH_RECORDS} m
+     LEFT JOIN ${TABLES.CARD_PRINTS} cp ON cp.id = m.opp_legend_print_id
+     WHERE m.deck_id = ?
+     ORDER BY m.created_at DESC`,
     [deckId]
   )
   return withGames(rows)

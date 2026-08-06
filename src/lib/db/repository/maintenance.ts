@@ -21,12 +21,13 @@ export async function clearCardData(): Promise<void> {
      )`
   )
   await db.execute(
-    `DELETE FROM ${TABLES.COLLECTION} WHERE card_id NOT IN (SELECT id FROM ${TABLES.CARDS_BASE})`
+    `DELETE FROM ${TABLES.COLLECTION} WHERE card_no NOT IN (SELECT card_no FROM ${TABLES.CARDS_BASE})`
   )
   await db.execute(
     `DELETE FROM ${TABLES.COLLECTION} WHERE NOT EXISTS (
-       SELECT 1 FROM ${TABLES.CARD_PRINTS} p
-       WHERE p.card_id = ${TABLES.COLLECTION}.card_id AND p.card_no_extend = ${TABLES.COLLECTION}.card_no_extend
+       SELECT 1 FROM ${TABLES.CARDS_BASE} cb
+       JOIN ${TABLES.CARD_PRINTS} p ON p.card_id = cb.id
+       WHERE cb.card_no = ${TABLES.COLLECTION}.card_no AND p.card_no_extend = ${TABLES.COLLECTION}.card_no_extend
      )`
   )
   await db.execute(

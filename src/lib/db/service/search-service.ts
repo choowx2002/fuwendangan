@@ -7,10 +7,15 @@ import type {
   CardPrint,
   CardSearchParams,
   CardSearchResult,
+  CardVariantSearchParams,
+  CardVariantSearchResult,
   CardWithOwned,
+  CollectionSort,
+  VariantWithOwned,
 } from '../types'
+import type { VariantBucket } from '$lib/cards/utils/variant-utils'
 import { getDatabase } from '../repository/database'
-import { buildOrderBy, mapRowToCard } from '../helper'
+import { buildOrderBy, mapRowToCard, mapRowToPrint } from '../helper'
 import { TABLES } from '../config/constants'
 import { getCompletionMode } from './completion-modes'
 import { getAllSeries } from '../repository/series-repository'
@@ -165,15 +170,16 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
 
   // 收藏聚合子查询：按卡聚合已拥有数量（仅 owned 状态，所有变体×语言）
   const ownedAgg = `
-    SELECT col.card_id AS oc_card_id,
+    SELECT cb.id AS oc_card_id,
       SUM(cl.normal_qty) AS owned_normal,
       SUM(cl.foil_qty) AS owned_foil,
       SUM(cl.normal_qty + cl.foil_qty) AS owned_total,
       MAX(col.last_edited_at) AS oc_last_edited
     FROM ${TABLES.COLLECTION} col
+    JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = col.card_no
     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
     WHERE cl.status = 'owned'
-    GROUP BY col.card_id
+    GROUP BY cb.id
   `
 
   // 变体完成度聚合：按完成度模式（默认 base）判定变体是否已拥有。
@@ -195,10 +201,10 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
         ${bucketCase} AS bucket,
         MAX(CASE WHEN ${completion.ownedPredicate ?? '1=1'} THEN 1 ELSE 0 END) AS owned
       FROM ${TABLES.CARD_PRINTS} p
-      LEFT JOIN ${TABLES.COLLECTION} col
-        ON col.card_id = p.card_id AND col.card_no_extend = p.card_no_extend
-      LEFT JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
       LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+      LEFT JOIN ${TABLES.COLLECTION} col
+        ON col.card_no = cb.card_no AND col.card_no_extend = p.card_no_extend
+      LEFT JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
       WHERE COALESCE(p.is_promo, 0) != 1
       GROUP BY p.card_id, p.card_no_extend
     ) vc
@@ -358,5 +364,224 @@ function buildCollectionOrderBy(
         ${baseAlias}.card_no COLLATE NOCASE ASC`
     default:
       return `ORDER BY ${baseAlias}.card_no COLLATE NOCASE ASC`
+  }
+}
+
+// ==================== 收藏页变体搜索（card_prints 数据源） ====================
+
+/**
+ * 收藏页变体搜索：以 card_prints 为数据源，一个变体（card_id + card_no_extend）一行。
+ * 内层单次扫描聚合出每变体的代表稀有度与过滤标志，外层无任何关联子查询，
+ * 总数用 COUNT(*) OVER () 并入数据查询，减少往返与整表重建。
+ * cards_base 仅内部用于桶分类（符文/指示物）与系列回退，不参与展示；
+ * 卡片详情在打开弹窗时按需关联。
+ */
+export async function searchCardVariants(
+  params: CardVariantSearchParams
+): Promise<CardVariantSearchResult> {
+  const db = await getDatabase()
+  const { page = 1, pageSize = 30 } = params
+
+  const seriesList = await getAllSeries()
+  const knownCodes = seriesList.map((s) => s.code.toUpperCase())
+  const code = params.seriesCode?.trim().toUpperCase() ?? ''
+  const searchText = params.searchText?.trim() ?? ''
+  const hasSearch = searchText !== ''
+  const safeText = `%${searchText}%`
+  const bucket = params.bucket?.trim() ?? ''
+
+  // 内层单次扫描计算的聚合列（MAX(CASE...) 为 0/1 标志，避免 EXISTS 子查询）
+  const innerSelects = [
+    `MAX(extend_rarity_name) AS extend_rarity`,
+    `MAX(rarity_name) AS rarity`,
+  ]
+  const innerParams: unknown[] = []
+
+  if (code) {
+    innerSelects.push(
+      `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) = ? THEN 1 ELSE 0 END) AS prefix_match`
+    )
+    innerParams.push(code)
+    const knownIn =
+      knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
+    innerSelects.push(
+      `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) IN (${knownIn}) THEN 1 ELSE 0 END) AS has_known`
+    )
+    innerParams.push(...knownCodes)
+  }
+  if (hasSearch) {
+    innerSelects.push(
+      `MAX(CASE WHEN (card_no_extend LIKE ? OR extend_rarity_name LIKE ?
+             OR rarity_name LIKE ? OR artist LIKE ?) THEN 1 ELSE 0 END) AS text_match`
+    )
+    innerParams.push(safeText, safeText, safeText, safeText)
+  }
+
+  const outerWheres: string[] = []
+  const outerParams: unknown[] = []
+  if (code) {
+    // 前缀匹配；回退：没有任何已知前缀时按 cards_base.series_name 匹配（防御 R--/T-- 类编号）
+    outerWheres.push(`(v.prefix_match = 1 OR (v.has_known = 0 AND cb.series_name = ?))`)
+    outerParams.push(code)
+  }
+  if (hasSearch) {
+    outerWheres.push(`v.text_match = 1`)
+  }
+
+  const havings: string[] = []
+  const ownedSumExpr = `SUM(cl.normal_qty) > 0 OR SUM(cl.foil_qty) > 0`
+  if (params.ownership && params.ownership !== 'all') {
+    if (params.ownership === 'owned') {
+      havings.push(`(${ownedSumExpr})`)
+    } else if (params.ownership === 'missing') {
+      havings.push(`NOT (${ownedSumExpr})`)
+    } else {
+      havings.push(`SUM(cl.foil_qty) > 0`)
+    }
+  }
+  if (bucket) {
+    havings.push(`bucket = ?`)
+    outerParams.push(bucket)
+  }
+
+  const whereStr = outerWheres.length > 0 ? `WHERE ${outerWheres.join(' AND ')}` : ''
+  const havingStr = havings.length > 0 ? `HAVING ${havings.join(' AND ')}` : ''
+  const offset = (page - 1) * pageSize
+
+  const dataSql = `
+    SELECT v.card_id,
+      v.card_no_extend,
+      v.extend_rarity,
+      v.rarity,
+      cb.card_no AS card_no,
+      COALESCE(SUM(cl.normal_qty), 0) AS owned_normal,
+      COALESCE(SUM(cl.foil_qty), 0) AS owned_foil,
+      COALESCE(SUM(cl.normal_qty), 0) + COALESCE(SUM(cl.foil_qty), 0) AS owned_total,
+      MAX(col.last_edited_at) AS last_edited,
+      COUNT(*) OVER () AS total,
+      CASE
+        WHEN cb.card_category LIKE '%符文%' THEN 'rune'
+        WHEN cb.card_category LIKE '%指示物%' THEN 'token'
+        WHEN v.extend_rarity = '异画' THEN 'alt'
+        WHEN v.extend_rarity IN ('超编', '签名超编') THEN 'overnum'
+        ELSE 'base'
+      END AS bucket,
+      cb.card_category AS raw_category
+    FROM (
+      SELECT card_id, card_no_extend,
+        ${innerSelects.join(',\n        ')}
+      FROM ${TABLES.CARD_PRINTS}
+      WHERE COALESCE(is_promo, 0) != 1
+      GROUP BY card_id, card_no_extend
+    ) v
+    LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = v.card_id
+    LEFT JOIN ${TABLES.COLLECTION} col ON col.card_no = cb.card_no AND col.card_no_extend = v.card_no_extend
+    LEFT JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id AND cl.status = 'owned'
+    ${whereStr}
+    GROUP BY v.card_id, v.card_no_extend
+    ${havingStr}
+    ${buildVariantOrderBy(params.collectionSort)}
+    LIMIT ? OFFSET ?
+  `
+  const rows = await db.select<any[]>(dataSql, [...innerParams, ...outerParams, pageSize, offset])
+  const total = rows.length > 0 ? Number(rows[0].total) : 0
+
+  // 代表印刷：排除 promo 后按 SC > is_default > 首张（行值 IN 精确限定到本页变体）
+  const repMap = new Map<string, CardPrint>()
+  if (rows.length > 0) {
+    const rowValueIn = rows.map(() => '(?, ?)').join(',')
+    const printsRows = await db.select<any[]>(
+      `SELECT id, card_id, card_no_extend, language, is_default, is_promo,
+        img_cdn, tts_cdn, rarity_name, extend_rarity_name
+       FROM ${TABLES.CARD_PRINTS}
+       WHERE (card_id, card_no_extend) IN (${rowValueIn})`,
+      rows.flatMap((r) => [r.card_id, r.card_no_extend])
+    )
+    const byVariant = new Map<string, CardPrint[]>()
+    for (const p of printsRows.map(mapRowToPrint)) {
+      const key = `${p.card_id}:${p.card_no_extend}`
+      if (!byVariant.has(key)) byVariant.set(key, [])
+      byVariant.get(key)!.push(p)
+    }
+    for (const [key, list] of byVariant) {
+      const nonPromo = list.filter((p) => !p.is_promo)
+      const pool = nonPromo.length > 0 ? nonPromo : list
+      repMap.set(
+        key,
+        pool.find((p) => (p.language ?? '').toLowerCase() === 'sc') ??
+          pool.find((p) => p.is_default) ??
+          pool[0]
+      )
+    }
+  }
+
+  const data: VariantWithOwned[] = rows.map((row) => {
+    const rep = repMap.get(`${row.card_id}:${row.card_no_extend}`)
+    return {
+      cardId: row.card_id,
+      cardNo: row.card_no,
+      cardNoExtend: row.card_no_extend,
+      printId: rep?.id ?? null,
+      printLanguage: rep?.language ?? null,
+      imgCdn: rep?.img_cdn ?? null,
+      ttsCdn: rep?.tts_cdn ?? null,
+      rarityName: rep?.rarity_name ?? null,
+      extendRarityName: rep?.extend_rarity_name ?? null,
+      bucket: row.bucket as VariantBucket,
+      cardCategory: row.raw_category ? JSON.parse(row.raw_category) : null,
+      ownedNormal: row.owned_normal ?? 0,
+      ownedFoil: row.owned_foil ?? 0,
+      ownedTotal: row.owned_total ?? 0,
+      lastEdited: row.last_edited ?? null,
+    }
+  })
+
+  return {
+    data,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  }
+}
+
+/**
+ * 收藏页变体排序：
+ * - card_no：按扩展卡号
+ * - rarity：按稀有度层级（普通 < 不凡 < 稀有 < 史诗 < 异画 < 超编 < 签名超编，符文/指示物置顶）
+ * - owned：按该变体已拥有数量
+ * - progress：按该变体是否已拥有（升序 = 未拥有优先）
+ * - recent：按最近录入时间（无记录排最后）
+ */
+function buildVariantOrderBy(sort?: CollectionSort): string {
+  if (!sort) return `ORDER BY v.card_no_extend COLLATE NOCASE ASC`
+  const dir = sort.isAsc ? 'ASC' : 'DESC'
+  const ownedExpr = `COALESCE(SUM(cl.normal_qty), 0) + COALESCE(SUM(cl.foil_qty), 0)`
+
+  switch (sort.key) {
+    case 'card_no':
+      return `ORDER BY v.card_no_extend COLLATE NOCASE ${dir}`
+    case 'rarity':
+      return `ORDER BY CASE
+        WHEN cb.card_category LIKE '%指示物%' THEN 0
+        WHEN cb.card_category LIKE '%符文%' THEN 1
+        WHEN v.extend_rarity = '异画' THEN 6
+        WHEN v.extend_rarity IN ('超编', '签名超编') THEN 7
+        WHEN v.rarity = '普通' THEN 2
+        WHEN v.rarity = '不凡' THEN 3
+        WHEN v.rarity = '稀有' THEN 4
+        WHEN v.rarity = '史诗' THEN 5
+        ELSE 9
+      END ${dir}, v.card_no_extend COLLATE NOCASE ASC`
+    case 'owned':
+      return `ORDER BY ${ownedExpr} ${dir}, v.card_no_extend COLLATE NOCASE ASC`
+    case 'progress':
+      return `ORDER BY CASE WHEN ${ownedExpr} > 0 THEN 1 ELSE 0 END ${dir},
+        v.card_no_extend COLLATE NOCASE ASC`
+    case 'recent':
+      return `ORDER BY MAX(col.last_edited_at) ${dir === 'ASC' ? 'ASC' : 'DESC'} NULLS LAST,
+        v.card_no_extend COLLATE NOCASE ASC`
+    default:
+      return `ORDER BY v.card_no_extend COLLATE NOCASE ASC`
   }
 }

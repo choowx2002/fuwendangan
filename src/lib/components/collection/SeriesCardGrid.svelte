@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { SeriesStats } from '$lib/db'
-  import { Check } from '@lucide/svelte'
-  import CachedImage from '../cards/CachedImage.svelte'
+  // import { Check } from '@lucide/svelte'
+  // import CachedImage from '../cards/CachedImage.svelte'
   import {
     BUCKET_LABELS,
     type VariantBucket,
@@ -26,7 +26,7 @@
     {@const missing = Math.max(0, s.totalCount - s.totalOwned)}
     {@const done = s.totalCount > 0 && missing === 0}
     <button class="series-card" class:done={done} onclick={() => onSelect?.(s.code)}>
-      <div class="series-cover">
+      <!-- <div class="series-cover">
         {#if s.coverImage}
           <CachedImage
             src={s.coverImage}
@@ -41,7 +41,7 @@
         {#if done}
           <span class="done-badge"><Check size={13} /></span>
         {/if}
-      </div>
+      </div> -->
 
       <div class="series-info">
         <div class="series-name-row">
@@ -80,9 +80,10 @@
 <style>
   .series-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 14px;
     padding: 4px 2px 24px;
+
   }
 
   .series-card {
@@ -96,6 +97,7 @@
     cursor: pointer;
     text-align: left;
     transition: all 0.15s ease;
+    aspect-ratio: 3 / 2;
   }
 
   .series-card:hover {
@@ -113,7 +115,7 @@
     );
   }
 
-  .series-cover {
+  /*.series-cover {
     position: relative;
     width: 108px;
     flex-shrink: 0;
@@ -149,7 +151,7 @@
     background: #eab308;
     color: #422006;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  }
+  }*/
 
   .series-info {
     flex: 1;
@@ -248,12 +250,12 @@
 
   @media (max-width: 600.99px) {
     .series-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minimax(0px, 1fr));
       gap: 10px;
     }
 
-    .series-cover {
+    /*.series-cover {
       width: 84px;
-    }
+    }*/
   }
 </style>

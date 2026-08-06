@@ -13,7 +13,7 @@
 
   const percent = $derived(
     stats && stats.overallCount > 0
-      ? Math.round((stats.overallOwned / stats.overallCount) * 100)
+      ? +((stats.overallOwned / stats.overallCount) * 100).toFixed(2)
       : 0
   )
   const offset = $derived(CIRCUMFERENCE * (1 - percent / 100))
@@ -66,7 +66,7 @@
             <div class="recent-img">
               <CachedImage
                 src={r.imgCdn ?? r.ttsCdn ?? ''}
-                name={`${r.cardId}-${r.cardNoExtend}`}
+                name={`${r.cardNoExtend}-${r.printLang ?? 'default'}`}
                 borderRadius="6px"
                 fit="cover"
                 isLandscape={false}

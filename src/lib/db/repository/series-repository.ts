@@ -6,6 +6,8 @@ import type { Series } from '../types'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
 
+let seriesCache: Series[] | null = null
+
 function mapRowToSeries(row: any): Series {
   return {
     ...row,
@@ -24,6 +26,7 @@ function mapRowToSeries(row: any): Series {
  * 批量保存系列（INSERT OR REPLACE）
  */
 export async function saveSeries(series: Series[]): Promise<void> {
+  seriesCache = null
   const db = await getDatabase()
   for (const s of series) {
     await db.execute(
@@ -55,6 +58,7 @@ export async function saveSeries(series: Series[]): Promise<void> {
  * 清空系列数据
  */
 export async function clearAllSeries(): Promise<void> {
+  seriesCache = null
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.SERIES}`)
 }
@@ -63,9 +67,18 @@ export async function clearAllSeries(): Promise<void> {
  * 获取全部系列（启用中的排前，其余按 release_order）
  */
 export async function getAllSeries(): Promise<Series[]> {
+  if (seriesCache) return seriesCache
   const db = await getDatabase()
   const rows = await db.select<any[]>(
-    `SELECT * FROM ${TABLES.SERIES} ORDER BY is_active DESC, release_order ASC, code ASC`
+    `SELECT * FROM ${TABLES.SERIES} ORDER BY is_active DESC, release_order DESC, code ASC`
   )
-  return rows.map(mapRowToSeries)
+  seriesCache = rows.map(mapRowToSeries)
+  return seriesCache
+}
+
+/**
+ * 清空系列内存缓存（数据库整体重置时调用）
+ */
+export function clearSeriesCache(): void {
+  seriesCache = null
 }

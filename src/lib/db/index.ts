@@ -23,6 +23,9 @@ export type {
   Deck,
   CardWithPrint,
   CardWithOwned,
+  VariantWithOwned,
+  CardVariantSearchParams,
+  CardVariantSearchResult,
   DeckCard,
   SqliteDeck,
   MatchRecord,
@@ -153,6 +156,7 @@ export {
   saveSeries,
   clearAllSeries,
   getAllSeries,
+  clearSeriesCache,
 } from './repository/series-repository'
 export * from './repository/deck-repository'
 export {
@@ -166,7 +170,7 @@ export {
   getMatchGroups,
 } from './repository/match-record-repository'
 // ==================== 服务层 (Service) ====================
-export { searchCards } from './service/search-service'
+export { searchCards, searchCardVariants } from './service/search-service'
 export { initializeDatabase } from './service/sync-service'
 export { updateFilterOptions } from './service/filter-service'
 export {
@@ -193,6 +197,7 @@ export {
   serializeTags,
   parseTags,
   getBestPrint,
+  printCacheName,
   buildSearchParams,
   buildOrderBy,
   formatBytes,

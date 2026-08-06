@@ -224,7 +224,7 @@
 
 <style>
   .cache-image-container {
-    display: inline-block;
+    /*display: inline-block;*/
     overflow: hidden;
     transition: all 0.2s ease;
   }
