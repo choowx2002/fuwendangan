@@ -59,6 +59,34 @@
     )
   )
 
+  /** 概要：选中变体的普卡/闪卡/语言数统计 */
+  const summary = $derived.by(() => {
+    const v = selectedVariant
+    if (!v) return { total: 0, normal: 0, foil: 0, langs: 0 }
+    return {
+      total: v.totalOwned,
+      normal: v.langs.reduce((a, l) => a + (l.normal_qty ?? 0), 0),
+      foil: v.langs.reduce((a, l) => a + (l.foil_qty ?? 0), 0),
+      langs: v.langs.length,
+    }
+  })
+
+  /** 添加语言下拉默认值：优先 SC，再按常用预设，最后取第一个未添加的语言 */
+  const nextLangDefault = $derived.by(() => {
+    const existing = new Set(selectedVariant?.langs.map((l) => l.language_code) ?? [])
+    const preferred = ['SC', 'TC', 'EN', 'JP', 'KR']
+    for (const c of preferred) {
+      if (langOptions.includes(c) && !existing.has(c)) return c
+    }
+    return langOptions.find((c) => !existing.has(c)) ?? langOptions[0] ?? ''
+  })
+
+  const isAddDisabled = $derived(
+    !selectedVariant ||
+      !newLangInput ||
+      selectedVariant.langs.some((l) => l.language_code === newLangInput)
+  )
+
   async function loadData() {
     if (!card) return
     const customs = await getCustomLanguages()
@@ -107,6 +135,12 @@
     })
   })
 
+  // 打开或切换变体后，语言下拉默认指向下一个未添加的语言
+  $effect(() => {
+    if (!isOpen) return
+    newLangInput = nextLangDefault
+  })
+
   function saveAndReload(no: string, lang: string, patch: { normal?: number; foil?: number }) {
     void upsertLangQty(card!.card_no, no, lang, patch).then(() => {
       void loadData().then(() => {
@@ -119,8 +153,7 @@
     const lang = newLangInput.trim()
     if (!lang) return
     if (v.langs.some((l) => l.language_code === lang)) return
-    saveAndReload(v.cardNoExtend, lang, { normal: 0, foil: 0 })
-    newLangInput = 'SC'
+    saveAndReload(v.cardNoExtend, lang, { normal: 1, foil: 0 })
   }
 
   function openEdit(v: VariantView) {
@@ -191,6 +224,8 @@
               >
                 {BUCKET_LABELS[v.bucket]}
                 {#if v.isCustom}<em>*</em>{/if}
+                <span class="tab-badge" class:zero={v.totalOwned === 0}>{v.totalOwned}</span>
+                {#if v.hasFoil}<span class="foil-dot"></span>{/if}
               </button>
             {/each}
           </div>
@@ -198,104 +233,76 @@
 
         <div class="edit-col">
           {#if sortedVariants.length === 0}
-            <p class="empty-tip">该卡暂无卡图打印，可新建自定打印。</p>
-          {/if}
+            <div class="empty-box">
+              <p class="empty-title">该卡暂无卡图打印</p>
+              <p class="empty-sub">可在下方新建自定打印后开始收藏</p>
+              <button class="btn-mini" onclick={openCreateCustom}>
+                <Plus size={13} /> 自定打印
+              </button>
+            </div>
+          {:else if selectedVariant}
+            {@const v = selectedVariant}
 
-          {#each sortedVariants as v (v.cardNoExtend)}
-            <div class="variant-block">
-              <div class="variant-head">
-                <button
-                  class="variant-no"
-                  class:active={selectedNo === v.cardNoExtend}
-                  onclick={() => (selectedNo = v.cardNoExtend)}
-                >
-                  {v.cardNoExtend}
-                </button>
-                <span class="chip">{BUCKET_LABELS[v.bucket]}</span>
-                {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no.toUpperCase().slice(0, 3)}
-                  <span class="chip proto">原型 {card.card_no}</span>
-                {/if}
-                {#if v.isCustom}
-                  <span class="chip promo">自定</span>
-                {/if}
-                <span class="chip">{v.totalOwned}</span>
-              </div>
-
-              {#if v.langs.length === 0}
-                <p class="empty-langs-hint">暂无收藏数量，选择语言后点「添加语言」</p>
+            <div class="variant-head">
+              <span class="head-no">{v.cardNoExtend}</span>
+              <span class="chip">{BUCKET_LABELS[v.bucket]}</span>
+              {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no.toUpperCase().slice(0, 3)}
+                <span class="chip proto">原型 {card.card_no}</span>
               {/if}
-
-              {#each v.langs as l (l.id)}
-                <div class="lang-row">
-                  <span class="lang-name"
-                    >{languageDisplayName(l.language_code, customLangNames)}</span
-                  >
-                  <div class="stepper">
-                    <button
-                      onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language_code, {
-                          normal: (l.normal_qty ?? 0) - 1,
-                        })}>-</button
-                    >
-                    <span class="qty">普卡 {l.normal_qty ?? 0}</span>
-                    <button
-                      onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language_code, {
-                          normal: (l.normal_qty ?? 0) + 1,
-                        })}>+</button
-                    >
-                    <span class="divider"></span>
-                    <button
-                      onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language_code, {
-                          foil: (l.foil_qty ?? 0) - 1,
-                        })}>-</button
-                    >
-                    <span class="qty qty-foil">闪卡 {l.foil_qty ?? 0}</span>
-                    <button
-                      onclick={() =>
-                        saveAndReload(v.cardNoExtend, l.language_code, {
-                          foil: (l.foil_qty ?? 0) + 1,
-                        })}>+</button
-                    >
-                  </div>
-                </div>
-              {/each}
-
-              <div class="add-lang-row">
-                <select
-                  class="lang-input"
-                  bind:value={newLangInput}
-                  title="选择要添加的语言"
-                >
-                  {#each langOptions as code (code)}
-                    {@const added = v.langs.some((l) => l.language_code === code)}
-                    <option value={code} disabled={added}>
-                      {languageDisplayName(code, customLangNames)}{added ? '（已添加）' : ''}
-                    </option>
-                  {/each}
-                </select>
-                <button
-                  class="btn-mini"
-                  onclick={() => addLangTo(v)}
-                  disabled={v.langs.some((l) => l.language_code === newLangInput)}
-                >
-                  <Plus size={13} /> 添加语言
-                </button>
-              </div>
+              {#if v.isCustom}
+                <span class="chip promo">自定</span>
+              {/if}
+              <span class="chip total-chip">{v.totalOwned}</span>
 
               {#if isTauri && v.isCustom}
-                <div class="custom-actions">
-                  <button class="btn-mini" onclick={() => openEdit(v)}>
-                    <Pencil size={13} /> 编辑
+                <div class="head-actions">
+                  <button class="icon-btn" title="编辑自定打印" onclick={() => openEdit(v)}>
+                    <Pencil size={14} />
                   </button>
-                  <button class="btn-mini danger" onclick={() => removeCustom(v)}>
-                    <Trash2 size={13} /> 删除
+                  <button class="icon-btn danger" title="删除自定打印" onclick={() => removeCustom(v)}>
+                    <Trash2 size={14} />
                   </button>
                 </div>
               {/if}
             </div>
-          {/each}
+
+            <div class="summary">
+              已收藏
+              <strong>{summary.total}</strong>
+              张 · 普
+              <strong>{summary.normal}</strong>
+              · 闪
+              <strong class="foil">{summary.foil}</strong>
+              · 语言 <strong>{summary.langs}</strong> 种
+            </div>
+
+            {#if v.langs.length === 0}
+              <div class="empty-langs">
+                <p class="empty-title">还没有收藏记录</p>
+                <p class="empty-sub">选择语言后点「添加卡牌」，自动记为 1 张普卡，可用 +/− 调整数量</p>
+                <div class="add-row">{@render langAddControl()}</div>
+              </div>
+            {:else}
+              <div class="matrix">
+                <div class="matrix-head">
+                  <span>语言</span>
+                  <span class="col-qty">普卡</span>
+                  <span class="col-qty">闪卡</span>
+                  <span class="col-total">合计</span>
+                </div>
+                {#each v.langs as l (l.id)}
+                  <div class="matrix-row" class:has-foil={(l.foil_qty ?? 0) > 0}>
+                    <span class="row-lang">{languageDisplayName(l.language_code, customLangNames)}</span>
+                    {@render stepper(v, l.language_code, 'normal', l.normal_qty ?? 0)}
+                    {@render stepper(v, l.language_code, 'foil', l.foil_qty ?? 0)}
+                    <span class="row-total">{(l.normal_qty ?? 0) + (l.foil_qty ?? 0)}</span>
+                  </div>
+                {/each}
+              </div>
+
+              <div class="add-row">{@render langAddControl()}</div>
+            {/if}
+          {/if}
 
           <div class="toolbar">
             <button class="btn-mini" onclick={openCreateCustom}>
@@ -306,6 +313,62 @@
       </div>
     </div>
   </div>
+
+  {#snippet stepper(
+    v: VariantView,
+    lang: string,
+    kind: 'normal' | 'foil',
+    qty: number
+  )}
+    <div class="stepper" class:foil={kind === 'foil'}>
+      <button
+        aria-label={`${languageDisplayName(lang, customLangNames)} ${
+          kind === 'normal' ? '普卡' : '闪卡'
+        } 减一`}
+        onclick={() =>
+          saveAndReload(
+            v.cardNoExtend,
+            lang,
+            kind === 'normal' ? { normal: qty - 1 } : { foil: qty - 1 }
+          )}
+        disabled={qty <= 0}
+      >
+        −
+      </button>
+      <span class="qty">{qty}</span>
+      <button
+        aria-label={`${languageDisplayName(lang, customLangNames)} ${
+          kind === 'normal' ? '普卡' : '闪卡'
+        } 加一`}
+        onclick={() =>
+          saveAndReload(
+            v.cardNoExtend,
+            lang,
+            kind === 'normal' ? { normal: qty + 1 } : { foil: qty + 1 }
+          )}
+      >
+        +
+      </button>
+    </div>
+  {/snippet}
+
+  {#snippet langAddControl()}
+    <select class="lang-input" bind:value={newLangInput} title="选择要添加的语言">
+      {#each langOptions as code (code)}
+        {@const added = selectedVariant?.langs.some((l) => l.language_code === code)}
+        <option value={code} disabled={added}>
+          {languageDisplayName(code, customLangNames)}{added ? '（已添加）' : ''}
+        </option>
+      {/each}
+    </select>
+    <button
+      class="btn-add"
+      onclick={() => selectedVariant && addLangTo(selectedVariant)}
+      disabled={isAddDisabled}
+    >
+      <Plus size={14} /> 添加卡牌
+    </button>
+  {/snippet}
 
   <CustomPrintModal
     cardId={card?.id ?? ''}
@@ -339,7 +402,7 @@
   .modal-content {
     background: var(--bg-primary);
     width: 100%;
-    max-width: 880px;
+    max-width: min(960px, 100%);
     max-height: 90vh;
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -389,260 +452,6 @@
   .card-no {
     font-size: var(--text-sm);
     color: var(--text-secondary);
-  }
-
-  .modal-body {
-    display: flex;
-    gap: 24px;
-    padding: 18px 24px 24px;
-    overflow-y: auto;
-  }
-
-  .preview-col {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .no-image {
-    width: 210px;
-    height: 294px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: var(--bg-secondary);
-    color: var(--text-tertiary);
-  }
-
-  .variant-tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .variant-tab {
-    padding: 4px 10px;
-    border-radius: 99px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-  }
-
-  .variant-tab.active {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    font-weight: 600;
-  }
-
-  .variant-tab.foil:not(.active) {
-    border-color: #eab308;
-    color: #eab308;
-  }
-
-  .edit-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .empty-tip {
-    color: var(--text-secondary);
-  }
-
-  .variant-block {
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .variant-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .variant-no {
-    font-weight: 600;
-    font-size: var(--text-sm);
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    padding: 0;
-    color: var(--text-primary);
-  }
-
-  .variant-no.active {
-    color: var(--accent-color);
-  }
-
-  .chip {
-    font-size: var(--text-xs);
-    padding: 2px 8px;
-    border-radius: 99px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-  }
-
-  .chip.promo {
-    border-color: rgba(168, 85, 247, 0.4);
-    color: #a855f7;
-  }
-
-  .chip.proto {
-    border-color: rgba(59, 130, 246, 0.4);
-    color: #3b82f6;
-  }
-
-  .empty-langs-hint {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin: 0;
-  }
-
-  .add-lang-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-top: 1px dashed var(--border-color);
-    padding-top: 8px;
-  }
-
-  .add-lang-row .lang-input {
-    flex: 1;
-  }
-
-  .lang-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .lang-name {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    min-width: 96px;
-  }
-
-  .stepper {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .stepper button {
-    width: 26px;
-    height: 26px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    cursor: pointer;
-    font-size: var(--text-sm);
-  }
-
-  .stepper button:hover {
-    border-color: var(--accent-color);
-  }
-
-  .qty {
-    min-width: 56px;
-    text-align: center;
-    font-size: var(--text-sm);
-  }
-
-  .qty-foil {
-    color: #eab308;
-  }
-
-  .divider {
-    width: 1px;
-    height: 18px;
-    background: var(--border-color);
-    margin: 0 6px;
-  }
-
-  .custom-actions {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-
-  .btn-mini {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    cursor: pointer;
-  }
-
-  .btn-mini:hover {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
-  }
-
-  .btn-mini.danger:hover {
-    color: #ef4444;
-    border-color: #ef4444;
-  }
-
-  .btn-mini:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  .lang-input {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  select.lang-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .modal-content {
-    background: var(--bg-primary);
-    width: 100%;
-    max-width: min(960px, 100%);
-    max-height: 90vh;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
   }
 
   .modal-body {
@@ -710,12 +519,357 @@
     justify-content: center;
   }
 
+  .variant-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 99px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .variant-tab.active {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-secondary));
+  }
+
+  .variant-tab.foil:not(.active) {
+    border-color: #eab308;
+    color: #eab308;
+  }
+
+  .variant-tab em {
+    font-style: normal;
+    color: #a855f7;
+  }
+
+  .tab-badge {
+    min-width: 18px;
+    padding: 0 4px;
+    border-radius: 99px;
+    font-size: var(--text-xs);
+    line-height: 16px;
+    text-align: center;
+    background: color-mix(in srgb, var(--accent-color) 15%, var(--bg-primary));
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  .tab-badge.zero {
+    background: var(--bg-primary);
+    color: var(--text-tertiary);
+  }
+
+  .foil-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #eab308;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #eab308 25%, transparent);
+  }
+
   .edit-col {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 12px;
     min-width: 0;
+  }
+
+  .variant-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .head-no {
+    font-weight: 700;
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+
+  .head-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .icon-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .icon-btn.danger:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+  }
+
+  .chip {
+    font-size: var(--text-xs);
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .chip.promo {
+    border-color: rgba(168, 85, 247, 0.4);
+    color: #a855f7;
+  }
+
+  .chip.proto {
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #3b82f6;
+  }
+
+  .chip.total-chip {
+    font-weight: 600;
+  }
+
+  .summary {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+  }
+
+  .summary strong {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary strong.foil {
+    color: #eab308;
+  }
+
+  .matrix {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .matrix-head {
+    display: grid;
+    grid-template-columns: minmax(110px, 1fr) auto auto 44px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .col-qty,
+  .col-total {
+    text-align: right;
+  }
+
+  .matrix-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 1fr) auto auto 44px;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .matrix-row:hover {
+    background: var(--bg-secondary);
+  }
+
+  .matrix-row.has-foil {
+    background: color-mix(in srgb, #eab308 7%, var(--bg-primary));
+  }
+
+  .row-lang {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .row-total {
+    text-align: right;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    justify-self: end;
+  }
+
+  .stepper button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-md);
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stepper button:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .stepper button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .stepper .qty {
+    min-width: 44px;
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .stepper.foil .qty {
+    color: #eab308;
+  }
+
+  .add-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px dashed var(--border-color);
+    padding-top: 12px;
+  }
+
+  .add-row .lang-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .lang-input {
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .lang-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn-add:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-color) 85%, black);
+    border-color: color-mix(in oklab, var(--accent-color) 85%, black);
+  }
+
+  .btn-add:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .empty-box,
+  .empty-langs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 24px 16px;
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    text-align: center;
+  }
+
+  .empty-title {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .empty-sub {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+  }
+
+  .empty-langs .add-row {
+    width: 100%;
+    max-width: 360px;
+    border-top: none;
+    padding-top: 8px;
+  }
+
+  .btn-mini {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+  }
+
+  .btn-mini:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   @media (max-width: 600.99px) {
