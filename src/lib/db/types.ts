@@ -219,7 +219,7 @@ export interface CollectionStats {
   overallCount: number
 }
 
-// 最近录入的收藏卡片（总览 Hero 用）
+// 最近录入的收藏卡片（总览 Hero 用）：一个变体 × 语言一行
 export interface RecentCollectionCard {
   cardId: string
   cardNoExtend: string
@@ -232,7 +232,9 @@ export interface RecentCollectionCard {
   imgCdn: string | null
   ttsCdn: string | null
   printId: string
-  // 默认印刷的语言码（缓存命名用）
+  // 该收藏行的语言码（用于非 SC 标记）
+  langCode: string
+  // 实际选中印刷的语言码（缓存命名用，可能因兜底与 langCode 不同）
   printLang: string | null
 }
 

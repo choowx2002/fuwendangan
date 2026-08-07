@@ -8,6 +8,7 @@
 
 import { Snowflake } from '@theinternetfolks/snowflake'
 import type {
+  CardPrint,
   CollectionItem,
   CollectionLang,
   CollectionStats,
@@ -20,6 +21,7 @@ import type {
   SeriesStats,
 } from '../types'
 import { getDatabase } from './database'
+import { mapRowToPrint } from '../helper'
 import { TABLES } from '../config/constants'
 import { getAllSeries } from './series-repository'
 import { getCardById } from './card-repository'
@@ -715,38 +717,76 @@ export async function bulkDeleteCollection(items: CollectionItem[]): Promise<num
 }
 
 /**
- * 最近录入的收藏卡片（总览 Hero 展示）
+ * 最近录入的收藏卡片（总览 Hero 展示）。
+ * 一个「变体 × 语言」一行：join collection_langs 逐语言取数量，
+ * 卡图取该变体的代表印刷（精确语言 → SC → is_default → 首张）。
  */
 export async function getRecentCollectionCards(limit = 6): Promise<RecentCollectionCard[]> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
     `SELECT col.card_no, col.card_no_extend, col.series_code, col.last_edited_at,
-       cb.card_name_cn, cb.card_no,
-       COALESCE((SELECT SUM(cl2.normal_qty) FROM ${TABLES.COLLECTION_LANGS} cl2 WHERE cl2.collection_id = col.id), 0) AS owned_normal,
-       COALESCE((SELECT SUM(cl2.foil_qty) FROM ${TABLES.COLLECTION_LANGS} cl2 WHERE cl2.collection_id = col.id), 0) AS owned_foil,
-       p.img_cdn, p.tts_cdn, p.id AS print_id, p.language AS print_lang
+       cb.card_name_cn, cb.card_no, cb.id AS card_id,
+       cl.language_code, cl.normal_qty, cl.foil_qty
      FROM ${TABLES.COLLECTION} col
      JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = col.card_no
-     LEFT JOIN ${TABLES.CARD_PRINTS} p ON p.card_id = cb.id AND p.is_default = 1
+     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
      WHERE col.last_edited_at IS NOT NULL
      ORDER BY col.last_edited_at DESC
      LIMIT ?`,
     [limit]
   )
-  return rows.map((r) => ({
-    cardId: r.card_no,
-    cardNoExtend: r.card_no_extend,
-    seriesCode: r.series_code ?? null,
-    lastEditedAt: r.last_edited_at ?? null,
-    cardNameCn: r.card_name_cn ?? null,
-    cardNo: r.card_no ?? null,
-    ownedNormal: r.owned_normal ?? 0,
-    ownedFoil: r.owned_foil ?? 0,
-    imgCdn: r.img_cdn ?? null,
-    ttsCdn: r.tts_cdn ?? null,
-    printId: r.print_id,
-    printLang: r.print_lang ?? null
-  }))
+
+  const repMap = new Map<string, CardPrint>()
+  if (rows.length > 0) {
+    const keys = new Set(rows.map((r) => `${r.card_id}|${r.card_no_extend}`))
+    const keyArr = [...keys]
+    const rowValueIn = keyArr.map(() => '(?, ?)').join(',')
+    const printsRows = await db.select<any[]>(
+      `SELECT id, card_id, card_no_extend, language, is_default, is_promo,
+        img_cdn, tts_cdn
+       FROM ${TABLES.CARD_PRINTS}
+       WHERE (card_id, card_no_extend) IN (${rowValueIn})`,
+      keyArr.flatMap((k) => k.split('|'))
+    )
+    const byVariant = new Map<string, CardPrint[]>()
+    for (const p of printsRows.map(mapRowToPrint)) {
+      const key = `${p.card_id}:${p.card_no_extend}`
+      if (!byVariant.has(key)) byVariant.set(key, [])
+      byVariant.get(key)!.push(p)
+    }
+    for (const [key, list] of byVariant) {
+      const nonPromo = list.filter((p) => !p.is_promo)
+      const pool = nonPromo.length > 0 ? nonPromo : list
+      repMap.set(
+        key,
+        pool.find((p) => (p.language ?? '').toLowerCase() === 'sc') ??
+          pool.find((p) => p.is_default) ??
+          pool[0]
+      )
+    }
+  }
+
+  return rows.map((r) => {
+    const langCode = r.language_code ?? 'SC'
+    const rep = repMap.get(`${r.card_id}:${r.card_no_extend}`)
+    const exact = rep?.language === langCode ? rep : undefined
+    const chosen = exact ?? rep
+    return {
+      cardId: r.card_no,
+      cardNoExtend: r.card_no_extend,
+      seriesCode: r.series_code ?? null,
+      lastEditedAt: r.last_edited_at ?? null,
+      cardNameCn: r.card_name_cn ?? null,
+      cardNo: r.card_no ?? null,
+      ownedNormal: r.normal_qty ?? 0,
+      ownedFoil: r.foil_qty ?? 0,
+      imgCdn: chosen?.img_cdn ?? null,
+      ttsCdn: chosen?.tts_cdn ?? null,
+      printId: chosen?.id ?? '',
+      langCode,
+      printLang: chosen?.language ?? null,
+    }
+  })
 }
 
 /**

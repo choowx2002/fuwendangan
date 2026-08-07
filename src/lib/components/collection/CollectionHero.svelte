@@ -57,11 +57,11 @@
       <p class="recent-empty">暂无收藏记录，从系列卡片开始录入吧</p>
     {:else}
       <div class="recent-list">
-        {#each recent as r (r.cardId + r.cardNoExtend)}
+        {#each recent as r (r.cardId + r.cardNoExtend + r.langCode)}
           <button
             class="recent-item"
             onclick={() => onRecentClick?.(r)}
-            title={`${r.cardNameCn ?? ''}（${r.cardNo ?? ''}）`}
+            title={`${r.cardNameCn ?? ''}（${r.cardNo ?? ''}）${r.langCode === 'SC' ? '' : ` · ${r.langCode}`}`}
           >
             <div class="recent-img">
               <CachedImage
@@ -73,6 +73,9 @@
               />
               {#if (r.ownedFoil ?? 0) > 0}
                 <span class="mini-foil">闪</span>
+              {/if}
+              {#if r.langCode !== 'SC'}
+                <span class="lang-badge">{r.langCode}</span>
               {/if}
             </div>
             <div class="recent-info">
@@ -266,6 +269,19 @@
     border-radius: 50%;
     background: linear-gradient(135deg, #facc15, #f59e0b);
     color: #422006;
+  }
+
+  .lang-badge {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.4;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
   }
 
   .recent-info {

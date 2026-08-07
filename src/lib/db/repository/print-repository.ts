@@ -64,7 +64,7 @@ export async function saveCardPrints(prints: CardPrint[]): Promise<void> {
 export async function getPrints(): Promise<CardPrint[]> {
   const db = await getDatabase()
   const results = await db.select<any[]>(
-    `SELECT id, card_id, img_cdn, tts_cdn FROM ${TABLES.CARD_PRINTS} WHERE language = 'SC'`
+    `SELECT id, card_id, card_no_extend, language, img_cdn, tts_cdn FROM ${TABLES.CARD_PRINTS} WHERE language = 'SC'`
   )
 
   return results.map(mapRowToPrint)
