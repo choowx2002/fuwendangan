@@ -28,6 +28,7 @@
     type VersionDiffItem,
   } from '$lib/decks/version-diff'
   import { getRelativeTime } from '$lib/utils/time-helper'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { onMount } from 'svelte'
@@ -62,8 +63,6 @@
     ChartPie,
     Dices,
     Copy,
-    Star,
-    Tag,
     Pencil,
     Download,
     Settings2,
@@ -393,6 +392,50 @@
   const sideboardCards = $derived(cards.filter((c) => c.zone === 'sideboard'))
 
   const totalCardCount = $derived(cards.reduce((sum, c) => sum + c.quantity, 0))
+
+  $effect(() => {
+    const badges: { key: string; text: string }[] = []
+    if (deck?.format) badges.push({ key: 'format', text: deck.format })
+    if (deck?.is_favorite) badges.push({ key: 'favorite', text: '收藏' })
+    setTopbar({
+      title: deck?.name || '加载中...',
+      badges,
+      actions: [
+        {
+          key: 'copy',
+          icon: Copy,
+          title: '复制卡组',
+          onClick: () => {
+            shareFormat = 'text'
+            showShareModal = 'copy'
+          },
+        },
+        {
+          key: 'export',
+          icon: Download,
+          title: '导出卡组',
+          onClick: () => {
+            shareFormat = 'text'
+            showShareModal = 'export'
+          },
+        },
+        {
+          key: 'edit-info',
+          icon: Pencil,
+          title: '编辑卡组信息',
+          disabled: !deck,
+          onClick: openEditInfo,
+        },
+        {
+          key: 'edit',
+          label: '编辑卡组',
+          icon: PencilLine,
+          variant: 'primary',
+          onClick: () => goto(`/decks/builder?deckId=${page.params.deckid}`),
+        },
+      ],
+    })
+  })
 
   const zoneCards: Record<ZoneKey, typeof cards> = $derived({
     legend: legendCards,
@@ -780,71 +823,31 @@
 </script>
 
 <div class="deck-builder-container">
-  <header class="deck-header">
-    <div class="deck-info">
-      <div class="title-row">
-        <h1>{deck?.name || '加载中...'}</h1>
-        {#if deck?.format}
-          <span class="badge format-badge"><Tag size={14} /> {deck.format}</span>
-        {/if}
-        {#if deck?.is_favorite}
-          <span class="badge favorite-badge"><Star size={14} fill="currentColor" /> 收藏</span>
-        {/if}
+  <div class="deck-info-bar">
+    {#if deck?.description}
+      <p class="deck-description">{deck.description}</p>
+    {/if}
+    {#if deck?.tags && deck.tags.length > 0}
+      <div class="deck-tags">
+        {#each deck.tags as tag (tag)}
+          <span class="deck-tag-chip">{tag}</span>
+        {/each}
       </div>
-      <p class="deck-description">{deck?.description || '暂无描述'}</p>
-      {#if deck?.tags && deck.tags.length > 0}
-        <div class="deck-tags">
-          {#each deck.tags as tag (tag)}
-            <span class="deck-tag-chip">{tag}</span>
-          {/each}
-        </div>
-      {/if}
-      <div class="deck-meta">
-        <span>总卡牌数: <strong>{totalCardCount}</strong></span>
+    {/if}
+    <div class="deck-meta">
+      <span>总卡牌数: <strong>{totalCardCount}</strong></span>
+      <span class="divider">•</span>
+      <span
+        >创建时间: {deck?.created_at
+          ? new Date(deck.created_at).toLocaleDateString()
+          : '未知'}</span
+      >
+      {#if deck?.updated_at}
         <span class="divider">•</span>
-        <span
-          >创建时间: {deck?.created_at
-            ? new Date(deck.created_at).toLocaleDateString()
-            : '未知'}</span
-        >
-        {#if deck?.updated_at}
-          <span class="divider">•</span>
-          <span>更新时间: {getRelativeTime(deck.updated_at)}</span>
-        {/if}
-      </div>
+        <span>更新时间: {getRelativeTime(deck.updated_at)}</span>
+      {/if}
     </div>
-
-    <div class="deck-actions">
-      <button
-        class="button button-ghost"
-        title="复制卡组"
-        onclick={() => {
-          shareFormat = 'text'
-          showShareModal = 'copy'
-        }}
-      >
-        <Copy size={16} />
-      </button>
-      <button
-        class="button button-ghost"
-        onclick={() => {
-          shareFormat = 'text'
-          showShareModal = 'export'
-        }}
-      >
-        <Download size={16} />
-      </button>
-      <button class="button button-ghost" disabled={!deck} onclick={openEditInfo}>
-        <Pencil size={16} />
-      </button>
-      <button
-        class="button button-primary"
-        onclick={() => goto(`/decks/builder?deckId=${page.params.deckid}`)}
-      >
-        编辑卡组
-      </button>
-    </div>
-  </header>
+  </div>
 
   <section class="analysis-dashboard">
     <section class="match-section">
@@ -1731,56 +1734,18 @@
     color: var(--text-primary);
   }
 
-  .deck-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+  .deck-info-bar {
     background: #ffffff;
-    padding: 24px;
+    padding: 16px 24px;
     border-radius: var(--radius-lg);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     margin-bottom: 24px;
     border: 1px solid var(--border-color);
   }
 
-  .title-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
-  }
-
-  .deck-info h1 {
-    margin: 0;
-    font-size: var(--text-2xl);
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    font-weight: 600;
-  }
-
-  .format-badge {
-    background: color-mix(in oklab, var(--accent-color) 10%, transparent);
-    color: var(--accent-color);
-  }
-
-  .favorite-badge {
-    background: rgba(234, 179, 8, 0.15);
-    color: #b45309;
-  }
-
   .deck-description {
     color: var(--text-secondary);
-    margin: 8px 0 16px 0;
+    margin: 0 0 12px 0;
     font-size: var(--text-base);
     line-height: 1.5;
   }
@@ -1789,7 +1754,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin: -4px 0 12px 0;
+    margin-bottom: 12px;
   }
 
   .deck-tag-chip {
@@ -1817,11 +1782,6 @@
 
   .divider {
     color: var(--border-color);
-  }
-
-  .deck-actions {
-    display: flex;
-    gap: 12px;
   }
 
   .analysis-dashboard {
@@ -2479,17 +2439,6 @@
   @media (max-width: 479.99px) {
     .deck-builder-container {
       padding: 16px;
-    }
-    .deck-header {
-      flex-direction: column;
-      gap: 16px;
-    }
-    .deck-actions {
-      width: 100%;
-      flex-wrap: wrap-reverse;
-    }
-    .deck-actions .button {
-      flex: 1;
     }
     .analysis-dashboard {
       display: flex;

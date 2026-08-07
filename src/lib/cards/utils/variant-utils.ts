@@ -41,3 +41,10 @@ export function classifyVariant(
       return 'base'
   }
 }
+
+/** 按卡牌类别选择卡背兜底图：符文 → white，传奇/战场/战场指示物 → black，其余 → blue */
+export function getCardBackFallback(cardCategory: string[] | null | undefined): string {
+  if (isRuneCard(cardCategory)) return '/white.jpg'
+  if (cardCategory?.some((c) => c === '传奇' || c.includes('战场'))) return '/black.jpg'
+  return '/blue.jpg'
+}

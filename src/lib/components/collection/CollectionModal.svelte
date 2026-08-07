@@ -872,9 +872,15 @@
     gap: 8px;
   }
 
-  @media (max-width: 600.99px) {
+  @media (max-width: 767.99px) {
+    .modal-overlay {
+      padding: 8px;
+    }
+
     .modal-body {
       grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 14px 16px 20px;
     }
 
     .preview-card {
@@ -884,9 +890,30 @@
     .variant-tabs {
       width: min(100%, 220px);
     }
+
+    .matrix {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .matrix-head,
+    .matrix-row {
+      grid-template-columns: minmax(0, 1fr) auto auto 36px;
+      gap: 6px;
+      padding: 6px 8px;
+    }
+
+    .stepper button {
+      width: 24px;
+      height: 26px;
+    }
+
+    .stepper .qty {
+      min-width: 26px;
+    }
   }
 
-  @media (min-width: 601px) {
+  @media (min-width: 768px) {
     .preview-col {
       position: sticky;
       top: 0;

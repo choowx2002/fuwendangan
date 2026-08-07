@@ -4,6 +4,7 @@
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import { getCollectionStats, getRecentCollectionCards } from '$lib/db'
   import { Save } from '@lucide/svelte'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import CollectionHero from '$lib/components/collection/CollectionHero.svelte'
   import SeriesCardGrid from '$lib/components/collection/SeriesCardGrid.svelte'
   import GlobalCollectionSearch from '$lib/components/collection/GlobalCollectionSearch.svelte'
@@ -50,21 +51,25 @@
   onMount(() => {
     void loadAll()
   })
+
+  $effect(() => {
+    setTopbar({
+      title: '收藏与闪卡',
+      actions: [
+        {
+          key: 'missing',
+          label: '缺卡清单',
+          icon: Save,
+          onClick: () => void goto('/collection/missing'),
+        },
+      ],
+    })
+  })
 </script>
 
 <div class="page-wrapper">
-  <div class="page-header">
-    <h1 class="page-title">收藏与闪卡</h1>
-    <div class="header-tools">
-      <GlobalCollectionSearch onSelect={handleGlobalSelect} />
-      <button
-        class="button button-ghost"
-        onclick={() => void goto('/collection/missing')}
-        title="缺卡清单"
-      >
-        <Save size={14} /> 缺卡清单
-      </button>
-    </div>
+  <div class="search-row">
+    <GlobalCollectionSearch onSelect={handleGlobalSelect} />
   </div>
 
   <div class="hero-area">
@@ -103,25 +108,8 @@
     gap: 14px;
   }
 
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--text-2xl);
-    color: var(--text-primary);
-  }
-
-  .header-tools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+  .search-row {
+    flex-shrink: 0;
   }
 
   .hero-area {
@@ -130,7 +118,7 @@
 
   .series-area {
     flex: 1;
-    overflow-y: auto;
+    /* overflow-y: auto; */
     border-top: 1px solid var(--border-color);
     padding-top: 12px;
   }
@@ -171,10 +159,6 @@
   @media (max-width: 600.99px) {
     .page-wrapper {
       padding: 12px 16px 0;
-    }
-
-    .header-tools {
-      width: 100%;
     }
   }
 </style>

@@ -1,36 +1,157 @@
 <!-- src/lib/components/layout/Topbar.svelte -->
 <script lang="ts">
-  import { Menu, Search, Bell } from '@lucide/svelte'
+  import { Menu, ChevronLeft, Ellipsis } from '@lucide/svelte'
+  import { topbarState, type TopbarAction } from '../../stores/ui-store.svelte'
 
   let { isSidebarOpen = $bindable() } = $props()
+
+  let actionsEl = $state<HTMLDivElement | null>(null)
+  let measurerEl = $state<HTMLDivElement | null>(null)
+  let visibleActions = $state<TopbarAction[]>([])
+  let overflowActions = $state<TopbarAction[]>([])
+  let menuOpen = $state(false)
 
   function toggleSidebar() {
     isSidebarOpen = !isSidebarOpen
   }
+
+  function variantClass(variant?: TopbarAction['variant']) {
+    return `button-${variant ?? 'ghost'}`
+  }
+
+  function updateLayout() {
+    const container = actionsEl
+    const measurer = measurerEl
+    const actions = topbarState.actions
+    if (!container || !measurer || actions.length === 0) {
+      visibleActions = actions
+      overflowActions = []
+      return
+    }
+
+    const containerWidth = container.clientWidth
+    const widths = Array.from(measurer.children as HTMLCollectionOf<HTMLElement>).map((el) =>
+      el.getBoundingClientRect().width
+    )
+    const gap = 8
+    const total = widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)
+
+    if (total <= containerWidth) {
+      visibleActions = actions
+      overflowActions = []
+      return
+    }
+
+    const overflowBtnWidth = 40
+    const available = containerWidth - overflowBtnWidth
+    let acc = 0
+    let count = 0
+    for (const w of widths) {
+      if (acc + w + (count > 0 ? gap : 0) > available) break
+      acc += w + (count > 0 ? gap : 0)
+      count++
+    }
+    if (count === 0) count = 1
+
+    visibleActions = actions.slice(0, count)
+    overflowActions = actions.slice(count)
+  }
+
+  $effect(() => {
+    topbarState.actions
+    const container = actionsEl
+    if (!container) return
+    updateLayout()
+    const ro = new ResizeObserver(() => updateLayout())
+    ro.observe(container)
+    return () => ro.disconnect()
+  })
 </script>
 
 <header class="topbar">
   <div class="left">
-    <!-- 移动端或侧边栏关闭时显示菜单按钮 -->
     <button class="icon-btn menu-btn" onclick={toggleSidebar} aria-label="切换菜单">
       <Menu size={20} />
     </button>
-    <div class="breadcrumb">
-      <span class="crumb">我的卡牌库</span>
-      <span class="separator">/</span>
-      <span class="crumb active">首页</span>
+    {#if topbarState.onBack}
+      <button class="icon-btn" onclick={() => topbarState.onBack?.()} aria-label="返回">
+        <ChevronLeft size={20} />
+      </button>
+    {/if}
+    <div class="title-wrap">
+      <span class="title">{topbarState.title || 'Rune Archive'}</span>
+      {#each topbarState.badges as badge (badge.key)}
+        <span class="topbar-badge">{badge.text}</span>
+      {/each}
+      {#if topbarState.description}
+        <span class="desc">{topbarState.description}</span>
+      {/if}
     </div>
   </div>
 
-  <div class="right">
-    <!-- <button class="icon-btn search-btn" aria-label="搜索">
-      <Search size={18} />
-      <span class="search-text">搜索卡牌、卡组...</span>
-      <kbd>⌘K</kbd>
-    </button> -->
-    <!-- <button class="icon-btn" aria-label="通知">
-      <Bell size={18} />
-    </button> -->
+  <div class="right" bind:this={actionsEl}>
+    {#each visibleActions as action (action.key)}
+      <button
+        class="action-btn button button-sm {variantClass(action.variant)}"
+        class:active={action.active}
+        disabled={action.disabled}
+        title={action.title ?? action.label}
+        onclick={action.onClick}
+      >
+        {#if action.icon}
+          {@const Icon = action.icon}
+          <Icon size={16} />
+        {/if}
+        {#if action.label}<span class="action-label">{action.label}</span>{/if}
+      </button>
+    {/each}
+
+    {#if overflowActions.length > 0}
+      <button
+        class="icon-btn"
+        class:active={menuOpen}
+        aria-label="更多操作"
+        aria-expanded={menuOpen}
+        onclick={() => (menuOpen = !menuOpen)}
+      >
+        <Ellipsis size={18} />
+      </button>
+    {/if}
+  </div>
+
+  {#if menuOpen && overflowActions.length > 0}
+    <div class="menu-backdrop" onclick={() => (menuOpen = false)} role="presentation"></div>
+    <div class="more-menu" role="menu">
+      {#each overflowActions as action (action.key)}
+        <button
+          class="more-menu-item"
+          role="menuitem"
+          disabled={action.disabled}
+          onclick={() => {
+            menuOpen = false
+            action.onClick()
+          }}
+        >
+          {#if action.icon}
+            {@const Icon = action.icon}
+            <Icon size={16} />
+          {/if}
+          {#if action.label}<span>{action.label}</span>{/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+  <div class="measurer" bind:this={measurerEl} aria-hidden="true">
+    {#each topbarState.actions as action (action.key)}
+      <button class="action-btn button button-sm {variantClass(action.variant)}" tabindex="-1">
+        {#if action.icon}
+          {@const Icon = action.icon}
+          <Icon size={16} />
+        {/if}
+        {#if action.label}<span class="action-label">{action.label}</span>{/if}
+      </button>
+    {/each}
   </div>
 </header>
 
@@ -42,17 +163,29 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 0 12px;
     background: var(--bg-primary);
     z-index: 30;
     padding-top: env(safe-area-inset-top);
+    position: relative;
   }
 
-  .left,
+  .left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+
   .right {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    max-width: 55%;
+    position: relative;
   }
 
   .icon-btn {
@@ -66,8 +199,10 @@
     align-items: center;
     justify-content: center;
     transition: background 0.1s;
+    flex-shrink: 0;
   }
-  .icon-btn:hover {
+  .icon-btn:hover,
+  .icon-btn.active {
     background: var(--bg-hover);
     color: var(--text-primary);
   }
@@ -81,18 +216,118 @@
     }
   }
 
-  .breadcrumb {
-    font-size: var(--text-base);
-    color: var(--text-secondary);
+  .title-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
   }
-  .breadcrumb .active {
+
+  .title {
+    font-size: var(--text-base);
+    font-weight: 600;
     color: var(--text-primary);
-    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 60%;
   }
-  .separator {
+
+  .topbar-badge {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    color: var(--secondary-accent-color);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 1px 8px;
+    white-space: nowrap;
+    line-height: 1.6;
+  }
+
+  .desc {
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .action-btn {
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .action-btn.active {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  }
+
+  .action-btn .action-label {
+    margin-left: 4px;
+  }
+
+  @media (max-width: 767.99px) {
+    .action-btn .action-label {
+      display: none;
+    }
+    .topbar-badge {
+      display: none;
+    }
+    .desc {
+      display: none;
+    }
+  }
+
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+  }
+
+  .more-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 168px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    z-index: 31;
+  }
+
+  .more-menu-item {
+    all: unset;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .more-menu-item:hover {
+    background: var(--bg-hover);
+  }
+  .more-menu-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .measurer {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 </style>

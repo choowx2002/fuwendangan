@@ -6,16 +6,13 @@
   import { page } from '$app/state'
   let { children } = $props()
   let isSidebarOpen = $state(false)
-  let isMobile = $state(false)
 
   // 监听窗口大小变化，桌面端自动展开侧边栏
   function handleResize() {
     if (window.innerWidth >= 767.99) {
-      isMobile = false
       isSidebarOpen = true
     } else {
       isSidebarOpen = false
-      isMobile = true
     }
   }
 
@@ -41,7 +38,7 @@
   {/if}
 
   <div class="main-area">
-    {#if isMobile && !isNotShowBothPage}
+    {#if !isNotShowBothPage}
       <Topbar bind:isSidebarOpen />
     {/if}
     <main class="content">

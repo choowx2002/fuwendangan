@@ -12,7 +12,8 @@
     languageDisplayName,
     PRESET_LANGUAGE_CODES,
   } from '$lib/db'
-  import { ArrowLeft, ChevronDown, Filter, Save, X } from '@lucide/svelte'
+  import { ChevronDown, Filter, Save, X } from '@lucide/svelte'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import type { MissingListTextRow } from '$lib/collection/collection-export'
   import { buildMissingListText, saveMissingList } from '$lib/collection/collection-export'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
@@ -167,21 +168,17 @@
   $effect(() => {
     void loadRows()
   })
+
+  $effect(() => {
+    setTopbar({
+      title: '缺卡清单',
+      description: seriesTitle,
+      onBack: () => goto('/collection'),
+    })
+  })
 </script>
 
 <div class="page-wrapper">
-  <div class="page-header">
-    <div class="header-left">
-      <button class="back-btn" onclick={() => goto('/collection')} title="返回收藏总览">
-        <ArrowLeft size={18} />
-      </button>
-      <h1 class="page-title">缺卡清单</h1>
-      {#if seriesTitle}
-        <span class="header-sub">{seriesTitle}</span>
-      {/if}
-    </div>
-  </div>
-
   <div class="layout">
     <aside class="filter-panel" class:collapsed={filtersCollapsed}>
       <div class="filter-bar">
@@ -345,53 +342,6 @@
     gap: 12px;
     max-width: 1200px;
     margin: 0 auto;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-
-  .back-btn:hover {
-    color: var(--text-primary);
-    border-color: var(--accent-color);
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--text-xl);
-    color: var(--text-primary);
-  }
-
-  .header-sub {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .layout {
@@ -770,10 +720,6 @@
 
     .cell-need {
       min-height: 32px;
-    }
-
-    .page-title {
-      font-size: var(--text-lg);
     }
 
     .action-bar {

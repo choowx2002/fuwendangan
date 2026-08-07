@@ -71,12 +71,6 @@
   background-color: var(--bg-primary);
 }
 
-@media (min-width: 767.99px) {
-  :root {
-    --topbar-height: 0px;
-  }
-}
-
 @media (max-width: 767.99px) {
   :root {
     --sidebar-width: 200px;

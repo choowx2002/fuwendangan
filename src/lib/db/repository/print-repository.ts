@@ -128,3 +128,74 @@ export async function getLatestUpdatePrintTime(): Promise<string> {
   )
   return results[0]?.updated_at ?? ''
 }
+
+// ==================== 开包彩蛋 ====================
+
+/**
+ * 开包抽取的稀有度过滤条件。
+ * - rarityName：基础稀有度精确匹配（普通/不凡/稀有/史诗）
+ * - extendRarityName：扩展稀有度（异画/超编/签名超编）；null 表示只取平卡（非异画/超编/签名超编）
+ * - isToken：true 表示仅指示物类别
+ */
+export interface PackPrintFilter {
+  rarityName?: string | null
+  extendRarityName?: string | null
+  isToken?: boolean
+}
+
+/** 开包抽到的卡：卡图 + 关联的基础卡信息 */
+export interface PackPrint extends CardPrint {
+  card_name_cn: string | null
+  card_no: string | null
+  card_category: string[] | null
+}
+
+/**
+ * 从指定系列的卡池中随机抽取一张符合稀有度条件的卡图。
+ * 排除促销（is_promo）与自建（is_custom）印刷，语言取 SC。
+ */
+export async function getRandomPackPrint(
+  seriesCode: string,
+  filter: PackPrintFilter
+): Promise<PackPrint | null> {
+  const db = await getDatabase()
+  const conds: string[] = [
+    `p.language = 'SC'`,
+    `COALESCE(p.is_promo, 0) != 1`,
+    `COALESCE(p.is_custom, 0) != 1`,
+    `substr(upper(p.card_no_extend), 1, 3) = ?`,
+  ]
+  const params: (string | number)[] = [seriesCode.toUpperCase()]
+
+  if (filter.isToken) {
+    conds.push(`cb.card_category LIKE '%指示物%'`)
+  } else if (filter.extendRarityName !== undefined) {
+    if (filter.extendRarityName) {
+      conds.push(`p.extend_rarity_name = ?`)
+      params.push(filter.extendRarityName)
+    } else {
+      conds.push(`COALESCE(p.extend_rarity_name, '') NOT IN ('异画', '超编', '签名超编')`)
+    }
+  }
+  if (filter.rarityName) {
+    conds.push(`p.rarity_name = ?`)
+    params.push(filter.rarityName)
+  }
+
+  const results = await db.select<any[]>(
+    `SELECT p.*, cb.card_name_cn, cb.card_no, cb.card_category
+     FROM ${TABLES.CARD_PRINTS} p
+     JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+     WHERE ${conds.join(' AND ')}
+     ORDER BY RANDOM()
+     LIMIT 1`,
+    params
+  )
+  if (!results[0]) return null
+  return {
+    ...mapRowToPrint(results[0]),
+    card_name_cn: results[0].card_name_cn ?? null,
+    card_no: results[0].card_no ?? null,
+    card_category: results[0].card_category ? JSON.parse(results[0].card_category) : null,
+  }
+}

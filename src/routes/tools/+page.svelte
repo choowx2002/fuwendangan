@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getDeckList, getDeckVersions, createMatch, searchCards, getBestPrint, printCacheName, type DeckListResult } from '$lib/db'
   import { scoreCounterState, type GameRecord, type ActionEntry } from '$lib/stores/tools'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -336,6 +337,10 @@
   onMount(() => {
     loadDecks()
     loadLegends()
+  })
+
+  $effect(() => {
+    setTopbar({ title: '对战工具' })
   })
 </script>
 

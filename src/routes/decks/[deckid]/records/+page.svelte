@@ -12,8 +12,9 @@
   } from '$lib/db/index.js'
   import MatchRecordModal from '$lib/components/decks/MatchRecordModal.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { onMount } from 'svelte'
-  import { ArrowLeft, ChevronRight, PencilLine, Plus, Swords, Trash2 } from '@lucide/svelte'
+  import { ChevronRight, PencilLine, Plus, Swords, Trash2 } from '@lucide/svelte'
   import { ask } from '@tauri-apps/plugin-dialog'
 
   let deck = $state<Deck>()
@@ -132,28 +133,26 @@
   onMount(() => {
     loadData()
   })
+
+  $effect(() => {
+    setTopbar({
+      title: deck?.name ? `${deck.name} · 对局记录` : '对局记录',
+      description: `共 ${matches.length} 场`,
+      onBack: () => goto(`/decks/${page.params.deckid}`),
+      actions: [
+        {
+          key: 'record',
+          label: '记录对局',
+          icon: Plus,
+          variant: 'primary',
+          onClick: openCreateMatch,
+        },
+      ],
+    })
+  })
 </script>
 
 <div class="records-container">
-  <div class="records-header">
-    <div class="records-title-row">
-      <button
-        class="back-btn"
-        onclick={() => goto(`/decks/${page.params.deckid}`)}
-        title="返回卡组详情"
-      >
-        <ArrowLeft size={18} />
-      </button>
-      <div class="records-title">
-        <h1>{deck?.name ? `${deck.name} · 对局记录` : '对局记录'}</h1>
-        <span class="records-count">共 {matches.length} 场</span>
-      </div>
-    </div>
-    <button class="button button-primary" onclick={openCreateMatch}>
-      <Plus size={16} /> 记录对局
-    </button>
-  </div>
-
   {#if stats}
     <div class="records-stats">
       <div class="stat-card">
@@ -377,62 +376,6 @@
     margin: 0 auto;
     padding: 24px;
     color: var(--text-primary);
-  }
-
-  .records-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .records-title-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .back-btn:hover {
-    background: var(--bg-hover);
-  }
-
-  .records-title {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .records-title h1 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .records-count {
-    font-size: 13px;
-    color: var(--text-secondary);
-    white-space: nowrap;
   }
 
   .records-stats {
@@ -782,12 +725,5 @@
     background: #ffffff;
     border: 1px solid var(--border-color);
     border-radius: 12px;
-  }
-
-  @media (max-width: 640px) {
-    .records-header {
-      flex-direction: column;
-      align-items: stretch;
-    }
   }
 </style>

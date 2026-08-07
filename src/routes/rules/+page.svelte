@@ -2,6 +2,7 @@
   import { beforeNavigate, goto } from '$app/navigation'
   import { getDocs } from '$lib/db'
   import type { RuleBooks } from '$lib/db/types'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { onMount } from 'svelte'
 
   let docs = $state<RuleBooks[]>([])
@@ -21,6 +22,10 @@
       cancel()
       goto('/', { replaceState: true })
     }
+  })
+
+  $effect(() => {
+    setTopbar({ title: '游戏文档' })
   })
 </script>
 

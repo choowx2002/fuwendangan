@@ -11,6 +11,7 @@
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { DECK_FORMATS } from '$lib/decks/format'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { Plus, Search, Funnel, Copy, Trash2, Folder, HeartIcon } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { onMount } from 'svelte'
@@ -140,6 +141,22 @@
     init()
   })
 
+  $effect(() => {
+    setTopbar({
+      title: '我的卡组',
+      description: `管理你的所有卡组，共 ${allDecks.length} 副`,
+      actions: [
+        {
+          key: 'new-deck',
+          label: '新建卡组',
+          icon: Plus,
+          variant: 'primary',
+          onClick: () => goto('/decks/builder'),
+        },
+      ],
+    })
+  })
+
   beforeNavigate(({ from, cancel, type, delta }) => {
     const isBackward = type === 'popstate' && delta && delta < 0
     if (isBackward) {
@@ -150,16 +167,6 @@
 </script>
 
 <div class="decks-page">
-  <header class="page-header">
-    <div class="header-content">
-      <p class="page-desc">管理你的所有卡组，共 {allDecks.length} 副</p>
-    </div>
-    <button class="button button-primary" onclick={() => goto('/decks/builder')}>
-      <Plus size={18} />
-      <span>新建卡组</span>
-    </button>
-  </header>
-
   <section class="filter-bar">
     <div
       class="search-box"
@@ -380,23 +387,6 @@
     .decks-page {
       padding: 24px 16px 80px;
     }
-  }
-
-  .page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 14px;
-    gap: 16px;
-  }
-
-  .header-content {
-    flex: 1;
-  }
-
-  .page-desc {
-    font-size: var(--text-md);
-    margin: 0;
   }
 
   .filter-bar {

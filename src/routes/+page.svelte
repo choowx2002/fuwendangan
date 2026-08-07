@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { replaceState } from '$app/navigation'
-  import { page } from '$app/state'
   import { getCardCount, getDeckList, getMatchStatsForDecks } from '$lib/db'
-  import { setLoadStatus, hideLoading } from '$lib/stores/ui-store.svelte'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
   import { onMount } from 'svelte'
@@ -45,18 +43,6 @@
     },
   ]
 
-  async function testLoading() {
-    try {
-      setLoadStatus('loading', '测试中...')
-      setTimeout(() => {
-        hideLoading()
-      }, 5000)
-    } catch (e) {
-      // 3. 报错时，切换为 error 状态
-      setLoadStatus('error', '同步失败，请检查网络')
-    }
-  }
-
   onMount(async () => {
     try {
       await getCardCount()
@@ -77,14 +63,13 @@
       })
     } catch (error) {}
   })
+
+  $effect(() => {
+    setTopbar({ title: '首页', description: '欢迎回来，天龠wx。今天想玩点什么？' })
+  })
 </script>
 
 <div class="page-container">
-  <header class="page-header">
-    <h1 class="page-title">首页 <button onclick={testLoading}>test</button></h1>
-    <p class="page-desc">欢迎回来，天龠wx。今天想玩点什么？</p>
-  </header>
-
   <!-- 快速操作区 -->
   <section class="section">
     <div class="section-header">
@@ -176,23 +161,6 @@
     .page-container {
       padding: 24px 16px 80px;
     }
-  }
-
-  .page-header {
-    margin-bottom: 40px;
-  }
-
-  .page-title {
-    font-size: var(--text-hero);
-    font-weight: 700;
-    margin: 0 0 8px 0;
-    letter-spacing: -0.5px;
-  }
-
-  .page-desc {
-    font-size: var(--text-lg);
-    color: var(--text-secondary);
-    margin: 0;
   }
 
   .section {

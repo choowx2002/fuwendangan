@@ -100,6 +100,9 @@ export {
   deletePrintsByCardId,
   clearAllPrints,
   getPrints,
+  getRandomPackPrint,
+  type PackPrintFilter,
+  type PackPrint,
 } from './repository/print-repository'
 
 export {

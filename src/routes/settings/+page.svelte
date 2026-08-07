@@ -40,7 +40,7 @@
   import { appConfigDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { copyFile, writeTextFile, readTextFile } from '$lib/services/db-file-service'
   import { onMount } from 'svelte'
-  import { setLoadStatus } from '$lib/stores/ui-store.svelte'
+  import { setLoadStatus, setTopbar } from '$lib/stores/ui-store.svelte'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion as getAppVersion } from '@tauri-apps/api/app'
@@ -816,11 +816,13 @@
       goto('/', { replaceState: true })
     }
   })
+
+  $effect(() => {
+    setTopbar({ title: '设置' })
+  })
 </script>
 
 <div class="settings-container">
-  <h1 class="page-title">设置</h1>
-
   <!-- 1. 通用设置 -->
   <section class="settings-card">
     <h2 class="card-title">通用设置</h2>
@@ -1320,13 +1322,6 @@
     max-width: 1200px;
     margin: 0 auto;
     padding: 24px 32px;
-    color: var(--text-primary);
-  }
-
-  .page-title {
-    font-size: var(--text-2xl);
-    font-weight: 700;
-    margin: 0 0 24px 0;
     color: var(--text-primary);
   }
 

@@ -591,7 +591,7 @@
 
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 16px;
     scroll-behavior: smooth;
   }
@@ -625,7 +625,7 @@
   /* ================= 移动端适配 ================= */
   @media (max-width: 767.99px) {
     .card-grid {
-      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
       gap: 10px;
     }
 
@@ -640,7 +640,7 @@
 
   @media (min-width: 1079.99px) {
     .card-grid {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     }
   }
 

@@ -4,6 +4,7 @@
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import type { CardBase } from '$lib/db/types'
   import { ttsState } from '$lib/stores/tts'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { multiSpawn } from '$lib/services/tts-communication-service'
   import { beforeNavigate, goto } from '$app/navigation'
   import { routeBackConfig } from '$lib/utils/route-config'
@@ -11,6 +12,10 @@
   let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])
   let isFilterOpen = $state(false)
+
+  $effect(() => {
+    setTopbar({ title: '单卡库' })
+  })
 
   // 在卡池中点击卡牌时，打开详情弹窗
   function handleCardClick(card: CardBase) {

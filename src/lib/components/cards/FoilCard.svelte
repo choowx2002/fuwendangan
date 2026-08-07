@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CardPrint } from '$lib/db'
   import { printCacheName } from '$lib/db'
+  import { getCardBackFallback } from '$lib/cards/utils/variant-utils'
   import CachedImage from './CachedImage.svelte'
   import { Expand, X } from '@lucide/svelte'
 
@@ -11,6 +12,8 @@
     size = 'md' as 'sm' | 'md' | 'lg',
     interactive = true,
     onEnlarge = undefined as (() => void) | undefined,
+    foilIntensity = undefined as number | undefined,
+    cardCategory = undefined as string[] | null | undefined,
   } = $props()
 
   // 稀有度 → 全息强度
@@ -21,7 +24,7 @@
     史诗: 0.75,
     异画: 0.9,
   }
-  const intensity = $derived(RARITY_INTENSITY[rarity] ?? 0.4)
+  const intensity = $derived(foilIntensity ?? RARITY_INTENSITY[rarity] ?? 0.4)
 
   const SIZE_MAP: Record<string, number> = {
     sm: 128,
@@ -41,8 +44,7 @@
 
   $effect(() => {
     reducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   })
 
   function handlePointerMove(e: PointerEvent) {
@@ -79,7 +81,7 @@
 <div class="foil-card" class:size-sm={size === 'sm'} style={`--foil-intensity: ${intensity}`}>
   <div
     class="foil-inner"
-    class:flipped={flipped}
+    class:flipped
     style={`width: ${px}px; height: ${imageHeight}px;`}
     role="presentation"
     onpointermove={handlePointerMove}
@@ -90,10 +92,7 @@
       openEnlarge(e)
     }}
   >
-    <div
-      class="face front"
-      style={`transform: rotateX(${rotateX}deg) rotateY(${rotateY}deg);`}
-    >
+    <div class="face front" style={`transform: rotateX(${rotateX}deg) rotateY(${rotateY}deg);`}>
       <CachedImage
         src={print?.img_cdn ?? print?.tts_cdn ?? ''}
         name={printCacheName(print)}
@@ -105,7 +104,7 @@
         class="foil-overlay"
         style={`--shine-x: ${shineX}%; --shine-y: ${shineY}%; opacity: ${reducedMotion ? 0.25 : 1};`}
       ></div>
-      {#if interactive}
+      <!-- {#if interactive}
         <div class="actions">
           <button
             class="btn-icon"
@@ -116,24 +115,16 @@
             <Expand size={14} />
           </button>
         </div>
-      {/if}
+      {/if} -->
     </div>
 
     <div class="face back" style={`transform: rotateX(${rotateX}deg) rotateY(${rotateY}deg);`}>
-      {#if print?.back_image}
-        <CachedImage
-          src={print.back_image}
-          name={`${printCacheName(print)}-back`}
-          fit="cover"
-          borderRadius="8px"
-          lazy={false}
-        />
-      {:else}
-        <div class="back-fallback">
-          <span>符文档案</span>
-          <small>{cardName || '卡背'}</small>
-        </div>
-      {/if}
+      <img
+        src={getCardBackFallback(cardCategory)}
+        alt=""
+        class="back-fallback-img"
+        draggable="false"
+      />
     </div>
   </div>
 </div>
@@ -185,22 +176,32 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   }
 
+  .foil-inner .front {
+    opacity: 0;
+  }
+
   .foil-inner.flipped .front {
-    transform: rotateY(180deg) !important;
+    transform: rotateY(360deg) !important;
+    opacity: 1;
   }
 
   .foil-inner.flipped .back {
-    transform: rotateY(0deg) !important;
+    transform: rotateY(360deg) !important;
+    opacity: 0;
+    z-index: -1;
   }
 
   .face {
+    opacity: 1;
     position: absolute;
     inset: 0;
     backface-visibility: hidden;
     border-radius: 10px;
     overflow: hidden;
-    transition: transform 0.15s ease-out;
-    will-change: transform;
+    transition:
+      transform 0.15s ease-out,
+      opacity 0.03s cubic-bezier(0.075, 0.82, 0.165, 1);
+    will-change: transform, opacity;
   }
 
   .face.back {
@@ -253,7 +254,7 @@
   }
 
   /* ========== 操作按钮 ========== */
-  .actions {
+  /* .actions {
     position: absolute;
     top: 6px;
     right: 6px;
@@ -282,27 +283,15 @@
 
   .btn-icon:hover {
     background: rgba(0, 0, 0, 0.8);
-  }
+  } */
 
   /* ========== 卡背兜底 ========== */
-  .back-fallback {
+  .back-fallback-img {
     position: absolute;
     inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: rgba(255, 255, 255, 0.75);
-    font-size: 14px;
-    letter-spacing: 0.2em;
-    background:
-      radial-gradient(circle at 50% 40%, #2c3250, #151826 70%);
-  }
-
-  .back-fallback small {
-    font-size: 11px;
-    opacity: 0.6;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   /* ========== 放大查看 ========== */

@@ -24,7 +24,8 @@
     searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
-  import { ArrowLeft, ListChecks, Save, X } from '@lucide/svelte'
+  import { ListChecks, Save, X } from '@lucide/svelte'
+  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import BucketProgressBar from '$lib/components/collection/BucketProgressBar.svelte'
   import CollectionGrid from '$lib/components/collection/CollectionGrid.svelte'
@@ -306,50 +307,44 @@
   $effect(() => {
     void savePrefs()
   })
+
+  $effect(() => {
+    const progressText = seriesStats
+      ? `${seriesStats.totalOwned}/${seriesStats.totalCount}${
+          seriesStats.totalCount > 0
+            ? `（${Math.round((seriesStats.totalOwned / seriesStats.totalCount) * 100)}%）`
+            : ''
+        }`
+      : ''
+    setTopbar({
+      title: seriesTitle,
+      badges: progressText ? [{ key: 'progress', text: progressText }] : [],
+      onBack: () => goto('/collection'),
+      actions: [
+        {
+          key: 'batch',
+          label: batchMode ? '退出批量' : '批量',
+          icon: batchMode ? X : ListChecks,
+          active: batchMode,
+          title: '批量操作',
+          onClick: toggleBatchMode,
+        },
+        {
+          key: 'missing',
+          label: '缺卡清单',
+          icon: Save,
+          title: '缺卡清单',
+          onClick: () =>
+            void goto(
+              `/collection/missing?seriesCode=${seriesCode}${activeBucket ? `&bucket=${activeBucket}` : ''}`
+            ),
+        },
+      ],
+    })
+  })
 </script>
 
 <div class="page-wrapper">
-  <div class="page-header">
-    <div class="header-left">
-      <button class="back-btn" onclick={() => goto('/collection')} title="返回收藏总览">
-        <ArrowLeft size={18} />
-      </button>
-      <h1 class="page-title">{seriesTitle}</h1>
-      {#if seriesStats}
-        <span class="header-progress">
-          {seriesStats.totalOwned}/{seriesStats.totalCount}
-          {seriesStats.totalCount > 0
-            ? `（${Math.round((seriesStats.totalOwned / seriesStats.totalCount) * 100)}%）`
-            : ''}
-        </span>
-      {/if}
-    </div>
-    <div class="header-right">
-      <button
-        class="button button-ghost"
-        class:active={batchMode}
-        onclick={toggleBatchMode}
-        title="批量操作"
-      >
-        {#if batchMode}
-          <X size={14} /> 退出批量
-        {:else}
-          <ListChecks size={14} /> 批量
-        {/if}
-      </button>
-      <button
-        class="button button-ghost"
-        onclick={() =>
-          void goto(
-            `/collection/missing?seriesCode=${seriesCode}${activeBucket ? `&bucket=${activeBucket}` : ''}`
-          )}
-        title="缺卡清单"
-      >
-        <Save size={14} /> 缺卡清单
-      </button>
-    </div>
-  </div>
-
   <div class="stats-area">
     <BucketProgressBar
       owned={seriesStats?.owned}
@@ -445,72 +440,6 @@
     height: 100%;
     padding: 20px 24px 0;
     gap: 12px;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .back-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .back-btn:hover {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--text-2xl);
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .header-progress {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    padding: 3px 10px;
-    border-radius: 99px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    flex-shrink: 0;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .header-right .button.active {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-secondary));
   }
 
   .stats-area {
