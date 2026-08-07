@@ -52,7 +52,6 @@ fuwendangan/
 │   └── src/
 │       ├── main.rs             # 入口，仅调用 lib::run()
 │       └── lib.rs              # 插件注册 + 8 个 command + Android SAF 插件
-├── migrations/                 # 收藏系统等 schema 迁移的 SQL 参考（手动执行用）
 ├── static/                     # 静态资源（favicon / logo 等）
 └── build/                      # 前端构建产物（frontendDist）
 ```
@@ -73,8 +72,7 @@ pnpm tauri:build:linux   # Linux 专用构建：NO_STRIP=true tauri build
 
 ## 数据库 schema 演进（重要）
 
-- 应用启动时 `src/lib/db/repository/database.ts` 会按固定顺序执行约 13 个迁移函数，均以 `PRAGMA table_info(...)` 查列名守卫（幂等）。
-- 根目录 `migrations/*.sql` 只是同套逻辑的手工执行参考，**代码没有 runner**。改表结构应改 `config/schema.ts`（新装库建表）+ 在 `database.ts` 增加守卫式迁移（老库升级），不能只写 SQL 文件。
+- 新装库启动时由 `src/lib/db/repository/database.ts` 的 `initializeTables()` 按 `config/schema.ts` 建全表 + 索引，无存量迁移逻辑。改表结构直接改 `config/schema.ts`（注意新库与老库走同一建表路径，`CREATE TABLE IF NOT EXISTS` 不会为已存在的库补列）。
 
 ## 代码规范
 

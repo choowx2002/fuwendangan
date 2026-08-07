@@ -3,7 +3,7 @@
  * 预设语言码 + 本地化显示名；预设之外的语言由用户在设置页注册为自定义语言（custom_languages 表）。
  */
 
-export const PRESET_LANGUAGE_CODES = ['EN', 'SC', 'TC', 'JP', 'KR'] as const
+export const PRESET_LANGUAGE_CODES = ['EN', 'SC', 'TC', 'JP', 'KR', 'FR'] as const
 
 export const LANGUAGE_NAMES: Record<string, { zh: string; en: string }> = {
   EN: { zh: '英语', en: 'English' },
@@ -11,6 +11,7 @@ export const LANGUAGE_NAMES: Record<string, { zh: string; en: string }> = {
   TC: { zh: '繁体中文', en: 'Traditional Chinese' },
   JP: { zh: '日语', en: 'Japanese' },
   KR: { zh: '韩语', en: 'Korean' },
+  FR: { zh: '法语', en: 'French' },
 }
 
 /** 旧版自由文本 → 预设语言码 的别名映射 */
@@ -35,6 +36,11 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   korean: 'KR',
   韩文: 'KR',
   한국어: 'KR',
+  fr: 'FR',
+  french: 'FR',
+  français: 'FR',
+  法语: 'FR',
+  法文: 'FR',
   en: 'EN',
   english: 'EN',
   英语: 'EN',

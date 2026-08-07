@@ -35,6 +35,8 @@ export const TABLE_DEFINITIONS = {
       artist TEXT,
       print_order INTEGER,
       is_default INTEGER,
+      is_promo INTEGER DEFAULT 0,
+      is_custom INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT,
       FOREIGN KEY(card_id) REFERENCES cards_base(id) ON DELETE CASCADE

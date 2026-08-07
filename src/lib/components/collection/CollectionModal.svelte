@@ -74,7 +74,7 @@
   /** 添加语言下拉默认值：优先 SC，再按常用预设，最后取第一个未添加的语言 */
   const nextLangDefault = $derived.by(() => {
     const existing = new Set(selectedVariant?.langs.map((l) => l.language_code) ?? [])
-    const preferred = ['SC', 'TC', 'EN', 'JP', 'KR']
+    const preferred = ['SC', 'TC', 'EN', 'JP', 'KR', 'FR']
     for (const c of preferred) {
       if (langOptions.includes(c) && !existing.has(c)) return c
     }
