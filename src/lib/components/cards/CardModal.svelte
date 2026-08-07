@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from '@lucide/svelte'
+  import { X, LoaderCircle } from '@lucide/svelte'
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint, CardWithPrint } from '$lib/db'
   import { printCacheName } from '$lib/db/helper'
@@ -8,6 +8,7 @@
   import { showForeignCardArt, showTTSFeatures } from '$lib/stores/settings'
   import { ttsState } from '$lib/stores/tts'
   import { sendToTTSTesting } from '$lib/services/tts-communication-service'
+  import { showToast } from '$lib/stores/ui-store.svelte'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
@@ -78,17 +79,26 @@
     selectedIndex = 0
   }
 
-  function spawnCard() {
-    if (!card || !card.id) return
+  let sending = $state(false)
+
+  async function spawnCard() {
+    if (!card || !card.id || sending) return
     const data: CardWithPrint = {
       ...card,
       id: card.id,
       card_prints: selectedVersion[selectedIndex],
       quantity: 1,
     }
-    sendToTTSTesting([data]).then((e) => {
-      console.log(e)
-    })
+    sending = true
+    try {
+      await sendToTTSTesting([data])
+      showToast(`已发送到 TTS：${card.card_name_cn}`, 'success')
+    } catch (error) {
+      console.error('[CardModal] 发送卡牌到 TTS 失败:', error)
+      showToast('发送失败，请检查 TTS 连接', 'error')
+    } finally {
+      sending = false
+    }
   }
 </script>
 
@@ -175,8 +185,20 @@
               {/each}
             </div>
           {/if}
-          {#if $ttsState.sendPort && $showTTSFeatures}
-            <button onclick={spawnCard} class="button button-secondary button-sm">生成</button>
+          {#if $showTTSFeatures}
+            <button
+              onclick={spawnCard}
+              class="button button-secondary button-sm"
+              disabled={!$ttsState.sendPort || sending}
+              title={!$ttsState.sendPort ? '请先在侧边栏连接 TTS' : undefined}
+            >
+              {#if sending}
+                <span class="spawn-spinner"><LoaderCircle size={16} /></span>
+                <span>生成中...</span>
+              {:else}
+                <span>生成</span>
+              {/if}
+            </button>
           {/if}
         </aside>
 
@@ -691,6 +713,17 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  .spawn-spinner {
+    display: inline-flex;
+    animation: spawn-spin 0.9s linear infinite;
+  }
+
+  @keyframes spawn-spin {
+    to {
+      transform: rotate(360deg);
     }
   }
   @keyframes slideUp {

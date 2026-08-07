@@ -4,14 +4,18 @@
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import type { CardBase } from '$lib/db/types'
   import { ttsState } from '$lib/stores/tts'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { showTTSFeatures } from '$lib/stores/settings'
   import { multiSpawn } from '$lib/services/tts-communication-service'
   import { beforeNavigate, goto } from '$app/navigation'
   import { routeBackConfig } from '$lib/utils/route-config'
+  import { ask } from '@tauri-apps/plugin-dialog'
+  import { Send, LoaderCircle } from '@lucide/svelte'
 
   let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])
   let isFilterOpen = $state(false)
+  let sending = $state(false)
 
   $effect(() => {
     setTopbar({ title: '单卡库' })
@@ -22,8 +26,28 @@
     selectedCard = card
   }
 
-  function spwanMulti() {
-    multiSpawn([...displayedCards])
+  async function spawnMulti() {
+    if (sending) return
+    if (!displayedCards.length) return
+
+    const accepted = await ask(`确定将当前列表中的 ${displayedCards.length} 张卡牌发送到 TTS 吗？`, {
+      title: '批量生成',
+      kind: 'warning',
+      okLabel: '确定',
+      cancelLabel: '取消',
+    })
+    if (!accepted) return
+
+    sending = true
+    try {
+      await multiSpawn([...displayedCards])
+      showToast(`已发送 ${displayedCards.length} 张卡牌到 TTS`, 'success')
+    } catch (error) {
+      console.error('[Cards] 批量生成失败:', error)
+      showToast('批量生成失败，请检查 TTS 连接', 'error')
+    } finally {
+      sending = false
+    }
   }
 
   // onMount(() => {
@@ -74,24 +98,61 @@
   <!-- 详情弹窗依然留在当前页面 -->
   <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
-  {#if $ttsState.sendPort}
-    <button class="fab-btn" onclick={spwanMulti}>批量生成</button>
+  {#if $showTTSFeatures}
+    <button
+      class="fab-btn"
+      onclick={spawnMulti}
+      disabled={!$ttsState.sendPort || sending}
+      title={!$ttsState.sendPort ? '请先在侧边栏连接 TTS' : undefined}
+    >
+      {#if sending}
+        <span class="fab-spinner"><LoaderCircle size={20} /></span>
+        <span>发送中...</span>
+      {:else}
+        <Send size={20} />
+        <span>批量生成</span>
+      {/if}
+    </button>
   {/if}
 </div>
 
 <style>
   .fab-btn {
     position: fixed;
-    margin-bottom: 1.25rem;
-    margin-right: 1rem;
-    bottom: 0;
-    right: 0;
-    background: var(--bg-primary);
-    border-radius: 99%;
-    aspect-ratio: 1/1;
+    right: 1rem;
+    bottom: 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     font-size: var(--text-base);
-    border: none;
-    outline: none;
+    font-weight: 500;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    cursor: pointer;
+  }
+
+  .fab-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  .fab-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .fab-spinner {
+    display: inline-flex;
+    animation: fab-spin 0.9s linear infinite;
+  }
+
+  @keyframes fab-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .page-wrapper {

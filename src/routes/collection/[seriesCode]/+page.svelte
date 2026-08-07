@@ -25,7 +25,7 @@
     upsertLangQty,
   } from '$lib/db'
   import { ListChecks, Save, X } from '@lucide/svelte'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import BucketProgressBar from '$lib/components/collection/BucketProgressBar.svelte'
   import CollectionGrid from '$lib/components/collection/CollectionGrid.svelte'
@@ -54,9 +54,6 @@
   let batchMode = $state(false)
   let selectedIds = $state<Set<string>>(new Set())
   let batchBusy = $state(false)
-
-  let toastMsg = $state('')
-  let toastTimer: ReturnType<typeof setTimeout> | undefined
 
   const OWNERSHIP_OPTIONS: { key: OwnershipType; label: string }[] = [
     { key: 'all', label: '全部' },
@@ -106,12 +103,6 @@
     }
   }
 
-  function showToast(msg: string) {
-    toastMsg = msg
-    clearTimeout(toastTimer)
-    toastTimer = setTimeout(() => (toastMsg = ''), 2200)
-  }
-
   async function loadStats() {
     stats = await getCollectionStats()
   }
@@ -138,7 +129,7 @@
       hasMore = res.page < res.totalPages
       cards = reset ? res.data : [...cards, ...res.data]
     } catch (err) {
-      showToast(`加载失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`加载失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       isLoading = false
       loadingMore = false
@@ -191,9 +182,9 @@
     batchBusy = true
     try {
       const n = await bulkMarkOwned(items)
-      showToast(`已标记 ${n} 张已拥有`)
+      showToast(`已标记 ${n} 张已拥有`, 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -207,9 +198,9 @@
     batchBusy = true
     try {
       const n = await bulkIncrement(items)
-      showToast(`已为 ${n} 张卡普卡 +1`)
+      showToast(`已为 ${n} 张卡普卡 +1`, 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -230,9 +221,9 @@
     batchBusy = true
     try {
       const n = await bulkDeleteCollection(items)
-      showToast(`已删除 ${n} 条收藏记录`)
+      showToast(`已删除 ${n} 条收藏记录`, 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -244,7 +235,7 @@
     card.ownedTotal += 1
     card.ownedNormal += 1
     void bulkIncrement([{ cardNo: card.cardNo, cardNoExtend: card.cardNoExtend }]).catch((err) => {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
       void runSearch(true)
     })
     void loadStats()
@@ -265,7 +256,7 @@
       await upsertLangQty(card.cardNo, card.cardNoExtend, row.language_code, patch)
       void loadStats()
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
       void runSearch(true)
     }
   }
@@ -289,7 +280,7 @@
         lastEdited: card.lastEdited,
       }
     } catch (err) {
-      showToast(`打开详情失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`打开详情失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     }
   }
 
@@ -428,9 +419,6 @@
     onChanged={refreshAll}
   />
 
-  {#if toastMsg}
-    <div class="toast">{toastMsg}</div>
-  {/if}
 </div>
 
 <style>
@@ -501,32 +489,6 @@
     left: 2px;
     font-size: var(--text-xs);
     color: var(--text-tertiary);
-  }
-
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1200;
-    padding: 9px 18px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.82);
-    color: #fff;
-    font-size: var(--text-sm);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-    animation: toast-in 0.2s ease;
-  }
-
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
   }
 
   @media (max-width: 600.99px) {

@@ -171,5 +171,5 @@ export function multiSpawn(cards: any[]) {
     })
   }
 
-  sendToTTSTesting(list)
+  return sendToTTSTesting(list)
 }

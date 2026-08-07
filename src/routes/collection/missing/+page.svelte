@@ -13,7 +13,7 @@
     PRESET_LANGUAGE_CODES,
   } from '$lib/db'
   import { ChevronDown, Filter, Save, X } from '@lucide/svelte'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import type { MissingListTextRow } from '$lib/collection/collection-export'
   import { buildMissingListText, saveMissingList } from '$lib/collection/collection-export'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
@@ -45,8 +45,6 @@
   let loadSeq = 0
   let exporting = $state(false)
   let filtersCollapsed = $state(isNarrowLayout)
-  let toastMsg = $state('')
-  let toastTimer: ReturnType<typeof setTimeout> | undefined
 
   const seriesOptions = $derived(stats?.series ?? [])
   const seriesTitle = $derived(
@@ -66,12 +64,6 @@
   const satisfiedOf = (r: MissingListRow) => r.ownedQty >= needOf(r)
   const missingRows = $derived(rows.filter((r) => !satisfiedOf(r)))
   const satisfiedCount = $derived(rows.length - missingRows.length)
-
-  function showToast(msg: string) {
-    toastMsg = msg
-    clearTimeout(toastTimer)
-    toastTimer = setTimeout(() => (toastMsg = ''), 2200)
-  }
 
   async function loadOptions() {
     const [opts, rarities, customs, statsRes] = await Promise.all([
@@ -150,12 +142,12 @@
       const code = series || '全部系列'
       const ok = await saveMissingList(text, `缺卡清单-${code}-${stamp}.txt`)
       if (ok) {
-        showToast(`已保存 ${textRows.length} 条缺卡明细`)
+        showToast(`已保存 ${textRows.length} 条缺卡明细`, 'success')
       } else {
-        showToast('已取消保存')
+        showToast('已取消保存', 'info')
       }
     } catch (err) {
-      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
+      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       exporting = false
     }
@@ -327,10 +319,6 @@
       {exporting ? '导出中...' : '导出'}
     </button>
   </div>
-
-  {#if toastMsg}
-    <div class="toast">{toastMsg}</div>
-  {/if}
 </div>
 
 <style>
@@ -651,32 +639,6 @@
   .export-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
-  }
-
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1200;
-    padding: 9px 18px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.82);
-    color: #fff;
-    font-size: var(--text-sm);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-    animation: toast-in 0.2s ease;
-  }
-
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
   }
 
   @media (max-width: 899.98px) {

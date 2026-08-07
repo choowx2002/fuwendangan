@@ -92,6 +92,30 @@ export function dismissDownload() {
   downloadState.expanded = true
 }
 
+// --- 全局 Toast 提示 ---
+export const toastState = $state({
+  show: false,
+  msg: '',
+  type: 'info' as 'success' | 'error' | 'info',
+})
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+
+export function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') {
+  toastState.msg = msg
+  toastState.type = type
+  toastState.show = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastState.show = false
+  }, 2200)
+}
+
+export function dismissToast() {
+  toastState.show = false
+  if (toastTimer) clearTimeout(toastTimer)
+}
+
 export type TopbarActionVariant = 'primary' | 'ghost' | 'danger' | 'text'
 
 export type TopbarAction = {

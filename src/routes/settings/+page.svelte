@@ -910,7 +910,7 @@
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-label">显示TTS功能</span>
-          <span class="setting-desc"> 单机的时候可以导入卡牌到TTS里 </span>
+          <span class="setting-desc">开启后可在单卡库生成卡牌到 Tabletop Simulator（桌面端）</span>
         </div>
         <label class="switch">
           <input type="checkbox" bind:checked={$showTTSFeatures} />

@@ -14,14 +14,6 @@
   let stats = $state<CollectionStats | null>(null)
   let recent = $state<RecentCollectionCard[]>([])
   let loading = $state(true)
-  let toastMsg = $state('')
-  let toastTimer: ReturnType<typeof setTimeout> | undefined
-
-  function showToast(msg: string) {
-    toastMsg = msg
-    clearTimeout(toastTimer)
-    toastTimer = setTimeout(() => (toastMsg = ''), 2200)
-  }
 
   async function loadAll() {
     loading = true
@@ -93,10 +85,6 @@
       />
     {/if}
   </div>
-
-  {#if toastMsg}
-    <div class="toast">{toastMsg}</div>
-  {/if}
 </div>
 
 <style>
@@ -128,32 +116,6 @@
     text-align: center;
     color: var(--text-tertiary);
     font-size: var(--text-sm);
-  }
-
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1200;
-    padding: 9px 18px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.82);
-    color: #fff;
-    font-size: var(--text-sm);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-    animation: toast-in 0.2s ease;
-  }
-
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
   }
 
   @media (max-width: 600.99px) {

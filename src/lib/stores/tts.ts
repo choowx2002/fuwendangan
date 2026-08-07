@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import { persistentWritable } from './settings'
 
 export interface TTSState {
   checking: boolean
@@ -60,4 +61,4 @@ export const colorOptions: TTSColorOption[] = [
 
 export type colorValue = 'Black' | 'Blue' | 'Red' | 'Purple' | 'Green'
 
-export const selectedTTSColor = writable<string>(colorOptions[0].value)
+export const selectedTTSColor = persistentWritable('ttsColor', colorOptions[0].value)

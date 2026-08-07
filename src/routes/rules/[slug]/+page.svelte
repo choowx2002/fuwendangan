@@ -18,6 +18,7 @@
   import { longpress } from '$lib/utils/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { goto } from '$app/navigation'
+  import { showToast } from '$lib/stores/ui-store.svelte'
 
   let loading = $state(true)
   let searchQuery = $state('')
@@ -217,8 +218,6 @@
     }
   })
 
-  let toastMsg = $state('')
-
   async function triggerAction(rule: Rule, lang: Lang) {
     let text: string | null = `${rule.rule_number}. `
     try {
@@ -233,21 +232,13 @@
       await writeText(text)
 
       // 显示 Toast 提示
-      showToast(`已复制规则 ${rule.rule_number}`)
+      showToast(`已复制规则 ${rule.rule_number}`, 'success')
     } catch (error) {
       console.error('复制失败', error)
-      showToast('复制失败')
+      showToast('复制失败', 'error')
     }
   }
-
-  function showToast(msg: string) {
-    toastMsg = msg
-    setTimeout(() => {
-      toastMsg = ''
-    }, 2000)
-  }
 </script>
-
 <div class="page">
   <!-- Sidebar -->
   {#if !isMobileInit}
@@ -379,10 +370,6 @@
   <button class="mobile-toggle" onclick={() => (sidebarOpen = !sidebarOpen)}>
     <Menu size={24} />
   </button>
-
-  {#if toastMsg}
-    <div class="toast">{toastMsg}</div>
-  {/if}
 </div>
 
 {#snippet tocNode(node: TreeNode, depth: number)}
@@ -928,39 +915,4 @@
     }
   }
 
-  /* Toast 提示 */
-  .toast {
-    position: fixed;
-    bottom: 10%; /* 避开底部的 FAB 按钮 */
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--accent-color);
-    color: var(--bg-primary);
-    padding: 10px 20px;
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    z-index: 100;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    animation: fadeInOut 2s ease-in-out;
-    pointer-events: none;
-  }
-
-  @keyframes fadeInOut {
-    0% {
-      opacity: 0;
-      transform: translateX(-50%) translateY(10px);
-    }
-    15% {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    85% {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    100% {
-      opacity: 0;
-      transform: translateX(-50%) translateY(-10px);
-    }
-  }
 </style>

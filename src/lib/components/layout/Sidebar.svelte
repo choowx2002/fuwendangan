@@ -14,9 +14,8 @@
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
-  import { selectedTTSColor, colorOptions, type colorValue, ttsState } from '../../stores/tts'
-  import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { showTTSFeatures } from '$lib/stores/settings'
+  import TTSStatusPanel from './TTSStatusPanel.svelte'
   let { isOpen = $bindable() } = $props()
 
   const navItems = [
@@ -57,14 +56,6 @@
       window.removeEventListener('resize', handleResize)
     }
   })
-
-  const colorMap: Record<colorValue, string> = {
-    Black: 'rgb(0,0,0)',
-    Red: 'rgb(218,26,24)',
-    Green: 'rgb(49,179,43)',
-    Purple: 'rgb(160,32,240)',
-    Blue: 'rgb(30,135,255)',
-  }
 
   function toggleMinimize() {
     sidebarState.isMinimized = !sidebarState.isMinimized
@@ -133,21 +124,7 @@
 
   {#if $showTTSFeatures}
     <div class="sidebar-footer">
-      <div class="tts-info">
-        <p title="点击链接" onclick={detectTTSServer} role="presentation">
-          TTS链接：{$ttsState.sendPort ? '已连接' : '未连接'}
-        </p>
-      </div>
-      <div class="user-info">
-        <div class="avatar" style="background: {colorMap[$selectedTTSColor as colorValue]}"></div>
-        <select bind:value={$selectedTTSColor}>
-          {#each colorOptions as color}
-            <option value={color.value}>
-              {color.name}
-            </option>
-          {/each}
-        </select>
-      </div>
+      <TTSStatusPanel />
     </div>
   {/if}
 </aside>
@@ -325,12 +302,6 @@
     margin-left: 0;
   }
 
-  .tts-info {
-    font-size: var(--text-base);
-    font-weight: bold;
-    cursor: pointer;
-  }
-
   .divider {
     height: 1px;
     background: var(--border-color);
@@ -341,25 +312,6 @@
     margin-top: auto;
     padding: 12px;
     border-top: 1px solid var(--border-color);
-  }
-
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: var(--text-base);
-    font-weight: 500;
-  }
-
-  .avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--text-sm);
-    color: var(--text-primary);
   }
 
   @media (min-width: 767.99px) {
@@ -376,8 +328,7 @@
     .sidebar {
       padding-top: env(safe-area-inset-top);
     }
-    .nav-item,
-    .tts-info {
+    .nav-item {
       font-size: var(--text-lg);
     }
   }

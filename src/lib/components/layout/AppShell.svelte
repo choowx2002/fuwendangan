@@ -3,6 +3,7 @@
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
   import DownloadProgressBar from '../ui/DownloadProgressBar.svelte'
+  import Toast from '../ui/Toast.svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
   import { page } from '$app/state'
   let { children } = $props()
@@ -53,6 +54,7 @@
   {/if}
 
   <DownloadProgressBar />
+  <Toast />
 </div>
 
 <style>
