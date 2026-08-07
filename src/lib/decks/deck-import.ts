@@ -1,0 +1,275 @@
+/**
+ * 卡组导入服务：将 Piltover Riftbound Deck Code 解码并转换为 Builder 需要的分区状态
+ */
+
+import { getDeckFromCode } from '@piltoverarchive/riftbound-deck-codes'
+import type {
+  Card as RiftboundCard,
+  DeckWithSideboard,
+} from '@piltoverarchive/riftbound-deck-codes'
+import { getCardAndPrintByPrintCode, getCardAndPrintByEnglishName } from '$lib/db'
+import type { cardAndPrint } from './types'
+import { ZONE_CONFIG, type ZoneKey } from './zone'
+
+export interface DecodedDeckResult {
+  deck: {
+    legendCards: cardAndPrint[]
+    championCards: cardAndPrint[]
+    mainDeckCards: cardAndPrint[]
+    battlefieldCards: cardAndPrint[]
+    runeCards: cardAndPrint[]
+    sideboardCards: cardAndPrint[]
+  }
+  /** 未能匹配到本地卡图的卡牌编号数 */
+  missingCount: number
+  /** 本地数据库中不存在的卡牌编号 */
+  missingCodes: string[]
+}
+
+/**
+ * 根据卡牌类别判断其所在分区。
+ * 需与 deck-code.ts 的编码顺序（legend + champion + battlefields + runes 均并入 mainDeck）对应。
+ */
+function classifyZone(
+  categories: string[] | null | undefined
+): 'legend' | 'rune' | 'battlefield' | 'main' {
+  if (!categories?.length) return 'main'
+  if (categories.some((c) => c.includes('传奇'))) return 'legend'
+  if (categories.some((c) => c.includes('符文'))) return 'rune'
+  if (categories.some((c) => c.includes('战场'))) return 'battlefield'
+  return 'main'
+}
+
+/**
+ * 解码一个 Riftbound Deck Code。
+ * 返回 null 表示解码失败（非法 / 或不支持的版本）。
+ */
+export function parseDeckCodeText(code: string): DeckWithSideboard | null {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  try {
+    return getDeckFromCode(trimmed)
+  } catch {
+    return null
+  }
+}
+
+/** 将解码出的卡牌列表按分区归档成 Builder 可用的分区状态 */
+export async function resolveDeckCards(decoded: DeckWithSideboard): Promise<DecodedDeckResult> {
+  const result: DecodedDeckResult = {
+    deck: {
+      legendCards: [],
+      championCards: [],
+      mainDeckCards: [],
+      battlefieldCards: [],
+      runeCards: [],
+      sideboardCards: [],
+    },
+    missingCount: 0,
+    missingCodes: [],
+  }
+
+  const championCode = decoded.chosenChampion?.trim()
+
+  async function appendCards(cards: RiftboundCard[], target: cardAndPrint[]) {
+    for (const item of cards) {
+      const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+      if (!resolved) {
+        result.missingCodes.push(item.cardCode)
+        result.missingCount++
+        continue
+      }
+      for (let i = 0; i < item.count; i++) {
+        target.push(resolved)
+      }
+    }
+  }
+
+  // sideboard 原样放入 sideboard 分区
+  await appendCards(decoded.sideboard, result.deck.sideboardCards)
+
+  // mainDeck 需按类别拆分
+  for (const item of decoded.mainDeck) {
+    // chosenChampion 优先落到 champion 分区
+    if (championCode && item.cardCode.toUpperCase() === championCode.toUpperCase()) {
+      const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+      if (resolved) {
+        result.deck.championCards = [resolved]
+      } else {
+        result.missingCodes.push(item.cardCode)
+        result.missingCount++
+      }
+      continue
+    }
+
+    const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+    if (!resolved) {
+      result.missingCodes.push(item.cardCode)
+      result.missingCount++
+      continue
+    }
+
+    const zone = classifyZone(resolved.card_category)
+    const target =
+      zone === 'legend'
+        ? result.deck.legendCards
+        : zone === 'rune'
+          ? result.deck.runeCards
+          : zone === 'battlefield'
+            ? result.deck.battlefieldCards
+            : result.deck.mainDeckCards
+    for (let i = 0; i < item.count; i++) {
+      target.push(resolved)
+    }
+  }
+
+  // 兜底：若 champion 分区为空但解码里有 chosenChampion，尝试按编号解析
+  if (championCode && result.deck.championCards.length === 0) {
+    const resolved = await getCardAndPrintByPrintCode(championCode)
+    if (resolved) {
+      result.deck.championCards = [resolved]
+    }
+  }
+
+  return result
+}
+
+// ==================== 国际官方文本导入 ====================
+
+export interface OfficialTextEntry {
+  name: string
+  qty: number
+}
+
+export interface ParsedOfficialText {
+  zones: Record<ZoneKey, OfficialTextEntry[]>
+  errors: string[]
+}
+
+const OFFICIAL_ZONE_LABELS: Record<string, ZoneKey> = {
+  legend: 'legend',
+  champion: 'champion',
+  maindeck: 'mainDeck',
+  main: 'mainDeck',
+  battlefields: 'battlefields',
+  battlefield: 'battlefields',
+  runes: 'runes',
+  rune: 'runes',
+  runepool: 'runes',
+  sideboard: 'sideboard',
+  side: 'sideboard',
+}
+
+/**
+ * 解析「国际官方文本」格式。支持两种写法：
+ *  1) 分区头独占一行（"Legend:"），卡牌行跟在后续行（"1 Master Yi, Wuju Bladesman"）
+ *  2) 分区头与卡牌同行（"MainDeck: 3 Charm 3 Defy 3 Discipline..."）
+ * 卡名可含空格与副标题（如 "Punch First" / "Master Yi, Wuju Bladesman"）。
+ */
+export function parseGlobalOfficialText(raw: string): ParsedOfficialText {
+  const zones: Record<ZoneKey, OfficialTextEntry[]> = {
+    legend: [],
+    champion: [],
+    mainDeck: [],
+    battlefields: [],
+    runes: [],
+    sideboard: [],
+  }
+  const errors: string[] = []
+
+  let currentZone: ZoneKey | null = null
+  // console.log("parseGlobalOfficialText");
+  function pushEntries(zone: ZoneKey, text: string) {
+    const entryRe = /(\d+)\s+(.*?)(?=\s+\d+\s|$)/g
+    let m: RegExpExecArray | null
+    // console.log(zone)
+    while ((m = entryRe.exec(text)) !== null) {
+      const name = m[2].trim()
+      // console.log(m, "name:", name,);
+      if (name) {
+        zones[zone].push({ name, qty: parseInt(m[1], 10) })
+      }
+    }
+  }
+
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+
+    const headerMatch = /^([A-Za-z][A-Za-z\s]*):\s*(.*)$/.exec(line)
+    if (headerMatch) {
+      const key = headerMatch[1].replace(/\s+/g, '').toLowerCase()
+      const zone = OFFICIAL_ZONE_LABELS[key]
+      if (zone) {
+        currentZone = zone
+        const rest = headerMatch[2].trim()
+        if (rest) pushEntries(zone, rest)
+      } else {
+        errors.push(`无法识别的分区头：${headerMatch[1]}`)
+        currentZone = null
+      }
+      continue
+    }
+
+    const entryMatch = /^(\d+)\s+(.+)$/.exec(line)
+    if (entryMatch) {
+      if (!currentZone) {
+        errors.push(`缺少分区头的卡牌行：${line}`)
+        continue
+      }
+      zones[currentZone].push({ name: entryMatch[2].trim(), qty: parseInt(entryMatch[1], 10) })
+      continue
+    }
+
+    errors.push(`无法解析的行：${line}`)
+  }
+
+  return { zones, errors }
+}
+
+/** 将解析出的官方文本卡牌解析为本地卡图并按显式分区归档 */
+export async function resolveGlobalOfficialText(
+  parsed: ParsedOfficialText
+): Promise<DecodedDeckResult> {
+  const result: DecodedDeckResult = {
+    deck: {
+      legendCards: [],
+      championCards: [],
+      mainDeckCards: [],
+      battlefieldCards: [],
+      runeCards: [],
+      sideboardCards: [],
+    },
+    missingCount: 0,
+    missingCodes: [],
+  }
+
+  const zoneToKey: Record<ZoneKey, keyof DecodedDeckResult['deck']> = {
+    legend: 'legendCards',
+    champion: 'championCards',
+    mainDeck: 'mainDeckCards',
+    battlefields: 'battlefieldCards',
+    runes: 'runeCards',
+    sideboard: 'sideboardCards',
+  }
+
+  for (const zone of Object.keys(ZONE_CONFIG) as ZoneKey[]) {
+    const entries = parsed.zones[zone]
+    const target = result.deck[zoneToKey[zone]]
+    for (const entry of entries) {
+      const resolved = await getCardAndPrintByEnglishName(entry.name, {
+        legendOnly: zone === 'legend',
+      })
+      if (!resolved) {
+        result.missingCodes.push(entry.name)
+        result.missingCount++
+        continue
+      }
+      for (let i = 0; i < entry.qty; i++) {
+        target.push(resolved)
+      }
+    }
+  }
+
+  return result
+}

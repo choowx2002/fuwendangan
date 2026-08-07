@@ -38,6 +38,7 @@
     type DeckInput,
   } from '$lib/db'
   import { loadDeckForEdit } from '$lib/decks/deck-loader'
+  import { consumePendingDeckImport } from '$lib/stores/deck-import.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import type { cardAndPrint } from '$lib/decks/types'
@@ -201,6 +202,11 @@
       loadDeck(queryDeckId)
     }
 
+    const pending = consumePendingDeckImport()
+    if (pending) {
+      applyImportedDeck(pending)
+    }
+
     return () => {
       window.removeEventListener('resize', updateLayoutMode)
     }
@@ -230,6 +236,20 @@
       console.error('加载卡组失败:', error)
       message('加载卡组失败')
     }
+  }
+
+  function applyImportedDeck(result: import('$lib/decks/deck-import').DecodedDeckResult) {
+    editingDeckId = null
+    deckName = '导入的卡组'
+    saveDeckName = '导入的卡组'
+    saveDeckDescription = ''
+    legendCards = result.deck.legendCards
+    championCards = result.deck.championCards
+    mainDeckCards = result.deck.mainDeckCards
+    battlefieldCards = result.deck.battlefieldCards
+    runeCards = result.deck.runeCards
+    sideboardCards = result.deck.sideboardCards
+    isDirty = true
   }
 
   async function handleAddCard(card: cardAndPrint) {

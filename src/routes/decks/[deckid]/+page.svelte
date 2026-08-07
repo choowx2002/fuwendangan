@@ -32,7 +32,7 @@
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { onMount } from 'svelte'
-  import { formatDeckExport } from '$lib/decks/deck-export'
+  import { formatDeckExport, formatOfficialDeckExport } from '$lib/decks/deck-export'
   import { buildDeckCode } from '$lib/decks/deck-code'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import { parseColorList } from '$lib/cards/utils/cost-curve-utils'
@@ -134,7 +134,8 @@
   let versions = $state<DeckVersion[]>([])
   let versionCards = $state<DeckVersionCard[]>([])
   let showShareModal = $state<'copy' | 'export' | null>(null)
-  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image'>('text')
+  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official'>('text')
+  let textLang = $state<'en' | 'cn'>('en')
   let exporting = $state(false)
   let exportProgress = $state(0)
   let showEditInfoModal = $state(false)
@@ -601,7 +602,8 @@
     simPhase = 'idle'
   }
 
-  const exportText = $derived(formatDeckExport(zoneCards))
+  const exportText = $derived(formatDeckExport(zoneCards, textLang))
+  const officialText = $derived(formatOfficialDeckExport(zoneCards))
   const deckCodeResult = $derived(buildDeckCode(zoneCards))
 
   const shareFormats = [
@@ -609,6 +611,12 @@
       id: 'text',
       label: '纯文本',
       description: '标准格式，便于分享或导入外部工具。',
+      support: ['export', 'copy'],
+    },
+    {
+      id: 'official',
+      label: '国际官方文本',
+      description: '官方卡组文本格式，可导入本应用或官方工具。',
       support: ['export', 'copy'],
     },
     {
@@ -633,6 +641,7 @@
 
   function currentShareText(): string {
     if (shareFormat === 'code') return deckCodeResult.code ?? ''
+    if (shareFormat === 'official') return officialText
     return exportText
   }
 
@@ -646,6 +655,7 @@
 
   function currentShareTextAvailable(): boolean {
     if (shareFormat === 'code') return !!deckCodeResult.code
+    if (shareFormat === 'official') return officialText.length > 0
     if (shareFormat === 'pdf') return selectedPdfZoneCount > 0
     if (shareFormat === 'image') return cards.length > 0
     return exportText.length > 0
@@ -1367,7 +1377,7 @@
           class="share-format-option"
           class:selected={shareFormat === format.id}
           onclick={() => {
-            shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image'
+            shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official'
             if (format.id === 'pdf') {
               pdfZones = {
                 legend: true,
@@ -1386,6 +1396,33 @@
       {/if}
     {/each}
   </div>
+
+  {#if shareFormat === 'text' || shareFormat === 'code' || shareFormat === 'official'}
+    <div class="text-preview-section">
+      <div class="text-preview-title">预览</div>
+      {#if shareFormat === 'text'}
+        <div class="text-lang-switch">
+          <button
+            type="button"
+            class="text-lang-btn"
+            class:selected={textLang === 'cn'}
+            onclick={() => (textLang = 'cn')}
+          >
+            中文
+          </button>
+          <button
+            type="button"
+            class="text-lang-btn"
+            class:selected={textLang === 'en'}
+            onclick={() => (textLang = 'en')}
+          >
+            English
+          </button>
+        </div>
+      {/if}
+      <pre class="text-preview-box">{currentShareText() || '（无可导出的内容）'}</pre>
+    </div>
+  {/if}
 
   {#if shareFormat === 'pdf'}
     <div class="pdf-zone-select">
@@ -2591,6 +2628,17 @@
   }
 
   /* ===== 卡组图案排序 ===== */
+  .image-sort-desc {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+  }
+
+  .image-sort-section :global(.trigger) {
+    margin-left: 0;
+  }
+
+  /* ===== 文本预览 ===== */
   .image-sort-section {
     margin-top: 16px;
     padding-top: 16px;
@@ -2604,14 +2652,66 @@
     margin-bottom: 4px;
   }
 
-  .image-sort-desc {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin-bottom: 10px;
+  .text-preview-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
   }
 
-  .image-sort-section :global(.trigger) {
-    margin-left: 0;
+  .text-preview-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .text-lang-switch {
+    display: inline-flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding: 3px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+  }
+
+  .text-lang-btn {
+    padding: 4px 14px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--radius-md) - 2px);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+
+  .text-lang-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .text-lang-btn.selected {
+    background: var(--accent-color);
+    color: var(--bg-primary);
+  }
+
+  .text-preview-box {
+    margin: 0;
+    margin-top: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   /* ===== 卡组图案预览 ===== */

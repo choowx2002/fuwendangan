@@ -183,9 +183,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-shrink: 0;
+    /* flex-shrink: 0; */
     max-width: 55%;
     position: relative;
+    flex: 1;
+    justify-content: right;
   }
 
   .icon-btn {
@@ -329,5 +331,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    inset: 0;
   }
 </style>

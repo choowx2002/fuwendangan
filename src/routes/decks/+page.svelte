@@ -7,13 +7,38 @@
     getDeckList,
     toggleFavorite,
     getMatchStatsForDecks,
+    importDecksFromJson,
+    type ImportDeckPayload,
     type DeckListResult,
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { DECK_FORMATS } from '$lib/decks/format'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
-  import { Plus, Search, Funnel, Copy, Trash2, Folder, HeartIcon } from '@lucide/svelte'
-  import { ask, message } from '@tauri-apps/plugin-dialog'
+  import {
+    parseDeckCodeText,
+    resolveDeckCards,
+    parseGlobalOfficialText,
+    resolveGlobalOfficialText,
+    type DecodedDeckResult,
+  } from '$lib/decks/deck-import'
+  import { setPendingDeckImport } from '$lib/stores/deck-import.svelte'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import {
+    Plus,
+    Search,
+    Funnel,
+    Copy,
+    Trash2,
+    Folder,
+    HeartIcon,
+    Import as ImportIcon,
+    FileUp,
+    CircleAlert,
+    CircleCheck,
+  } from '@lucide/svelte'
+  import { ask, message, open } from '@tauri-apps/plugin-dialog'
+  import { readText } from '@tauri-apps/plugin-clipboard-manager'
+  import { readTextFile } from '$lib/services/db-file-service'
   import { onMount } from 'svelte'
 
   let allDecks = $state<DeckListResult[]>([])
@@ -26,6 +51,28 @@
   let tagMatchMode = $state<'all' | 'any'>('all')
   let showTagSuggestions = $state(false)
   let activeSuggestionIndex = $state(-1)
+
+  let showImportModal = $state(false)
+  let importTab = $state<'code' | 'json' | 'text'>('code')
+  let importCode = $state('')
+  let importCodeError = $state('')
+  let importCodeValid = $state(false)
+  let importingCode = $state(false)
+  let importedResult = $state<DecodedDeckResult | null>(null)
+
+  let importText = $state('')
+  let importTextError = $state('')
+  let importTextValid = $state(false)
+  let importingText = $state(false)
+  let importedTextResult = $state<DecodedDeckResult | null>(null)
+
+  let jsonFileName = $state('')
+  let jsonDeckList = $state<
+    { id: string; name: string; updatedAt: string; versionCount: number }[]
+  >([])
+  let selectedJsonDeckIds = $state<string[]>([])
+  let pendingJsonDecks = $state<ImportDeckPayload[]>([])
+  let importingJson = $state(false)
 
   export const formats = ['全部', ...DECK_FORMATS]
 
@@ -131,6 +178,268 @@
     }
   }
 
+  function openImportDeckModal() {
+    importTab = 'code'
+    importCode = ''
+    importCodeError = ''
+    importCodeValid = false
+    importedResult = null
+    importText = ''
+    importTextError = ''
+    importTextValid = false
+    importedTextResult = null
+    jsonFileName = ''
+    jsonDeckList = []
+    selectedJsonDeckIds = []
+    pendingJsonDecks = []
+    showImportModal = true
+  }
+
+  async function pasteImportCode() {
+    try {
+      const text = await readText()
+      if (text) {
+        importCode = text
+        validateImportCode()
+      }
+    } catch {
+      importCodeError = '读取剪贴板失败'
+      importCodeValid = false
+    }
+  }
+
+  function validateImportCode() {
+    const decoded = parseDeckCodeText(importCode)
+    importCodeError = decoded ? '' : '无法解析该卡组代码，请检查是否复制完整。'
+    importCodeValid = !!decoded
+  }
+
+  async function confirmCodeImport() {
+    const decoded = parseDeckCodeText(importCode)
+    if (!decoded) {
+      importCodeError = '无法解析该卡组代码，请检查是否复制完整。'
+      importCodeValid = false
+      return
+    }
+    importingCode = true
+    try {
+      const result = await resolveDeckCards(decoded)
+      const totalResolved =
+        result.deck.mainDeckCards.length +
+        result.deck.runeCards.length +
+        result.deck.battlefieldCards.length +
+        result.deck.sideboardCards.length +
+        result.deck.legendCards.length +
+        result.deck.championCards.length
+      if (totalResolved === 0) {
+        importCodeError = `本地缺少全部卡牌（${result.missingCount} 张），无法导入：${result.missingCodes
+          .slice(0, 5)
+          .join(', ')}`
+        importCodeValid = false
+        return
+      }
+      importedResult = result
+      setPendingDeckImport(result)
+      showImportModal = false
+      goto('/decks/builder?import=1')
+    } finally {
+      importingCode = false
+    }
+  }
+
+  function validateImportText() {
+    const parsed = parseGlobalOfficialText(importText)
+    console.log(parsed);
+    const hasAny =
+      Object.values(parsed.zones).flat().length > 0 && parsed.errors.length === 0
+    importTextError = parsed.errors[0] ?? ''
+    importTextValid = hasAny
+  }
+
+  async function confirmTextImport() {
+    const parsed = parseGlobalOfficialText(importText)
+    const hasAny = Object.values(parsed.zones).flat().length > 0
+    if (!hasAny) {
+      importTextError = parsed.errors[0] ?? '未解析到任何卡牌，请检查文本格式。'
+      importTextValid = false
+      return
+    }
+    importingText = true
+    try {
+      const result = await resolveGlobalOfficialText(parsed)
+      const totalResolved =
+        result.deck.mainDeckCards.length +
+        result.deck.runeCards.length +
+        result.deck.battlefieldCards.length +
+        result.deck.sideboardCards.length +
+        result.deck.legendCards.length +
+        result.deck.championCards.length
+      if (totalResolved === 0) {
+        importTextError = `本地匹配不到任何卡牌名称：${result.missingCodes.slice(0, 5).join(', ')}`
+        importTextValid = false
+        return
+      }
+      importedTextResult = result
+      setPendingDeckImport(result)
+      showImportModal = false
+      goto('/decks/builder?import=1')
+    } finally {
+      importingText = false
+    }
+  }
+
+  function parseImportFile(content: string): ImportDeckPayload[] {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(content)
+    } catch {
+      return []
+    }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as any).decks)) return []
+
+    const decks: ImportDeckPayload[] = []
+    for (const d of (parsed as any).decks) {
+      if (!d || typeof d !== 'object' || !d.name) continue
+      const versions = Array.isArray(d.versions) ? d.versions : []
+      const cleanVersions = versions
+        .filter((v: any) => v && typeof v.version_number === 'number')
+        .map((v: any) => ({
+          version_number: v.version_number,
+          note: v.note ?? null,
+          created_at: v.created_at ?? null,
+          cards: (Array.isArray(v.cards) ? v.cards : [])
+            .filter((c: any) => c && (c.card_id || c.print_code) && c.quantity > 0 && c.zone)
+            .map((c: any) => ({
+              card_id: c.card_id,
+              print_code: c.print_code ?? null,
+              quantity: c.quantity,
+              zone: c.zone,
+            })),
+        }))
+
+      const cleanMatches = (Array.isArray(d.matches) ? d.matches : [])
+        .filter((m: any) => m && Array.isArray(m.games) && m.games.length > 0)
+        .map((m: any) => ({
+          group_name: m.group_name ?? null,
+          opponent_name: m.opponent_name ?? null,
+          opponent_deck: m.opponent_deck ?? null,
+          opp_legend_id: m.opp_legend_id ?? null,
+          opp_legend_print_id: m.opp_legend_print_id ?? null,
+          opp_legend_name: m.opp_legend_name ?? null,
+          opp_legend_image: m.opp_legend_image ?? null,
+          deck_version_id: m.deck_version_id ?? null,
+          deck_version_number:
+            typeof m.deck_version_number === 'number' ? m.deck_version_number : null,
+          best_of: typeof m.best_of === 'number' ? m.best_of : null,
+          note: m.note ?? null,
+          played_at: m.played_at ?? null,
+          created_at: m.created_at ?? null,
+          updated_at: m.updated_at ?? null,
+          games: m.games
+            .filter((g: any) => g && typeof g.game_number === 'number')
+            .map((g: any) => ({
+              game_number: g.game_number,
+              my_score: g.my_score ?? null,
+              opp_score: g.opp_score ?? null,
+              win_type: g.win_type ?? 'normal',
+              is_win: !!g.is_win,
+              is_first:
+                g.is_first === true || g.is_first === 1
+                  ? true
+                  : g.is_first === false || g.is_first === 0
+                    ? false
+                    : null,
+              win_reason: g.win_reason ?? null,
+              log: g.log ?? null,
+            })),
+        }))
+
+      decks.push({
+        name: d.name,
+        description: d.description ?? null,
+        format: d.format ?? null,
+        cover_image: d.cover_image ?? null,
+        tags: Array.isArray(d.tags) ? d.tags.filter((t: any) => typeof t === 'string') : [],
+        is_favorite: !!d.is_favorite,
+        created_at: d.created_at ?? null,
+        updated_at: d.updated_at ?? null,
+        versions: cleanVersions,
+        matches: cleanMatches,
+      })
+    }
+    return decks
+  }
+
+  function toggleJsonDeck(id: string) {
+    selectedJsonDeckIds = selectedJsonDeckIds.includes(id)
+      ? selectedJsonDeckIds.filter((d) => d !== id)
+      : [...selectedJsonDeckIds, id]
+  }
+
+  function toggleAllJsonDecks() {
+    selectedJsonDeckIds =
+      selectedJsonDeckIds.length === jsonDeckList.length ? [] : jsonDeckList.map((d) => d.id)
+  }
+
+  async function openJsonFile() {
+    const src = await open({
+      title: '选择导出的 JSON 文件',
+      multiple: false,
+      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+    })
+    if (!src) return
+
+    let content: string
+    try {
+      content = await readTextFile(String(src))
+    } catch (e) {
+      await message(e instanceof Error ? e.message : '读取文件失败', {
+        title: '导入',
+        kind: 'error',
+      })
+      return
+    }
+
+    const decks = parseImportFile(content)
+    if (decks.length === 0) {
+      await message('文件格式不正确或没有可导入的卡组，请选择 Rune Archive 导出的 JSON 文件。', {
+        title: '导入',
+        kind: 'error',
+      })
+      return
+    }
+
+    jsonFileName = String(src).split(/[\\/]/).pop() ?? String(src)
+    jsonDeckList = decks.map((d, i) => ({
+      id: String(i),
+      name: d.name,
+      updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : '未知',
+      versionCount: d.versions.length,
+    }))
+    selectedJsonDeckIds = jsonDeckList.map((d) => d.id)
+    pendingJsonDecks = decks
+  }
+
+  async function confirmJsonImport() {
+    if (selectedJsonDeckIds.length === 0) return
+    importingJson = true
+    try {
+      const chosen = pendingJsonDecks.filter((_, i) => selectedJsonDeckIds.includes(String(i)))
+      const { imported, missingCards } = await importDecksFromJson(chosen, {
+        latestOnly: false,
+        filterMissingCards: true,
+      })
+      const missingText = missingCards > 0 ? `（跳过 ${missingCards} 张本地缺失的卡牌）` : ''
+      await message(`已导入 ${imported} 副卡组${missingText}！`, { title: '导入', kind: 'info' })
+      showImportModal = false
+      init()
+    } catch (e) {
+      await message(e instanceof Error ? e.message : '导入失败', { title: '导入', kind: 'error' })
+    } finally {
+      importingJson = false
+    }
+  }
+
   const init = async () => {
     const { decks } = await getDeckList()
     allDecks = decks
@@ -152,6 +461,13 @@
           icon: Plus,
           variant: 'primary',
           onClick: () => goto('/decks/builder'),
+        },
+        {
+          key: 'import-deck',
+          label: '导入卡组',
+          icon: ImportIcon,
+          variant: 'ghost',
+          onClick: () => openImportDeckModal(),
         },
       ],
     })
@@ -375,6 +691,226 @@
     </div>
   {/if}
 </div>
+
+<CommonModal
+  open={showImportModal}
+  title="导入卡组"
+  subtitle="通过卡组代码或 Rune Archive JSON 文件导入"
+  closable={!importingCode && !importingJson}
+  onclose={() => (showImportModal = false)}
+>
+  <div class="import-method-list">
+    <button
+      type="button"
+      class="import-method-option"
+      class:selected={importTab === 'code'}
+      onclick={() => (importTab = 'code')}
+    >
+      <span class="import-method-label">卡组代码</span>
+      <span class="import-method-desc">粘贴 Piltover / Riftbound 卡组代码，支持含备牌与选定英雄</span>
+    </button>
+    <button
+      type="button"
+      class="import-method-option"
+      class:selected={importTab === 'json'}
+      onclick={() => (importTab = 'json')}
+    >
+      <span class="import-method-label">JSON 文件</span>
+      <span class="import-method-desc">从 Rune Archive 导出的 JSON 文件导入副卡组</span>
+    </button>
+    <button
+      type="button"
+      class="import-method-option"
+      class:selected={importTab === 'text'}
+      onclick={() => (importTab = 'text')}
+    >
+      <span class="import-method-label">国际官方文本</span>
+      <span class="import-method-desc">粘贴官方英文文本格式卡组清单（Legend/Champion/Main Deck/Battlefields/Rune Pool/Sideboard）</span>
+    </button>
+  </div>
+
+  {#if importTab === 'code'}
+    <div class="import-code-block">
+      <div class="import-textarea-row">
+        <textarea
+          class="import-code-input"
+          placeholder="粘贴 Piltover / Riftbound 卡组代码，例如 CIAAAAAAAAAQCAAAA...（支持备牌与选定英雄）"
+          rows={5}
+          bind:value={importCode}
+          oninput={validateImportCode}
+          disabled={importingCode}></textarea>
+        <button
+          type="button"
+          class="button button-ghost paste-btn"
+          onclick={pasteImportCode}
+          disabled={importingCode}
+        >
+          粘贴
+        </button>
+      </div>
+
+      {#if importCode && importCodeValid}
+        <div class="import-hint import-hint-ok">
+          <CircleCheck size={16} />
+          <span>代码有效</span>
+        </div>
+      {:else if importCodeError}
+        <div class="import-hint import-hint-error">
+          <CircleAlert size={16} />
+          <span>{importCodeError}</span>
+        </div>
+      {/if}
+
+      {#if importedResult}
+        <div class="import-preview">
+          <p>解析成功：</p>
+          <ul>
+            <li>主牌堆 {importedResult.deck.mainDeckCards.length} 张</li>
+            <li>符文 {importedResult.deck.runeCards.length} 张</li>
+            <li>战场 {importedResult.deck.battlefieldCards.length} 张</li>
+            <li>备牌 {importedResult.deck.sideboardCards.length} 张</li>
+            {#if importedResult.deck.legendCards.length > 0}
+              <li>传奇 {importedResult.deck.legendCards.length} 张</li>
+            {/if}
+            {#if importedResult.deck.championCards.length > 0}
+              <li>选定英雄 {importedResult.deck.championCards.length} 张</li>
+            {/if}
+          </ul>
+          {#if importedResult.missingCount > 0}
+            <p class="import-warn">
+              本地缺少 {importedResult.missingCount} 张卡牌（{importedResult.missingCodes
+                .slice(0, 5)
+                .join(', ')}{importedResult.missingCount > 5
+                ? '...'
+                : ''}），导入后请到编辑器手动补充。
+            </p>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else if importTab === 'json'}
+    <div class="import-json-block">
+      {#if jsonDeckList.length === 0}
+        <div class="import-json-empty">
+          <FileUp size={40} />
+          <p>选择 Rune Archive 导出的 JSON 文件，预览后选择要导入的卡组。</p>
+          <button class="button button-ghost" onclick={openJsonFile} disabled={importingJson}>
+            选择 JSON 文件
+          </button>
+        </div>
+      {:else}
+        <div class="import-json-file">
+          <span class="import-json-name">{jsonFileName}</span>
+          <button class="button button-ghost" onclick={openJsonFile} disabled={importingJson}>
+            重新选择
+          </button>
+        </div>
+        <label class="import-select-all">
+          <input
+            type="checkbox"
+            checked={selectedJsonDeckIds.length === jsonDeckList.length && jsonDeckList.length > 0}
+            onchange={toggleAllJsonDecks}
+            disabled={importingJson}
+          />
+          <span>全选（{jsonDeckList.length} 副卡组）</span>
+        </label>
+        <div class="import-json-list">
+          {#each jsonDeckList as deck}
+            <label class="import-json-row">
+              <input
+                type="checkbox"
+                checked={selectedJsonDeckIds.includes(deck.id)}
+                onchange={() => toggleJsonDeck(deck.id)}
+                disabled={importingJson}
+              />
+              <span class="import-json-info">
+                <span class="import-json-row-name">{deck.name}</span>
+                <span class="import-json-row-meta">
+                  {deck.versionCount} 个版本 · {deck.updatedAt}
+                </span>
+              </span>
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="import-text-block">
+      <div class="import-textarea-row">
+        <textarea
+          class="import-code-input"
+          placeholder={'粘贴国际官方文本格式的卡组清单，例如：\nLegend: 1 Master Yi, Wuju Bladesman\nChampion: 1 Master Yi, Tempered\nMain Deck: 3 Charm 3 Defy 3 Discipline...\nBattlefields: 1 The Arena\'s Greatest...\nRune Pool: 7 Body Rune 5 Calm Rune\nSideboard: 3 Disarming Rake 2 Alpha Strike...'}
+          rows={9}
+          bind:value={importText}
+          oninput={validateImportText}
+          disabled={importingText}
+        ></textarea>
+      </div>
+
+      {#if importText && importTextValid && !importTextError}
+        <div class="import-hint import-hint-ok">
+          <CircleCheck size={16} />
+          <span>文本格式有效</span>
+        </div>
+      {:else if importTextError}
+        <div class="import-hint import-hint-error">
+          <CircleAlert size={16} />
+          <span>{importTextError}</span>
+        </div>
+      {/if}
+
+      {#if importedTextResult}
+        <div class="import-preview">
+          <p>解析成功：</p>
+          <ul>
+            <li>传奇 {importedTextResult.deck.legendCards.length} 张</li>
+            <li>选定英雄 {importedTextResult.deck.championCards.length} 张</li>
+            <li>主牌堆 {importedTextResult.deck.mainDeckCards.length} 张</li>
+            <li>战场 {importedTextResult.deck.battlefieldCards.length} 张</li>
+            <li>符文 {importedTextResult.deck.runeCards.length} 张</li>
+            <li>备牌 {importedTextResult.deck.sideboardCards.length} 张</li>
+          </ul>
+          {#if importedTextResult.missingCount > 0}
+            <p class="import-warn">
+              本地匹配不到 {importedTextResult.missingCount} 张（{importedTextResult.missingCodes
+                .slice(0, 5)
+                .join(', ')}{importedTextResult.missingCount > 5 ? '...' : ''}），导入后请到编辑器手动补充。
+            </p>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#snippet footer()}
+    <button class="button button-ghost" onclick={() => (showImportModal = false)}>取消</button>
+    {#if importTab === 'code'}
+      <button
+        class="button button-primary"
+        disabled={!importCodeValid || importingCode}
+        onclick={confirmCodeImport}
+      >
+        {importingCode ? '解析中...' : '导入到编辑器'}
+      </button>
+    {:else if importTab === 'text'}
+      <button
+        class="button button-primary"
+        disabled={!importTextValid || importingText}
+        onclick={confirmTextImport}
+      >
+        {importingText ? '解析中...' : '导入到编辑器'}
+      </button>
+    {:else if jsonDeckList.length > 0}
+      <button
+        class="button button-primary"
+        disabled={importingJson || selectedJsonDeckIds.length === 0}
+        onclick={confirmJsonImport}
+      >
+        {importingJson ? '导入中...' : `导入 ${selectedJsonDeckIds.length} 副卡组`}
+      </button>
+    {/if}
+  {/snippet}
+</CommonModal>
 
 <style>
   .decks-page {
@@ -848,5 +1384,225 @@
     font-size: var(--text-sm);
     color: var(--text-tertiary);
     align-self: center;
+  }
+
+  .import-method-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .import-method-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    padding: 12px 14px;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .import-method-option:hover {
+    border-color: var(--accent-color);
+  }
+
+  .import-method-option.selected {
+    border-color: var(--accent-color);
+    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 20%, transparent);
+  }
+
+  .import-method-label {
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .import-method-desc {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .import-code-block,
+  .import-text-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .import-textarea-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .import-code-input {
+    flex: 1;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    line-height: 1.5;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    resize: vertical;
+    word-break: break-all;
+  }
+
+  .import-code-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-color) 15%, transparent);
+  }
+
+  .paste-btn {
+    flex-shrink: 0;
+  }
+
+  .import-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-sm);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+  }
+
+  .import-hint-ok {
+    color: #0f7b6c;
+    background: color-mix(in srgb, #0f7b6c 10%, transparent);
+  }
+
+  .import-hint-error {
+    color: #e03e3e;
+    background: color-mix(in srgb, #e03e3e 10%, transparent);
+  }
+
+  .import-preview {
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .import-preview p {
+    margin: 0 0 4px 0;
+  }
+
+  .import-preview ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+  }
+
+  .import-warn {
+    color: #b45309;
+  }
+
+  .import-json-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .import-json-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .import-json-empty p {
+    margin: 0;
+    max-width: 320px;
+  }
+
+  .import-json-empty :global(svg) {
+    color: var(--text-tertiary);
+  }
+
+  .import-json-file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+  }
+
+  .import-json-name {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .import-select-all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .import-json-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .import-json-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .import-json-row:hover {
+    background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  .import-json-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .import-json-row-name {
+    font-size: var(--text-base);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .import-json-row-meta {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
   }
 </style>

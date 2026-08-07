@@ -2,9 +2,10 @@
  * 卡牌基础数据仓储层
  */
 
-import type { CardBase, SqliteCardBase } from '../types'
+import type { CardBase, CardPrint, SqliteCardBase } from '../types'
 import { toSqliteModel, mapRowToCard } from '../helper'
 import { getDatabase } from './database'
+import { getPrintsByCardId } from './print-repository'
 import { TABLES } from '../config/constants'
 
 /**
@@ -89,6 +90,138 @@ export async function getCardByPrintId(printId: string): Promise<CardBase | null
 
   if (results.length === 0) return null
   return mapRowToCard(results[0])
+}
+
+/**
+ * 根据印刷编号（card_no_extend，如 "OGN-007"）反查卡牌，并带上全部卡图 + 匹配的卡图 id。
+ * 仅取 SC、非 promo/自建打印；找不到返回 null。
+ * 供 Deck Code 导入等按编号定位卡牌的场景使用。
+ */
+export async function getCardAndPrintByPrintCode(
+  printCode: string
+): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT cb.*, cp.id AS __print_id
+     FROM ${TABLES.CARDS_BASE} cb
+     JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id
+     WHERE upper(cp.card_no_extend) = upper($1)
+       AND cp.language = 'SC'
+       AND COALESCE(cp.is_promo, 0) != 1
+       AND COALESCE(cp.is_custom, 0) != 1
+     ORDER BY cp.print_order ASC
+     LIMIT 1`,
+    [printCode]
+  )
+  if (results.length === 0) return null
+
+  const card = mapRowToCard(results[0])
+  const prints = await getPrintsByCardId(card.id)
+  return { ...card, card_prints: prints, selectedPrints: results[0].__print_id ?? undefined }
+}
+
+/**
+ * 根据英文卡牌名称（card_name_en，可选 subtitle）反查卡牌，并带上全部卡图 + 匹配的卡图 id。
+ * 仅取 SC、非 promo/自建打印；找不到返回 null。
+ * 匹配尽力宽容：先精确匹配 名称+副标题，再退化为只匹配名称。
+ * 供「国际官方文本」文本导入等按英文名定位卡牌的场景使用。
+ */
+export async function getCardAndPrintByEnglishName(
+  displayName: string,
+  opts?: { legendOnly?: boolean }
+): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+  const trimmed = displayName.trim()
+  if (!trimmed) return null
+
+  const [name, subtitle] = splitNameCombo(trimmed)
+  // 传奇区：官方文本为「英雄名, 卡名」，匹配卡名（去除 "- Starter" 等 "- 后缀"）
+  if (opts?.legendOnly) {
+    return resolveLegendByName(subtitle ?? name)
+  }
+  const db = await getDatabase()
+
+  const baseSelect = `
+    SELECT DISTINCT cb.*, cp.id AS __print_id
+    FROM ${TABLES.CARDS_BASE} cb
+    JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id
+    WHERE 
+      cp.language = 'SC'
+      AND COALESCE(cp.is_promo, 0) != 1
+      AND COALESCE(cp.is_custom, 0) != 1
+      AND lower(trim(cb.card_name_en)) = lower(trim($1))
+  `
+  const orderBy = ` ORDER BY cp.card_no_extend ASC LIMIT 1`
+
+  let rows: any[] = []
+  if (subtitle) {
+    rows = await db.select<any[]>(
+      `${baseSelect} AND lower(trim(cb.sub_title_en)) = lower(trim($2))${orderBy}`,
+      [name, subtitle]
+    )
+  }
+  // 兜底1：仅按名称匹配（副标题不一致时）
+  if (rows.length === 0) {
+    rows = await db.select<any[]>(`${baseSelect}${orderBy}`, [name])
+  }
+  // 兜底2：名称本身已含副标题（DB 整体存为 card_name_en）
+  if (rows.length === 0) {
+    rows = await db.select<any[]>(
+      `SELECT DISTINCT cb.*, cp.id AS __print_id
+       FROM ${TABLES.CARDS_BASE} cb
+       JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id
+       WHERE cp.language = 'SC'
+         AND COALESCE(cp.is_promo, 0) != 1
+         AND COALESCE(cp.is_custom, 0) != 1
+         AND lower(trim(cb.card_name_en)) = lower(trim($1))
+       ${orderBy}`,
+      [trimmed]
+    )
+  }
+  if (rows.length === 0) return null
+
+  const card = mapRowToCard(rows[0])
+  const prints = await getPrintsByCardId(card.id)
+  return { ...card, card_prints: prints, selectedPrints: rows[0].__print_id ?? undefined }
+}
+
+/** 将形如 "Master Yi, Wuju Bladesman" 拆分为 名称 + 可选副标题 */
+function splitNameCombo(displayName: string): [string, string | null] {
+  const match = /^(.*?)\s*[,]\s*(.+)$/.exec(displayName)
+  if (match) {
+    return [match[1].trim(), match[2].trim()]
+  }
+  return [displayName, null]
+}
+
+/**
+ * 按传奇卡名定位传奇卡。卡名可能带 "- Starter" 等 "- 后缀"（如 "Wuju Bladesman - Starter"），
+ * 去除该后缀后做前缀匹配；仅限传奇分类（card_category 含「传奇」）。
+ */
+async function resolveLegendByName(
+  legendName: string
+): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+  const base = legendName.trim().replace(/\s*-\s*.*$/, '')
+  if (!base) return null
+
+  const db = await getDatabase()
+  const rows = await db.select<any[]>(
+    `SELECT DISTINCT cb.*, cp.id AS __print_id
+     FROM ${TABLES.CARDS_BASE} cb
+     JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id
+     WHERE cp.language = 'SC'
+       AND COALESCE(cp.is_promo, 0) != 1
+       AND COALESCE(cp.is_custom, 0) != 1
+       AND cb.card_category LIKE '%传奇%'
+       AND lower(trim(cb.card_name_en)) LIKE lower(trim($1)) || '%'
+     ORDER BY cp.card_no_extend ASC
+     LIMIT 1`,
+    [base]
+  )
+  if (rows.length === 0) return null
+
+  const card = mapRowToCard(rows[0])
+  const prints = await getPrintsByCardId(card.id)
+  return { ...card, card_prints: prints, selectedPrints: rows[0].__print_id ?? undefined }
 }
 
 /**

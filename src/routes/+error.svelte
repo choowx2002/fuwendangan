@@ -281,14 +281,14 @@
                       foilIntensity={card.isFoil ? 0.85 : undefined}
                       size="sm"
                     />
-                    <!-- <div class="card-meta">
+                    <div class="card-meta">
                       <span class="rarity-badge" style={`color: ${card.color};`}>
                         {card.label}
                       </span>
-                      <span class="card-name" title={card.print.card_name_cn ?? ''}>
+                    <!--   <span class="card-name" title={card.print.card_name_cn ?? ''}>
                         {card.print.card_name_cn ?? '未知卡牌'}
-                      </span>
-                    </div> -->
+                      </span>-->
+                    </div> 
                   </div>
                 {/if}
               </div>
@@ -457,11 +457,11 @@
     animation: pop-in 0.4s ease;
   }
 
-  .pack-back {
+  /* .pack-back {
     position: absolute;
     top: -8px;
     left: -8px;
-  }
+  } */
 
   .pack-header {
     display: flex;
@@ -619,13 +619,13 @@
     box-shadow: 0 0 22px var(--hit-color);
   }
 
-  .card-meta {
+  /* .card-meta {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
     max-width: 128px;
-  }
+  } */
 
   .rarity-badge {
     font-size: var(--text-xs);
@@ -636,14 +636,14 @@
     border: 1px solid var(--border-color);
   }
 
-  .card-name {
+  /* .card-name {
     font-size: 11px;
     color: var(--text-secondary);
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
+  } */
 
   @media (prefers-reduced-motion: reduce) {
     .card-back {
@@ -660,9 +660,9 @@
       overflow: scroll;
       max-width: 90vw;
     }
-    .pack-back {
+    /* .pack-back {
       position: static;
       align-self: flex-start;
-    }
+    } */
   }
 </style>
