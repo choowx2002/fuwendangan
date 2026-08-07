@@ -78,7 +78,6 @@ export {
   getDatabase,
   closeDatabase,
   resetDatabaseInstance,
-  getTableState,
   resetDatabase,
 } from './repository/database'
 export {
@@ -129,7 +128,7 @@ export {
   clearFilterOptions,
 } from './repository/filter-repository'
 export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
-export { getTableCounts, getTableSizes } from './repository/stats'
+export { getDbStats } from './repository/stats'
 export { clearCardData } from './repository/maintenance'
 export {
   upsertLangQty,

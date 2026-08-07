@@ -2,6 +2,7 @@
 <script lang="ts">
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
+  import DownloadProgressBar from '../ui/DownloadProgressBar.svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
   import { page } from '$app/state'
   let { children } = $props()
@@ -50,6 +51,8 @@
   {#if isSidebarOpen && window.innerWidth < 767.99}
     <div class="overlay" onclick={() => (isSidebarOpen = false)} role="presentation"></div>
   {/if}
+
+  <DownloadProgressBar />
 </div>
 
 <style>

@@ -8,7 +8,13 @@ import {
 } from '$lib/services/image-cache-service'
 import { appLocalDataDir, join } from '@tauri-apps/api/path'
 import { message } from '@tauri-apps/plugin-dialog'
-import { setProgressStatus, uiState, hideLoading } from '$lib/stores/ui-store.svelte'
+import {
+  beginDownload,
+  finishDownload,
+  updateDownloadProgress,
+  downloadState,
+} from '$lib/stores/ui-store.svelte'
+import { stat, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { isMobile } from '$lib/utils/os'
 import {
   isPermissionGranted,
@@ -85,7 +91,8 @@ const finishNotification = (title: string, body: string) => {
   })
 }
 
-export const isCardImageDownloading = () => uiState.status === 'downloading'
+export const isCardImageDownloading = () =>
+  downloadState.active && downloadState.status === 'downloading'
 
 export async function prepareCardImageDownload(): Promise<{
   missing: any[]
@@ -99,21 +106,15 @@ export async function prepareCardImageDownload(): Promise<{
 
 export function cancelCardImageDownload() {
   cancelRequested = true
-  setProgressStatus(
-    'downloading',
-    '正在取消下载',
-    '当前图片下载完成后将停止',
-    uiState.progress ?? 0
-  )
 }
 
 export async function startCardImageDownload(missing: any[]) {
-  if (uiState.status === 'downloading' || missing.length === 0) {
+  if (downloadState.active || missing.length === 0) {
     return
   }
 
   cancelRequested = false
-  setProgressStatus('downloading', '正在下载卡牌', `准备下载 ${missing.length} 张卡图`, 0)
+  beginDownload(missing.length)
 
   const onMobile = await isMobile()
 
@@ -136,10 +137,28 @@ export async function startCardImageDownload(missing: any[]) {
 async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
   let completed = 0
   let failed = 0
+  let bytesDownloaded = 0
+
+  // 速度采样窗口（最近 10 秒内的字节累计）
+  const samples: { bytes: number; t: number }[] = []
+
+  const recordSpeedSample = (bytes: number, now: number): number => {
+    samples.push({ bytes, t: now })
+    while (samples.length > 0 && now - samples[0].t > 10000) {
+      samples.shift()
+    }
+    if (samples.length >= 2) {
+      const deltaBytes = bytes - samples[0].bytes
+      const deltaTime = (now - samples[0].t) / 1000
+      if (deltaTime > 0) return deltaBytes / deltaTime
+    }
+    return 0
+  }
 
   try {
-    for (const fileData of missing) {
-      if (cancelRequested) {
+    const cacheDir = await join(await appLocalDataDir(), CARD_IMAGE)
+
+    for (const fileData of missing) {      if (cancelRequested) {
         break
       }
 
@@ -151,25 +170,42 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
         continue
       }
 
-      const result = await loadImageFromAppFolder(
-        url,
-        printCacheName(fileData)
-      )
+      const cacheName = printCacheName(fileData)
+      const result = await loadImageFromAppFolder(url, cacheName)
 
-      if (!result) {
+      if (result) {
+        completed++
+        try {
+          const filePath = await join(cacheDir, cacheName)
+          const info = await stat(filePath, { baseDir: BaseDirectory.AppLocalData })
+          bytesDownloaded += info.size ?? 0
+        } catch {
+          // 读不到文件大小不影响下载进度
+        }
+      } else {
         failed++
+        completed++
       }
 
-      completed++
+      const now = Date.now()
+      const speedBps = recordSpeedSample(bytesDownloaded, now)
 
-      const progress = (completed / missing.length) * 100
+      // 剩余时间估算：基于已下载字节数估算剩余总量
+      let etaSeconds = 0
+      if (completed > 0 && speedBps > 0) {
+        const avgBytes = bytesDownloaded / completed
+        const estimatedTotal = avgBytes * missing.length
+        const remainingBytes = Math.max(0, estimatedTotal - bytesDownloaded)
+        etaSeconds = remainingBytes / speedBps
+      }
 
-      setProgressStatus(
-        'downloading',
-        '正在下载卡牌',
-        `${completed} / ${missing.length}${failed ? ` · ${failed} 张失败` : ''}`,
-        progress
-      )
+      updateDownloadProgress({
+        completed,
+        failed,
+        bytesDownloaded,
+        speedBps,
+        etaSeconds,
+      })
 
       // 在移动设备上更新通知进度（每 10% 更新一次）
       if (
@@ -182,6 +218,7 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
     }
 
     if (cancelRequested) {
+      finishDownload('cancelled')
       if (onMobile && permissionGranted) {
         finishNotification('卡牌下载已取消', `已下载 ${completed} 张，失败 ${failed} 张`)
       }
@@ -189,18 +226,17 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
     }
 
     // 下载完成
-    if (onMobile && permissionGranted) {
-      finishNotification('卡牌资源下载完成', `成功 ${completed - failed} 张，失败 ${failed} 张`)
-    }
+    finishDownload(failed > 0 ? 'partial' : 'success')
 
-    if (failed > 0) {
-      await message(`下载完成，但有 ${failed} 张卡图下载失败。`, {
-        title: '卡牌资源下载',
-        kind: 'warning',
-      })
+    if (onMobile && permissionGranted) {
+      finishNotification(
+        '卡牌资源下载完成',
+        `成功 ${completed - failed} 张，失败 ${failed} 张`
+      )
     }
   } catch (error) {
     console.error('[CardImageDownload]', error)
+    finishDownload('error')
 
     if (onMobile && permissionGranted) {
       finishNotification(
@@ -213,7 +249,5 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
       title: '下载卡牌出现问题',
       kind: 'error',
     })
-  } finally {
-    hideLoading()
   }
 }

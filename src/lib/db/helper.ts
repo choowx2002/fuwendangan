@@ -296,10 +296,10 @@ export function toSqliteDeckCard(deckCard: DeckCard): DeckCard {
   }
 }
 
-export const formatBytes = (bytes: any, fraction = 2) => {
+export const formatBytes = (bytes: number, fraction = 2) => {
   const units = ['B', 'KB', 'MB', 'GB']
   let i = 0
-  let size = bytes
+  let size = Number.isFinite(bytes) && bytes > 0 ? bytes : 0
 
   while (size >= 1024 && i < units.length - 1) {
     size /= 1024

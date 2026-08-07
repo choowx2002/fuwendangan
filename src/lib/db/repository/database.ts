@@ -4,9 +4,8 @@
  */
 
 import Database from '@tauri-apps/plugin-sql'
-import { DB_NAME, TABLE_LIST } from '../config/constants'
+import { DB_NAME } from '../config/constants'
 import { TABLE_DEFINITIONS } from '../config/schema'
-import type { TableStateRow } from '../types'
 
 let dbInstance: Database | null = null
 
@@ -65,27 +64,6 @@ export async function closeDatabase(): Promise<void> {
  */
 export function resetDatabaseInstance(): void {
   dbInstance = null
-}
-
-export const getTableState = async (): Promise<TableStateRow[] | null> => {
-  const db = await getDatabase()
-
-  const placeholders = TABLE_LIST.map(() => '?').join(', ')
-
-  const sql = `
-    SELECT
-      name,
-      SUM(pgsize) AS bytes
-    FROM dbstat
-    WHERE name IN (${placeholders})
-    GROUP BY name;
-  `
-
-  const rows = await db.select<TableStateRow[]>(sql, [...TABLE_LIST])
-
-  if (!rows || rows.length === 0) return null
-
-  return rows
 }
 
 export async function resetDatabase() {

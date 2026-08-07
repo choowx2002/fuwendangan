@@ -1,11 +1,10 @@
 <script lang="ts">
   import {
-    getTableState,
     formatBytes,
+    DB_NAME,
     resetDatabase,
     initializeDatabase,
-    getTableCounts,
-    getTableSizes,
+    getDbStats,
     getVersion as getDbVersion,
     getDecks,
     deleteAllDecks,
@@ -28,6 +27,7 @@
     PRESET_LANGUAGE_CODES,
     type CustomLanguage,
     type ImportDeckPayload,
+    type ImportMatchPayload,
   } from '$lib/db'
   import { showForeignCardArt as showFCA, showTTSFeatures } from '$lib/stores/settings'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
@@ -40,7 +40,7 @@
   import { appConfigDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { copyFile, writeTextFile, readTextFile } from '$lib/services/db-file-service'
   import { onMount } from 'svelte'
-  import { setLoadStatus, setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setLoadStatus, setTopbar, downloadState } from '$lib/stores/ui-store.svelte'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion as getAppVersion } from '@tauri-apps/api/app'
@@ -49,18 +49,23 @@
   import { beforeNavigate, goto } from '$app/navigation'
   import { Download, Upload, FileText, FileUp } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
 
   // --- 状态管理 ---
   let appVersion = $state('1.0.0')
-  let cardDataUpdateStatus = $state<'idle' | 'checking' | 'available' | 'upToDate' | 'error'>(
-    'idle'
-  )
+  let cardDataUpdateStatus = $state<'idle' | 'checking' | 'upToDate' | 'error'>('idle')
+  let busyText = $state('')
 
   let dbSize = $state<string>('计算中...')
   let dbPath = $state<string>('加载中...')
   let dbFilePath = $state<string>('')
   let imagePath = $state<string>('加载中...')
   let imageCacheSize = $state<string>('计算中...')
+  let imageCoverage = $state<{
+    existingCount: number
+    totalCount: number
+    missingCount: number
+  } | null>(null)
   let inMobile = $state<boolean>(false)
   let onloadInfo = $state<boolean>(false)
 
@@ -99,51 +104,60 @@
   const HELP_DOC_URL =
     'https://wjp00vpskyvs.jp.larksuite.com/wiki/MeISwlCQeiiOK6kMxrujfVC2pcf?from=from_copylink'
 
-  const TABLE_LABELS: Record<string, string> = {
-    cards_base: '卡牌基础数据',
-    card_prints: '卡图数据',
-    decks: '卡组',
-    deck_versions: '卡组版本',
-    deck_cards: '卡组卡牌',
-    rules: '规则',
-    icons: '图标',
-    filter_options: '筛选设置',
-    version: '同步版本',
-  }
-
   // --- 生命周期 ---
   onMount(async () => {
     inMobile = await isMobile()
     appVersion = await getAppVersion()
     await loadDbInfo()
+    await loadImageCoverage()
     await loadCustomLangs()
   })
 
+  // 下载结束后刷新缓存覆盖统计
+  $effect(() => {
+    if (downloadState.active && downloadState.status !== 'downloading') {
+      loadImageCoverage()
+    }
+  })
+
+  async function loadImageCoverage() {
+    try {
+      const { missing, existingCount, totalCount } = await prepareCardImageDownload()
+      imageCoverage = { existingCount, totalCount, missingCount: missing.length }
+    } catch (error) {
+      console.error('[Settings] 读取卡图覆盖统计失败:', error)
+    }
+  }
+
   // --- 逻辑函数 ---
+  async function withBusy<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    busyText = label
+    try {
+      return await fn()
+    } finally {
+      busyText = ''
+    }
+  }
+
   async function loadDbInfo() {
     onloadInfo = true
     try {
-      const [db, base, configDir, counts, sizes, dbVersion] = await Promise.all([
-        getTableState(),
+      const [stats, base, configDir, dbVersion] = await Promise.all([
+        getDbStats(),
         appLocalDataDir(),
         appConfigDir(),
-        getTableCounts(),
-        getTableSizes(),
         getDbVersion(),
       ])
 
-      // 1. 计算 DB size
-      let total = 0
-      db?.forEach((d: any) => {
-        total += d.bytes
-      })
-      dbSize = formatBytes(total)
+      // 1. 计算 DB size（文件真实大小）
+      dbSize = formatBytes(stats.totalBytes)
 
       // 2. 图片路径
       imagePath = await join(base, CARD_IMAGE)
 
-      // 3. db 路径（实际存储于 appConfigDir）
-      dbFilePath = await join(configDir, 'tcg_cards.db')
+      // 3. db 路径（实际存储于 appConfigDir，文件名由 DB_NAME 派生）
+      const dbFileName = DB_NAME.replace(/^sqlite:/, '')
+      dbFilePath = await join(configDir, dbFileName)
       dbPath = dbFilePath
 
       // 4. 最后同步时间
@@ -152,36 +166,24 @@
         : '从未同步'
 
       // 5. 各表统计
-      deckCount = counts.decks
-      const sizeMap = new Map(sizes.map((s) => [s.name, s.bytes]))
-      const countMap: Record<string, number> = {
-        cards_base: counts.cards,
-        card_prints: counts.prints,
-        decks: counts.decks,
-        deck_versions: counts.deckVersions,
-        deck_cards: counts.deckCards,
-        rules: counts.rules,
-        icons: counts.icons,
+      const rows = stats.tables.map((t) => ({
+        label: t.label,
+        count: t.count,
+        size: formatBytes(t.bytes),
+      }))
+      const tableBytes = stats.tables.reduce((sum, t) => sum + t.bytes, 0)
+      const residual = stats.totalBytes - tableBytes
+      if (residual > 0) {
+        rows.push({
+          label: '其他（空闲/系统页）',
+          count: 0,
+          size: formatBytes(residual),
+        })
       }
-      statRows = Object.entries(TABLE_LABELS)
-        .filter(([name]) => name !== 'version' && name !== 'filter_options')
-        .map(([name, label]) => ({
-          label,
-          count: countMap[name] ?? 0,
-          size: formatBytes(sizeMap.get(name) ?? 0),
-        }))
-      statRows.push({
-        label: '筛选设置',
-        count: counts.filterExists ? 1 : 0,
-        size: formatBytes(sizeMap.get('filter_options') ?? 0),
-      })
-      statRows.push({
-        label: '同步版本',
-        count: dbVersion ? 1 : 0,
-        size: formatBytes(sizeMap.get('version') ?? 0),
-      })
+      statRows = rows
+      deckCount = stats.tables.find((t) => t.name === 'decks')?.count ?? 0
 
-      // 7. 卡图缓存大小
+      // 6. 卡图缓存大小
       const imageCacheSizeByte = await getImageDirSize()
       imageCacheSize = formatBytes(imageCacheSizeByte)
     } catch (e) {
@@ -189,7 +191,7 @@
       imageCacheSize = '获取失败'
       dbPath = '获取失败'
       lastSyncText = '获取失败'
-      console.log('[初始化失败]', e)
+      console.error('[初始化失败]', e)
     } finally {
       onloadInfo = false
     }
@@ -199,8 +201,6 @@
     switch (status) {
       case 'checking':
         return '正在检查更新...'
-      case 'available':
-        return '发现新版本可用'
       case 'upToDate':
         return '卡牌数据已是最新'
       case 'error':
@@ -226,7 +226,7 @@
 
   async function handleResetDb() {
     const accpected = await ask(
-      '确定要重置数据库吗？\n此操作会删除您的卡组数据，并重新初始化数据库连接。',
+      '确定要重置数据库吗？\n此操作会删除全部本地数据（卡组、卡牌、规则、收藏等）并重新初始化。',
       {
         title: '重置数据库',
         kind: 'warning',
@@ -235,8 +235,10 @@
       }
     )
     if (accpected) {
-      await resetDatabase()
-      await loadDbInfo()
+      await withBusy('正在重置数据库...', async () => {
+        await resetDatabase()
+        await loadDbInfo()
+      })
       message('数据库已成功重置！')
     }
   }
@@ -253,15 +255,16 @@
       cancelLabel: '取消',
     })
     if (accpected) {
-      clearLocalCache()
-        .then(async () => {
+      try {
+        await withBusy('正在清空卡图缓存...', async () => {
+          await clearLocalCache()
           const imageCacheSizeByte = await getImageDirSize()
           imageCacheSize = formatBytes(imageCacheSizeByte)
-          message('卡图缓存已清除')
         })
-        .catch((e) => {
-          setLoadStatus('error', '重置缓存失败', e instanceof Error ? e.message : '未知错误')
-        })
+        await message('卡图缓存已清除')
+      } catch (e) {
+        setLoadStatus('error', '重置缓存失败', e instanceof Error ? e.message : '未知错误')
+      }
     }
   }
 
@@ -318,15 +321,19 @@
     })
     if (!dest) return
 
-    await closeDatabase()
     try {
-      await copyFile(dbFilePath, dest)
+      await withBusy('正在备份数据库...', async () => {
+        await closeDatabase()
+        try {
+          await copyFile(dbFilePath, dest)
+        } finally {
+          await getDatabase()
+          await loadDbInfo()
+        }
+      })
       await message('数据库备份成功！', { title: '备份', kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : '备份失败', { title: '备份', kind: 'error' })
-    } finally {
-      await getDatabase()
-      await loadDbInfo()
     }
   }
 
@@ -351,36 +358,44 @@
     )
     if (!confirmed) return
 
-    await closeDatabase()
     try {
-      await copyFile(String(src), dbFilePath)
+      await withBusy('正在恢复数据库...', async () => {
+        await closeDatabase()
+        try {
+          await copyFile(String(src), dbFilePath)
+        } finally {
+          await getDatabase()
+          await loadDbInfo()
+        }
+      })
       await message('数据库恢复成功！', { title: '恢复', kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : '恢复失败', { title: '恢复', kind: 'error' })
-    } finally {
-      await getDatabase()
-      await loadDbInfo()
     }
   }
 
+  function toggleSelection(list: string[], id: string, setter: (next: string[]) => void) {
+    setter(list.includes(id) ? list.filter((d) => d !== id) : [...list, id])
+  }
+
+  function toggleAll(list: string[], allIds: string[], setter: (next: string[]) => void) {
+    setter(list.length === allIds.length ? [] : [...allIds])
+  }
+
   function toggleDeck(id: string) {
-    selectedDeckIds = selectedDeckIds.includes(id)
-      ? selectedDeckIds.filter((d) => d !== id)
-      : [...selectedDeckIds, id]
+    toggleSelection(selectedDeckIds, id, (next) => (selectedDeckIds = next))
   }
 
   function toggleAllDecks() {
-    selectedDeckIds =
-      selectedDeckIds.length === exportDeckList.length ? [] : exportDeckList.map((d) => d.id)
+    toggleAll(selectedDeckIds, exportDeckList.map((d) => d.id), (next) => (selectedDeckIds = next))
   }
 
   async function openExportModal() {
     const decks = await getDecks()
-    const versionCounts = new Map<string, number>()
-    for (const deck of decks) {
-      const versions = await getDeckVersions(deck.id)
-      versionCounts.set(deck.id, versions.length)
-    }
+    const counts = await Promise.all(
+      decks.map(async (d) => [d.id, (await getDeckVersions(d.id)).length] as const)
+    )
+    const versionCounts = new Map<string, number>(counts)
     exportDeckList = decks.map((d) => ({
       id: d.id,
       name: d.name,
@@ -413,67 +428,78 @@
         decks: [] as unknown[],
       }
 
-      const allDecks = await getDecks()
-      for (const deck of allDecks) {
-        if (!selectedDeckIds.includes(deck.id)) continue
+      await withBusy('正在导出卡组...', async () => {
+        const allDecks = await getDecks()
+        const jobs = allDecks
+          .filter((deck) => selectedDeckIds.includes(deck.id))
+          .map(async (deck) => {
+            const [versions, versionCards, matches] = await Promise.all([
+              getDeckVersions(deck.id),
+              getDeckVersionCards(deck.id),
+              getMatchesByDeck(deck.id),
+            ])
+            const cardsByVersion = new Map<string, typeof versionCards>()
+            for (const card of versionCards) {
+              const list = cardsByVersion.get(card.deck_version_id) ?? []
+              list.push(card)
+              cardsByVersion.set(card.deck_version_id, list)
+            }
 
-        const versions = await getDeckVersions(deck.id)
-        const versionCards = await getDeckVersionCards(deck.id)
-        const cardsByVersion = new Map<string, typeof versionCards>()
-        for (const card of versionCards) {
-          const list = cardsByVersion.get(card.deck_version_id) ?? []
-          list.push(card)
-          cardsByVersion.set(card.deck_version_id, list)
-        }
+            let picked = versions.map((v) => ({
+              ...v,
+              cards: cardsByVersion.get(v.id) ?? [],
+            }))
+            if (exportMode === 'latest' && versions.length > 0) {
+              const latest = versions[0]
+              picked = [
+                {
+                  ...latest,
+                  cards: cardsByVersion.get(latest.id) ?? [],
+                },
+              ]
+            }
 
-        let picked = versions.map((v) => ({
-          ...v,
-          cards: cardsByVersion.get(v.id) ?? [],
-        }))
-        if (exportMode === 'latest' && versions.length > 0) {
-          const latest = versions[0]
-          picked = [
-            {
-              ...latest,
-              cards: cardsByVersion.get(latest.id) ?? [],
-            },
-          ]
-        }
-
-        const matches = await getMatchesByDeck(deck.id)
-        data.decks.push({
-          ...deck,
-          versions: picked,
-          matches: matches.map((m) => ({
-            group_name: m.group_name,
-            opponent_name: m.opponent_name,
-            opponent_deck: m.opponent_deck,
-            opp_legend_id: m.opp_legend_id,
-            opp_legend_print_id: m.opp_legend_print_id,
-            opp_legend_name: m.opp_legend_name,
-            opp_legend_image: m.opp_legend_image,
-            deck_version_id: m.deck_version_id,
-            deck_version_number: m.deck_version_number,
-            best_of: m.best_of,
-            note: m.note,
-            played_at: m.played_at,
-            created_at: m.created_at,
-            updated_at: m.updated_at,
-            games: m.games.map((g) => ({
-              game_number: g.game_number,
-              my_score: g.my_score,
-              opp_score: g.opp_score,
-              win_type: g.win_type,
-              is_win: g.is_win,
-              is_first: g.is_first,
-              win_reason: g.win_reason,
-              log: g.log,
+            return {
+              deck,
+              versions: picked,
+              matches,
+            }
+          })
+        const results = await Promise.all(jobs)
+        for (const { deck, versions, matches } of results) {
+          data.decks.push({
+            ...deck,
+            versions,
+            matches: matches.map((m) => ({
+              group_name: m.group_name,
+              opponent_name: m.opponent_name,
+              opponent_deck: m.opponent_deck,
+              opp_legend_id: m.opp_legend_id,
+              opp_legend_print_id: m.opp_legend_print_id,
+              opp_legend_name: m.opp_legend_name,
+              opp_legend_image: m.opp_legend_image,
+              deck_version_id: m.deck_version_id,
+              deck_version_number: m.deck_version_number,
+              best_of: m.best_of,
+              note: m.note,
+              played_at: m.played_at,
+              created_at: m.created_at,
+              updated_at: m.updated_at,
+              games: m.games.map((g) => ({
+                game_number: g.game_number,
+                my_score: g.my_score,
+                opp_score: g.opp_score,
+                win_type: g.win_type,
+                is_win: g.is_win,
+                is_first: g.is_first,
+                win_reason: g.win_reason,
+                log: g.log,
+              })),
             })),
-          })),
-        })
-      }
-
-      await writeTextFile(dest, JSON.stringify(data, null, 2))
+          })
+        }
+        await writeTextFile(dest, JSON.stringify(data, null, 2))
+      })
       await message(`已导出 ${data.decks.length} 副卡组！`, { title: '导出', kind: 'info' })
       showExportModal = false
     } catch (e) {
@@ -483,6 +509,18 @@
     }
   }
 
+  function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === 'object' && v !== null && !Array.isArray(v)
+  }
+
+  function asNullableString(v: unknown): string | null {
+    return typeof v === 'string' ? v : null
+  }
+
+  function asNullableNumber(v: unknown): number | null {
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+
   function parseImportFile(content: string): ImportDeckPayload[] {
     let parsed: unknown
     try {
@@ -490,90 +528,121 @@
     } catch {
       return []
     }
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as any).decks)) return []
+    if (!isRecord(parsed) || !Array.isArray(parsed.decks)) return []
 
     const decks: ImportDeckPayload[] = []
-    for (const d of (parsed as any).decks) {
-      if (!d || typeof d !== 'object' || !d.name) continue
-      const versions = Array.isArray(d.versions) ? d.versions : []
-      const cleanVersions = versions
-        .filter((v: any) => v && typeof v.version_number === 'number')
-        .map((v: any) => ({
-          version_number: v.version_number,
-          note: v.note ?? null,
-          created_at: v.created_at ?? null,
-          cards: (Array.isArray(v.cards) ? v.cards : [])
-            .filter((c: any) => c && (c.card_id || c.print_code) && c.quantity > 0 && c.zone)
-            .map((c: any) => ({
-              card_id: c.card_id,
-              print_code: c.print_code ?? null,
-              quantity: c.quantity,
-              zone: c.zone,
-            })),
-        }))
+    for (const raw of parsed.decks) {
+      if (!isRecord(raw) || typeof raw.name !== 'string' || !raw.name) continue
+      const d = raw
 
-      const cleanMatches = (Array.isArray(d.matches) ? d.matches : [])
-        .filter((m: any) => m && Array.isArray(m.games) && m.games.length > 0)
-        .map((m: any) => ({
-          group_name: m.group_name ?? null,
-          opponent_name: m.opponent_name ?? null,
-          opponent_deck: m.opponent_deck ?? null,
-          opp_legend_id: m.opp_legend_id ?? null,
-          opp_legend_print_id: m.opp_legend_print_id ?? null,
-          opp_legend_name: m.opp_legend_name ?? null,
-          opp_legend_image: m.opp_legend_image ?? null,
-          deck_version_id: m.deck_version_id ?? null,
-          deck_version_number:
-            typeof m.deck_version_number === 'number' ? m.deck_version_number : null,
-          best_of: typeof m.best_of === 'number' ? m.best_of : null,
-          note: m.note ?? null,
-          played_at: m.played_at ?? null,
-          created_at: m.created_at ?? null,
-          updated_at: m.updated_at ?? null,
-          games: m.games
-            .filter((g: any) => g && typeof g.game_number === 'number')
-            .map((g: any) => ({
-              game_number: g.game_number,
-              my_score: g.my_score ?? null,
-              opp_score: g.opp_score ?? null,
-              win_type: g.win_type ?? 'normal',
-              is_win: !!g.is_win,
+      const versions: ImportDeckPayload['versions'] = []
+      if (Array.isArray(d.versions)) {
+        for (const rawVersion of d.versions) {
+          if (!isRecord(rawVersion) || typeof rawVersion.version_number !== 'number') continue
+          const cards: ImportDeckPayload['versions'][number]['cards'] = []
+          if (Array.isArray(rawVersion.cards)) {
+            for (const rawCard of rawVersion.cards) {
+              if (!isRecord(rawCard)) continue
+              const cardId = typeof rawCard.card_id === 'string' ? rawCard.card_id : null
+              const printCode = typeof rawCard.print_code === 'string' ? rawCard.print_code : null
+              if (
+                (!cardId && !printCode) ||
+                typeof rawCard.quantity !== 'number' ||
+                rawCard.quantity <= 0 ||
+                typeof rawCard.zone !== 'string' ||
+                !rawCard.zone
+              ) {
+                continue
+              }
+              cards.push({
+                card_id: cardId ?? '',
+                print_code: printCode,
+                quantity: rawCard.quantity,
+                zone: rawCard.zone,
+              })
+            }
+          }
+          versions.push({
+            version_number: rawVersion.version_number,
+            note: asNullableString(rawVersion.note),
+            created_at: asNullableString(rawVersion.created_at),
+            cards,
+          })
+        }
+      }
+
+      const matches: ImportMatchPayload[] = []
+      if (Array.isArray(d.matches)) {
+        for (const rawMatch of d.matches) {
+          if (!isRecord(rawMatch) || !Array.isArray(rawMatch.games) || rawMatch.games.length === 0)
+            continue
+          const games: ImportMatchPayload['games'] = []
+          for (const rawGame of rawMatch.games) {
+            if (!isRecord(rawGame) || typeof rawGame.game_number !== 'number') continue
+            const rawFirst = rawGame.is_first
+            games.push({
+              game_number: rawGame.game_number,
+              my_score: asNullableNumber(rawGame.my_score),
+              opp_score: asNullableNumber(rawGame.opp_score),
+              win_type: (typeof rawGame.win_type === 'string'
+                ? rawGame.win_type
+                : 'normal') as ImportMatchPayload['games'][number]['win_type'],
+              is_win: Boolean(rawGame.is_win),
               is_first:
-                g.is_first === true || g.is_first === 1
+                rawFirst === true || rawFirst === 1
                   ? true
-                  : g.is_first === false || g.is_first === 0
+                  : rawFirst === false || rawFirst === 0
                     ? false
                     : null,
-              win_reason: g.win_reason ?? null,
-              log: g.log ?? null,
-            })),
-        }))
+              win_reason: asNullableString(rawGame.win_reason),
+              log: asNullableString(rawGame.log),
+            })
+          }
+          if (games.length === 0) continue
+          matches.push({
+            group_name: asNullableString(rawMatch.group_name),
+            opponent_name: asNullableString(rawMatch.opponent_name),
+            opponent_deck: asNullableString(rawMatch.opponent_deck),
+            opp_legend_id: asNullableString(rawMatch.opp_legend_id),
+            opp_legend_print_id: asNullableString(rawMatch.opp_legend_print_id),
+            opp_legend_name: asNullableString(rawMatch.opp_legend_name),
+            opp_legend_image: asNullableString(rawMatch.opp_legend_image),
+            deck_version_id: asNullableString(rawMatch.deck_version_id),
+            deck_version_number: asNullableNumber(rawMatch.deck_version_number),
+            best_of: asNullableNumber(rawMatch.best_of),
+            note: asNullableString(rawMatch.note),
+            played_at: asNullableString(rawMatch.played_at),
+            created_at: asNullableString(rawMatch.created_at),
+            updated_at: asNullableString(rawMatch.updated_at),
+            games,
+          })
+        }
+      }
 
       decks.push({
-        name: d.name,
-        description: d.description ?? null,
-        format: d.format ?? null,
-        cover_image: d.cover_image ?? null,
-        tags: Array.isArray(d.tags) ? d.tags.filter((t: any) => typeof t === 'string') : [],
-        is_favorite: !!d.is_favorite,
-        created_at: d.created_at ?? null,
-        updated_at: d.updated_at ?? null,
-        versions: cleanVersions,
-        matches: cleanMatches,
+        name: raw.name,
+        description: asNullableString(d.description),
+        format: asNullableString(d.format),
+        cover_image: asNullableString(d.cover_image),
+        tags: Array.isArray(d.tags) ? d.tags.filter((t): t is string => typeof t === 'string') : [],
+        is_favorite: Boolean(d.is_favorite),
+        created_at: asNullableString(d.created_at),
+        updated_at: asNullableString(d.updated_at),
+        versions,
+        matches,
       })
     }
     return decks
   }
 
   function toggleImportDeck(id: string) {
-    selectedImportDeckIds = selectedImportDeckIds.includes(id)
-      ? selectedImportDeckIds.filter((d) => d !== id)
-      : [...selectedImportDeckIds, id]
+    toggleSelection(selectedImportDeckIds, id, (next) => (selectedImportDeckIds = next))
   }
 
   function toggleAllImportDecks() {
-    selectedImportDeckIds =
-      selectedImportDeckIds.length === importDeckList.length ? [] : importDeckList.map((d) => d.id)
+    toggleAll(selectedImportDeckIds, importDeckList.map((d) => d.id), (next) => {
+      selectedImportDeckIds = next
+    })
   }
 
   async function openImportModal() {
@@ -586,7 +655,7 @@
 
     let content: string
     try {
-      content = await readTextFile(String(src))
+      content = await withBusy('正在读取并解析文件...', async () => readTextFile(String(src)))
     } catch (e) {
       await message(e instanceof Error ? e.message : '读取文件失败', {
         title: '导入',
@@ -605,8 +674,8 @@
     }
 
     importFileName = String(src).split(/[\\/]/).pop() ?? String(src)
-    importDeckList = decks.map((d, i) => ({
-      id: String(i),
+    importDeckList = decks.map((d) => ({
+      id: d.name,
       name: d.name,
       updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : '未知',
       versionCount: d.versions.length,
@@ -622,11 +691,13 @@
 
     isImporting = true
     try {
-      const chosen = pendingImportDecks.filter((_, i) => selectedImportDeckIds.includes(String(i)))
-      const { imported, missingCards } = await importDecksFromJson(chosen, {
-        latestOnly: importMode === 'latest',
-        filterMissingCards: true,
-      })
+      const chosen = pendingImportDecks.filter((p) => selectedImportDeckIds.includes(p.name))
+      const { imported, missingCards } = await withBusy('正在导入卡组...', () =>
+        importDecksFromJson(chosen, {
+          latestOnly: importMode === 'latest',
+          filterMissingCards: true,
+        })
+      )
       const missingText = missingCards > 0 ? `（跳过 ${missingCards} 张本地缺失的卡牌）` : ''
       await message(`已导入 ${imported} 副卡组${missingText}！`, { title: '导入', kind: 'info' })
       showImportModal = false
@@ -639,21 +710,40 @@
   }
 
   // --- 数据删除操作 ---
-  async function clearAllDecksAsk() {
-    const confirmed = await ask(
-      `确定要清空所有卡组吗？\n当前共 ${deckCount} 副卡组，其版本与卡牌引用都将被删除。`,
-      {
-        title: '清空所有卡组',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
+  async function confirmAndRun(
+    title: string,
+    desc: string,
+    action: () => Promise<unknown>,
+    successMsg?: string
+  ) {
+    const confirmed = await ask(desc, {
+      title,
+      kind: 'warning',
+      okLabel: '确定',
+      cancelLabel: '取消',
+    })
     if (!confirmed) return
 
-    await deleteAllDecks()
-    await message('所有卡组已清空', { kind: 'info' })
+    try {
+      await withBusy(`正在${title}...`, action)
+    } catch (e) {
+      await message(e instanceof Error ? e.message : `${title}失败`, {
+        title,
+        kind: 'error',
+      })
+      return
+    }
+    if (successMsg) await message(successMsg, { kind: 'info' })
     await loadDbInfo()
+  }
+
+  function clearAllDecksAsk() {
+    return confirmAndRun(
+      '清空所有卡组',
+      `确定要清空所有卡组吗？\n当前共 ${deckCount} 副卡组，其版本与卡牌引用都将被删除。`,
+      () => deleteAllDecks(),
+      '所有卡组已清空'
+    )
   }
 
   async function cleanupVersionsAsk() {
@@ -668,14 +758,14 @@
     )
     if (!confirmed) return
 
-    const deleted = await cleanupDeckVersions()
+    const deleted = await withBusy('正在清理冗余版本...', () => cleanupDeckVersions())
     await message(`已清理 ${deleted} 个冗余版本`, { kind: 'info' })
     await loadDbInfo()
   }
 
   async function clearCardDataAsk() {
     const confirmed = await ask(
-      '确定要清空卡牌数据吗？\n此操作会删除所有卡牌基础数据与卡图（卡组将被保留），并清空筛选设置与同步标记。\n下次启动应用时将自动重新同步，卡组中的卡牌会重新关联。',
+      '确定要清空卡牌数据吗？\n此操作会删除卡牌基础数据与卡图，并清空筛选设置与同步标记（卡组与收藏将保留）。\n下次同步将重新拉取数据。',
       {
         title: '清空卡牌数据',
         kind: 'warning',
@@ -685,68 +775,45 @@
     )
     if (!confirmed) return
 
-    await clearCardData()
-    await message('卡牌数据已清空，下次启动将重新同步', { kind: 'info' })
+    await withBusy('正在清空卡牌数据...', () => clearCardData())
+    await message('卡牌数据已清空，下次同步将重新拉取', { kind: 'info' })
     await loadDbInfo()
   }
 
-  async function clearRulesAsk() {
-    const confirmed = await ask('确定要清空规则数据吗？', {
-      title: '清空规则数据',
-      kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
-    })
-    if (!confirmed) return
-
-    await clearRules()
-    await message('规则数据已清空', { kind: 'info' })
-    await loadDbInfo()
-  }
-
-  async function clearIconsAsk() {
-    const confirmed = await ask('确定要清空图标数据吗？', {
-      title: '清空图标数据',
-      kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
-    })
-    if (!confirmed) return
-
-    await clearIcons()
-    await message('图标数据已清空', { kind: 'info' })
-    await loadDbInfo()
-  }
-
-  async function clearFilterAsk() {
-    const confirmed = await ask('确定要清空筛选设置吗？', {
-      title: '清空筛选设置',
-      kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
-    })
-    if (!confirmed) return
-
-    await clearFilterOptions()
-    await message('筛选设置已清空', { kind: 'info' })
-    await loadDbInfo()
-  }
-
-  async function resetSyncAsk() {
-    const confirmed = await ask(
-      '确定要重置同步状态吗？\n仅清除本地同步标记，不会删除任何数据。下次启动应用时将重新同步数据。',
-      {
-        title: '重置同步状态',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
+  function clearRulesAsk() {
+    return confirmAndRun(
+      '清空规则数据',
+      '确定要清空规则数据吗？',
+      () => clearRules(),
+      '规则数据已清空'
     )
-    if (!confirmed) return
+  }
 
-    await clearVersion()
-    await message('同步状态已重置', { kind: 'info' })
-    await loadDbInfo()
+  function clearIconsAsk() {
+    return confirmAndRun(
+      '清空图标数据',
+      '确定要清空图标数据吗？',
+      () => clearIcons(),
+      '图标数据已清空'
+    )
+  }
+
+  function clearFilterAsk() {
+    return confirmAndRun(
+      '清空筛选设置',
+      '确定要清空筛选设置吗？',
+      () => clearFilterOptions(),
+      '筛选设置已清空'
+    )
+  }
+
+  function resetSyncAsk() {
+    return confirmAndRun(
+      '重置同步状态',
+      '确定要重置同步状态吗？\n仅清除本地同步标记，不会删除任何数据。下次启动应用时将重新同步数据。',
+      () => clearVersion(),
+      '同步状态已重置'
+    )
   }
 
   // --- 自定义语言管理 ---
@@ -871,7 +938,6 @@
         <span
           class="setting-desc status-text"
           class:text-success={cardDataUpdateStatus === 'upToDate'}
-          class:text-warning={cardDataUpdateStatus === 'available'}
           class:text-error={cardDataUpdateStatus === 'error'}
         >
           {getStatusText(cardDataUpdateStatus) || '点击检查卡牌数据库更新'}
@@ -1003,7 +1069,7 @@
       <div class="manage-row">
         <div class="manage-info">
           <span class="manage-title">清空卡牌数据</span>
-          <span class="manage-desc">删除卡牌与卡图，并同时清空卡组、筛选与同步标记</span>
+          <span class="manage-desc">删除卡牌基础数据与卡图，并清空筛选与同步标记（卡组与收藏保留），下次同步重新拉取。</span>
         </div>
         <button class="button button-danger-outline" onclick={clearCardDataAsk}>清空</button>
       </div>
@@ -1048,11 +1114,53 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">卡牌资源下载</span>
-        <span class="setting-desc">下载所有中文卡图作为缓存</span>
+        <span class="setting-label">缓存覆盖</span>
+        <span class="setting-desc">
+          本地已缓存 {imageCoverage?.existingCount ?? '-'} / {imageCoverage?.totalCount ?? '-'} 张卡图
+          {#if imageCoverage && imageCoverage.totalCount > 0}
+            （{Math.round((imageCoverage.existingCount / imageCoverage.totalCount) * 100)}%）
+          {/if}
+        </span>
       </div>
-      <button class="button button-ghost" onclick={startDownloadAll}> 开始下载 </button>
+      {#if imageCoverage && imageCoverage.totalCount > 0}
+        <div class="coverage-bar">
+          <div
+            class="coverage-fill"
+            style={`width: ${(imageCoverage.existingCount / imageCoverage.totalCount) * 100}%`}
+          ></div>
+        </div>
+      {/if}
     </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">卡牌资源下载</span>
+        <span class="setting-desc">下载所有缺失的中文卡图作为缓存</span>
+      </div>
+      {#if isCardImageDownloading()}
+        <button class="button button-primary" disabled>
+          下载中 {Math.round((downloadState.completed / downloadState.total) * 100)}%...
+        </button>
+      {:else}
+        <button
+          class="button button-primary"
+          disabled={!imageCoverage || imageCoverage.missingCount === 0}
+          onclick={startDownloadAll}
+        >
+          {#if imageCoverage && imageCoverage.missingCount === 0}
+            已是最新 ✓
+          {:else if imageCoverage}
+            下载全部卡图（{imageCoverage.missingCount} 张）
+          {:else}
+            开始下载
+          {/if}
+        </button>
+      {/if}
+    </div>
+
+    {#if isCardImageDownloading()}
+      <p class="download-hint">正在后台下载，窗口底部有实时进度条，可随时取消。</p>
+    {/if}
 
     <div class="setting-item">
       <div class="setting-info">
@@ -1102,7 +1210,7 @@
       <input
         class="settings-input lang-code-input"
         bind:value={newLangCode}
-        placeholder="语言码，如 FR（2-6 位大写字母/数字）"
+        placeholder="语言码，如 DE（2-6 位大写字母/数字）"
       />
       <input class="settings-input" bind:value={newLangName} placeholder="显示名，如 法语" />
       <button class="button button-primary" onclick={addLang}>添加</button>
@@ -1276,7 +1384,7 @@
     </label>
 
     <div class="export-deck-list">
-      {#each importDeckList as deck}
+      {#each importDeckList as deck (deck.id)}
         <label class="export-deck-row">
           <input
             type="checkbox"
@@ -1314,6 +1422,10 @@
       </button>
     {/snippet}
   </CommonModal>
+
+  {#if busyText}
+    <LoadingModal status="syncing" text={busyText} subtext="请稍候，正在处理..." />
+  {/if}
 </div>
 
 <style>
@@ -1384,6 +1496,32 @@
     cursor: copy;
   }
 
+  .coverage-bar {
+    flex: 0 0 auto;
+    width: 120px;
+    height: 8px;
+    margin-left: 16px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--bg-hover);
+  }
+
+  .coverage-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent-color);
+    transition: width 0.3s ease;
+  }
+
+  .download-hint {
+    margin: 2px 0 12px;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
   .version-tag {
     background: var(--bg-hover);
     padding: 4px 10px;
@@ -1404,9 +1542,6 @@
   .text-success {
     color: #0f7b6c;
   } /* Notion 绿 */
-  .text-warning {
-    color: #d9730d;
-  } /* Notion 橙 */
   .text-error {
     color: #e03e3e;
   } /* Notion 红 */

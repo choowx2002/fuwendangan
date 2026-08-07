@@ -36,6 +36,62 @@ export function hideLoading() {
   uiState.status = 'hidden'
 }
 
+// --- 卡图下载进度（全局悬浮进度条） ---
+export type DownloadStatus = 'downloading' | 'success' | 'partial' | 'cancelled' | 'error'
+
+export const downloadState = $state({
+  active: false,
+  status: 'downloading' as DownloadStatus,
+  total: 0,
+  completed: 0,
+  failed: 0,
+  bytesDownloaded: 0,
+  speedBps: 0,
+  etaSeconds: 0,
+  startTime: 0,
+  endTime: 0,
+  expanded: true,
+})
+
+export function beginDownload(total: number) {
+  downloadState.active = true
+  downloadState.status = 'downloading'
+  downloadState.total = total
+  downloadState.completed = 0
+  downloadState.failed = 0
+  downloadState.bytesDownloaded = 0
+  downloadState.speedBps = 0
+  downloadState.etaSeconds = 0
+  downloadState.startTime = Date.now()
+  downloadState.endTime = 0
+  downloadState.expanded = true
+}
+
+export function updateDownloadProgress(p: {
+  completed: number
+  failed: number
+  bytesDownloaded: number
+  speedBps: number
+  etaSeconds: number
+}) {
+  downloadState.completed = p.completed
+  downloadState.failed = p.failed
+  downloadState.bytesDownloaded = p.bytesDownloaded
+  downloadState.speedBps = p.speedBps
+  downloadState.etaSeconds = p.etaSeconds
+}
+
+export function finishDownload(status: Exclude<DownloadStatus, 'downloading'>) {
+  downloadState.status = status
+  downloadState.endTime = Date.now()
+}
+
+export function dismissDownload() {
+  downloadState.active = false
+  downloadState.status = 'downloading'
+  downloadState.expanded = true
+}
+
 export type TopbarActionVariant = 'primary' | 'ghost' | 'danger' | 'text'
 
 export type TopbarAction = {

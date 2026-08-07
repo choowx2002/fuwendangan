@@ -11,16 +11,12 @@
     Sparkles,
     ChevronLeft,
     Gamepad2,
-    Download,
-    X,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
   import { selectedTTSColor, colorOptions, type colorValue, ttsState } from '../../stores/tts'
   import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { showTTSFeatures } from '$lib/stores/settings'
-  import { uiState } from '$lib/stores/ui-store.svelte'
-  import { cancelCardImageDownload } from '$lib/services/card-image-download-service'
   let { isOpen = $bindable() } = $props()
 
   const navItems = [
@@ -134,49 +130,6 @@
       </a>
     {/each}
   </nav>
-
-  {#if uiState.status === 'downloading'}
-    <div class="download-task" class:minimized={sidebarState.isMinimized}>
-      <div class="download-task-header">
-        <Download size={16} strokeWidth={2} />
-
-        {#if !sidebarState.isMinimized}
-          <span>卡图下载中</span>
-
-          <span class="download-percent">
-            {Math.round(uiState.progress ?? 0)}%
-          </span>
-        {/if}
-      </div>
-
-      {#if !sidebarState.isMinimized}
-        <div class="download-progress">
-          <div
-            class="download-progress-value"
-            style={`width: ${Math.min(uiState.progress ?? 0, 100)}%`}
-          ></div>
-        </div>
-
-        <div class="download-task-footer">
-          <span>
-            {uiState.subText ?? '正在下载图片资源...'}
-          </span>
-
-          <button class="download-cancel" aria-label="取消下载" onclick={cancelCardImageDownload}>
-            <X size={14} />
-          </button>
-        </div>
-      {:else}
-        <button
-          class="download-cancel minimized-cancel"
-          aria-label="取消下载"
-          onclick={cancelCardImageDownload}
-        >
-          <X size={14} />
-        </button>
-      {/if}
-    </div>
-  {/if}
 
   {#if $showTTSFeatures}
     <div class="sidebar-footer">
@@ -427,91 +380,5 @@
     .tts-info {
       font-size: var(--text-lg);
     }
-  }
-
-  .download-task {
-    margin: auto 8px 8px;
-    padding: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-  }
-
-  .download-task.minimized {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 4px;
-  }
-
-  .download-task-header,
-  .download-task-footer {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-
-  .download-task-header {
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .download-percent {
-    margin-left: auto;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .download-progress {
-    height: 4px;
-    margin: 8px 0 6px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--bg-hover);
-  }
-
-  .download-progress-value {
-    height: 100%;
-    border-radius: inherit;
-    background: var(--text-primary);
-    transition: width 0.2s ease;
-  }
-
-  .download-task-footer {
-    min-width: 0;
-    color: var(--text-tertiary);
-    font-size: 11px;
-  }
-
-  .download-task-footer span {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .download-cancel {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    padding: 3px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    color: var(--text-tertiary);
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .download-cancel:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-  }
-
-  .minimized-cancel {
-    width: 24px;
-    height: 24px;
   }
 </style>

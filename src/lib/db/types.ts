@@ -424,11 +424,6 @@ export interface SortKeyItem {
   order: number
 }
 
-export type TableStateRow = {
-  name: string
-  bytes: number
-}
-
 export interface Rule {
   id: string
   rule_number: string
