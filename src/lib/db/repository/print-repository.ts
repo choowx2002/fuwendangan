@@ -164,6 +164,7 @@ export async function getRandomPackPrint(
     `COALESCE(p.is_promo, 0) != 1`,
     `COALESCE(p.is_custom, 0) != 1`,
     `substr(upper(p.card_no_extend), 1, 3) = ?`,
+    `cb.card_category NOT LIKE '%符文%'`
   ]
   const params: (string | number)[] = [seriesCode.toUpperCase()]
 
@@ -173,6 +174,7 @@ export async function getRandomPackPrint(
     if (filter.extendRarityName) {
       conds.push(`p.extend_rarity_name = ?`)
       params.push(filter.extendRarityName)
+      conds.push(`cb.card_category NOT LIKE '%指示物%'`)
     } else {
       conds.push(`COALESCE(p.extend_rarity_name, '') NOT IN ('异画', '超编', '签名超编')`)
     }

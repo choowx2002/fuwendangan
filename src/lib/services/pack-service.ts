@@ -85,10 +85,10 @@ function drawPrintForTier(seriesCode: string, tier: PackTier): Promise<PackPrint
   switch (tier.id) {
     case 'normal':
     case 'normalFoil':
-      return getRandomPackPrint(seriesCode, { rarityName: '普通', extendRarityName: null })
+      return getRandomPackPrint(seriesCode, { rarityName: '普通', extendRarityName: null, isToken: false })
     case 'uncommon':
     case 'uncommonFoil':
-      return getRandomPackPrint(seriesCode, { rarityName: '不凡', extendRarityName: null })
+      return getRandomPackPrint(seriesCode, { rarityName: '不凡', extendRarityName: null, isToken: false })
     case 'rare':
       return getRandomPackPrint(seriesCode, { rarityName: '稀有', extendRarityName: null })
     case 'epic':

@@ -36,7 +36,7 @@
 
   let rotateX = $state(0)
   let rotateY = $state(0)
-  let flipped = $state(false)
+  let flipped = $state(true)
   let shineX = $state(50)
   let shineY = $state(20)
   let enlarged = $state(false)
@@ -87,10 +87,6 @@
     onpointermove={handlePointerMove}
     onpointerleave={handlePointerLeave}
     onclick={toggleFlip}
-    oncontextmenu={(e) => {
-      e.preventDefault()
-      openEnlarge(e)
-    }}
   >
     <div class="face front" style={`transform: rotateX(${rotateX}deg) rotateY(${rotateY}deg);`}>
       <CachedImage
@@ -100,10 +96,10 @@
         borderRadius="8px"
         lazy={false}
       />
-      <div
+      <!-- <div
         class="foil-overlay"
         style={`--shine-x: ${shineX}%; --shine-y: ${shineY}%; opacity: ${reducedMotion ? 0.25 : 1};`}
-      ></div>
+      ></div> -->
       <!-- {#if interactive}
         <div class="actions">
           <button
@@ -214,7 +210,7 @@
   }
 
   /* ========== 全息层 ========== */
-  .foil-overlay {
+  /* .foil-overlay {
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -236,7 +232,7 @@
     background-size: 220% 220%;
     animation: foil-shift 6s ease-in-out infinite alternate;
     opacity: var(--foil-intensity);
-  }
+  } */
 
   @keyframes foil-shift {
     from {
@@ -247,11 +243,11 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  /* @media (prefers-reduced-motion: reduce) {
     .foil-overlay {
       animation: none;
     }
-  }
+  } */
 
   /* ========== 操作按钮 ========== */
   /* .actions {

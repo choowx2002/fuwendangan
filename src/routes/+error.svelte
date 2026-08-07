@@ -202,11 +202,6 @@
     </div>
   {:else}
     <div class="pack-view">
-      <button class="button button-text pack-back" onclick={backToMain}>
-        <ArrowLeft size={14} />
-        <span>返回</span>
-      </button>
-
       <div class="pack-header">
         <Sparkles size={20} style="color: var(--accent-color)" />
         <h2 class="pack-title">神秘补充包</h2>
@@ -231,6 +226,10 @@
               >
                 <Package size={16} />
                 <span>开一包</span>
+              </button>
+
+              <button class="button button-secondary" onclick={backToMain}>
+                <span>返回</span>
               </button>
             {/if}
           </div>
@@ -304,6 +303,9 @@
               <House size={16} />
               <span>返回首页</span>
             </a>
+            <button class="button button-secondary" onclick={backToMain}>
+              <span>返回</span>
+            </button>
           </div>
         </div>
       {/if}
