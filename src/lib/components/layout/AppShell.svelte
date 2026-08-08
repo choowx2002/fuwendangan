@@ -26,7 +26,10 @@
   })
 
   let isNotShowBothPage = $derived(
-    page.url.pathname === '/decks/builder' || page.url.pathname.startsWith('/rules/')
+      page.url.pathname === '/decks/builder' ||
+      page.url.pathname.startsWith('/rules/') ||
+      page.url.pathname === '/tools/gameCounter' ||
+      page.url.pathname === '/tools/dice'
   )
 </script>
 

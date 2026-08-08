@@ -24,6 +24,7 @@
     type DecodedDeckResult,
   } from '$lib/decks/deck-import'
   import { setPendingDeckImport } from '$lib/stores/deck-import.svelte'
+  import { pinnedDeckIds, togglePinDeck } from '$lib/stores/pinned-decks'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import {
     Plus,
@@ -42,6 +43,7 @@
     Send,
     LoaderCircle,
     CopyPlus,
+    Pin,
   } from '@lucide/svelte'
   import { ask, message, open } from '@tauri-apps/plugin-dialog'
   import { readText } from '@tauri-apps/plugin-clipboard-manager'
@@ -620,9 +622,23 @@
         <div
           class="deck-card"
           class:favorite={deck.is_favorite}
+          class:pinned={$pinnedDeckIds.includes(deck.id)}
           role="presentation"
           onclick={() => goto(`/decks/${deck.id}`)}
         >
+          <button
+            class="pin-btn"
+            class:active={$pinnedDeckIds.includes(deck.id)}
+            title={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
+            aria-label={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
+            onclick={(e) => {
+              e.stopPropagation()
+              togglePinDeck(deck.id)
+            }}
+          >
+            <Pin size={14} />
+          </button>
+
           <div class="deck-header">
             <div class="deck-avatar">
               <CardSimpleImage
@@ -1123,6 +1139,47 @@
 
   .deck-card.favorite {
     border-color: var(--accent-color);
+  }
+
+  .deck-card.pinned {
+    border-color: var(--secondary-accent-color);
+    box-shadow: 0 0 0 1px var(--secondary-accent-color) inset;
+  }
+
+  .pin-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+    opacity: 0;
+  }
+
+  .deck-card:hover .pin-btn,
+  .pin-btn.active {
+    opacity: 1;
+  }
+
+  .pin-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+
+  .pin-btn.active {
+    color: var(--secondary-accent-color);
+    border-color: var(--secondary-accent-color);
+    background: color-mix(in srgb, var(--secondary-accent-color) 10%, transparent);
   }
 
   .deck-card.favorite::before {

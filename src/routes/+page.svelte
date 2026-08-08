@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { getCardCount, getDeckList, getMatchStatsForDecks } from '$lib/db'
+  import { getDeckList, getMatchStatsForDecks } from '$lib/db'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
-  import { Plus, Clock, TrendingUp, Dice5, Coins, ChevronRight } from '@lucide/svelte'
+  import { isDeckPinned } from '$lib/stores/pinned-decks'
+  import { Swords, Dice6, Pin, ChevronRight } from '@lucide/svelte'
+  import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
 
   interface HomeDeck {
@@ -12,43 +14,47 @@
     wins: number
     losses: number
     updated: string
+    pinned: boolean
   }
 
   let recentDecks = $state<HomeDeck[]>([])
 
   const quickTools = [
     {
-      icon: Dice5,
-      label: '生命计数器',
+      icon: Swords,
+      label: '对战记录',
       desc: '双人对战计分',
       color: '#e03e3e',
-      href: '/tools',
-      disabled: false,
+      href: '/tools/gameCounter',
     },
     {
-      icon: Coins,
-      label: '掷币/掷骰',
-      desc: '随机数生成',
+      icon: Dice6,
+      label: '骰子',
+      desc: '掷骰 / 掷币',
       color: '#d9730d',
-      href: '/tools',
-      disabled: false,
-    },
-    {
-      icon: TrendingUp,
-      label: '胜率统计',
-      desc: '查看近期战绩',
-      color: '#0f7b6c',
-      href: '',
-      disabled: true,
+      href: '/tools/dice',
     },
   ]
 
+  const orderedDecks = $derived(
+    [...recentDecks].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      return 0
+    })
+  )
+
+  function todayText() {
+    return new Date().toLocaleDateString('zh-CN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  }
+
   onMount(async () => {
     try {
-      await getCardCount()
-    } catch (error) {}
-    try {
-      const { decks } = await getDeckList()
+      const { decks } = await getDeckList({ limit: 50 })
       const stats = await getMatchStatsForDecks(decks.map((d) => d.id))
       recentDecks = decks.slice(0, 5).map((d) => {
         const s = stats.get(d.id)
@@ -59,6 +65,7 @@
           wins: s?.wins ?? 0,
           losses: s?.losses ?? 0,
           updated: d.updated_at ? getRelativeTime(d.updated_at) : '未知',
+          pinned: isDeckPinned(d.id),
         }
       })
     } catch (error) {}
@@ -70,68 +77,51 @@
 </script>
 
 <div class="page-container">
-  <!-- 快速操作区 -->
-  <section class="section">
-    <div class="section-header">
-      <h2 class="section-title">快速开始</h2>
-    </div>
-    <div class="quick-actions">
-      <button class="action-card primary">
-        <Plus size={20} />
-        <span>新建卡组</span>
-      </button>
-      <button class="action-card">
-        <Clock size={20} />
-        <span>导入单卡</span>
-      </button>
+  <!-- Hero 大横幅 -->
+  <section class="hero">
+    <div class="hero-content">
+      <span class="hero-date">{todayText()}</span>
+      <h1 class="hero-title">欢迎回来</h1>
+      <p class="hero-sub">今天想玩点什么？</p>
+      <div class="hero-actions">
+        <button class="hero-btn primary" onclick={() => goto('/decks/builder')}>新建卡组</button>
+        <button class="hero-btn" onclick={() => goto('/cards')}>浏览单卡库</button>
+      </div>
     </div>
   </section>
 
-  <!-- 常用工具 -->
+  <!-- 对战工具（紧凑按钮行） -->
   <section class="section">
     <div class="section-header">
       <h2 class="section-title">对战工具</h2>
-      <a href="/tools" class="see-all">查看全部 <ChevronRight size={14} /></a>
+      <a href="/tools" class="see-all">打开工具箱 <ChevronRight size={14} /></a>
     </div>
-    <div class="tools-grid">
+    <div class="tools-row">
       {#each quickTools as tool}
-        {#if tool.disabled}
-          <div class="tool-card tool-card-disabled" title="暂未开放">
-            <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
-              <tool.icon size={22} />
-            </div>
-            <div class="tool-info">
-              <span class="tool-label">{tool.label}</span>
-              <span class="tool-desc">{tool.desc}</span>
-            </div>
-            <span class="tool-badge">暂未开放</span>
-          </div>
-        {:else}
-          <a href={tool.href} class="tool-card">
-            <div class="tool-icon" style="background: {tool.color}15; color: {tool.color}">
-              <tool.icon size={22} />
-            </div>
-            <div class="tool-info">
-              <span class="tool-label">{tool.label}</span>
-              <span class="tool-desc">{tool.desc}</span>
-            </div>
-          </a>
-        {/if}
+        <a href={tool.href} class="tool-chip">
+          <span class="tool-chip-icon" style="background: {tool.color}15; color: {tool.color}">
+            <tool.icon size={16} />
+          </span>
+          <span class="tool-chip-label">{tool.label}</span>
+        </a>
       {/each}
     </div>
   </section>
 
-  <!-- 最近卡组 -->
+  <!-- 最近使用的卡组 -->
   <section class="section">
     <div class="section-header">
       <h2 class="section-title">最近使用的卡组</h2>
       <a href="/decks" class="see-all">管理卡组 <ChevronRight size={14} /></a>
     </div>
     <div class="deck-list">
-      {#each recentDecks as deck}
+      {#each orderedDecks as deck}
         <!-- svelte-ignore a11y_invalid_attribute -->
-        <a href="/decks/{deck.id}" class="deck-item">
+        <a href="/decks/{deck.id}" class="deck-item" class:pinned={deck.pinned}>
           <div class="deck-main">
+            {#if deck.pinned}
+              <span class="pin-mark"><Pin size={13} /></span>
+            {/if}
             <span class="deck-name">{deck.name}</span>
             {#if deck.format}
               <span class="deck-format">{deck.format}</span>
@@ -160,6 +150,75 @@
   @media (max-width: 767.99px) {
     .page-container {
       padding: 24px 16px 80px;
+    }
+  }
+
+  /* Hero 大横幅 */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 36px;
+    padding: 48px 40px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, var(--accent-color), var(--secondary-accent-color));
+    color: white;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 1;
+    max-width: 480px;
+  }
+
+  .hero-date {
+    font-size: var(--text-sm);
+    opacity: 0.85;
+  }
+
+  .hero-title {
+    margin: 8px 0 4px;
+    font-size: var(--text-3xl);
+    font-weight: 700;
+  }
+
+  .hero-sub {
+    margin: 0 0 20px;
+    font-size: var(--text-md);
+    opacity: 0.9;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .hero-btn {
+    padding: 9px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: white;
+    font-size: var(--text-base);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .hero-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .hero-btn.primary {
+    background: white;
+    color: var(--accent-color);
+    border-color: white;
+  }
+  .hero-btn.primary:hover {
+    background: #f0f0f0;
+  }
+
+  @media (max-width: 767.99px) {
+    .hero {
+      padding: 32px 24px;
     }
   }
 
@@ -195,107 +254,41 @@
     color: var(--text-primary);
   }
 
-  /* 快速操作 */
-  .quick-actions {
+  /* 对战工具 - 紧凑按钮行 */
+  .tools-row {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
   }
 
-  .action-card {
-    display: flex;
+  .tool-chip {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 8px 14px;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 999px;
     background: var(--bg-primary);
+    text-decoration: none;
+    color: var(--text-primary);
     font-size: var(--text-base);
     font-weight: 500;
-    color: var(--text-primary);
-    cursor: pointer;
     transition: all 0.15s;
   }
-  .action-card:hover {
-    background: var(--bg-secondary);
-    border-color: #d3d1cb;
-  }
-  .action-card.primary {
-    background: var(--text-primary);
-    color: white;
-    border-color: var(--text-primary);
-  }
-  .action-card.primary:hover {
-    background: #2f2e29;
-  }
-
-  /* 工具网格 */
-  .tools-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
-  }
-
-  .tool-card {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.15s;
-  }
-  .tool-card:hover {
+  .tool-chip:hover {
     background: var(--bg-secondary);
     border-color: #d3d1cb;
     transform: translateY(-1px);
   }
 
-  .tool-card-disabled {
-    opacity: 0.55;
-    position: relative;
-    cursor: not-allowed;
-  }
-  .tool-card-disabled:hover {
-    border-color: var(--border-color);
-    transform: none;
-  }
-
-  .tool-badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--bg-hover);
-    color: var(--text-tertiary);
-  }
-
-  .tool-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
+  .tool-chip-icon {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
     flex-shrink: 0;
-  }
-
-  .tool-info {
-    display: flex;
-    flex-direction: column;
-  }
-  .tool-label {
-    font-size: var(--text-base);
-    font-weight: 600;
-  }
-  .tool-desc {
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
-    margin-top: 2px;
   }
 
   /* 卡组列表 */
@@ -322,6 +315,13 @@
     background: var(--bg-secondary);
   }
 
+  .deck-item.pinned {
+    background: color-mix(in srgb, var(--secondary-accent-color) 6%, transparent);
+  }
+  .deck-item.pinned .deck-name {
+    font-weight: 600;
+  }
+
   .deck-empty {
     margin: 0;
     padding: 24px 16px;
@@ -333,8 +333,15 @@
   .deck-main {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
+
+  .pin-mark {
+    display: inline-flex;
+    align-items: center;
+    color: var(--secondary-accent-color);
+  }
+
   .deck-name {
     font-size: var(--text-base);
     font-weight: 500;

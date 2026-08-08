@@ -13,7 +13,7 @@
   }
 
   function refresh() {
-    detectTTSServer()
+    detectTTSServer(true)
   }
 
   onMount(() => {

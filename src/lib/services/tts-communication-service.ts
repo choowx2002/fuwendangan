@@ -5,10 +5,16 @@ import { deckToString } from '$lib/cards/utils/deckSerializer.js'
 import { ttsState, selectedTTSColor, type TTSState } from '$lib/stores/tts'
 import type { CardWithPrint } from '$lib/db'
 
+let autoChecked = false
+
 /**
  * Check TTS TCP connection
+ * 自动检查（onMount 触发）每个会话只执行一次；手动刷新（manual=true）始终执行。
  */
-export async function detectTTSServer() {
+export async function detectTTSServer(manual = false) {
+  if (!manual && autoChecked) return
+  if (!manual) autoChecked = true
+
   setTTSChecking(true)
 
   try {
