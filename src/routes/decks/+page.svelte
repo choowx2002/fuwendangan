@@ -13,7 +13,9 @@
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { DECK_FORMATS } from '$lib/decks/format'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { ttsState } from '$lib/stores/tts'
+  import { spawnDeckToTTS } from '$lib/services/deck-tts-service'
   import {
     parseDeckCodeText,
     resolveDeckCards,
@@ -35,6 +37,11 @@
     FileUp,
     CircleAlert,
     CircleCheck,
+    Import,
+    Download,
+    Send,
+    LoaderCircle,
+    CopyPlus,
   } from '@lucide/svelte'
   import { ask, message, open } from '@tauri-apps/plugin-dialog'
   import { readText } from '@tauri-apps/plugin-clipboard-manager'
@@ -59,6 +66,8 @@
   let importCodeValid = $state(false)
   let importingCode = $state(false)
   let importedResult = $state<DecodedDeckResult | null>(null)
+
+  let sendingTtsDeckId = $state<string | null>(null)
 
   let importText = $state('')
   let importTextError = $state('')
@@ -159,7 +168,7 @@
   }
 
   async function duplicateDeckAsk(name: string, deckId: string) {
-    const confirm = await ask(`你确定要复制 ${name} 吗？`, {
+    const confirm = await ask(`你确定要创建 ${name} 副本吗？`, {
       kind: 'warning',
       okLabel: '确定',
       cancelLabel: '取消',
@@ -175,6 +184,20 @@
     } catch (error) {
       console.error(error)
       message('复制失败')
+    }
+  }
+
+  async function generateDeckTTS(name: string, deckId: string) {
+    if (sendingTtsDeckId) return
+    sendingTtsDeckId = deckId
+    try {
+      const count = await spawnDeckToTTS(deckId)
+      showToast(`已将 ${name} 的 ${count} 张卡牌发送到 TTS`, 'success')
+    } catch (error) {
+      console.error('[Decks] TTS 生成失败:', error)
+      showToast('生成失败，请检查 TTS 连接', 'error')
+    } finally {
+      sendingTtsDeckId = null
     }
   }
 
@@ -460,12 +483,13 @@
           label: '新建卡组',
           icon: Plus,
           variant: 'primary',
+          priority: 0,
           onClick: () => goto('/decks/builder'),
         },
         {
           key: 'import-deck',
           label: '导入卡组',
-          icon: ImportIcon,
+          icon: Download,
           variant: 'ghost',
           onClick: () => openImportDeckModal(),
         },
@@ -657,9 +681,9 @@
                 e.stopPropagation()
                 duplicateDeckAsk(deck.name, deck.id)
               }}
-              title="复制卡组"
+              title="复制卡组副本"
             >
-              <Copy size={16} />
+              <CopyPlus size={16} />
             </button>
             <button
               class="button-icon action-btn"
@@ -685,6 +709,26 @@
             >
               <Trash2 size={16} />
             </button>
+
+            {#if $ttsState.sendPort}
+              <button
+              style="margin-left: auto;"
+                class="button button-ghost"
+                class:tts-sending={sendingTtsDeckId === deck.id}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  generateDeckTTS(deck.name, deck.id)
+                }}
+                disabled={sendingTtsDeckId !== null && sendingTtsDeckId !== deck.id}
+                title="生成卡牌TTS"
+              >
+                {#if sendingTtsDeckId === deck.id}
+                  <LoaderCircle size={16} class="spin" />
+                {:else}
+                  TTS 生成
+                {/if}
+              </button>
+            {/if}
           </div>
         </div>
       {/each}
@@ -1046,6 +1090,12 @@
     gap: 16px;
   }
 
+  @media (max-width: 769.99px) {
+    .decks-grid {
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+  }
+
   @media (max-width: 480.99px) {
     .decks-grid {
       grid-template-columns: 1fr;
@@ -1195,6 +1245,29 @@
     background: #fee;
     color: #e03e3e;
     border-color: #fcc;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .tts-sending {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .deck-avatar {

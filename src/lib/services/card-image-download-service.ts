@@ -16,6 +16,7 @@ import {
 } from '$lib/stores/ui-store.svelte'
 import { stat, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { isMobile } from '$lib/utils/os'
+import { whenOnline } from '$lib/stores/network.svelte'
 import {
   isPermissionGranted,
   requestPermission,
@@ -113,6 +114,14 @@ export async function startCardImageDownload(missing: any[]) {
     return
   }
 
+  if (!(await whenOnline())) {
+    await message('网络不可用，无法下载卡牌资源。请检查网络连接后重试。', {
+      title: '卡牌资源下载',
+      kind: 'error',
+    })
+    return
+  }
+
   cancelRequested = false
   beginDownload(missing.length)
 
@@ -158,7 +167,8 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
   try {
     const cacheDir = await join(await appLocalDataDir(), CARD_IMAGE)
 
-    for (const fileData of missing) {      if (cancelRequested) {
+    for (const fileData of missing) {
+      if (cancelRequested) {
         break
       }
 
@@ -229,10 +239,7 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
     finishDownload(failed > 0 ? 'partial' : 'success')
 
     if (onMobile && permissionGranted) {
-      finishNotification(
-        '卡牌资源下载完成',
-        `成功 ${completed - failed} 张，失败 ${failed} 张`
-      )
+      finishNotification('卡牌资源下载完成', `成功 ${completed - failed} 张，失败 ${failed} 张`)
     }
   } catch (error) {
     console.error('[CardImageDownload]', error)

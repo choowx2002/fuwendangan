@@ -33,3 +33,5 @@ export const showForeignCardArt = persistentWritable('showForeignCardArt', false
 export const darkMode = persistentWritable('darkMode', false)
 
 export const showTTSFeatures = persistentWritable('showTTSFeatures', false)
+
+export const rulesTheme = persistentWritable('rulesTheme', 'parchment')

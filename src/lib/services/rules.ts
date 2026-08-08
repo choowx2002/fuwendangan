@@ -50,6 +50,14 @@ export function renderContent(rule: Rule, lang: Lang): string {
   return `<div>${parseRuleRefs(rule.text_zh ?? '')}</div><div class="bilingual-en">${parseRuleRefs(rule.text_en ?? '')}</div>`
 }
 
+/** 搜索模式下的正文渲染：高亮关键词，但不再解析 rule-ref（避免与高亮 span 冲突） */
+export function renderSearchContent(rule: Rule, lang: Lang, query: string): string {
+  const l = lang
+  if (l === 'en') return `<div>${highlightText(rule.text_en ?? '', query)}</div>`
+  if (l === 'zh') return `<div>${highlightText(rule.text_zh ?? '', query)}</div>`
+  return `<div>${highlightText(rule.text_zh ?? '', query)}</div><div class="bilingual-en">${highlightText(rule.text_en ?? '', query)}</div>`
+}
+
 export function highlightText(text: string, query: string): string {
   if (!text || !query) return escapeHtml(text)
   const escaped = escapeHtml(text)

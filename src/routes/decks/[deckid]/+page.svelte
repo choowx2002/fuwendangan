@@ -10,11 +10,15 @@
     getPrintsByCardId,
     updateDeck,
     updateDeckVersionNote,
+    deleteDeck,
     type Deck,
     type DeckCardDetail,
     type DeckVersionCard,
     type CardBase,
     type CardPrint,
+    checkDeckOwnership,
+    type OwnershipCheckRow,
+    type OwnershipMatchMode,
     getDeckMatchStats,
     getMatchesByDeck,
     deleteMatch,
@@ -28,8 +32,15 @@
     type VersionDiffItem,
   } from '$lib/decks/version-diff'
   import { getRelativeTime } from '$lib/utils/time-helper'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
+  import {
+    buildOwnershipText,
+    buildOwnershipCsv,
+    saveOwnershipExport,
+    type OwnershipExportFormat,
+    type OwnershipExportRow,
+  } from '$lib/decks/ownership-export'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { onMount } from 'svelte'
   import { formatDeckExport, formatOfficialDeckExport } from '$lib/decks/deck-export'
@@ -75,6 +86,10 @@
     ChevronRight,
     Trash2,
     PencilLine,
+    CircleCheck,
+    LoaderCircle,
+    Info,
+    Upload,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -353,6 +368,100 @@
     matchStats = stats
   }
 
+  let showOwnershipModal = $state(false)
+  let ownershipRows = $state<OwnershipCheckRow[]>([])
+  let loadingOwnership = $state(false)
+  let ownershipMatchMode = $state<OwnershipMatchMode>('print')
+
+  async function runOwnershipCheck() {
+    if (cards.length === 0) return
+    loadingOwnership = true
+    showOwnershipModal = true
+    try {
+      ownershipRows = await checkDeckOwnership(
+        cards.map((c) => ({ cardPrintId: c.card_id, quantity: c.quantity })),
+        { matchMode: ownershipMatchMode }
+      )
+    } finally {
+      loadingOwnership = false
+    }
+  }
+
+  function switchOwnershipMode(mode: OwnershipMatchMode) {
+    if (mode === ownershipMatchMode || loadingOwnership) return
+    ownershipMatchMode = mode
+    runOwnershipCheck()
+  }
+
+  const zoneOfBase = $derived(
+    cards.reduce((map, c) => {
+      if (!map.has(c.card_base_id)) map.set(c.card_base_id, c.zone)
+      return map
+    }, new Map<string, string>())
+  )
+  const ZONE_ORDER: Record<string, number> = {
+    mainDeck: 3,
+    battlefields: 4,
+    runes: 6,
+    legend: 1,
+    champion: 2,
+    sideboard: 5,
+  }
+  const ownershipZones = $derived(
+    ownershipRows
+      .map((r) => ({ row: r, zone: zoneOfBase.get(r.cardId) ?? '' }))
+      .sort(
+        (a, b) =>
+          (ZONE_ORDER[a.zone] ?? 9) - (ZONE_ORDER[b.zone] ?? 9) ||
+          (a.row.cardNoExtend || a.row.cardNo).localeCompare(b.row.cardNoExtend || b.row.cardNo, undefined, {
+            numeric: true,
+          })
+      )
+  )
+
+  let ownershipExportFormat = $state<OwnershipExportFormat>('txt')
+  let exportingOwnership = $state(false)
+  let ownershipIncludeComplete = $state(false)
+
+  const ownershipExportRows = $derived(
+    ownershipZones
+      .filter(({ row }) => ownershipIncludeComplete || row.owned < row.needed)
+      .map(({ row, zone }) => ({
+        zoneLabel: ZONE_CONFIG[zone as ZoneKey]?.label ?? zone,
+        cardName: row.cardName,
+        cardNo: row.cardNoExtend || row.cardNo,
+        owned: row.owned,
+        needed: row.needed,
+        insufficient: row.owned < row.needed,
+      }))
+  )
+
+  async function exportOwnership() {
+    if (ownershipExportRows.length === 0) return
+    exportingOwnership = true
+    try {
+      const content =
+        ownershipExportFormat === 'csv'
+          ? buildOwnershipCsv(ownershipExportRows)
+          : buildOwnershipText(ownershipExportRows, deck?.name ?? '未命名卡组')
+      const stamp = new Date().toISOString().slice(0, 10)
+      const ok = await saveOwnershipExport(
+        content,
+        `卡组持有检查-${deck?.name ?? 'deck'}-${stamp}.${ownershipExportFormat}`,
+        ownershipExportFormat
+      )
+      if (ok) {
+        showToast(`已保存 ${ownershipExportRows.length} 条持有检查`, 'success')
+      } else {
+        showToast('已取消保存', 'info')
+      }
+    } catch (err) {
+      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+    } finally {
+      exportingOwnership = false
+    }
+  }
+
   function openCreateMatch() {
     editingMatch = null
     showMatchModal = true
@@ -372,6 +481,21 @@
     if (!confirm) return
     await deleteMatch(match.id)
     await loadMatches(deck?.id ?? '')
+  }
+
+  async function confirmDeleteDeck() {
+    if (!deck) return
+    const confirm = await ask(
+      `你确定要删除 ${deck.name} 吗？该卡组的所有版本与对局记录将一并删除。`,
+      {
+        kind: 'warning',
+        okLabel: '删除',
+        cancelLabel: '取消',
+      }
+    )
+    if (!confirm) return
+    await deleteDeck(deck.id)
+    goto('/decks')
   }
 
   const recentMatches = $derived(matchRecords.slice(0, 5))
@@ -403,35 +527,61 @@
       badges,
       actions: [
         {
+          key: 'edit-info',
+          icon: Info,
+          title: '编辑信息',
+          label: '信息',
+          disabled: !deck,
+          onClick: openEditInfo,
+          priority: 5
+        },
+        {
           key: 'copy',
           icon: Copy,
           title: '复制卡组',
+          label: '复制',
           onClick: () => {
             shareFormat = 'text'
             showShareModal = 'copy'
           },
+          priority: 2
         },
         {
           key: 'export',
-          icon: Download,
+          icon: Upload,
           title: '导出卡组',
+          label: '导出',
           onClick: () => {
             shareFormat = 'text'
             showShareModal = 'export'
           },
+          priority: 3
         },
         {
-          key: 'edit-info',
-          icon: Pencil,
-          title: '编辑卡组信息',
+          key: 'ownership',
+          icon: CircleCheck,
+          title: '持有检查',
+          label: '持有检查',
+          disabled: !deck || cards.length === 0,
+          onClick: runOwnershipCheck,
+          priority: 5
+        },
+        {
+          key: 'delete',
+          icon: Trash2,
+          title: '删除卡组',
+          label: '删除',
+          variant: 'danger',
           disabled: !deck,
-          onClick: openEditInfo,
+          onClick: confirmDeleteDeck,
+          priority: 6
         },
         {
           key: 'edit',
           label: '编辑卡组',
           icon: PencilLine,
           variant: 'primary',
+          priority: 0,
           onClick: () => goto(`/decks/builder?deckId=${page.params.deckid}`),
         },
       ],
@@ -835,7 +985,7 @@
 <div class="deck-builder-container">
   <div class="deck-info-bar">
     {#if deck?.description}
-      <p class="deck-description">{deck.description}</p>
+      <p class="deck-description selectable">{deck.description}</p>
     {/if}
     {#if deck?.tags && deck.tags.length > 0}
       <div class="deck-tags">
@@ -960,7 +1110,7 @@
               {#if expanded}
                 <div class="match-item-detail">
                   {#if match.note}
-                    <p class="match-note">{match.note}</p>
+                    <p class="match-note selectable">{match.note}</p>
                   {/if}
                   {#if match.opp_legend_name}
                     <div class="match-legend-row">
@@ -1420,7 +1570,7 @@
           </button>
         </div>
       {/if}
-      <pre class="text-preview-box">{currentShareText() || '（无可导出的内容）'}</pre>
+      <pre class="text-preview-box selectable">{currentShareText() || '（无可导出的内容）'}</pre>
     </div>
   {/if}
 
@@ -1762,6 +1912,104 @@
   onclose={() => (showMatchModal = false)}
   onSaved={() => loadMatches(deck?.id ?? '')}
 />
+
+<CommonModal
+  open={showOwnershipModal}
+  title="持有检查"
+  subtitle="对比收藏，查看卡组中未足量拥有的卡牌"
+  closable={!loadingOwnership}
+  onclose={() => (showOwnershipModal = false)}
+>
+  <div class="ownership-panel">
+    <div class="ownership-mode-toggle">
+      <button
+        class:active={ownershipMatchMode === 'card'}
+        disabled={loadingOwnership}
+        onclick={() => switchOwnershipMode('card')}
+      >
+        按卡牌
+      </button>
+      <button
+        class:active={ownershipMatchMode === 'print'}
+        disabled={loadingOwnership}
+        onclick={() => switchOwnershipMode('print')}
+      >
+        按印刷号
+      </button>
+    </div>
+    {#if loadingOwnership}
+      <div class="ownership-loading">
+        <LoaderCircle class="animate-spin" size={16} />
+        <span>检查中...</span>
+      </div>
+    {:else if ownershipZones.length === 0}
+      <p class="ownership-empty">检查完毕，全部持有。</p>
+    {:else}
+      <p class="ownership-hint">以下卡牌未足量拥有：</p>
+      <table class="ownership-table">
+        <thead>
+          <tr>
+            <th>区域</th>
+            <th>卡牌</th>
+            <th>编号</th>
+            <th>持有</th>
+            <th>需要</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each ownershipZones as { row, zone } (row.cardNo + '##' + row.cardNoExtend)}
+            <tr>
+              <td class="cell-zone">{ZONE_CONFIG[zone as ZoneKey]?.label ?? ''}</td>
+              <td class="cell-name">{row.cardName}</td>
+              <td class="cell-no">{row.cardNoExtend || row.cardNo}</td>
+              <td class="cell-owned" class:insufficient={row.owned < row.needed}>{row.owned}</td>
+              <td class="cell-needed">{row.needed}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    {#if ownershipZones.length > 0}
+      <div class="ownership-footer-options">
+        <label class="ownership-extend-check">
+          <input
+            type="checkbox"
+            bind:checked={ownershipIncludeComplete}
+            disabled={exportingOwnership}
+          />
+          保留已经满足的卡
+        </label>
+        <select
+          class="ownership-format-select"
+          bind:value={ownershipExportFormat}
+          disabled={exportingOwnership}
+        >
+          <option value="txt">文本 (.txt)</option>
+          <option value="csv">表格 (.csv)</option>
+        </select>
+      </div>
+    {/if}
+    <button
+      class="button button-ghost"
+      disabled={exportingOwnership}
+      onclick={() => (showOwnershipModal = false)}
+    >
+      关闭
+    </button>
+    {#if ownershipZones.length > 0}
+      <button
+        class="button button-primary"
+        disabled={exportingOwnership || ownershipExportRows.length === 0}
+        onclick={exportOwnership}
+      >
+        {exportingOwnership ? '导出中...' : '导出'}
+      </button>
+    {/if}
+  {/snippet}
+</CommonModal>
 
 <style>
   .deck-builder-container {
@@ -3314,5 +3562,126 @@
     background: var(--bg-hover);
     border-radius: 10px;
     margin-top: 16px;
+  }
+
+  .ownership-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .ownership-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    align-self: flex-start;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+  }
+
+  .ownership-mode-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .ownership-mode-toggle button.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .ownership-loading,
+  .ownership-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .ownership-hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .ownership-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .ownership-table th,
+  .ownership-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .ownership-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .cell-zone {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .cell-name {
+    min-width: 120px;
+  }
+
+  .cell-no {
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .cell-owned {
+    font-weight: 600;
+  }
+
+  .cell-owned.insufficient {
+    color: #ef4444;
+  }
+
+  .cell-needed {
+    font-weight: 600;
+  }
+
+  .ownership-footer-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ownership-extend-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .ownership-format-select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 </style>

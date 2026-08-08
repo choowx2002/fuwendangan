@@ -2,6 +2,7 @@
 <script lang="ts">
   import AppShell from '../lib/components/layout/AppShell.svelte'
   import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
+  import Toast from '../lib/components/ui/Toast.svelte'
   import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import '../app.css'
@@ -34,6 +35,7 @@
 </script>
 
 <div class="layout-root">
+  <Toast />
   <!-- 直接使用 uiState.status -->
   {#if uiState.status === 'error'}
     <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />

@@ -7,9 +7,16 @@
 
   let actionsEl = $state<HTMLDivElement | null>(null)
   let measurerEl = $state<HTMLDivElement | null>(null)
-  let visibleActions = $state<TopbarAction[]>([])
+  let visibleRegActions = $state<TopbarAction[]>([])
+  let visiblePrioActions = $state<TopbarAction[]>([])
   let overflowActions = $state<TopbarAction[]>([])
   let menuOpen = $state(false)
+
+  const orderedActions = $derived(
+    [...topbarState.actions].sort(
+      (a, b) => (a.priority === undefined ? -Infinity : -a.priority) - (b.priority === undefined ? -Infinity : -b.priority)
+    )
+  )
 
   function toggleSidebar() {
     isSidebarOpen = !isSidebarOpen
@@ -22,9 +29,10 @@
   function updateLayout() {
     const container = actionsEl
     const measurer = measurerEl
-    const actions = topbarState.actions
+    const actions = orderedActions
     if (!container || !measurer || actions.length === 0) {
-      visibleActions = actions
+      visibleRegActions = actions
+      visiblePrioActions = []
       overflowActions = []
       return
     }
@@ -34,31 +42,45 @@
       el.getBoundingClientRect().width
     )
     const gap = 8
-    const total = widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1)
+    const sum = (arr: number[]) => arr.reduce((s, w) => s + w, 0)
 
+    const total = sum(widths) + gap * (widths.length - 1)
     if (total <= containerWidth) {
-      visibleActions = actions
+      visibleRegActions = actions.filter((a) => a.priority === undefined)
+      visiblePrioActions = actions.filter((a) => a.priority !== undefined)
       overflowActions = []
       return
     }
 
-    const overflowBtnWidth = 40
-    const available = containerWidth - overflowBtnWidth
-    let acc = 0
-    let count = 0
-    for (const w of widths) {
-      if (acc + w + (count > 0 ? gap : 0) > available) break
-      acc += w + (count > 0 ? gap : 0)
-      count++
-    }
-    if (count === 0) count = 1
+    const prioStart = actions.findIndex((a) => a.priority !== undefined)
+    const regCount = prioStart === -1 ? actions.length : prioStart
+    const regWidths = widths.slice(0, regCount)
+    const prioWidths = widths.slice(regCount)
+    const ellipsisWidth = 40
 
-    visibleActions = actions.slice(0, count)
-    overflowActions = actions.slice(count)
+    let prioKept = prioWidths.length
+    while (
+      prioKept > 1 &&
+      ellipsisWidth + sum(prioWidths.slice(-prioKept)) + gap * prioKept > containerWidth
+    ) {
+      prioKept--
+    }
+
+    let regVisible = 0
+    for (let r = 0; r <= regCount; r++) {
+      const used = sum(regWidths.slice(0, r)) + ellipsisWidth + sum(prioWidths.slice(-prioKept)) + gap * (r + prioKept)
+      if (used <= containerWidth) regVisible = r
+    }
+
+    const regular = actions.slice(0, regVisible)
+    const priority = actions.slice(actions.length - prioKept)
+    visibleRegActions = regular
+    visiblePrioActions = priority
+    overflowActions = actions.slice(regVisible, regCount).concat(actions.slice(regCount, actions.length - prioKept))
   }
 
   $effect(() => {
-    topbarState.actions
+    orderedActions
     const container = actionsEl
     if (!container) return
     updateLayout()
@@ -90,7 +112,7 @@
   </div>
 
   <div class="right" bind:this={actionsEl}>
-    {#each visibleActions as action (action.key)}
+    {#each visibleRegActions as action (action.key)}
       <button
         class="action-btn button button-sm {variantClass(action.variant)}"
         class:active={action.active}
@@ -117,6 +139,22 @@
         <Ellipsis size={18} />
       </button>
     {/if}
+
+    {#each visiblePrioActions as action (action.key)}
+      <button
+        class="action-btn button button-sm {variantClass(action.variant)}"
+        class:active={action.active}
+        disabled={action.disabled}
+        title={action.title ?? action.label}
+        onclick={action.onClick}
+      >
+        {#if action.icon}
+          {@const Icon = action.icon}
+          <Icon size={16} />
+        {/if}
+        {#if action.label}<span class="action-label">{action.label}</span>{/if}
+      </button>
+    {/each}
   </div>
 
   {#if menuOpen && overflowActions.length > 0}
@@ -143,7 +181,7 @@
   {/if}
 
   <div class="measurer" bind:this={measurerEl} aria-hidden="true">
-    {#each topbarState.actions as action (action.key)}
+    {#each orderedActions as action (action.key)}
       <button class="action-btn button button-sm {variantClass(action.variant)}" tabindex="-1">
         {#if action.icon}
           {@const Icon = action.icon}
@@ -300,7 +338,7 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     padding: 4px;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     z-index: 31;
   }
 

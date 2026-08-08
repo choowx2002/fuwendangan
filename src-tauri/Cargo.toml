@@ -31,5 +31,6 @@ tauri-plugin-store = "2"
 tauri-plugin-os = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-network = "2.0.4"
 base64 = "0.22"
 

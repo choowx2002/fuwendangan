@@ -40,7 +40,8 @@
   import { appConfigDir, appLocalDataDir, join } from '@tauri-apps/api/path'
   import { copyFile, writeTextFile, readTextFile } from '$lib/services/db-file-service'
   import { onMount } from 'svelte'
-  import { setLoadStatus, setTopbar, downloadState } from '$lib/stores/ui-store.svelte'
+  import { setLoadStatus, setTopbar, downloadState, showToast } from '$lib/stores/ui-store.svelte'
+  import { getNetworkStatus } from '$lib/stores/network.svelte'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion as getAppVersion } from '@tauri-apps/api/app'
@@ -213,8 +214,14 @@
   async function checkCardDataUpdate() {
     cardDataUpdateStatus = 'checking'
     try {
+      const net = await getNetworkStatus()
+      if (!net.online) {
+        cardDataUpdateStatus = 'error'
+        showToast('网络不可用，无法检查更新', 'error')
+        return
+      }
       setLoadStatus('syncing')
-      await initializeDatabase()
+      await initializeDatabase({ skipMetered: false })
       setLoadStatus('success')
       cardDataUpdateStatus = 'upToDate'
       await loadDbInfo()
@@ -387,7 +394,11 @@
   }
 
   function toggleAllDecks() {
-    toggleAll(selectedDeckIds, exportDeckList.map((d) => d.id), (next) => (selectedDeckIds = next))
+    toggleAll(
+      selectedDeckIds,
+      exportDeckList.map((d) => d.id),
+      (next) => (selectedDeckIds = next)
+    )
   }
 
   async function openExportModal() {
@@ -640,9 +651,13 @@
   }
 
   function toggleAllImportDecks() {
-    toggleAll(selectedImportDeckIds, importDeckList.map((d) => d.id), (next) => {
-      selectedImportDeckIds = next
-    })
+    toggleAll(
+      selectedImportDeckIds,
+      importDeckList.map((d) => d.id),
+      (next) => {
+        selectedImportDeckIds = next
+      }
+    )
   }
 
   async function openImportModal() {
@@ -1069,7 +1084,9 @@
       <div class="manage-row">
         <div class="manage-info">
           <span class="manage-title">清空卡牌数据</span>
-          <span class="manage-desc">删除卡牌基础数据与卡图，并清空筛选与同步标记（卡组与收藏保留），下次同步重新拉取。</span>
+          <span class="manage-desc"
+            >删除卡牌基础数据与卡图，并清空筛选与同步标记（卡组与收藏保留），下次同步重新拉取。</span
+          >
         </div>
         <button class="button button-danger-outline" onclick={clearCardDataAsk}>清空</button>
       </div>
@@ -1201,7 +1218,9 @@
       <div class="setting-info">
         <span class="setting-label">预设语言</span>
         <span class="setting-desc">
-          {PRESET_LANGUAGE_CODES.join(' / ')}。收藏中的语言使用标准语言码，预设之外的语言可在此添加。
+          {PRESET_LANGUAGE_CODES.join(
+            ' / '
+          )}。收藏中的语言使用标准语言码，预设之外的语言可在此添加。
         </span>
       </div>
     </div>

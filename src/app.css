@@ -81,12 +81,25 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden; /* 防止双滚动条 */
+  user-select: none; /* 桌面 App 体验：默认禁用文本选中 */
 }
 
 * {
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   box-sizing: border-box;
-  /* user-select: none; */
+}
+
+/* 需要保留文本选中的区域回滚（表单 / 正文内容） */
+input,
+textarea,
+select {
+  user-select: text;
+}
+.selectable {
+  user-select: text;
+}
+.selectable-all {
+  user-select: all;
 }
 
 /* 滚动条美化 (Notion 风格) */

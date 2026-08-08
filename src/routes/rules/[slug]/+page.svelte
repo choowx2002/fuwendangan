@@ -1,34 +1,55 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { page } from '$app/state'
   import { getRulesByDocName } from '$lib/db'
-  import type { Rule, TreeNode } from '$lib/db/types'
-  import { buildTree, getDisplayText, renderContent, scrollToRule } from '$lib/services/rules'
+  import type { Rule } from '$lib/db/types'
   import {
-    rules,
-    ruleMap,
-    tree,
-    lang,
-    activeRule,
-    expandedRules,
-    type Lang,
-  } from '$lib/stores/rules'
-  import { ChevronLeft, Menu } from '@lucide/svelte'
-  import { isMobile } from '$lib/utils/os'
+    getDisplayText,
+    renderContent,
+    scrollToRule,
+    highlightText,
+  } from '$lib/services/rules'
+  import { rules, ruleMap, lang, type Lang } from '$lib/stores/rules'
+  import { rulesTheme } from '$lib/stores/settings'
+  import {
+    ChevronLeft,
+    Palette,
+    Search,
+    X,
+    Copy,
+    Check,
+    CheckSquare,
+  } from '@lucide/svelte'
   import { longpress } from '$lib/utils/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { goto } from '$app/navigation'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
+
+  const THEMES = [
+    { id: 'parchment', label: '羊皮纸', color: '#d7c8b4', text: '#3f2d1a' },
+    { id: 'paper', label: '纸白', color: '#ffffff', text: '#333333' },
+    { id: 'dark', label: '深色', color: '#21252e', text: '#d6d8de' },
+    { id: 'ink', label: '墨蓝', color: '#2a3a4d', text: '#d8e0ea' },
+    { id: 'forest', label: '森林', color: '#f5f7ec', text: '#2f3a25' },
+  ]
 
   let loading = $state(true)
   let searchQuery = $state('')
-  let sidebarOpen = $state(false)
-  let isMobileInit = $state(false)
+  let effectiveQuery = $state('')
+  let searchOpen = $state(false)
+  let searchInput = $state<HTMLInputElement | null>(null)
+  let copyMode = $state(false)
+  let selectedRules = $state<Set<string>>(new Set())
+  let themeMenuOpen = $state(false)
+  let searchTimer: ReturnType<typeof setTimeout> | null = null
 
-  // 搜索结果
-  let searchResults = $derived.by(() => {
-    if (!searchQuery.trim()) return []
-    const q = searchQuery.trim().toLowerCase()
+  const selectedCount = $derived(selectedRules.size)
+
+  // 搜索结果（防抖后的查询词）
+  const searchResults = $derived.by(() => {
+    if (!effectiveQuery.trim()) return []
+    const q = effectiveQuery.trim().toLowerCase()
     return $rules.filter(
       (r) =>
         r.rule_number.toLowerCase().includes(q) ||
@@ -37,34 +58,107 @@
     )
   })
 
-  // 过滤后的树（用于搜索时）
-  let filteredTree = $derived.by(() => {
-    if (!searchQuery.trim()) return $tree
-    const q = searchQuery.trim().toLowerCase()
+  function scheduleSearch() {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => {
+      effectiveQuery = searchQuery
+    }, 250)
+  }
 
-    function filterNode(node: TreeNode): TreeNode | null {
-      const matches =
-        node.rule_number.toLowerCase().includes(q) ||
-        (node.text_zh || '').toLowerCase().includes(q) ||
-        (node.text_en || '').toLowerCase().includes(q)
-
-      const filteredChildren = node.children
-        .map(filterNode)
-        .filter((n): n is TreeNode => n !== null)
-
-      if (matches || filteredChildren.length > 0) {
-        return { ...node, children: filteredChildren }
-      }
-      return null
-    }
-
-    return $tree.map(filterNode).filter((n): n is TreeNode => n !== null)
+  onDestroy(() => {
+    if (searchTimer) clearTimeout(searchTimer)
   })
 
-  function toggleLang() {
-    const langs: Lang[] = ['zh', 'en', 'both']
-    const idx = langs.indexOf($lang)
-    lang.set(langs[(idx + 1) % langs.length])
+  function setLang(l: Lang) {
+    lang.set(l)
+  }
+
+  function goBack() {
+    goto('/rules')
+  }
+
+  function toggleThemeMenu() {
+    themeMenuOpen = !themeMenuOpen
+  }
+
+  function applyTheme(id: string) {
+    rulesTheme.set(id)
+    themeMenuOpen = false
+  }
+
+  function clearSearch() {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchQuery = ''
+    effectiveQuery = ''
+  }
+
+  function openSearch() {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchQuery = ''
+    effectiveQuery = ''
+    searchOpen = true
+    tick().then(() => {
+      const el = searchInput
+      if (el) {
+        el.focus()
+      }
+    })
+  }
+
+  function closeSearch() {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchOpen = false
+  }
+
+  function toggleCopyMode() {
+    copyMode = !copyMode
+    selectedRules = new Set()
+  }
+
+  function toggleSelect(ruleNumber: string) {
+    const next = new Set(selectedRules)
+    if (next.has(ruleNumber)) {
+      next.delete(ruleNumber)
+    } else {
+      next.add(ruleNumber)
+    }
+    selectedRules = next
+  }
+
+  function buildCopyText(list: Rule[]): string {
+    return list
+      .map((r) => {
+        let text = `${r.rule_number}. `
+        if ($lang === 'zh') text += r.text_zh?.trim() ?? ''
+        else if ($lang === 'en') text += r.text_en?.trim() ?? ''
+        else text += `${r.text_zh?.trim() ?? ''}\n${r.text_en?.trim() ?? ''}`
+        return text
+      })
+      .join('\n')
+  }
+
+  async function copyRulesText(list: Rule[]) {
+    if (list.length === 0) return
+    const text = buildCopyText(list)
+    try {
+      await writeText(text)
+      showToast(`已复制 ${list.length} 条规则`, 'success')
+      if (list.length > 1) {
+        selectedRules = new Set()
+      }
+    } catch (error) {
+      console.error('复制失败', error)
+      showToast('复制失败', 'error')
+    }
+  }
+
+  function copyRule(rule: Rule) {
+    copyRulesText([rule])
+  }
+
+  function copySelected() {
+    const toCopy = $rules.filter((r) => selectedRules.has(r.rule_number))
+    copyRulesText(toCopy)
   }
 
   function handleRuleClick(e: MouseEvent) {
@@ -75,25 +169,7 @@
     }
   }
 
-  function toggleExpand(nodeNum: string) {
-    const newSet = new Set($expandedRules)
-    if (newSet.has(nodeNum)) {
-      newSet.delete(nodeNum)
-    } else {
-      newSet.add(nodeNum)
-    }
-    expandedRules.set(newSet)
-  }
-
-  function isExpanded(num: string) {
-    return $expandedRules.has(num)
-  }
-
   onMount(() => {
-    isMobile().then((is) => {
-      isMobileInit = is
-    })
-
     const loadRules = async () => {
       try {
         const data = await getRulesByDocName(page.params.slug || 'core')
@@ -104,7 +180,6 @@
         data.forEach((r) => (map[r.rule_number] = r))
 
         ruleMap.set(map)
-        tree.set(buildTree(data))
 
         loading = false
       } catch (error) {
@@ -114,180 +189,69 @@
     }
 
     loadRules()
-
-    const main = document.getElementById('main')
-    if (!main) return
-
-    // ScrollSpy - 滚动时同步
-    let ticking = false
-    const onScroll = () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(() => {
-        const mainEl = document.getElementById('main')
-        if (!mainEl) {
-          ticking = false
-          return
-        }
-
-        // 计算主容器的垂直中线（相对于视口）
-        const mainRect = mainEl.getBoundingClientRect()
-        const middleY = mainRect.top + mainRect.height / 2
-
-        const items = document.querySelectorAll('[data-rn]')
-        let current: string | null = null
-
-        // 找到横跨中线的元素：顶部在中线之上，底部在中线之下
-        for (const el of items) {
-          const rect = el.getBoundingClientRect()
-          if (el.getBoundingClientRect().top < 180) {
-            current = (el as HTMLElement).dataset.rn || null
-          }
-        }
-
-        // Fallback：如果滚动到最顶部，所有元素都在中线下方
-        // 此时取第一个 top 最接近中线的元素
-        if (!current && items.length > 0) {
-          const firstRect = items[0].getBoundingClientRect()
-          if (firstRect.top > middleY) {
-            current = (items[0] as HTMLElement).dataset.rn || null
-          }
-        }
-
-        if (current && current !== $activeRule) {
-          updateActiveRule(current)
-        }
-        ticking = false
-      })
-    }
-
-    // Click - 点击时同步
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      const ruleEl = target.closest('[data-rn]')
-      if (ruleEl) {
-        const ruleNum = (ruleEl as HTMLElement).dataset.rn
-        if (ruleNum) {
-          updateActiveRule(ruleNum)
-        }
-      }
-    }
-
-    function updateActiveRule(ruleNum: string) {
-      activeRule.set(ruleNum)
-
-      const map: Record<string, TreeNode> = {}
-      function walk(nodes: TreeNode[]) {
-        nodes.forEach((n) => {
-          map[n.rule_number] = n
-          walk(n.children)
-        })
-      }
-      walk($tree)
-
-      const newExpanded = new Set($expandedRules)
-      let cur: string | null = ruleNum
-      while (cur && map[cur]) {
-        newExpanded.add(cur)
-        cur = map[cur].parent_number
-      }
-      expandedRules.set(newExpanded)
-
-      tick().then(() => {
-        const activeItem = document.querySelector('.toc-item.active')
-        if (activeItem) {
-          activeItem.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          })
-        }
-      })
-    }
-
-    main.addEventListener('scroll', onScroll)
-    main.addEventListener('click', onClick)
-
-    // ======================
-    // Cleanup
-    // ======================
-    return () => {
-      if (main) {
-        main.removeEventListener('scroll', onScroll)
-        main.removeEventListener('click', onClick)
-      }
-    }
   })
-
-  async function triggerAction(rule: Rule, lang: Lang) {
-    let text: string | null = `${rule.rule_number}. `
-    try {
-      if (lang === 'zh') {
-        text += rule.text_zh?.trim()
-      } else if (lang === 'en') {
-        text += rule.text_en?.trim()
-      } else {
-        text += `${rule.text_zh?.trim()} \n${rule.text_en?.trim()}`
-      }
-
-      await writeText(text)
-
-      // 显示 Toast 提示
-      showToast(`已复制规则 ${rule.rule_number}`, 'success')
-    } catch (error) {
-      console.error('复制失败', error)
-      showToast('复制失败', 'error')
-    }
-  }
 </script>
-<div class="page">
-  <!-- Sidebar -->
-  {#if !isMobileInit}
-    <div
-      style="cursor: pointer ;position: fixed; top: calc(env(safe-area-inset-top) + 16px); left: 16px;  width: 56px;
-         height: 56px;display: flex; justify-content: center; align-items: center;z-index: 1;"
+
+<div class="page" data-theme={$rulesTheme}>
+  <!-- 顶部阅读工具栏 -->
+  <header class="toolbar">
+    <button class="tb-btn" onclick={goBack} aria-label="返回" title="返回">
+      <ChevronLeft size={18} />
+    </button>
+    <span class="tb-title">{page.params.slug}</span>
+    <span class="tb-spacer"></span>
+
+    <button class="tb-btn" onclick={openSearch} aria-label="搜索" title="搜索">
+      <Search size={18} />
+    </button>
+
+    <div class="lang-seg" role="group" aria-label="语言">
+      <button class:active={$lang === 'zh'} onclick={() => setLang('zh')}>中</button>
+      <button class:active={$lang === 'en'} onclick={() => setLang('en')}>EN</button>
+      <button class:active={$lang === 'both'} onclick={() => setLang('both')}>双语</button>
+    </div>
+
+    <button
+      class="tb-btn"
+      class:active={themeMenuOpen}
+      onclick={toggleThemeMenu}
+      aria-label="背景主题"
+      title="背景主题"
     >
-      <ChevronLeft size={32} onclick={() => goto('/rules')} />
+      <Palette size={18} />
+    </button>
+
+    <button
+      class="tb-btn"
+      class:active={copyMode}
+      onclick={toggleCopyMode}
+      aria-label="多选复制"
+      title="多选复制"
+    >
+      <CheckSquare size={18} />
+    </button>
+  </header>
+
+  <!-- 主题选择 -->
+  {#if themeMenuOpen}
+    <div class="theme-menu">
+      <div class="theme-menu-label">背景主题</div>
+      <div class="theme-grid">
+        {#each THEMES as t (t.id)}
+          <button
+            class="theme-option"
+            class:active={$rulesTheme === t.id}
+            onclick={() => applyTheme(t.id)}
+          >
+            <span class="theme-swatch" style="background: {t.color}; color: {t.text}">Aa</span>
+            <span class="theme-name">{t.label}</span>
+          </button>
+        {/each}
+      </div>
     </div>
   {/if}
-  <aside class="sidebar" class:collapsed={!sidebarOpen}>
-    <div class="search-box">
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-      </svg>
-      <input type="text" bind:value={searchQuery} placeholder="搜索规则…" class="search-input" />
-    </div>
 
-    <div class="toc">
-      {#if searchQuery.trim()}
-        <!-- 搜索模式 -->
-        <div class="toc-section">
-          <div class="toc-label">搜索结果 ({searchResults.length})</div>
-          {#each searchResults as r}
-            <button class="button button-text toc-item" onclick={() => scrollToRule(r.rule_number)}>
-              <span class="toc-num">{r.rule_number}</span>
-              <span class="toc-title" class:heading={r.is_heading}>
-                {$lang === 'en' ? r.text_en : r.text_zh}
-              </span>
-            </button>
-          {/each}
-        </div>
-      {:else}
-        <!-- 正常目录模式 -->
-        {#each filteredTree as node}
-          {@render tocNode(node, 0)}
-        {/each}
-      {/if}
-    </div>
-  </aside>
-
-  <!-- Main Content -->
+  <!-- 正文 -->
   <main class="main" id="main">
     {#if loading}
       <div class="loading">加载中...</div>
@@ -308,7 +272,7 @@
                   class="chapter rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
+                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
                 >
                   <div class="chapter-num">Chapter {rule.rule_number}</div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
@@ -322,7 +286,7 @@
                   class="section rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
+                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
                 >
                   <h3 class="section-title">
                     <div class="section-num">{rule.rule_number}</div>
@@ -333,16 +297,42 @@
                   {/if}
                 </section>
               {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                   class="rule-row rule-anchor"
+                  class:selected={copyMode && selectedRules.has(rule.rule_number)}
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => triggerAction(rule, $lang) }}
+                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
+                  onclick={() => {
+                    if (copyMode) toggleSelect(rule.rule_number)
+                  }}
                 >
+                  {#if copyMode}
+                    <span class="row-check" class:checked={selectedRules.has(rule.rule_number)}>
+                      {#if selectedRules.has(rule.rule_number)}
+                        <Check size={12} strokeWidth={4} />
+                      {/if}
+                    </span>
+                  {/if}
                   <div class="rule-num">{rule.rule_number}</div>
-                  <div class="rule-body">
+                  <div class="rule-body selectable">
                     {@html renderContent(rule, $lang)}
                   </div>
+                  {#if !copyMode}
+                    <button
+                      class="row-copy"
+                      title="复制规则"
+                      aria-label="复制规则"
+                      onclick={(e) => {
+                        e.stopPropagation()
+                        copyRule(rule)
+                      }}
+                    >
+                      <Copy size={14} />
+                    </button>
+                  {/if}
                 </div>
               {/if}
             {/each}
@@ -354,266 +344,296 @@
     {/if}
   </main>
 
-  <!-- FAB - Language Switcher -->
-  <button class="fab" onclick={toggleLang} title="切换语言">
-    {#if $lang === 'zh'}
-      中
-    {:else if $lang === 'en'}
-      EN
-    {:else}
-      双语
-    {/if}
-  </button>
+  <!-- 多选复制浮动条 -->
+  {#if copyMode}
+    <div class="multi-bar">
+      <span class="multi-count">已选 {selectedCount} 条</span>
+      <button class="multi-copy" onclick={copySelected} disabled={selectedCount === 0}>
+        <Copy size={14} /> 复制全部
+      </button>
+      <button class="multi-cancel" onclick={toggleCopyMode}>取消</button>
+    </div>
+  {/if}
 
-  <!-- Mobile Sidebar Toggle -->
-  <!-- svelte-ignore a11y_consider_explicit_label -->
-  <button class="mobile-toggle" onclick={() => (sidebarOpen = !sidebarOpen)}>
-    <Menu size={24} />
-  </button>
+  <!-- 搜索浮层 -->
+  <CommonModal open={searchOpen} onclose={closeSearch} width="min(560px, 100%)">
+    {#snippet header()}
+      <div class="search-modal-header">
+        <Search size={16} />
+        <input
+          bind:this={searchInput}
+          bind:value={searchQuery}
+          oninput={scheduleSearch}
+          placeholder="搜索规则…"
+          class="search-modal-input"
+        />
+        {#if searchQuery}
+          <button class="search-modal-clear" onclick={clearSearch} aria-label="清除搜索">
+            <X size={14} />
+          </button>
+        {/if}
+      </div>
+    {/snippet}
+
+    <div class="search-results">
+      {#if !effectiveQuery.trim()}
+        <div class="search-empty">输入关键词搜索规则</div>
+      {:else if searchResults.length === 0}
+        <div class="search-empty">未找到匹配内容</div>
+      {:else}
+        {#each searchResults as r (r.id)}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <button
+            class="search-result"
+            onclick={() => {
+              scrollToRule(r.rule_number)
+              closeSearch()
+            }}
+          >
+            <span class="search-result-num">{r.rule_number}</span>
+            <span class="search-result-text">
+              {@html highlightText(
+                $lang === 'en' ? (r.text_en ?? '') : (r.text_zh ?? ''),
+                effectiveQuery.trim()
+              )}
+            </span>
+          </button>
+        {/each}
+      {/if}
+    </div>
+  </CommonModal>
 </div>
 
-{#snippet tocNode(node: TreeNode, depth: number)}
-  <div class="tree-node">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="toc-item"
-      class:active={$activeRule === node.rule_number}
-      class:heading={node.is_heading}
-      style="padding-left: {depth * 12 + 8}px"
-      onclick={(e) => {
-        if ((e.target as HTMLElement).closest('.toggle-btn')) {
-          toggleExpand(node.rule_number)
-        } else {
-          scrollToRule(node.rule_number)
-        }
-      }}
-    >
-      <button class="toggle-btn">
-        {#if node.children.length > 0}
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            style="transform: rotate({isExpanded(node.rule_number)
-              ? '0deg'
-              : '-90deg'}); transition: transform 0.15s;"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        {:else}
-          <span class="dot"></span>
-        {/if}
-      </button>
-      <span class="toc-num">{node.rule_number}</span>
-      <span class="toc-title" title="{node.text_zh}\n{node.text_en}">
-        {$lang === 'en' ? node.text_en : node.text_zh}
-      </span>
-    </div>
-    {#if node.children.length > 0 && isExpanded(node.rule_number)}
-      <div class="toc-children">
-        {#each node.children as child}
-          {@render tocNode(child, depth + 1)}
-        {/each}
-      </div>
-    {/if}
-  </div>
-{/snippet}
-
 <style>
+  /* ===================== 主题变量 ===================== */
   .page {
-    display: flex;
+    --rules-toolbar: 48px;
+    --rules-toolbar-h: calc(48px + env(safe-area-inset-top));
     min-height: 100vh;
     position: relative;
+    background: var(--rules-bg);
+    color: var(--rules-text);
   }
 
-  /* Sidebar */
-  .sidebar {
-    padding-top: env(safe-area-inset-top);
-    width: 280px;
-    background: #d7c8b4;
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
+  .page[data-theme='parchment'] {
+    --rules-bg: #d7c8b4;
+    --rules-book: #e5dbc8;
+    --rules-text: #3a2c18;
+    --rules-muted: #5f3100;
+    --rules-weak: #6b4a2b;
+    --rules-border: #c9b48f;
+    --rules-accent: #af7f08;
+    --rules-on-accent: #ffffff;
+    --rules-hl: rgba(175, 127, 8, 0.25);
+  }
+
+  .page[data-theme='paper'] {
+    --rules-bg: #eef1f5;
+    --rules-book: #ffffff;
+    --rules-text: #333333;
+    --rules-muted: #4a5568;
+    --rules-weak: #64748b;
+    --rules-border: #d7dce2;
+    --rules-accent: #2f6feb;
+    --rules-on-accent: #ffffff;
+    --rules-hl: rgba(47, 111, 235, 0.18);
+  }
+
+  .page[data-theme='dark'] {
+    --rules-bg: #1a1d24;
+    --rules-book: #21252e;
+    --rules-text: #d6d8de;
+    --rules-muted: #a6adb8;
+    --rules-weak: #8b93a1;
+    --rules-border: #333947;
+    --rules-accent: #e0a64b;
+    --rules-on-accent: #14161c;
+    --rules-hl: rgba(224, 166, 75, 0.28);
+  }
+
+  .page[data-theme='ink'] {
+    --rules-bg: #22303f;
+    --rules-book: #2a3a4d;
+    --rules-text: #d8e0ea;
+    --rules-muted: #a9b6c4;
+    --rules-weak: #8fa1b3;
+    --rules-border: #3b4d63;
+    --rules-accent: #6fb1e8;
+    --rules-on-accent: #0f1b26;
+    --rules-hl: rgba(111, 177, 232, 0.3);
+  }
+
+  .page[data-theme='forest'] {
+    --rules-bg: #edf1e2;
+    --rules-book: #f5f7ec;
+    --rules-text: #2f3a25;
+    --rules-muted: #56613f;
+    --rules-weak: #6a7354;
+    --rules-border: #cfd6b6;
+    --rules-accent: #5c7a3a;
+    --rules-on-accent: #ffffff;
+    --rules-hl: rgba(92, 122, 58, 0.2);
+  }
+
+  /* ===================== 工具栏 ===================== */
+  .toolbar {
     position: fixed;
-    left: 0;
     top: 0;
-    bottom: 0;
-    z-index: 40;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
-  }
-
-  .sidebar.collapsed {
-    transform: translateX(-100%);
-  }
-
-  @media (max-width: 767.99px) {
-    .sidebar {
-      width: 85vw;
-      max-width: 320px;
-      box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
-    }
-  }
-
-  /* Search */
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    background: #d7c8b4;
-  }
-
-  .search-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    font-size: var(--text-sm);
-    color: var(--text-primary);
-  }
-
-  .search-input::placeholder {
-    color: var(--text-secondary);
-  }
-
-  /* TOC */
-  .toc {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px 0;
-  }
-
-  .toc-section {
-    padding: 0 8px;
-  }
-
-  .toc-label {
-    padding: 8px 8px 4px;
-    font-size: var(--text-xs);
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
-  }
-
-  .toc-item {
+    left: 0;
+    right: 0;
+    height: var(--rules-toolbar-h);
+    padding: env(safe-area-inset-top) 12px 0;
+    z-index: 60;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 8px;
-    cursor: pointer;
-    border-left: 2px solid transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    transition: all 0.3s;
-    user-select: none;
-    width: 100%;
-    text-align: left;
-    background: #ffffff00;
-    border: none;
-    border-left: 2px solid transparent;
+    background: color-mix(in srgb, var(--rules-bg) 96%, transparent);
+    border-bottom: 1px solid var(--rules-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none;
   }
 
-  .toc-item:hover {
-    background: #5f3100;
-    color: var(--bg-primary);
-  }
-
-  .toc-item.heading .toc-title {
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .toc-item:hover .toc-title {
-    color: var(--bg-primary);
-  }
-
-  .toc-item.active {
-    border-left-color: var(--accent-color);
-    background: #5f3100;
-    color: var(--bg-primary);
-  }
-
-  .toc-item.heading.active .toc-title {
-    color: var(--bg-primary);
-  }
-
-  .toggle-btn {
-    width: 14px;
-    height: 14px;
+  .tb-btn {
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: none;
     border: none;
-    color: var(--text-tertiary);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--rules-muted);
     cursor: pointer;
-    padding: 0;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .tb-btn:hover {
+    background: color-mix(in srgb, var(--rules-text) 10%, transparent);
+  }
+  .tb-btn.active {
+    background: color-mix(in srgb, var(--rules-accent) 18%, transparent);
+    color: var(--rules-accent);
   }
 
-  .toggle-btn:hover {
-    color: var(--text-primary);
-  }
-
-  .dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--text-tertiary);
-  }
-
-  .toc-num {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--text-primary);
+  .tb-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--rules-muted);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     flex-shrink: 0;
   }
 
-  .toc-item.active .toc-num {
-    color: var(--bg-primary);
-  }
-
-  .toc-item:hover .toc-num {
-    color: var(--bg-primary);
-  }
-
-  .toc-title {
+  .tb-spacer {
     flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .toc-children {
-    overflow: hidden;
-  }
-
-  /* Main */
-  .main {
-    flex: 1;
-    transform: translateX(280px);
-    overflow-y: auto;
-    height: 100vh;
-    background: #d7c8b4;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform;
-  }
-
-  .sidebar.collapsed ~ .main {
-    transform: translateX(0);
   }
 
   @media (max-width: 767.99px) {
-    .main {
-      transform: translateX(0);
+    .tb-title {
+      display: none;
     }
+  }
+
+  .lang-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--rules-text) 8%, transparent);
+    flex-shrink: 0;
+  }
+  .lang-seg button {
+    border: none;
+    background: transparent;
+    color: var(--rules-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .lang-seg button:hover {
+    color: var(--rules-text);
+  }
+  .lang-seg button.active {
+    background: var(--rules-accent);
+    color: var(--rules-on-accent);
+  }
+
+  /* ===================== 主题菜单 ===================== */
+  .theme-menu {
+    position: fixed;
+    top: calc(var(--rules-toolbar-h) + 8px);
+    right: 12px;
+    z-index: 59;
+    width: 220px;
+    background: var(--rules-book);
+    border: 1px solid var(--rules-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    padding: 12px;
+  }
+  .theme-menu-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--rules-muted);
+    margin-bottom: 8px;
+  }
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+  }
+  .theme-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .theme-option:hover {
+    background: color-mix(in srgb, var(--rules-text) 10%, transparent);
+  }
+  .theme-option.active {
+    outline: 2px solid var(--rules-accent);
+    outline-offset: -1px;
+  }
+  .theme-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .theme-name {
+    font-size: var(--text-xs);
+    color: var(--rules-text);
+  }
+
+  /* ===================== 主内容 ===================== */
+  .main {
+    height: calc(100vh - var(--rules-toolbar-h));
+    overflow-y: auto;
+    background: var(--rules-bg);
   }
 
   .loading {
@@ -621,7 +641,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: var(--text-tertiary);
+    color: var(--rules-weak);
   }
 
   .content-wrap {
@@ -635,10 +655,10 @@
   }
 
   .book {
-    max-width: 820px;
+    max-width: 900px;
     margin: 0 auto;
-    background: #d7c8b4;
-    border: 1px solid var(--border-color);
+    background: var(--rules-book);
+    border: 1px solid var(--rules-border);
     border-radius: var(--radius-lg);
     padding: 40px 48px;
   }
@@ -652,7 +672,7 @@
   .book-header {
     text-align: center;
     padding-bottom: 24px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--rules-border);
     margin-bottom: 32px;
   }
 
@@ -661,12 +681,12 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     margin: 0 0 6px 0;
-    color: #5f3100;
+    color: var(--rules-muted);
   }
 
   .book-sub {
     font-size: var(--text-sm);
-    color: #5f3100;
+    color: var(--rules-muted);
     letter-spacing: 0.15em;
   }
 
@@ -682,7 +702,7 @@
   .chapter-num {
     font-family: 'JetBrains Mono', monospace;
     font-size: var(--text-xs);
-    color: #5f3100;
+    color: var(--rules-muted);
     letter-spacing: 0.2em;
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -693,11 +713,12 @@
     font-weight: 700;
     letter-spacing: 0.05em;
     margin: 0 0 4px 0;
+    color: var(--rules-text);
   }
 
   .chapter-title-en {
     font-size: var(--text-md);
-    color: var(--text-secondary);
+    color: var(--rules-weak);
     font-style: italic;
     margin-top: 4px;
   }
@@ -706,7 +727,7 @@
     width: 120px;
     height: 1px;
     margin: 16px auto 0;
-    background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+    background: linear-gradient(90deg, transparent, var(--rules-border), transparent);
   }
 
   .section {
@@ -723,60 +744,55 @@
     gap: 8px;
     flex-wrap: wrap;
     margin: 0;
+    color: var(--rules-text);
   }
 
   .section-num {
     font-family: 'JetBrains Mono', monospace;
     font-size: var(--text-xs);
-    color: #5f3100;
+    color: var(--rules-muted);
   }
 
   .section-title-en {
     display: block;
     font-size: var(--text-sm);
-    color: #5f3100;
+    color: var(--rules-muted);
     font-style: italic;
     margin-top: 4px;
   }
 
-  /*.rules-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px;
-  }*/
-
   .rule-row {
+    position: relative;
     display: flex;
     flex-direction: row;
-    gap: 4px;
-    padding: 12px;
-    border-radius: var(--radius-sm);
-    border-bottom: none;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 8px;
     transition: background 0.15s;
     white-space: break-spaces;
   }
 
   @media (hover: hover) and (pointer: fine) {
     .rule-row:hover {
-      background: var(--bg-hover);
+      background: color-mix(in srgb, var(--rules-text) 6%, transparent);
     }
   }
 
   @media (hover: none) {
     .rule-row:active {
-      background: var(--bg-hover);
+      background: color-mix(in srgb, var(--rules-text) 6%, transparent);
     }
   }
 
-  .rule-row:last-child {
-    border-bottom: none;
+  .rule-row.selected {
+    background: color-mix(in srgb, var(--rules-accent) 16%, transparent);
   }
 
   .rule-num {
     font-family: 'JetBrains Mono', monospace;
     font-size: var(--text-xs);
-    color: #5f3100;
+    color: var(--rules-muted);
     flex-shrink: 0;
     min-width: 72px;
     padding-top: 3px;
@@ -795,39 +811,45 @@
     line-height: 1.9;
     text-align: justify;
     font-weight: 600;
+    padding-right: 28px;
   }
 
   .rule-body :global(.bilingual-en) {
-    /* margin-top: 8px; */
     padding-top: 8px;
-    /* border-top: 1px dashed var(--border-color); */
-    color: #50381f;
-    /* font-style: italic; */
+    color: var(--rules-weak);
     font-size: var(--text-base);
     line-height: 1.8;
   }
 
   .rule-body :global(.rule-ref) {
-    color: var(--accent-color);
+    color: var(--rules-accent);
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.9em;
     cursor: pointer;
-    border-bottom: 1px dashed var(--accent-color);
+    border-bottom: 1px dashed var(--rules-accent);
     padding: 0 2px;
     transition: all 0.15s;
   }
 
   .rule-body :global(.rule-ref:hover) {
     border-bottom-style: solid;
-    background: rgba(18, 131, 120, 0.08);
+    background: var(--rules-hl);
+  }
+
+  :global(.search-hl) {
+    background: var(--rules-hl);
+    color: var(--rules-text);
+    border-radius: 2px;
+    padding: 0 1px;
+    font-weight: 700;
   }
 
   .book-footer {
     text-align: center;
     margin-top: 48px;
     padding-top: 24px;
-    border-top: 1px solid var(--border-color);
-    color: var(--text-tertiary);
+    border-top: 1px solid var(--rules-border);
+    color: var(--rules-weak);
     font-size: var(--text-sm);
     letter-spacing: 0.2em;
   }
@@ -848,71 +870,202 @@
     }
     30%,
     70% {
-      background: rgba(18, 131, 120, 0.12);
+      background: var(--rules-hl);
     }
   }
 
-  /* FAB */
-  .fab {
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 16px);
-    right: 82px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #af7f08;
-    color: white;
+  /* ===================== 复制按钮 ===================== */
+  .row-copy {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: none;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--rules-accent) 16%, transparent);
+    color: var(--rules-accent);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 0.15s,
+      transform 0.15s;
+  }
+  .rule-row:hover .row-copy {
+    opacity: 1;
+  }
+  .row-copy:hover {
+    transform: scale(1.1);
+  }
+  @media (hover: none) {
+    .row-copy {
+      opacity: 1;
+    }
+  }
+
+  .row-check {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 3px;
+    border-radius: 5px;
+    border: 1.5px solid var(--rules-border);
+    background: var(--rules-book);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+  }
+  .row-check.checked {
+    background: var(--rules-accent);
+    border-color: var(--rules-accent);
+  }
+
+  /* ===================== 多选浮动条 ===================== */
+  .multi-bar {
+    position: fixed;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--rules-text);
+    color: var(--rules-bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    white-space: nowrap;
+  }
+  .multi-count {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .multi-copy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: 999px;
+    padding: 6px 14px;
+    background: var(--rules-accent);
+    color: var(--rules-on-accent);
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(18, 131, 120, 0.3);
-    transition: all 0.5s;
-    z-index: 50;
   }
-
-  .fab:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 16px rgba(18, 131, 120, 0.4);
+  .multi-copy:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
-
-  @media (max-width: 767.99px) {
-    .fab {
-      top: auto;
-
-      right: 16px;
-      bottom: 16px;
-      width: 48px;
-      height: 48px;
-    }
-  }
-
-  /* Mobile Toggle */
-  .mobile-toggle {
-    display: flex;
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 16px);
-    right: 16px;
-    width: 56px;
-    height: 56px;
-    border-radius: var(--radius-md);
-    background: #af7f08;
-    color: white;
-    border: 1px solid var(--border-color);
+  .multi-cancel {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: var(--text-sm);
     cursor: pointer;
-    z-index: 45;
+    padding: 6px 8px;
+  }
+
+  /* ===================== 搜索浮层 ===================== */
+  .page :global(.modal-overlay .modal) {
+    background: var(--rules-book);
+    border-color: var(--rules-border);
+    color: var(--rules-text);
+  }
+
+  .search-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--rules-border);
+    color: var(--rules-muted);
+  }
+  .search-modal-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: var(--text-base);
+    color: var(--rules-text);
+  }
+  .search-modal-input::placeholder {
+    color: var(--rules-muted);
+    opacity: 0.6;
+  }
+  .search-modal-clear {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--rules-text) 10%, transparent);
+    color: var(--rules-muted);
+    cursor: pointer;
   }
 
-  @media (max-width: 767.99px) {
-    .mobile-toggle {
-      top: auto;
-      right: 16px;
-      bottom: 72px;
-      width: 48px;
-      height: 48px;
-    }
+  .search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    height: min(420px, 45vh);
+    overflow-y: auto;
   }
 
+  .search-empty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 8px;
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--rules-weak);
+  }
+
+  .search-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .search-result:hover {
+    background: color-mix(in srgb, var(--rules-text) 8%, transparent);
+  }
+  .search-result-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: var(--text-xs);
+    color: var(--rules-muted);
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .search-result-text {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--rules-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 </style>

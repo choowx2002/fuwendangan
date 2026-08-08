@@ -113,7 +113,7 @@
       </button>
 
       <div class="modal-body">
-        <div class="title-group-mobile">
+        <div class="title-group-mobile selectable">
           <h1 class="card-title">
             {card.card_name_cn}
             <span class="small-text">{card.card_name_en}</span>
@@ -205,7 +205,7 @@
         <!-- 右侧：详细信息区域 -->
         <section class="info-section">
           <header class="card-header">
-            <div class="title-group">
+            <div class="title-group selectable">
               <h1 class="card-title">
                 {card.card_name_cn}
                 <span class="small-text">{card.card_name_en}</span>
@@ -283,7 +283,7 @@
 
           <!-- 效果文本 -->
           <div class="effect-section">
-            <div class="effect-text">
+            <div class="effect-text selectable">
               {#if formatedEffect}
                 {@html formatedEffect}
               {:else if card.effect_cn}
@@ -321,7 +321,7 @@
 
           <!-- 风味文本 -->
           {#if card.flavor_text_cn}
-            <div class="flavor-section">
+            <div class="flavor-section selectable">
               <p class="flavor-text">{card.flavor_text_cn}</p>
               <p class="flavor-text">{card.flavor_text_en}</p>
             </div>

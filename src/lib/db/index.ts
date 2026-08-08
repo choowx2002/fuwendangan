@@ -49,6 +49,7 @@ export type {
   CollectionStats,
   CustomPrintInput,
   OwnershipCheckRow,
+  OwnershipMatchMode,
   RecentCollectionCard,
   MissingListRow,
   CollectionItem,
@@ -148,8 +149,11 @@ export {
   bulkMarkOwned,
   bulkIncrement,
   bulkDeleteCollection,
+  importOwnedCounts,
   type UpsertLangQtyOptions,
   type MissingListFilter,
+  type ImportOwnedRow,
+  type ImportOwnedResult,
 } from './repository/collection-repository'
 export {
   getCustomLanguages,

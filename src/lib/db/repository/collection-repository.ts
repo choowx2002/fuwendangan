@@ -17,6 +17,7 @@ import type {
   CustomPrintInput,
   MissingListRow,
   OwnershipCheckRow,
+  OwnershipMatchMode,
   RecentCollectionCard,
   SeriesStats,
 } from '../types'
@@ -27,11 +28,7 @@ import { getAllSeries } from './series-repository'
 import { getCardById } from './card-repository'
 import { normalizePresetCode } from '../config/languages'
 import { isLanguageCodeValid } from './language-repository'
-import {
-  resolveStatus,
-  shouldKeepLangRow,
-  shouldDeleteVariant,
-} from '../config/collection-rules'
+import { resolveStatus, shouldKeepLangRow, shouldDeleteVariant } from '../config/collection-rules'
 import { getCompletionMode } from '../service/completion-modes'
 
 const now = () => new Date().toISOString()
@@ -92,9 +89,7 @@ export async function upsertLangQty(
   let collectionId = colRows[0]?.id
 
   const langRows = collectionId
-    ? await db.select<
-        { id: string; status: string; normal_qty: number; foil_qty: number }[]
-      >(
+    ? await db.select<{ id: string; status: string; normal_qty: number; foil_qty: number }[]>(
         `SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS}
          WHERE collection_id = ? AND language_code = ?`,
         [collectionId, code]
@@ -126,9 +121,10 @@ export async function upsertLangQty(
       await db.execute(`DELETE FROM ${TABLES.COLLECTION_LANGS} WHERE id = ?`, [existing.id])
       const remain = await db.select<
         { id: string; status: CollectionStatus; normal_qty: number; foil_qty: number }[]
-      >(`SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS} WHERE collection_id = ?`, [
-        collectionId,
-      ])
+      >(
+        `SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS} WHERE collection_id = ?`,
+        [collectionId]
+      )
       if (shouldDeleteVariant(remain)) {
         await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE id = ?`, [collectionId])
       }
@@ -484,7 +480,10 @@ export async function createCustomPrint(input: CustomPrintInput): Promise<string
 }
 
 /** 设置自定义打印的本地图片 token（img_cdn = local://{token}，null 表示清除） */
-export async function updateCustomPrintImg(printId: string, imgToken: string | null): Promise<void> {
+export async function updateCustomPrintImg(
+  printId: string,
+  imgToken: string | null
+): Promise<void> {
   const db = await getDatabase()
   await db.execute(`UPDATE ${TABLES.CARD_PRINTS} SET img_cdn = ?, updated_at = ? WHERE id = ?`, [
     imgToken ? `local://${imgToken}` : null,
@@ -522,10 +521,7 @@ export async function updateCustomPrint(
     params.push(value)
   }
   params.push(printId)
-  await db.execute(
-    `UPDATE ${TABLES.CARD_PRINTS} SET ${sets.join(', ')} WHERE id = ?`,
-    params
-  )
+  await db.execute(`UPDATE ${TABLES.CARD_PRINTS} SET ${sets.join(', ')} WHERE id = ?`, params)
 
   if (old) {
     const oldExtend = (old.card_no_extend as string | null) ?? ''
@@ -687,10 +683,10 @@ export async function deleteCustomPrint(printId: string): Promise<string | null>
      )`,
     [p.card_no, p.card_no_extend]
   )
-  await db.execute(
-    `DELETE FROM ${TABLES.COLLECTION} WHERE card_no = ? AND card_no_extend = ?`,
-    [p.card_no, p.card_no_extend]
-  )
+  await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE card_no = ? AND card_no_extend = ?`, [
+    p.card_no,
+    p.card_no_extend,
+  ])
 
   const imgCdn: string | null = p.img_cdn
   if (imgCdn?.startsWith('local://')) {
@@ -702,16 +698,24 @@ export async function deleteCustomPrint(printId: string): Promise<string | null>
 // ==================== 卡组持有检查 ====================
 
 /**
- * 卡组持有检查：按卡牌聚合所有卡牌×语言的 owned 数量（含 promo/自定义打印）与卡组需求比较
+ * 卡组持有检查：按卡牌聚合收集（含 promo/自定义打印）与卡组需求比较。
+ *
+ * @param items 卡组需求（cardPrintId：deck_cards 引用的 card_prints.id；quantity：需求数量）
+ * @param opts.matchMode 匹配模式：
+ *   - 'print'（默认）：按印刷号精确匹配，即卡牌 ×（card_no + card_no_extend）逐行比较；
+ *   - 'card'：仅按基础卡号（cards_base.card_no）聚合，同一张卡的不同印刷异画合并比较。
  */
 export async function checkDeckOwnership(
-  items: { cardPrintId: string; quantity: number }[]
+  items: { cardPrintId: string; quantity: number }[],
+  opts?: { matchMode?: OwnershipMatchMode }
 ): Promise<OwnershipCheckRow[]> {
+  const matchMode = opts?.matchMode ?? 'print'
   if (items.length === 0) return []
   const db = await getDatabase()
 
   const printRows = await db.select<any[]>(
-    `SELECT p.id AS print_id, p.card_id, cb.card_name_cn AS card_name, cb.card_no AS card_no
+    `SELECT p.id AS print_id, p.card_id, cb.card_no AS card_no,
+       cb.card_name_cn AS card_name, p.card_no_extend AS card_no_extend
      FROM ${TABLES.CARD_PRINTS} p
      JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
      WHERE p.id IN (${items.map(() => '?').join(',')})`,
@@ -719,41 +723,74 @@ export async function checkDeckOwnership(
   )
   const printToCard = new Map(printRows.map((r) => [r.print_id, r]))
 
-  const needByCard = new Map<string, number>()
+  const keyOf = (r: any) =>
+    matchMode === 'print' ? `${r.card_no}|${r.card_no_extend}` : `${r.card_no}`
+
+  const needByKey = new Map<string, number>()
   for (const item of items) {
     const row = printToCard.get(item.cardPrintId)
     if (!row) continue
-    needByCard.set(row.card_no, (needByCard.get(row.card_no) ?? 0) + item.quantity)
+    const key = keyOf(row)
+    needByKey.set(key, (needByKey.get(key) ?? 0) + item.quantity)
   }
 
-  const cardNos = [...needByCard.keys()]
-  const ownedByCard = new Map<string, number>()
-  if (cardNos.length > 0) {
-    const ownedRows = await db.select<any[]>(
-      `SELECT col.card_no, SUM(cl.normal_qty + cl.foil_qty) AS owned
-       FROM ${TABLES.COLLECTION} col
-       JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
-       WHERE col.card_no IN (${cardNos.map(() => '?').join(',')}) AND cl.status = 'owned'
-       GROUP BY col.card_no`,
-      cardNos
-    )
-    for (const r of ownedRows) ownedByCard.set(r.card_no, r.owned ?? 0)
+  const keys = [...needByKey.keys()]
+  const ownedByKey = new Map<string, number>()
+  if (keys.length > 0) {
+    if (matchMode === 'print') {
+      const conds = keys.map(() => '(col.card_no = ? AND col.card_no_extend = ?)').join(' OR ')
+      const params: any[] = []
+      for (const key of keys) {
+        const [cardNo, cardNoExtend] = key.split('|')
+        params.push(cardNo, cardNoExtend)
+      }
+      const ownedRows = await db.select<any[]>(
+        `SELECT col.card_no, col.card_no_extend,
+           SUM(cl.normal_qty + cl.foil_qty) AS owned
+         FROM ${TABLES.COLLECTION} col
+         JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+         WHERE ${conds} AND cl.status = 'owned'
+         GROUP BY col.card_no, col.card_no_extend`,
+        params
+      )
+      for (const r of ownedRows) {
+        ownedByKey.set(`${r.card_no}|${r.card_no_extend}`, r.owned ?? 0)
+      }
+    } else {
+      const ownedRows = await db.select<any[]>(
+        `SELECT col.card_no, SUM(cl.normal_qty + cl.foil_qty) AS owned
+         FROM ${TABLES.COLLECTION} col
+         JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+         WHERE col.card_no IN (${keys.map(() => '?').join(',')}) AND cl.status = 'owned'
+         GROUP BY col.card_no`,
+        keys
+      )
+      for (const r of ownedRows) ownedByKey.set(r.card_no, r.owned ?? 0)
+    }
   }
 
   const result: OwnershipCheckRow[] = []
-  for (const [cardNo, needed] of needByCard) {
+  for (const key of keys) {
     const sample = printToCard.get(
-      [...printToCard.keys()].find((k) => printToCard.get(k)!.card_no === cardNo)!
+      [...printToCard.keys()].find((k) => keyOf(printToCard.get(k)!) === key)!
     )!
+    const [cardNo, cardNoExtend] = key.split('|')
     result.push({
       cardId: sample.card_id,
       cardName: sample.card_name ?? '',
-      cardNo,
-      needed,
-      owned: ownedByCard.get(cardNo) ?? 0,
+      cardNo: cardNo,
+      cardNoExtend: matchMode === 'print' ? (cardNoExtend ?? '') : '',
+      needed: needByKey.get(key)!,
+      owned: ownedByKey.get(key) ?? 0,
     })
   }
-  result.sort((a, b) => b.needed - a.needed || a.cardNo.localeCompare(b.cardNo))
+  result.sort(
+    (a, b) =>
+      b.needed - a.needed ||
+      (a.cardNoExtend || a.cardNo).localeCompare(b.cardNoExtend || b.cardNo, undefined, {
+        numeric: true,
+      })
+  )
   return result
 }
 
@@ -808,7 +845,9 @@ async function filterValidItems(items: CollectionItem[]): Promise<CollectionItem
 /** 预取 items 现有语言行（供批量判定使用） */
 async function loadExistingLangs(
   items: CollectionItem[]
-): Promise<Map<string, { language_code: string; status: string; normal_qty: number; foil_qty: number }[]>> {
+): Promise<
+  Map<string, { language_code: string; status: string; normal_qty: number; foil_qty: number }[]>
+> {
   const db = await getDatabase()
   if (items.length === 0) return new Map()
   const conds = items.map(() => '(col.card_no = ? AND col.card_no_extend = ?)').join(' OR ')
@@ -863,7 +902,9 @@ export async function bulkIncrement(items: CollectionItem[]): Promise<number> {
   let updated = 0
   for (const item of valid) {
     const rows = existing.get(`${item.cardNo}|${item.cardNoExtend}`) ?? []
-    const ownedRows = rows.filter((r) => r.status === 'owned' && (r.normal_qty > 0 || r.foil_qty > 0))
+    const ownedRows = rows.filter(
+      (r) => r.status === 'owned' && (r.normal_qty > 0 || r.foil_qty > 0)
+    )
     if (ownedRows.length > 0) {
       const pick = ownedRows[0]
       await upsertLangQty(item.cardNo, item.cardNoExtend, pick.language_code, {
@@ -1058,8 +1099,11 @@ export async function getMissingVariants(opts?: MissingListFilter): Promise<Miss
        FROM ${TABLES.COLLECTION_LANGS} cl
        GROUP BY cl.collection_id
      ) q ON q.cid = col.id
-     ${opts?.bucket ? 'WHERE v.bucket = ?' : ''}
-     ORDER BY cb.card_no COLLATE NOCASE ASC, v.card_no_extend COLLATE NOCASE ASC`
+    ${opts?.bucket ? 'WHERE v.bucket = ?' : ''}
+      -- 默认稳定顺序：先 base 卡号、再印刷号（等宽补零下 ASCII 排序 ≈ 数值序）。
+      -- 缺卡页（missing/+page.svelte sortedRows）始终以 numeric:true 重排，
+      -- 此处仅提供确定性初始序，最终显示顺序以前端为准。
+      ORDER BY v.card_no_extend COLLATE NOCASE ASC`
   if (opts?.bucket) params.push(opts.bucket)
 
   const rows = await db.select<any[]>(sql, params)
@@ -1072,4 +1116,91 @@ export async function getMissingVariants(opts?: MissingListFilter): Promise<Miss
     rarity: r.rarity ?? null,
     ownedQty: r.owned_qty ?? 0,
   }))
+}
+
+/** 缺卡清单 CSV 回导项（一个印刷卡牌 × 语言） */
+export interface ImportOwnedRow {
+  cardNoExtend: string
+  language: string
+  ownedQty: number
+}
+
+export interface ImportOwnedResult {
+  applied: number
+  /** 未匹配到卡牌/语言非法的编号 */
+  skipped: string[]
+}
+
+/**
+ * 把缺卡清单 CSV 的拥有数列写回收藏。
+ * @param mode 'overwrite' 精确设为 CSV 值；'add' 在现有数量上累加（缺省语言行按 0 起步）。
+ * 需求数列不参与导入（需求数仅存于缺卡页临时状态）。
+ */
+export async function importOwnedCounts(
+  rows: ImportOwnedRow[],
+  mode: 'add' | 'overwrite' = 'overwrite'
+): Promise<ImportOwnedResult> {
+  const db = await getDatabase()
+
+  // 语言码合法性预检，非法者记入 skipped
+  const validRows: Array<{ code: string; cardNoExtend: string; ownedQty: number }> = []
+  const skippedSet = new Set<string>()
+  for (const r of rows) {
+    const code = normalizePresetCode(r.language)
+    if (!code || !(await isLanguageCodeValid(code))) {
+      skippedSet.add(`${r.cardNoExtend}#${r.language}`)
+      continue
+    }
+    validRows.push({ code, cardNoExtend: r.cardNoExtend, ownedQty: r.ownedQty })
+  }
+
+  // 反查 card_no_extend -> card_no
+  const extendsList = [...new Set(validRows.map((v) => v.cardNoExtend))]
+  const cardNoByExtend = new Map<string, string>()
+  if (extendsList.length > 0) {
+    const sql = `SELECT DISTINCT cb.card_no AS card_no, p.card_no_extend AS card_no_extend
+       FROM ${TABLES.CARD_PRINTS} p
+       JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+       WHERE p.card_no_extend IN (${extendsList.map(() => '?').join(',')})`
+    const found = await db.select<{ card_no: string; card_no_extend: string }[]>(sql, extendsList)
+    for (const f of found) cardNoByExtend.set(f.card_no_extend, f.card_no)
+  }
+
+  // add 模式需要预读现有普卡数量
+  let existingNormal = new Map<string, number>()
+  if (mode === 'add' && validRows.length > 0) {
+    const conds = validRows
+      .map(() => '(col.card_no_extend = ? AND cl.language_code = ?)')
+      .join(' OR ')
+    const params: any[] = []
+    for (const v of validRows) params.push(v.cardNoExtend, v.code)
+    const curr = await db.select<
+      { card_no_extend: string; language_code: string; normal_qty: number }[]
+    >(
+      `SELECT col.card_no_extend AS card_no_extend, cl.language_code AS language_code, cl.normal_qty AS normal_qty
+       FROM ${TABLES.COLLECTION} col
+       JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+       WHERE ${conds}`,
+      params
+    )
+    for (const c of curr) existingNormal.set(`${c.card_no_extend}|${c.language_code}`, c.normal_qty)
+  }
+
+  let applied = 0
+  for (const v of validRows) {
+    const cardNo = cardNoByExtend.get(v.cardNoExtend)
+    if (!cardNo) {
+      skippedSet.add(`${v.cardNoExtend}#${v.code}`)
+      continue
+    }
+    if (mode === 'overwrite') {
+      await upsertLangQty(cardNo, v.cardNoExtend, v.code, { normal: v.ownedQty })
+    } else {
+      const base = existingNormal.get(`${v.cardNoExtend}|${v.code}`) ?? 0
+      await upsertLangQty(cardNo, v.cardNoExtend, v.code, { normal: base + v.ownedQty })
+    }
+    applied += 1
+  }
+
+  return { applied, skipped: [...skippedSet] }
 }

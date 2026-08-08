@@ -126,6 +126,7 @@ export type TopbarAction = {
   disabled?: boolean
   active?: boolean
   title?: string
+  priority?: number
   onClick: () => void
 }
 

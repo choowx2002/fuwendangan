@@ -141,6 +141,7 @@
   let showOwnershipModal = $state(false)
   let ownershipRows = $state<import('$lib/db').OwnershipCheckRow[]>([])
   let loadingOwnership = $state(false)
+  let ownershipMatchMode = $state<import('$lib/db').OwnershipMatchMode>('print')
 
   async function runOwnershipCheck() {
     if (allDeckCards.length === 0) {
@@ -155,10 +156,16 @@
         cardPrintId: c.selectedPrints ?? c.card_prints?.[0]?.id ?? '',
         quantity: 1,
       }))
-      ownershipRows = await checkDeckOwnership(items)
+      ownershipRows = await checkDeckOwnership(items, { matchMode: ownershipMatchMode })
     } finally {
       loadingOwnership = false
     }
+  }
+
+  function switchOwnershipMode(mode: import('$lib/db').OwnershipMatchMode) {
+    if (mode === ownershipMatchMode || loadingOwnership) return
+    ownershipMatchMode = mode
+    runOwnershipCheck()
   }
 
   beforeNavigate(async (navigation) => {
@@ -1510,6 +1517,22 @@
     title="持有检查"
   >
     <div class="ownership-panel">
+      <div class="ownership-mode-toggle">
+        <button
+          class:active={ownershipMatchMode === 'card'}
+          disabled={loadingOwnership}
+          onclick={() => switchOwnershipMode('card')}
+        >
+          按卡牌
+        </button>
+        <button
+          class:active={ownershipMatchMode === 'print'}
+          disabled={loadingOwnership}
+          onclick={() => switchOwnershipMode('print')}
+        >
+          按印刷号
+        </button>
+      </div>
       {#if loadingOwnership}
         <div class="ownership-loading">
           <LoaderCircle class="animate-spin" size={16} />
@@ -1529,10 +1552,10 @@
             </tr>
           </thead>
           <tbody>
-            {#each ownershipRows as row (row.cardId)}
+            {#each ownershipRows as row (row.cardNo + '##' + row.cardNoExtend)}
               <tr>
                 <td class="cell-name">{row.cardName}</td>
-                <td class="cell-no">{row.cardNo}</td>
+                <td class="cell-no">{row.cardNoExtend || row.cardNo}</td>
                 <td class="cell-owned" class:insufficient={row.owned < row.needed}>{row.owned}</td>
                 <td class="cell-needed">{row.needed}</td>
               </tr>
@@ -2495,6 +2518,31 @@
     gap: 10px;
     max-height: 60vh;
     overflow-y: auto;
+  }
+
+  .ownership-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    align-self: flex-start;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+  }
+
+  .ownership-mode-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .ownership-mode-toggle button.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
   }
 
   .ownership-loading,

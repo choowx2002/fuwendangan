@@ -11,6 +11,7 @@ import {
 } from '@tauri-apps/plugin-fs'
 import { fetch } from '@tauri-apps/plugin-http'
 import { printCacheName } from '$lib/db/helper'
+import { whenOnline } from '$lib/stores/network.svelte'
 // ==================== 类型定义 ====================
 
 export interface ImageItem {
@@ -99,6 +100,10 @@ export async function loadExternalImage(
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry = 3) => {
+  if (!(await whenOnline())) {
+    console.warn(`[Cache] 网络不可用，跳过下载: ${filename}`)
+    return false
+  }
   for (let attempt = 1; attempt <= maxRetry; attempt++) {
     try {
       const controller = new AbortController()
@@ -282,10 +287,7 @@ export async function getMissingCardPrints(
 
   const missing = cardPrints.filter((print) => {
     if (localImgToken(print.img_cdn)) return false
-    const expectedName = urlToFilename(
-      print.img_cdn ?? print.tts_cdn,
-      printCacheName(print)
-    )
+    const expectedName = urlToFilename(print.img_cdn ?? print.tts_cdn, printCacheName(print))
 
     return !fileNames.has(expectedName)
   })

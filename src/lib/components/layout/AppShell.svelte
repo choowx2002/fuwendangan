@@ -3,8 +3,8 @@
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
   import DownloadProgressBar from '../ui/DownloadProgressBar.svelte'
-  import Toast from '../ui/Toast.svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
+  import { networkState } from '../../stores/network.svelte'
   import { page } from '$app/state'
   let { children } = $props()
   let isSidebarOpen = $state(false)
@@ -54,7 +54,10 @@
   {/if}
 
   <DownloadProgressBar />
-  <Toast />
+
+  {#if !networkState.online && networkState.checked}
+    <div class="offline-banner" role="status">离线模式 · 使用本地数据</div>
+  {/if}
 </div>
 
 <style>
@@ -101,5 +104,25 @@
     background-color: rgba(0, 0, 0, 0.4);
     z-index: 40;
     backdrop-filter: blur(2px);
+  }
+
+  .offline-banner {
+    position: fixed;
+    top: calc(var(--topbar-height, 48px) + env(safe-area-inset-top) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    pointer-events: none;
+    white-space: nowrap;
   }
 </style>

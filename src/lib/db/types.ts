@@ -266,10 +266,14 @@ export interface CustomPrintInput {
 }
 
 // 卡组持有检查结果
+export type OwnershipMatchMode = 'card' | 'print'
+
+// 卡组持有检查结果
 export interface OwnershipCheckRow {
   cardId: string
   cardName: string
   cardNo: string
+  cardNoExtend: string
   needed: number
   owned: number
 }

@@ -145,6 +145,7 @@
           label: '记录对局',
           icon: Plus,
           variant: 'primary',
+          priority: 0,
           onClick: openCreateMatch,
         },
       ],

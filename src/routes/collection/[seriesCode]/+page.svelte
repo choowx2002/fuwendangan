@@ -24,7 +24,7 @@
     searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
-  import { ListChecks, Save, Plus, X, LayoutGrid, Table } from '@lucide/svelte'
+  import { ListChecks, Save, Plus, X, LayoutGrid, Table, ScrollText } from '@lucide/svelte'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import BucketProgressBar from '$lib/components/collection/BucketProgressBar.svelte'
@@ -342,7 +342,9 @@
         {
           key: 'missing',
           label: '缺卡清单',
-          icon: Save,
+          icon: ScrollText,
+          variant: "primary",
+          priority: 0,
           title: '缺卡清单',
           onClick: () =>
             void goto(

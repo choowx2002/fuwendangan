@@ -12,10 +12,15 @@
     languageDisplayName,
     PRESET_LANGUAGE_CODES,
   } from '$lib/db'
-  import { ChevronDown, Filter, Save, X } from '@lucide/svelte'
+  import { ChevronDown, FileText, Filter, Save, X } from '@lucide/svelte'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
-  import type { MissingListTextRow } from '$lib/collection/collection-export'
-  import { buildMissingListText, saveMissingList } from '$lib/collection/collection-export'
+  import type { MissingExportFormat, MissingListTextRow } from '$lib/collection/collection-export'
+  import {
+    buildMissingListCsv,
+    buildMissingListText,
+    saveMissingList,
+  } from '$lib/collection/collection-export'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
 
@@ -44,12 +49,16 @@
   let loadingRows = $state(false)
   let loadSeq = 0
   let exporting = $state(false)
+  type SortKey = 'no' | 'name' | 'rarity' | 'owned' | 'need'
+
+  let showExportModal = $state(false)
+  let exportFormat = $state<MissingExportFormat>('txt')
   let filtersCollapsed = $state(isNarrowLayout)
+  let sortKey = $state<SortKey>('no')
+  let sortAsc = $state(true)
 
   const seriesOptions = $derived(stats?.series ?? [])
-  const seriesTitle = $derived(
-    seriesOptions.find((s) => s.code === series)?.nameCn ?? series ?? ''
-  )
+  const seriesTitle = $derived(seriesOptions.find((s) => s.code === series)?.nameCn ?? series ?? '')
   const selectedCount = $derived(
     (series ? 1 : 0) +
       (bucket ? 1 : 0) +
@@ -62,8 +71,51 @@
   const variantKey = (r: MissingListRow) => `${r.cardNo}|${r.cardNoExtend}`
   const needOf = (r: MissingListRow) => needs.get(variantKey(r)) ?? DEFAULT_NEED
   const satisfiedOf = (r: MissingListRow) => r.ownedQty >= needOf(r)
-  const missingRows = $derived(rows.filter((r) => !satisfiedOf(r)))
-  const satisfiedCount = $derived(rows.length - missingRows.length)
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      sortAsc = !sortAsc
+    } else {
+      sortKey = key
+      sortAsc = true
+    }
+  }
+
+  const sortedRows = $derived(
+    [...rows].sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'no':
+          cmp = String(a.cardNoExtend ?? '').localeCompare(
+            String(b.cardNoExtend ?? ''),
+            undefined,
+            {
+              numeric: true,
+            }
+          )
+          break
+        case 'name':
+          cmp = `${a.cardNameCn ?? ''}${a.subCn ?? ''}`.localeCompare(
+            `${b.cardNameCn ?? ''}${b.subCn ?? ''}`,
+            'zh'
+          )
+          break
+        case 'rarity':
+          cmp = (a.rarity ?? '').localeCompare(b.rarity ?? '', 'zh')
+          break
+        case 'owned':
+          cmp = a.ownedQty - b.ownedQty
+          break
+        case 'need':
+          cmp = needOf(a) - needOf(b)
+          break
+      }
+      return sortAsc ? cmp : -cmp
+    })
+  )
+
+  const missingRows = $derived(sortedRows.filter((r) => !satisfiedOf(r)))
+  const satisfiedCount = $derived(sortedRows.length - missingRows.length)
 
   async function loadOptions() {
     const [opts, rarities, customs, statsRes] = await Promise.all([
@@ -119,7 +171,7 @@
     needs.set(key, Math.max(0, Math.floor(Number.isFinite(raw) ? raw : 0)))
   }
 
-  async function handleExport() {
+  async function handleExport(format: MissingExportFormat) {
     exporting = true
     try {
       const items = includeComplete ? rows : missingRows
@@ -127,20 +179,24 @@
         cardNoExtend: r.cardNoExtend,
         cardNameCn: r.cardNameCn,
         rarity: r.rarity,
+        language,
         ownedQty: r.ownedQty,
         needed: needOf(r),
         satisfied: satisfiedOf(r),
       }))
       const chosen = series ? seriesOptions.find((s) => s.code === series) : undefined
-      const text = buildMissingListText(
-        textRows,
-        chosen?.nameCn ?? series ?? null,
-        series ? (chosen?.totalOwned ?? 0) : stats?.overallOwned ?? 0,
-        series ? (chosen?.totalCount ?? 0) : stats?.overallCount ?? 0
-      )
+      const content =
+        format === 'csv'
+          ? buildMissingListCsv(textRows)
+          : buildMissingListText(
+              textRows,
+              chosen?.nameCn ?? series ?? null,
+              series ? (chosen?.totalOwned ?? 0) : (stats?.overallOwned ?? 0),
+              series ? (chosen?.totalCount ?? 0) : (stats?.overallCount ?? 0)
+            )
       const stamp = new Date().toISOString().slice(0, 10)
       const code = series || '全部系列'
-      const ok = await saveMissingList(text, `缺卡清单-${code}-${stamp}.txt`)
+      const ok = await saveMissingList(content, `缺卡清单-${code}-${stamp}.${format}`, format)
       if (ok) {
         showToast(`已保存 ${textRows.length} 条缺卡明细`, 'success')
       } else {
@@ -150,6 +206,7 @@
       showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     } finally {
       exporting = false
+      showExportModal = false
     }
   }
 
@@ -264,11 +321,52 @@
 
     <section class="table-area">
       <div class="table-head">
-        <span>编号</span>
-        <span>名字</span>
-        <span class="rarity-col">稀有度</span>
-        <span class="center">拥有</span>
-        <span class="center">需求</span>
+        <span class="head-cell">
+          <button class="sort-btn" class:active={sortKey === 'no'} onclick={() => toggleSort('no')}>
+            编号
+            <span class="sort-glyph">{sortKey === 'no' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
+          </button>
+        </span>
+        <span class="head-cell">
+          <button
+            class="sort-btn"
+            class:active={sortKey === 'name'}
+            onclick={() => toggleSort('name')}
+          >
+            名字
+            <span class="sort-glyph">{sortKey === 'name' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
+          </button>
+        </span>
+        <span class="head-cell rarity-col">
+          <button
+            class="sort-btn"
+            class:active={sortKey === 'rarity'}
+            onclick={() => toggleSort('rarity')}
+          >
+            稀有度
+            <span class="sort-glyph">{sortKey === 'rarity' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
+          </button>
+        </span>
+        <span class="head-cell center">
+          <button
+            class="sort-btn"
+            class:active={sortKey === 'owned'}
+            onclick={() => toggleSort('owned')}
+          >
+            拥有
+            <span class="sort-glyph">{sortKey === 'owned' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
+          </button>
+        </span>
+        <span class="head-cell center">
+          <button
+            class="sort-btn"
+            class:active={sortKey === 'need'}
+            onclick={() => toggleSort('need')}
+          >
+            需求
+            <span class="sort-glyph">{sortKey === 'need' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
+          </button>
+        </span>
       </div>
       {#if loadingRows}
         <div class="table-tip">加载中...</div>
@@ -276,11 +374,12 @@
         <div class="table-tip">该条件下没有卡牌卡牌</div>
       {:else}
         <div class="table-body">
-          {#each rows as row (variantKey(row))}
+          {#each sortedRows as row (variantKey(row))}
             <div class="table-row" class:satisfied={satisfiedOf(row)}>
               <span class="cell-no">{row.cardNoExtend}</span>
               <span class="cell-name">
-                {row.cardNameCn ?? ''} {row.subCn}
+                {row.cardNameCn ?? ''}
+                {row.subCn}
                 {#if satisfiedOf(row)}
                   <span class="satisfied-badge">已集齐</span>
                 {/if}
@@ -312,7 +411,7 @@
     </label>
     <button
       class="button button-primary export-btn"
-      onclick={handleExport}
+      onclick={() => (showExportModal = true)}
       disabled={exporting || loadingRows || rows.length === 0}
     >
       <Save size={14} />
@@ -320,6 +419,55 @@
     </button>
   </div>
 </div>
+
+<CommonModal
+  open={showExportModal}
+  title="导出缺卡清单"
+  subtitle={`当前 ${includeComplete ? rows.length : missingRows.length} 个卡牌`}
+  closable={!exporting}
+  onclose={() => (showExportModal = false)}
+>
+  <div class="export-format-label">文件格式</div>
+  <div class="export-format-group">
+    <button
+      class="export-format-option"
+      class:active={exportFormat === 'txt'}
+      disabled={exporting}
+      onclick={() => (exportFormat = 'txt')}
+    >
+      <FileText size={16} />
+      <span class="export-format-name">文本 (.txt)</span>
+      <span class="export-format-desc">带系列信息与合计的纯文本清单</span>
+    </button>
+    <button
+      class="export-format-option"
+      class:active={exportFormat === 'csv'}
+      disabled={exporting}
+      onclick={() => (exportFormat = 'csv')}
+    >
+      <FileText size={16} />
+      <span class="export-format-name">表格 (.csv)</span>
+      <span class="export-format-desc">含表头，便于导入 Excel / 表格工具</span>
+    </button>
+  </div>
+
+  {#snippet footer()}
+    <button
+      class="button button-ghost"
+      disabled={exporting}
+      onclick={() => (showExportModal = false)}
+    >
+      取消
+    </button>
+    <button
+      class="button button-primary"
+      disabled={exporting || rows.length === 0}
+      onclick={() => handleExport(exportFormat)}
+    >
+      {exporting ? '导出中...' : '导出'}
+    </button>
+  {/snippet}
+</CommonModal>
 
 <style>
   .page-wrapper {
@@ -552,6 +700,50 @@
     text-align: center;
   }
 
+  .head-cell {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .head-cell.center {
+    justify-content: center;
+  }
+
+  .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .sort-btn:hover {
+    color: var(--accent-color);
+  }
+
+  .sort-btn.active {
+    color: var(--accent-color);
+  }
+
+  .sort-glyph {
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.7;
+  }
+
+  .sort-btn.active .sort-glyph {
+    opacity: 1;
+  }
+
   .cell-no {
     font-family: monospace;
     color: var(--text-primary);
@@ -647,6 +839,58 @@
   .export-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+  }
+
+  .export-format-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .export-format-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .export-format-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .export-format-option:hover:not(:disabled) {
+    border-color: var(--accent-color);
+  }
+
+  .export-format-option.active {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+  }
+
+  .export-format-option:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .export-format-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .export-format-desc {
+    font-size: var(--text-xs);
+    opacity: 0.75;
   }
 
   @media (max-width: 899.98px) {

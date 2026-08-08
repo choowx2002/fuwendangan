@@ -14,20 +14,28 @@ import * as seriesRepo from '../repository/series-repository'
 import * as collectionRepo from '../repository/collection-repository'
 import { repointDeckCardReferences } from '../repository/deck-repository'
 import { updateFilterOptions } from './filter-service'
-import { uiState } from '$lib/stores/ui-store.svelte'
+import { uiState, showToast } from '$lib/stores/ui-store.svelte'
+import { whenOnline, isMetered } from '$lib/stores/network.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { getDatabase } from '../repository/database'
 
 /**
  * 初始化数据库（在 Tauri 环境中执行数据同步）
+ * opts.skipMetered = true 时，检测到按流量计费网络会跳过自动同步（默认启用）；
+ * 手动触发（设置页检查更新）传入 false 以放行。
  */
-export async function initializeDatabase(): Promise<void> {
+export async function initializeDatabase(opts?: { skipMetered?: boolean }): Promise<void> {
   if (!isTauri) {
     console.log('[DB] Web 环境：跳过本地数据库初始化，直接使用 Supabase')
     return
   }
 
   console.log('[DB] Tauri 环境：开始检查本地数据库同步状态...')
+
+  if (!(await whenOnline())) {
+    console.warn('[DB] 网络不可用，跳过同步')
+    return
+  }
 
   try {
     const remoteVersion = await remoteApi.fetchLatestVersion()
@@ -48,6 +56,11 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     if (needsSync) {
+      if (opts?.skipMetered !== false && isMetered()) {
+        console.warn('[DB] 当前为流量网络，跳过自动同步')
+        showToast('当前为移动数据网络，已跳过自动同步', 'info')
+        return
+      }
       const accepted = await ask('你想要同步数据吗？')
       console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
       if (accepted) {
