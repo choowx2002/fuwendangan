@@ -394,6 +394,7 @@ export async function searchCardVariants(
   const innerSelects = [
     `MAX(extend_rarity_name) AS extend_rarity`,
     `MAX(rarity_name) AS rarity`,
+    `MAX(CASE WHEN is_custom = 1 THEN 1 ELSE 0 END) AS is_custom`,
   ]
   const innerParams: unknown[] = []
 
@@ -420,9 +421,12 @@ export async function searchCardVariants(
   const outerWheres: string[] = []
   const outerParams: unknown[] = []
   if (code) {
-    // 前缀匹配；回退：没有任何已知前缀时按 cards_base.series_name 匹配（防御 R--/T-- 类编号）
-    outerWheres.push(`(v.prefix_match = 1 OR (v.has_known = 0 AND cb.series_name = ?))`)
-    outerParams.push(code)
+    // 前缀匹配；回退：没有任何已知前缀时按 cards_base.series_name 匹配（防御 R--/T-- 类编号）；
+    // 自建打印（is_custom）前缀不受限，一律按原型卡所在系列归属
+    outerWheres.push(
+      `(v.prefix_match = 1 OR (v.has_known = 0 AND cb.series_name = ?) OR (v.is_custom = 1 AND cb.series_name = ?))`
+    )
+    outerParams.push(code, code)
   }
   if (hasSearch) {
     outerWheres.push(`v.text_match = 1`)
@@ -453,6 +457,7 @@ export async function searchCardVariants(
       v.card_no_extend,
       v.extend_rarity,
       v.rarity,
+      v.is_custom,
       cb.card_no AS card_no,
       COALESCE(SUM(cl.normal_qty), 0) AS owned_normal,
       COALESCE(SUM(cl.foil_qty), 0) AS owned_foil,
@@ -471,7 +476,7 @@ export async function searchCardVariants(
       SELECT card_id, card_no_extend,
         ${innerSelects.join(',\n        ')}
       FROM ${TABLES.CARD_PRINTS}
-      WHERE COALESCE(is_promo, 0) != 1
+      WHERE COALESCE(is_promo, 0) != 1 OR is_custom = 1
       GROUP BY card_id, card_no_extend
     ) v
     LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = v.card_id
@@ -529,6 +534,7 @@ export async function searchCardVariants(
       extendRarityName: rep?.extend_rarity_name ?? null,
       bucket: row.bucket as VariantBucket,
       cardCategory: row.raw_category ? JSON.parse(row.raw_category) : null,
+      isCustom: !!row.is_custom,
       ownedNormal: row.owned_normal ?? 0,
       ownedFoil: row.owned_foil ?? 0,
       ownedTotal: row.owned_total ?? 0,

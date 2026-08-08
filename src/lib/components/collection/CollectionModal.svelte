@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CardPrint, CardWithOwned, CollectionLang } from '$lib/db'
-  import { getCardCollection, upsertLangQty, getCustomLanguages } from '$lib/db'
+  import { getCardCollection, getPrintsByCardId, upsertLangQty, getCustomLanguages } from '$lib/db'
   import { printCacheName } from '$lib/db/helper'
   import { PRESET_LANGUAGE_CODES, languageDisplayName } from '$lib/db'
   import { X, Plus, Trash2, Pencil } from '@lucide/svelte'
@@ -12,6 +12,7 @@
     classifyVariant,
   } from '$lib/cards/utils/variant-utils'
   import { isTauri } from '$lib/db/env'
+  import { showToast } from '$lib/stores/ui-store.svelte'
 
   interface Props {
     card: (CardWithOwned & { card_prints?: CardPrint[] }) | null
@@ -43,6 +44,13 @@
   let loadId = 0
 
   const selectedVariant = $derived(variants.find((v) => v.cardNoExtend === selectedNo))
+
+  // 预览卡图：优先非自建打印，避免历史存量同号自定打印顶掉原图
+  const previewPrint = $derived.by(() => {
+    const v = selectedVariant
+    if (!v || v.prints.length === 0) return undefined
+    return v.prints.find((p) => !p.is_custom) ?? v.prints[0]
+  })
 
   const bucketRank: Record<VariantBucket, number> = {
     rune: 0,
@@ -92,7 +100,8 @@
     const customs = await getCustomLanguages()
     customLangNames = new Map(customs.map((c) => [c.code, c.name]))
     langOptions = [...PRESET_LANGUAGE_CODES, ...customs.map((c) => c.code)]
-    const printList = card.card_prints ?? []
+    // 每次从 DB 重新拉取打印列表，保证保存/编辑后立即反映最新数据
+    const printList = await getPrintsByCardId(card.id)
     const map = new Map<string, CardPrint[]>()
     for (const p of printList) {
       const no = p.card_no_extend ?? card.id
@@ -142,11 +151,12 @@
   })
 
   function saveAndReload(no: string, lang: string, patch: { normal?: number; foil?: number }) {
-    void upsertLangQty(card!.card_no, no, lang, patch).then(() => {
-      void loadData().then(() => {
-        onChanged?.()
+    void upsertLangQty(card!.card_no, no, lang, patch)
+      .then(() => loadData())
+      .then(() => onChanged?.())
+      .catch((err) => {
+        showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
       })
-    })
   }
 
   function addLangTo(v: VariantView) {
@@ -165,14 +175,26 @@
   async function removeCustom(v: VariantView) {
     const custom = v.prints.find((p) => p.is_custom)
     if (!custom) return
-    const { deleteCustomPrint } = await import('$lib/db')
-    const token = await deleteCustomPrint(custom.id)
-    if (token) {
-      const { deleteCachedImage } = await import('$lib/services/db-file-service')
-      await deleteCachedImage(token)
+    const confirmed = isTauri
+      ? await (await import('@tauri-apps/plugin-dialog')).ask(
+          `确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`,
+          { title: '删除自定打印', kind: 'warning', okLabel: '删除', cancelLabel: '取消' }
+        )
+      : window.confirm(`确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`)
+    if (!confirmed) return
+    try {
+      const { deleteCustomPrint } = await import('$lib/db')
+      const token = await deleteCustomPrint(custom.id)
+      if (token) {
+        const { deleteCachedImage } = await import('$lib/services/db-file-service')
+        await deleteCachedImage(token)
+      }
+      await loadData()
+      onChanged?.()
+      showToast('自定打印已删除', 'success')
+    } catch (err) {
+      showToast(`删除失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
     }
-    await loadData()
-    onChanged?.()
   }
 
   function openCreateCustom() {
@@ -200,10 +222,10 @@
       <div class="modal-body">
         <div class="preview-col">
           <div class="preview-card">
-            {#if selectedVariant?.prints[0]}
+            {#if previewPrint}
               <CachedImage
-                src={selectedVariant.prints[0].img_cdn ?? selectedVariant.prints[0].tts_cdn ?? ''}
-                name={printCacheName(selectedVariant.prints[0])}
+                src={previewPrint.img_cdn ?? previewPrint.tts_cdn ?? ''}
+                name={printCacheName(previewPrint)}
                 fit="cover"
                 borderRadius="8px"
                 isHover={false}
@@ -379,9 +401,13 @@
       showCustomForm = false
       editCustomPrint = null
     }}
-    onSaved={() => {
-      void loadData()
-      onChanged?.()
+    onSaved={(printId) => {
+      void loadData().then(() => {
+        // 保存后自动定位到刚创建/更新的自定打印变体
+        const target = variants.find((v) => v.prints.some((p) => p.id === printId))
+        if (target) selectedNo = target.cardNoExtend
+        onChanged?.()
+      })
     }}
   />
 {/if}

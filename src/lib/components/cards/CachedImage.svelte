@@ -171,7 +171,7 @@
     {:else if error}
       {#if errorImage}
         <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; {fitStyles[fit]};" />
-      {:else if src}
+      {:else if src && !src.startsWith('local://')}
         <div class="error-placeholder">
           <img
             {src}

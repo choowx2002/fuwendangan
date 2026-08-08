@@ -45,10 +45,7 @@
   {#if isLoading && cards.length === 0}
     <SkeletonGrid count={12} />
   {:else if cards.length === 0}
-    <EmptyState
-      title="未找到匹配变体"
-      description="试试调整筛选条件或搜索关键词"
-    />
+    <EmptyState title="未找到匹配变体" description="试试调整筛选条件或搜索关键词" />
   {:else}
     {#each cards as card (cardKey(card))}
       {@const selected = selectedIds.has(cardKey(card))}
@@ -56,7 +53,7 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="tile"
-        class:selected={selected}
+        class:selected
         role="button"
         tabindex="0"
         onclick={() => {
@@ -77,7 +74,7 @@
           />
           {#if batchMode}
             <span class="select-badge" class:checked={selected}>
-                {#if selected}<Check size={11} strokeWidth={'5'}/>{/if}
+              {#if selected}<Check size={11} strokeWidth={'5'} />{/if}
             </span>
           {:else}
             {#if card.ownedFoil > 0}
@@ -111,7 +108,7 @@
                     onQuickInc?.(card)
                   }}
                 >
-                  <Plus size={12}  />
+                  <Plus size={12} />
                 </button>
               {:else}
                 <button
@@ -130,6 +127,9 @@
         </div>
         <div class="tile-no-row">
           <span class="tile-no">{card.cardNoExtend}</span>
+          {#if card.isCustom}
+            <span class="custom-chip">自定</span>
+          {/if}
           {#if card.bucket !== 'base'}
             <span class="bucket-chip">{BUCKET_LABELS[card.bucket]}</span>
           {/if}
@@ -153,13 +153,13 @@
 <style>
   .collection-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 14px;
     padding: 4px 2px 24px;
   }
 
   .collection-grid.is-loading-container {
-      display: initial;
+    display: initial;
   }
 
   .tile {
@@ -279,6 +279,16 @@
     background: var(--bg-secondary);
   }
 
+  .custom-chip {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    font-size: 10px;
+    border-radius: 99px;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #a855f7;
+    background: color-mix(in srgb, #a855f7 8%, var(--bg-primary));
+  }
+
   /*.tile-rarity {
     color: var(--text-secondary);
     min-height: 1em;
@@ -383,7 +393,7 @@
     }
 
     .owned-badge {
-        display: none;
+      display: none;
     }
   }
 

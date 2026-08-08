@@ -280,8 +280,10 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
   const seriesList = await getAllSeries()
   const seriesCodes = seriesList.map((s) => s.code.toUpperCase())
   const knownIn = seriesCodes.length > 0 ? seriesCodes.map(() => '?').join(',') : 'NULL'
-  // 系列归属以冗余列 series_code 优先（旧数据回退 card_no_extend 前 3 位）；前缀非已知系列码时回退 cards_base.series_name
+  // 系列归属：自建打印（is_custom）一律按原型卡所在系列（series_name），
+  // 其余以冗余列 series_code 优先（旧数据回退 card_no_extend 前 3 位）；前缀非已知系列码时回退 cards_base.series_name
   const seriesExpr = `CASE
+    WHEN MAX(p.is_custom) = 1 THEN cb.series_name
     WHEN col.series_code IS NOT NULL AND col.series_code != '' THEN col.series_code
     WHEN substr(upper(p.card_no_extend), 1, 3) IN (${knownIn})
       THEN substr(upper(p.card_no_extend), 1, 3)
@@ -303,12 +305,31 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
        JOIN ${TABLES.CARD_PRINTS} p
          ON p.card_id = cb.id AND p.card_no_extend = col.card_no_extend
        JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
-       WHERE COALESCE(p.is_promo, 0) != 1 AND ${ownedCond}
+       WHERE (COALESCE(p.is_promo, 0) != 1 OR p.is_custom = 1) AND ${ownedCond}
        GROUP BY col.card_no, col.card_no_extend
      )
      GROUP BY series, bucket
      ${cm.bucketPredicate ? `HAVING ${cm.bucketPredicate}` : ''}`,
     seriesCodes
+  )
+
+  // 自建打印总数（每系列×桶），并入收藏总数与进度分母
+  const customRows = await db.select<any[]>(
+    `SELECT series, bucket, COUNT(*) AS n FROM (
+       SELECT cb.series_name AS series,
+         CASE
+           WHEN cb.card_category LIKE '%符文%' THEN 'rune'
+           WHEN cb.card_category LIKE '%指示物%' THEN 'token'
+           WHEN MAX(p.extend_rarity_name) = '异画' THEN 'alt'
+           WHEN MAX(p.extend_rarity_name) IN ('超编', '签名超编') THEN 'overnum'
+           ELSE 'base'
+         END AS bucket
+       FROM ${TABLES.CARD_PRINTS} p
+       JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+       WHERE p.is_custom = 1
+       GROUP BY cb.card_no, p.card_no_extend
+     )
+     GROUP BY series, bucket`
   )
 
   const promoRows = await db.select<{ n: number }[]>(
@@ -318,7 +339,7 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
      JOIN ${TABLES.CARD_PRINTS} p
        ON p.card_id = cb.id AND p.card_no_extend = col.card_no_extend
      JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
-     WHERE COALESCE(p.is_promo, 0) = 1 AND ${ownedCond}`
+     WHERE COALESCE(p.is_promo, 0) = 1 AND COALESCE(p.is_custom, 0) != 1 AND ${ownedCond}`
   )
 
   const foilRows = await db.select<{ n: number }[]>(
@@ -334,18 +355,25 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
     ownedMap.get(r.series)![r.bucket] = r.owned
   }
 
+  const customCountMap = new Map<string, Partial<Record<string, number>>>()
+  for (const r of customRows) {
+    if (!customCountMap.has(r.series)) customCountMap.set(r.series, {})
+    customCountMap.get(r.series)![r.bucket] = r.n
+  }
+
   const listed = new Set(seriesList.filter((s) => s.is_active).map((s) => s.code))
 
   const series: SeriesStats[] = seriesList
     .filter((s) => s.is_active)
     .map((s) => {
       const owned = ownedMap.get(s.code) || {}
+      const custom = customCountMap.get(s.code) || {}
       const counts = {
-        base: s.base_count,
-        alt: s.alt_count,
-        overnum: s.overnum_count,
-        rune: s.rune_count,
-        token: s.token_count,
+        base: s.base_count + (custom.base ?? 0),
+        alt: s.alt_count + (custom.alt ?? 0),
+        overnum: s.overnum_count + (custom.overnum ?? 0),
+        rune: s.rune_count + (custom.rune ?? 0),
+        token: s.token_count + (custom.token ?? 0),
       }
       const o = {
         base: owned.base ?? 0,
@@ -433,7 +461,7 @@ export async function createCustomPrint(input: CustomPrintInput): Promise<string
       input.extendRarityName,
       null,
       code,
-      null,
+      input.imgToken ? `local://${input.imgToken}` : null,
       null,
       input.artist ?? null,
       null,
@@ -465,7 +493,7 @@ export async function updateCustomPrintImg(printId: string, imgToken: string | n
   ])
 }
 
-/** 更新自定义打印信息 */
+/** 更新自定义打印信息；变体号/语言变更时自动迁移既有收藏数量到新键 */
 export async function updateCustomPrint(
   printId: string,
   patch: {
@@ -476,6 +504,16 @@ export async function updateCustomPrint(
   }
 ): Promise<void> {
   const db = await getDatabase()
+
+  const oldRows = await db.select<any[]>(
+    `SELECT p.card_no_extend AS card_no_extend, p.language AS language, cb.card_no AS card_no
+     FROM ${TABLES.CARD_PRINTS} p
+     LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+     WHERE p.id = ?`,
+    [printId]
+  )
+  const old = oldRows[0]
+
   const sets: string[] = ['updated_at = ?']
   const params: any[] = [now()]
   for (const [key, value] of Object.entries(patch)) {
@@ -488,6 +526,144 @@ export async function updateCustomPrint(
     `UPDATE ${TABLES.CARD_PRINTS} SET ${sets.join(', ')} WHERE id = ?`,
     params
   )
+
+  if (old) {
+    const oldExtend = (old.card_no_extend as string | null) ?? ''
+    const oldLang = (old.language as string | null) ?? ''
+    const newExtend = patch.card_no_extend ?? oldExtend
+    const newLang = patch.language ?? oldLang
+    if (
+      (oldExtend && newExtend && oldExtend !== newExtend) ||
+      (oldLang && newLang && oldLang !== newLang)
+    ) {
+      await migrateCustomPrintCollection(
+        (old.card_no as string | null) ?? '',
+        oldExtend,
+        newExtend,
+        oldLang,
+        newLang
+      )
+    }
+  }
+}
+
+/**
+ * 自定打印编辑引起变体号/语言变更时，迁移收藏数量行到新键。
+ * - 变体号变更：迁移 collection 行（重算 series_code）；新键已有 collection 则按语言合并后删除旧行。
+ * - 语言变更：迁移 collection_langs 旧语言行到新语言；新语言行已存在则合并数量并按状态规则重算。
+ * - 两个变更可叠加：先迁变体号，再迁语言。
+ */
+async function migrateCustomPrintCollection(
+  baseCardNo: string,
+  oldExtend: string,
+  newExtend: string,
+  oldLang: string,
+  newLang: string
+): Promise<void> {
+  const db = await getDatabase()
+
+  const affectedIds: string[] = []
+
+  if (oldExtend && newExtend && oldExtend !== newExtend) {
+    const oldCols = await db.select<{ id: string }[]>(
+      `SELECT id FROM ${TABLES.COLLECTION} WHERE card_no = ? AND card_no_extend = ?`,
+      [baseCardNo, oldExtend]
+    )
+    const oldColId = oldCols[0]?.id
+    if (oldColId) {
+      const newCols = await db.select<{ id: string }[]>(
+        `SELECT id FROM ${TABLES.COLLECTION} WHERE card_no = ? AND card_no_extend = ?`,
+        [baseCardNo, newExtend]
+      )
+      const newColId = newCols[0]?.id
+      if (newColId) {
+        await mergeCollectionLangs(oldColId, newColId)
+        await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE id = ?`, [oldColId])
+      } else {
+        await db.execute(
+          `UPDATE ${TABLES.COLLECTION}
+           SET card_no_extend = ?, series_code = ?, updated_at = ? WHERE id = ?`,
+          [newExtend, deriveSeriesCode(newExtend), now(), oldColId]
+        )
+        affectedIds.push(oldColId)
+      }
+    }
+  }
+
+  if (oldLang && newLang && oldLang !== newLang) {
+    let targetIds = affectedIds
+    if (targetIds.length === 0) {
+      const cols = await db.select<{ id: string }[]>(
+        `SELECT id FROM ${TABLES.COLLECTION} WHERE card_no = ? AND card_no_extend = ?`,
+        [baseCardNo, oldExtend !== newExtend ? newExtend : oldExtend]
+      )
+      targetIds = cols.map((c) => c.id)
+    }
+    for (const colId of targetIds) {
+      const oldLangs = await db.select<any[]>(
+        `SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS}
+         WHERE collection_id = ? AND language_code = ?`,
+        [colId, oldLang]
+      )
+      const oldRow = oldLangs[0]
+      if (!oldRow) continue
+      const newLangs = await db.select<any[]>(
+        `SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS}
+         WHERE collection_id = ? AND language_code = ?`,
+        [colId, newLang]
+      )
+      const newRow = newLangs[0]
+      if (newRow) {
+        const normal = (newRow.normal_qty ?? 0) + (oldRow.normal_qty ?? 0)
+        const foil = (newRow.foil_qty ?? 0) + (oldRow.foil_qty ?? 0)
+        await db.execute(
+          `UPDATE ${TABLES.COLLECTION_LANGS}
+           SET normal_qty = ?, foil_qty = ?, status = ?, updated_at = ? WHERE id = ?`,
+          [normal, foil, resolveStatus(newRow.status, normal, foil), now(), newRow.id]
+        )
+        await db.execute(`DELETE FROM ${TABLES.COLLECTION_LANGS} WHERE id = ?`, [oldRow.id])
+      } else {
+        await db.execute(
+          `UPDATE ${TABLES.COLLECTION_LANGS}
+           SET language_code = ?, updated_at = ? WHERE id = ?`,
+          [newLang, now(), oldRow.id]
+        )
+      }
+    }
+  }
+}
+
+/** 把 src 集合的语言行合并进 dest 集合（同名语言数量相加），供变体号合并场景使用 */
+async function mergeCollectionLangs(srcId: string, destId: string): Promise<void> {
+  const db = await getDatabase()
+  const srcLangs = await db.select<any[]>(
+    `SELECT id, language_code, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS}
+     WHERE collection_id = ?`,
+    [srcId]
+  )
+  for (const row of srcLangs) {
+    const destLangs = await db.select<any[]>(
+      `SELECT id, status, normal_qty, foil_qty FROM ${TABLES.COLLECTION_LANGS}
+       WHERE collection_id = ? AND language_code = ?`,
+      [destId, row.language_code]
+    )
+    const dest = destLangs[0]
+    if (dest) {
+      const normal = (dest.normal_qty ?? 0) + (row.normal_qty ?? 0)
+      const foil = (dest.foil_qty ?? 0) + (row.foil_qty ?? 0)
+      await db.execute(
+        `UPDATE ${TABLES.COLLECTION_LANGS}
+         SET normal_qty = ?, foil_qty = ?, status = ?, updated_at = ? WHERE id = ?`,
+        [normal, foil, resolveStatus(dest.status, normal, foil), now(), dest.id]
+      )
+      await db.execute(`DELETE FROM ${TABLES.COLLECTION_LANGS} WHERE id = ?`, [row.id])
+    } else {
+      await db.execute(
+        `UPDATE ${TABLES.COLLECTION_LANGS} SET collection_id = ?, updated_at = ? WHERE id = ?`,
+        [destId, now(), row.id]
+      )
+    }
+  }
 }
 
 /** 删除自定义打印（返回其图片 token 供调用方清理本地文件） */
@@ -827,12 +1003,14 @@ export async function getMissingListRarityOptions(): Promise<string[]> {
  */
 export async function getMissingVariants(opts?: MissingListFilter): Promise<MissingListRow[]> {
   const db = await getDatabase()
-  const innerConds: string[] = ['COALESCE(p3.is_promo, 0) != 1']
+  const innerConds: string[] = ['(COALESCE(p3.is_promo, 0) != 1 OR p3.is_custom = 1)']
   const params: any[] = []
 
   if (opts?.seriesCode) {
-    innerConds.push(`substr(upper(p3.card_no_extend), 1, 3) = ?`)
-    params.push(opts.seriesCode.toUpperCase())
+    innerConds.push(
+      `(substr(upper(p3.card_no_extend), 1, 3) = ? OR (p3.is_custom = 1 AND cb3.series_name = ?))`
+    )
+    params.push(opts.seriesCode.toUpperCase(), opts.seriesCode.toUpperCase())
   }
   if (opts?.rarities?.length) {
     const ph = opts.rarities.map(() => '?').join(',')

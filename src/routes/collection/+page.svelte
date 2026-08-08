@@ -3,17 +3,19 @@
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import { getCollectionStats, getRecentCollectionCards } from '$lib/db'
-  import { Save } from '@lucide/svelte'
+  import { Save, Plus } from '@lucide/svelte'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import CollectionHero from '$lib/components/collection/CollectionHero.svelte'
   import SeriesCardGrid from '$lib/components/collection/SeriesCardGrid.svelte'
   import GlobalCollectionSearch from '$lib/components/collection/GlobalCollectionSearch.svelte'
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
+  import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
   import { deriveSeriesCode } from '$lib/collection/collection-utils'
 
   let stats = $state<CollectionStats | null>(null)
   let recent = $state<RecentCollectionCard[]>([])
   let loading = $state(true)
+  let showCustomCreate = $state(false)
 
   async function loadAll() {
     loading = true
@@ -48,6 +50,13 @@
     setTopbar({
       title: '收藏与闪卡',
       actions: [
+        {
+          key: 'custom',
+          label: '自定义卡',
+          icon: Plus,
+          title: '新建自定义卡',
+          onClick: () => (showCustomCreate = true),
+        },
         {
           key: 'missing',
           label: '缺卡清单',
@@ -85,6 +94,12 @@
       />
     {/if}
   </div>
+
+  <CustomPrintCreator
+    isOpen={showCustomCreate}
+    onClose={() => (showCustomCreate = false)}
+    onSaved={() => void loadAll()}
+  />
 </div>
 
 <style>

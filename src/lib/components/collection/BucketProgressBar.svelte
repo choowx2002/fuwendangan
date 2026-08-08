@@ -1,8 +1,6 @@
 <script lang="ts">
-  import {
-    BUCKET_LABELS,
-    type VariantBucket,
-  } from '$lib/cards/utils/variant-utils'
+  import { BUCKET_LABELS, type VariantBucket } from '$lib/cards/utils/variant-utils'
+  import { ChevronDown } from '@lucide/svelte'
 
   let {
     owned = {} as Partial<Record<VariantBucket, number>>,
@@ -13,51 +11,63 @@
 
   const BUCKET_ORDER: VariantBucket[] = ['base', 'alt', 'overnum', 'rune', 'token']
 
-  const totalOwned = $derived(
-    BUCKET_ORDER.reduce((a, b) => a + (owned[b] ?? 0), 0)
-  )
-  const totalCount = $derived(
-    BUCKET_ORDER.reduce((a, b) => a + (counts[b] ?? 0), 0)
-  )
-  const percent = $derived(
-    totalCount > 0 ? Math.round((totalOwned / totalCount) * 100) : 0
-  )
+  // 默认收起，点击摘要展开；仅内存，不持久化
+  let expanded = $state(false)
+
+  // 存在桶筛选时自动展开，便于查看当前筛选状态
+  $effect(() => {
+    if (activeBucket) expanded = true
+  })
+
+  const totalOwned = $derived(BUCKET_ORDER.reduce((a, b) => a + (owned[b] ?? 0), 0))
+  const totalCount = $derived(BUCKET_ORDER.reduce((a, b) => a + (counts[b] ?? 0), 0))
+  const percent = $derived(totalCount > 0 ? Math.round((totalOwned / totalCount) * 100) : 0)
 </script>
 
 <div class="bucket-bar">
-  <div class="bucket-summary">
+  <button
+    class="bucket-summary"
+    onclick={() => (expanded = !expanded)}
+    aria-expanded={expanded}
+    title={expanded ? '收起桶列表' : '展开桶列表'}
+  >
     <strong>系列进度</strong>
     <span class="muted">
       {totalOwned} / {totalCount}（{percent}%）
     </span>
-  </div>
+    <span class="chevron-wrap" class:rotated={expanded}>
+      <ChevronDown class="chevron" size={14} />
+    </span>
+  </button>
 
-  <div class="bucket-list">
-    {#each BUCKET_ORDER as bucket (bucket)}
-      {@const bOwned = owned[bucket] ?? 0}
-      {@const bCount = counts[bucket] ?? 0}
-      {@const done = bCount > 0 && bOwned >= bCount}
-      <button
-        class="bucket-item"
-        class:active={activeBucket === bucket}
-        class:done={done}
-        onclick={() => onSelect?.(activeBucket === bucket ? null : bucket)}
-        title={`${BUCKET_LABELS[bucket]}：${bOwned}/${bCount}${bCount > 0 && bOwned < bCount ? `，还缺 ${bCount - bOwned} 张` : ''}`}
-      >
-        <span class="bucket-label">{BUCKET_LABELS[bucket]}</span>
-        <span class="bucket-metrics" class:missing={bCount > 0 && bOwned < bCount}>
-          {bOwned}/{bCount}
-        </span>
-        <span class="bucket-fill-track">
-          <span
-            class="bucket-fill"
-            class:full={done}
-            style={`width: ${bCount > 0 ? Math.min(100, (bOwned / bCount) * 100) : 0}%`}
-          ></span>
-        </span>
-      </button>
-    {/each}
-  </div>
+  {#if expanded}
+    <div class="bucket-list">
+      {#each BUCKET_ORDER as bucket (bucket)}
+        {@const bOwned = owned[bucket] ?? 0}
+        {@const bCount = counts[bucket] ?? 0}
+        {@const done = bCount > 0 && bOwned >= bCount}
+        <button
+          class="bucket-item"
+          class:active={activeBucket === bucket}
+          class:done
+          onclick={() => onSelect?.(activeBucket === bucket ? null : bucket)}
+          title={`${BUCKET_LABELS[bucket]}：${bOwned}/${bCount}${bCount > 0 && bOwned < bCount ? `，还缺 ${bCount - bOwned} 张` : ''}`}
+        >
+          <span class="bucket-label">{BUCKET_LABELS[bucket]}</span>
+          <span class="bucket-metrics" class:missing={bCount > 0 && bOwned < bCount}>
+            {bOwned}/{bCount}
+          </span>
+          <span class="bucket-fill-track">
+            <span
+              class="bucket-fill"
+              class:full={done}
+              style={`width: ${bCount > 0 ? Math.min(100, (bOwned / bCount) * 100) : 0}%`}
+            ></span>
+          </span>
+        </button>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -69,9 +79,35 @@
 
   .bucket-summary {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     font-size: var(--text-sm);
+    padding: 4px 6px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    width: fit-content;
+  }
+
+  .bucket-summary:hover {
+    background: var(--bg-hover);
+  }
+
+  .chevron-wrap {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  :global(.chevron-wrap .chevron) {
+    transition: transform 0.15s;
+    color: var(--text-secondary);
+  }
+
+  :global(.chevron-wrap.rotated .chevron) {
+    transform: rotate(180deg);
   }
 
   .muted {
@@ -83,15 +119,27 @@
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
+    animation: slideDown 0.18s ease;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .bucket-item {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 5px;
-    min-width: 108px;
-    padding: 8px 10px;
+    gap: 4px;
+    min-width: 96px;
+    padding: 6px 8px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -146,5 +194,28 @@
 
   .bucket-fill.full {
     background: #eab308;
+  }
+
+  /* 手机：默认收起，列表展开时更紧凑 */
+  @media (max-width: 479.99px) {
+    .bucket-bar {
+      gap: 6px;
+    }
+
+    .bucket-summary {
+      font-size: var(--text-xs);
+      padding: 2px 4px;
+      gap: 6px;
+    }
+
+    .bucket-item {
+      min-width: 88px;
+      padding: 4px 6px;
+      gap: 3px;
+    }
+
+    .bucket-fill-track {
+      height: 4px;
+    }
   }
 </style>

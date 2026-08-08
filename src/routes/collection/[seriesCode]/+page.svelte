@@ -24,14 +24,16 @@
     searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
-  import { ListChecks, Save, X } from '@lucide/svelte'
+  import { ListChecks, Save, Plus, X, LayoutGrid, Table } from '@lucide/svelte'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import BucketProgressBar from '$lib/components/collection/BucketProgressBar.svelte'
   import CollectionGrid from '$lib/components/collection/CollectionGrid.svelte'
+  import CollectionTable from '$lib/components/collection/CollectionTable.svelte'
   import CollectionModal from '$lib/components/collection/CollectionModal.svelte'
   import CollectionSortDropdown from '$lib/components/collection/CollectionSortDropdown.svelte'
   import BatchToolbar from '$lib/components/collection/BatchToolbar.svelte'
+  import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
 
   const PAGE_SIZE = 42
   const seriesCode = (page.params.seriesCode ?? '').toUpperCase()
@@ -54,6 +56,8 @@
   let batchMode = $state(false)
   let selectedIds = $state<Set<string>>(new Set())
   let batchBusy = $state(false)
+  let showCustomCreate = $state(false)
+  let view = $state<'grid' | 'table'>('grid')
 
   const OWNERSHIP_OPTIONS: { key: OwnershipType; label: string }[] = [
     { key: 'all', label: '全部' },
@@ -78,10 +82,12 @@
         sortKey?: CollectionSort['key']
         isAsc?: boolean
         bucket?: VariantBucket | null
+        view?: 'grid' | 'table'
       }
       if (p.ownership) ownership = p.ownership
       if (p.sortKey) sort = { key: p.sortKey, isAsc: p.isAsc ?? true }
       if (p.bucket) activeBucket = p.bucket
+      if (p.view) view = p.view
     } catch {
       // 忽略损坏的偏好
     }
@@ -96,6 +102,7 @@
           sortKey: sort.key,
           isAsc: sort.isAsc,
           bucket: activeBucket,
+          view,
         })
       )
     } catch {
@@ -212,10 +219,14 @@
     const items = selectedItems()
     if (items.length === 0) return
     const confirmed = isTauri
-      ? await (await import('@tauri-apps/plugin-dialog')).ask(
-          `确定删除选中的 ${items.length} 张收藏记录？此操作不可恢复。`,
-          { title: '删除收藏记录', kind: 'warning', okLabel: '删除', cancelLabel: '取消' }
-        )
+      ? await (
+          await import('@tauri-apps/plugin-dialog')
+        ).ask(`确定删除选中的 ${items.length} 张收藏记录？此操作不可恢复。`, {
+          title: '删除收藏记录',
+          kind: 'warning',
+          okLabel: '删除',
+          cancelLabel: '取消',
+        })
       : window.confirm(`确定删除选中的 ${items.length} 张收藏记录？此操作不可恢复。`)
     if (!confirmed) return
     batchBusy = true
@@ -246,10 +257,11 @@
       const langs = await getVariantLangs(card.cardNo, card.cardNoExtend)
       const row = langs
         .filter((l) => l.status === 'owned' && (l.normal_qty > 0 || l.foil_qty > 0))
-        .sort((a, b) => ((b.updated_at ?? '') as string).localeCompare((a.updated_at ?? '') as string))[0]
+        .sort((a, b) =>
+          ((b.updated_at ?? '') as string).localeCompare((a.updated_at ?? '') as string)
+        )[0]
       if (!row) return
-      const patch =
-        row.normal_qty > 0 ? { normal: row.normal_qty - 1 } : { foil: row.foil_qty - 1 }
+      const patch = row.normal_qty > 0 ? { normal: row.normal_qty - 1 } : { foil: row.foil_qty - 1 }
       if (row.normal_qty > 0) card.ownedNormal -= 1
       else card.ownedFoil -= 1
       card.ownedTotal -= 1
@@ -313,6 +325,13 @@
       onBack: () => goto('/collection'),
       actions: [
         {
+          key: 'custom',
+          label: '自定义卡',
+          icon: Plus,
+          title: '新建自定义卡',
+          onClick: () => (showCustomCreate = true),
+        },
+        {
           key: 'batch',
           label: batchMode ? '退出批量' : '批量',
           icon: batchMode ? X : ListChecks,
@@ -340,7 +359,7 @@
     <BucketProgressBar
       owned={seriesStats?.owned}
       counts={seriesStats?.counts}
-      activeBucket={activeBucket}
+      {activeBucket}
       onSelect={(b) => {
         activeBucket = b
         void runSearch(true)
@@ -380,23 +399,59 @@
         void runSearch(true)
       }}
     />
+
+    <div class="view-toggle" role="group" aria-label="视图切换">
+      <button
+        class="view-btn"
+        class:active={view === 'grid'}
+        title="网格视图"
+        onclick={() => (view = 'grid')}
+      >
+        <LayoutGrid size={15} />
+      </button>
+      <button
+        class="view-btn"
+        class:active={view === 'table'}
+        title="表格视图"
+        onclick={() => (view = 'table')}
+      >
+        <Table size={15} />
+      </button>
+    </div>
   </div>
 
   <div class="grid-area">
-    <CollectionGrid
-      {cards}
-      {isLoading}
-      {loadingMore}
-      {hasMore}
-      quickEdit
-      {batchMode}
-      selectedIds={selectedIds}
-      onCardClick={openCard}
-      onLoadMore={loadMore}
-      onQuickInc={quickInc}
-      onQuickDec={quickDec}
-      onToggleSelect={toggleSelect}
-    />
+    {#if view === 'grid'}
+      <CollectionGrid
+        {cards}
+        {isLoading}
+        {loadingMore}
+        {hasMore}
+        quickEdit
+        {batchMode}
+        {selectedIds}
+        onCardClick={openCard}
+        onLoadMore={loadMore}
+        onQuickInc={quickInc}
+        onQuickDec={quickDec}
+        onToggleSelect={toggleSelect}
+      />
+    {:else}
+      <CollectionTable
+        {cards}
+        {isLoading}
+        {loadingMore}
+        {hasMore}
+        quickEdit
+        {batchMode}
+        {selectedIds}
+        onCardClick={openCard}
+        onLoadMore={loadMore}
+        onQuickInc={quickInc}
+        onQuickDec={quickDec}
+        onToggleSelect={toggleSelect}
+      />
+    {/if}
     <div class="total-hint">共 {total} 个变体</div>
 
     {#if batchMode}
@@ -414,11 +469,16 @@
   <CollectionModal
     card={selectedCard}
     isOpen={!!selectedCard}
-    initialVariant={initialVariant}
+    {initialVariant}
     onClose={() => (selectedCard = null)}
     onChanged={refreshAll}
   />
 
+  <CustomPrintCreator
+    isOpen={showCustomCreate}
+    onClose={() => (showCustomCreate = false)}
+    onSaved={() => refreshAll()}
+  />
 </div>
 
 <style>
@@ -430,11 +490,11 @@
     gap: 12px;
   }
 
-  .stats-area {
+  /* .stats-area {
     flex-shrink: 0;
     border-top: 1px solid var(--border-color);
     padding-top: 12px;
-  }
+  } */
 
   .toolbar {
     display: flex;
@@ -475,6 +535,40 @@
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: var(--text-sm);
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .view-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .view-btn + .view-btn {
+    border-left: 1px solid var(--border-color);
+  }
+
+  .view-btn:hover {
+    color: var(--accent-color);
+  }
+
+  .view-btn.active {
+    background: var(--accent-color);
+    color: #fff;
   }
 
   .grid-area {

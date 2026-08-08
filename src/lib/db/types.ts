@@ -85,6 +85,8 @@ export interface VariantWithOwned {
   bucket: VariantBucket
   // cards_base 分类（JSON 数组），关联基础卡详情用
   cardCategory: string[] | null
+  // 是否为自建打印（is_custom=1，独立变体）
+  isCustom: boolean
   ownedNormal: number
   ownedFoil: number
   ownedTotal: number

@@ -86,7 +86,7 @@ body {
 * {
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   box-sizing: border-box;
-  user-select: none;
+  /* user-select: none; */
 }
 
 /* 滚动条美化 (Notion 风格) */

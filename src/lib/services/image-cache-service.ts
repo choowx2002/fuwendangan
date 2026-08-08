@@ -153,6 +153,11 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry 
   return false
 }
 
+/** 下载远程图片到卡图缓存目录（自定义打印 URL 导入，token 形如 custom-{id}，无扩展名） */
+export async function saveRemoteImageAsToken(url: string, token: string): Promise<boolean> {
+  return saveImageToAppFolder(url, token)
+}
+
 export const loadImageFromAppFolder = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
 
