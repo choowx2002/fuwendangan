@@ -3,7 +3,8 @@
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { isDeckPinned } from '$lib/stores/pinned-decks'
-  import { Swords, Dice6, Pin, ChevronRight } from '@lucide/svelte'
+  import { playerName, settingsStoreReady } from '$lib/stores/settings'
+  import { Swords, Dice6, Pin, ChevronRight, UserRound } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
 
@@ -18,6 +19,8 @@
   }
 
   let recentDecks = $state<HomeDeck[]>([])
+  let homeName = $state('')
+  let settingsReady = $state(false)
 
   const quickTools = [
     {
@@ -54,6 +57,8 @@
 
   onMount(async () => {
     try {
+      await settingsStoreReady
+      settingsReady = true
       const { decks } = await getDeckList({ limit: 50 })
       const stats = await getMatchStatsForDecks(decks.map((d) => d.id))
       recentDecks = decks.slice(0, 5).map((d) => {
@@ -72,7 +77,10 @@
   })
 
   $effect(() => {
-    setTopbar({ title: '首页', description: '欢迎回来，天龠wx。今天想玩点什么？' })
+    setTopbar({
+      title: '首页',
+      description: `欢迎回来，${$playerName.trim() || '玩家'}。今天想玩点什么？`,
+    })
   })
 </script>
 
@@ -81,7 +89,7 @@
   <section class="hero">
     <div class="hero-content">
       <span class="hero-date">{todayText()}</span>
-      <h1 class="hero-title">欢迎回来</h1>
+      <h1 class="hero-title">欢迎回来{$playerName.trim() ? `，${$playerName.trim()}` : ''}</h1>
       <p class="hero-sub">今天想玩点什么？</p>
       <div class="hero-actions">
         <button class="hero-btn primary" onclick={() => goto('/decks/builder')}>新建卡组</button>
@@ -89,6 +97,41 @@
       </div>
     </div>
   </section>
+
+  {#if settingsReady && !$playerName.trim()}
+    <section class="setup-card">
+      <div class="setup-card-info">
+        <span class="setup-card-icon"><UserRound size={16} /></span>
+        <div class="setup-card-text">
+          <span class="setup-card-title">设置玩家用户名</span>
+          <span class="setup-card-desc">用于首页问候、卡组图案水印、对局记录与计分器默认名</span>
+        </div>
+      </div>
+      <div class="setup-card-form">
+        <input
+          class="setup-input"
+          type="text"
+          maxlength="20"
+          placeholder="输入你的昵称"
+          bind:value={homeName}
+        />
+        <button
+          class="button button-primary"
+          disabled={!homeName.trim()}
+          onclick={() => {
+            if (!homeName.trim()) return
+            $playerName = homeName.trim()
+            setTopbar({
+              title: '首页',
+              description: `欢迎回来，${$playerName}。今天想玩点什么？`,
+            })
+          }}
+        >
+          保存
+        </button>
+      </div>
+    </section>
+  {/if}
 
   <!-- 对战工具（紧凑按钮行） -->
   <section class="section">
@@ -219,6 +262,95 @@
   @media (max-width: 767.99px) {
     .hero {
       padding: 32px 24px;
+    }
+  }
+
+  /* 玩家用户名设置卡片（未填写时显示） */
+  .setup-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+  }
+
+  .setup-card-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .setup-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    color: var(--accent-color);
+  }
+
+  .setup-card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .setup-card-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .setup-card-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .setup-card-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .setup-input {
+    width: 180px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+
+  .setup-input:focus {
+    border-color: var(--accent-color);
+  }
+
+  @media (max-width: 479.99px) {
+    .setup-card {
+      align-items: stretch;
+    }
+
+    .setup-card-form {
+      width: 100%;
+    }
+
+    .setup-input {
+      flex: 1;
+      width: auto;
     }
   }
 

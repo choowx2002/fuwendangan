@@ -68,6 +68,7 @@ export interface DeckImageOptions {
   sortRules: SortKeyItem[]
   background?: DeckBackground
   textColor?: string
+  playerName?: string
   onProgress?: (percent: number) => void
 }
 
@@ -482,6 +483,18 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
       drawCoverIn(ctx, imageMap.get(key) ?? null, x, cy, CARD_W, CARD_H, theme.placeholder)
       drawQtyBadge(ctx, x, cy, CARD_W, CARD_H, card.quantity, theme)
     })
+  }
+
+  // 水印：玩家用户名（右下角）
+  const owner = options.playerName?.trim()
+  if (owner) {
+    ctx.globalAlpha = 0.45
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = theme.secondary
+    ctx.font = '400 14px "Noto Sans SC", sans-serif'
+    ctx.fillText(`@${owner}`, WIDTH - PAD, height - 8)
+    ctx.globalAlpha = 1
   }
 
   return canvas.toDataURL('image/png')

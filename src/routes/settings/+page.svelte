@@ -31,7 +31,7 @@
     type ImportDeckPayload,
     type ImportMatchPayload,
   } from '$lib/db'
-  import { showForeignCardArt as showFCA, showTTSFeatures } from '$lib/stores/settings'
+  import { showForeignCardArt as showFCA, showTTSFeatures, playerName } from '$lib/stores/settings'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
 
   import {
@@ -484,6 +484,7 @@
             ...deck,
             versions,
             matches: matches.map((m) => ({
+              player_name: m.player_name,
               group_name: m.group_name,
               opponent_name: m.opponent_name,
               opponent_deck: m.opponent_deck,
@@ -613,6 +614,7 @@
           }
           if (games.length === 0) continue
           matches.push({
+            player_name: asNullableString(rawMatch.player_name),
             group_name: asNullableString(rawMatch.group_name),
             opponent_name: asNullableString(rawMatch.opponent_name),
             opponent_deck: asNullableString(rawMatch.opponent_deck),
@@ -936,6 +938,22 @@
         <input type="checkbox" bind:checked={$showFCA} />
         <span class="slider"></span>
       </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">玩家用户名</span>
+        <span class="setting-desc">
+          用于首页问候、卡组图案水印、对局记录与计分器默认名
+        </span>
+      </div>
+      <input
+        class="setting-input"
+        type="text"
+        maxlength="20"
+        placeholder="未设置"
+        bind:value={$playerName}
+      />
     </div>
 
     {#if !inMobile}
@@ -1521,6 +1539,29 @@
 
   .setting-item:last-child {
     border-bottom: none;
+  }
+
+  .setting-input {
+    width: 180px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+
+  .setting-input:focus {
+    border-color: var(--accent-color);
+  }
+
+  @media (max-width: 479.99px) {
+    .setting-input {
+      width: 120px;
+    }
   }
 
   .setting-info {

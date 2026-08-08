@@ -51,12 +51,13 @@ export async function createMatch(input: MatchInput, games: MatchGameInput[]): P
 
   const sql = `
     INSERT INTO ${TABLES.MATCH_RECORDS}
-      (id, deck_id, group_name, opponent_name, opponent_deck, opp_legend_id, opp_legend_print_id, opp_legend_name, opp_legend_image, deck_version_id, deck_version_number, best_of, note, played_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, deck_id, player_name, group_name, opponent_name, opponent_deck, opp_legend_id, opp_legend_print_id, opp_legend_name, opp_legend_image, deck_version_id, deck_version_number, best_of, note, played_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   await db.execute(sql, [
     id,
     input.deck_id,
+    input.player_name ?? null,
     input.group_name ?? null,
     input.opponent_name ?? null,
     input.opponent_deck ?? null,
@@ -92,6 +93,10 @@ export async function updateMatch(
   if (input.deck_id !== undefined) {
     fields.push(`deck_id = ?`)
     params.push(input.deck_id)
+  }
+  if (input.player_name !== undefined) {
+    fields.push(`player_name = ?`)
+    params.push(input.player_name ?? null)
   }
   if (input.group_name !== undefined) {
     fields.push(`group_name = ?`)

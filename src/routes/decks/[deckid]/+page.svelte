@@ -33,6 +33,7 @@
   } from '$lib/decks/version-diff'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { playerName } from '$lib/stores/settings'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import {
     buildOwnershipText,
@@ -827,6 +828,7 @@
       sortRules: imageSortList,
       background: currentDeckBackground(),
       textColor: imageTextColor || undefined,
+      playerName: $playerName.trim() || undefined,
     }
   }
 
@@ -1092,7 +1094,9 @@
                 <span class="match-item-date">
                   {match.played_at ? new Date(match.played_at).toLocaleDateString() : '未填日期'}
                 </span>
-                <span class="match-item-opponent">{match.opponent_name || '无名对手'}</span>
+                <span class="match-item-opponent">
+                  {match.player_name || '我'} vs {match.opponent_name || '无名对手'}
+                </span>
                 {#if match.group_name}
                   <span class="match-group-badge">{match.group_name}</span>
                 {/if}

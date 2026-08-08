@@ -345,6 +345,7 @@
       const cleanMatches = (Array.isArray(d.matches) ? d.matches : [])
         .filter((m: any) => m && Array.isArray(m.games) && m.games.length > 0)
         .map((m: any) => ({
+          player_name: m.player_name ?? null,
           group_name: m.group_name ?? null,
           opponent_name: m.opponent_name ?? null,
           opponent_deck: m.opponent_deck ?? null,

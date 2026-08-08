@@ -213,6 +213,7 @@ export const TABLE_DEFINITIONS = {
     CREATE TABLE IF NOT EXISTS match_records (
       id TEXT PRIMARY KEY,
       deck_id TEXT NOT NULL,
+      player_name TEXT,
       group_name TEXT,
       opponent_name TEXT,
       opponent_deck TEXT,

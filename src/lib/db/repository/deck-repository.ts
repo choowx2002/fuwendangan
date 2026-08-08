@@ -851,6 +851,7 @@ export interface ImportDeckPayload {
 }
 
 export interface ImportMatchPayload {
+  player_name?: string | null
   group_name?: string | null
   opponent_name?: string | null
   opponent_deck?: string | null
@@ -1028,6 +1029,7 @@ export async function importDecksFromJson(
       await createMatch(
         {
           deck_id: deckId,
+          player_name: match.player_name ?? null,
           group_name: match.group_name ?? null,
           opponent_name: match.opponent_name ?? null,
           opponent_deck: match.opponent_deck ?? null,

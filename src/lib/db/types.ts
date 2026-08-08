@@ -562,6 +562,7 @@ export type MatchWinType = 'normal' | 'concede' | 'special'
 export interface MatchRecord {
   id: string
   deck_id: string
+  player_name: string | null
   group_name: string | null
   opponent_name: string | null
   opponent_deck: string | null
@@ -625,6 +626,7 @@ export interface MatchWithGames extends MatchRecord {
 // 创建对局输入
 export interface MatchInput {
   deck_id: string
+  player_name?: string | null
   group_name?: string | null
   opponent_name?: string | null
   opponent_deck?: string | null

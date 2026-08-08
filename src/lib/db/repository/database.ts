@@ -4,7 +4,7 @@
  */
 
 import Database from '@tauri-apps/plugin-sql'
-import { DB_NAME } from '../config/constants'
+import { DB_NAME, TABLES } from '../config/constants'
 import { TABLE_DEFINITIONS } from '../config/schema'
 
 let dbInstance: Database | null = null
@@ -53,6 +53,22 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.idx_collection_history_created)
   await db.execute(TABLE_DEFINITIONS.idx_collection_history_items_history)
   await db.execute(TABLE_DEFINITIONS.idx_collection_stats_snapshots_created)
+
+  await ensureColumn(db, TABLES.MATCH_RECORDS, 'player_name', 'TEXT')
+}
+
+/**
+ * 为已存在的表补列（老库升级用）。新增列幂等：已存在则跳过。
+ */
+async function ensureColumn(
+  db: Database,
+  table: string,
+  column: string,
+  type: string
+): Promise<void> {
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(${table})`)
+  if (cols.some((c) => c.name === column)) return
+  await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
 }
 
 /**

@@ -267,7 +267,9 @@
               <span class="record-item-date">
                 {match.played_at ? new Date(match.played_at).toLocaleDateString() : '未填日期'}
               </span>
-              <span class="record-item-opponent">{match.opponent_name || '无名对手'}</span>
+              <span class="record-item-opponent">
+                {match.player_name || '我'} vs {match.opponent_name || '无名对手'}
+              </span>
               {#if match.group_name}
                 <span class="record-group-badge">{match.group_name}</span>
               {/if}

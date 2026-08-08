@@ -9,6 +9,7 @@
     type DeckListResult,
   } from '$lib/db'
   import { scoreCounterState, type GameRecord, type ActionEntry } from '$lib/stores/tools'
+  import { playerName } from '$lib/stores/settings'
   import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -312,6 +313,7 @@
       await createMatch(
         {
           deck_id: s.deckId,
+          player_name: $playerName.trim() || null,
           opponent_name: s.opponentName.trim() || null,
           opponent_deck: s.opponentDeck.trim() || null,
           opp_legend_id: s.oppLegendId,
@@ -342,6 +344,14 @@
   onMount(() => {
     loadDecks()
     loadLegends()
+  })
+
+  $effect(() => {
+    const name = $playerName.trim()
+    if (!name) return
+    if ($scoreCounterState.meName === '我方') {
+      scoreCounterState.update((s) => (s.meName === '我方' ? { ...s, meName: name } : s))
+    }
   })
 </script>
 

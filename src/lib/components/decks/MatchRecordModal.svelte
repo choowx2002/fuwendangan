@@ -13,6 +13,7 @@
   } from '$lib/db/index.js'
   import type { CardBase, CardPrint, MatchWinType, MatchWithGames } from '$lib/db/types'
   import type { DeckVersion } from '$lib/db/index.js'
+  import { playerName } from '$lib/stores/settings'
 
   interface Props {
     open: boolean
@@ -320,6 +321,11 @@
 
       const input = {
         deck_id: deckId,
+        ...(editing
+          ? {}
+          : {
+              player_name: $playerName.trim() || null,
+            }),
         group_name: groupName.trim() || null,
         opponent_name: opponentName.trim() || null,
         opponent_deck: opponentDeck.trim() || null,
