@@ -168,7 +168,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     queryParams.push(safeText)
   }
 
-  // 收藏聚合子查询：按卡聚合已拥有数量（仅 owned 状态，所有变体×语言）
+  // 收藏聚合子查询：按卡聚合已拥有数量（仅 owned 状态，所有卡牌×语言）
   const ownedAgg = `
     SELECT cb.id AS oc_card_id,
       SUM(cl.normal_qty) AS owned_normal,
@@ -182,8 +182,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     GROUP BY cb.id
   `
 
-  // 变体完成度聚合：按完成度模式（默认 base）判定变体是否已拥有。
-  // 外层按卡聚合 total/owned 变体数，谓词来自 completion-modes 注册表。
+  // 卡牌完成度聚合：按完成度模式（默认 base）判定卡牌是否已拥有。
+  // 外层按卡聚合 total/owned 卡牌数，谓词来自 completion-modes 注册表。
   const completion = getCompletionMode(params.completionMode)
   const bucketCase = `CASE
     WHEN cb.card_category LIKE '%符文%' THEN 'rune'
@@ -227,7 +227,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     }
   }
 
-  // 5.5 收藏页：按变体桶过滤（与 variantAgg 相同的桶分类口径）
+  // 5.5 收藏页：按卡牌桶过滤（与 variantAgg 相同的桶分类口径）
   if (params.bucket && params.bucket.trim() !== '') {
     const bucket = params.bucket.trim()
     whereClauses.push(`EXISTS (
@@ -326,7 +326,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
  * - card_no：按卡号
  * - rarity：按稀有度层级（普通 < 不凡 < 稀有 < 史诗 < 异画 < 超编 < 签名超编）
  * - owned：按已拥有数量
- * - progress：按拥有进度（已拥有变体 / 全部非 promo 变体）
+ * - progress：按拥有进度（已拥有卡牌 / 全部非 promo 卡牌）
  * - recent：按最近录入时间（无记录排最后）
  */
 function buildCollectionOrderBy(
@@ -367,11 +367,11 @@ function buildCollectionOrderBy(
   }
 }
 
-// ==================== 收藏页变体搜索（card_prints 数据源） ====================
+// ==================== 收藏页卡牌搜索（card_prints 数据源） ====================
 
 /**
- * 收藏页变体搜索：以 card_prints 为数据源，一个变体（card_id + card_no_extend）一行。
- * 内层单次扫描聚合出每变体的代表稀有度与过滤标志，外层无任何关联子查询，
+ * 收藏页卡牌搜索：以 card_prints 为数据源，一个卡牌（card_id + card_no_extend）一行。
+ * 内层单次扫描聚合出每卡牌的代表稀有度与过滤标志，外层无任何关联子查询，
  * 总数用 COUNT(*) OVER () 并入数据查询，减少往返与整表重建。
  * cards_base 仅内部用于桶分类（符文/指示物）与系列回退，不参与展示；
  * 卡片详情在打开弹窗时按需关联。
@@ -459,6 +459,8 @@ export async function searchCardVariants(
       v.rarity,
       v.is_custom,
       cb.card_no AS card_no,
+      cb.sub_title_cn,
+      cb.card_name_cn,
       COALESCE(SUM(cl.normal_qty), 0) AS owned_normal,
       COALESCE(SUM(cl.foil_qty), 0) AS owned_foil,
       COALESCE(SUM(cl.normal_qty), 0) + COALESCE(SUM(cl.foil_qty), 0) AS owned_total,
@@ -491,7 +493,7 @@ export async function searchCardVariants(
   const rows = await db.select<any[]>(dataSql, [...innerParams, ...outerParams, pageSize, offset])
   const total = rows.length > 0 ? Number(rows[0].total) : 0
 
-  // 代表印刷：排除 promo 后按 SC > is_default > 首张（行值 IN 精确限定到本页变体）
+  // 代表印刷：排除 promo 后按 SC > is_default > 首张（行值 IN 精确限定到本页卡牌）
   const repMap = new Map<string, CardPrint>()
   if (rows.length > 0) {
     const rowValueIn = rows.map(() => '(?, ?)').join(',')
@@ -525,6 +527,8 @@ export async function searchCardVariants(
     return {
       cardId: row.card_id,
       cardNo: row.card_no,
+      card_name_cn: row.card_name_cn,
+      sub_title_cn: row.sub_title_cn,
       cardNoExtend: row.card_no_extend,
       printId: rep?.id ?? null,
       printLanguage: rep?.language ?? null,
@@ -552,11 +556,11 @@ export async function searchCardVariants(
 }
 
 /**
- * 收藏页变体排序：
+ * 收藏页卡牌排序：
  * - card_no：按扩展卡号
  * - rarity：按稀有度层级（普通 < 不凡 < 稀有 < 史诗 < 异画 < 超编 < 签名超编，符文/指示物置顶）
- * - owned：按该变体已拥有数量
- * - progress：按该变体是否已拥有（升序 = 未拥有优先）
+ * - owned：按该卡牌已拥有数量
+ * - progress：按该卡牌是否已拥有（升序 = 未拥有优先）
  * - recent：按最近录入时间（无记录排最后）
  */
 function buildVariantOrderBy(sort?: CollectionSort): string {

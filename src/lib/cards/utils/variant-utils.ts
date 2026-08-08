@@ -1,6 +1,6 @@
 /**
- * 变体五桶分类工具
- * 以「变体（card_id + card_no_extend）」为单位，用于收藏完成度统计与展示。
+ * 卡牌五桶分类工具
+ * 以「卡牌（card_id + card_no_extend）」为单位，用于收藏完成度统计与展示。
  * 分类优先级：符文/指示物按卡牌类别判定（覆盖其全部打印），其余按卡图扩展稀有度。
  */
 
@@ -24,7 +24,7 @@ export function isTokenCard(cardCategory: string[] | null | undefined): boolean 
   return cardCategory?.some((c) => c.includes('指示物')) ?? false
 }
 
-/** 依据卡牌类别 + 卡图扩展稀有度判定变体归属桶 */
+/** 依据卡牌类别 + 卡图扩展稀有度判定卡牌归属桶 */
 export function classifyVariant(
   cardCategory: string[] | null | undefined,
   extendRarityName: string | null | undefined

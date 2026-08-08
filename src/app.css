@@ -210,7 +210,7 @@ BUTTON
   pointer-events: none;
 }
 
-/* 危险按钮 - 用于删除等操作，可选保留红色或使用强调色变体 */
+/* 危险按钮 - 用于删除等操作，可选保留红色或使用强调色卡牌 */
 .button-danger {
   background-color: #eb5757;
   color: white;
@@ -248,7 +248,7 @@ BUTTON
   pointer-events: none;
 }
 
-/* 按钮尺寸变体 */
+/* 按钮尺寸卡牌 */
 .button-sm {
   padding: 4px 12px;
   font-size: var(--text-xs);

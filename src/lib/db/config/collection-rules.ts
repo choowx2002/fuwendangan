@@ -31,7 +31,7 @@ export function shouldKeepLangRow(
   return status !== 'owned'
 }
 
-/** 变体无任何语言行 → 删除变体行 */
+/** 卡牌无任何语言行 → 删除卡牌行 */
 export function shouldDeleteVariant(
   langs: Pick<CollectionLang, 'status' | 'normal_qty' | 'foil_qty'>[]
 ): boolean {

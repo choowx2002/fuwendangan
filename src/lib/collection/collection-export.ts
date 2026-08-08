@@ -6,7 +6,7 @@
 import { isTauri } from '$lib/db/env'
 import { writeTextFile } from '$lib/services/db-file-service'
 
-/** 缺卡清单导出行：一个印刷变体（编号/名字/稀有度/拥有数/需求量） */
+/** 缺卡清单导出行：一个印刷卡牌（编号/名字/稀有度/拥有数/需求量） */
 export interface MissingListTextRow {
   cardNoExtend: string
   cardNameCn: string | null
@@ -17,7 +17,7 @@ export interface MissingListTextRow {
   satisfied?: boolean
 }
 
-/** 生成缺卡清单文本（每行一个印刷变体） */
+/** 生成缺卡清单文本（每行一个印刷卡牌） */
 export function buildMissingListText(
   items: MissingListTextRow[],
   seriesName: string | null,
@@ -41,7 +41,7 @@ export function buildMissingListText(
     }
   }
   lines.push('='.repeat(36))
-  lines.push(`合计 ${items.length} 个变体`)
+  lines.push(`合计 ${items.length} 个卡牌`)
   return lines.join('\n')
 }
 

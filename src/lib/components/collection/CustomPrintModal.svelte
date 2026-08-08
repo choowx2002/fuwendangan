@@ -170,13 +170,13 @@
     langOptions = base
   }
 
-  // 变体号实时校验：与原型卡已有印刷（含语言）冲突时阻止保存，保证自定打印成为独立变体
+  // 卡牌号实时校验：与原型卡已有印刷（含语言）冲突时阻止保存，保证自定打印成为独立卡牌
   async function checkVariantConflict(baseId: string, no: string, editId: string | null) {
     const prints = await getPrintsByCardId(baseId)
     const existing = prints.filter((p) => p.card_no_extend === no && p.id !== editId)
     variantConflict =
       existing.length > 0
-        ? `该变体号已存在（已有语言：${[
+        ? `该卡牌号已存在（已有语言：${[
             ...new Set(existing.map((p) => p.language ?? '未知')),
           ].join('、')}）`
         : ''
@@ -398,7 +398,7 @@
       {/if}
 
       <div class="field">
-        <label for="cp-extend">卡图编号（变体号）</label>
+        <label for="cp-extend">卡图编号（卡牌号）</label>
         <input
           id="cp-extend"
           bind:value={cardNoExtend}

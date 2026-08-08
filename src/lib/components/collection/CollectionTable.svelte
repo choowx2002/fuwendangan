@@ -47,14 +47,15 @@
       {/each}
     </div>
   {:else if cards.length === 0}
-    <EmptyState title="未找到匹配变体" description="试试调整筛选条件或搜索关键词" />
+    <EmptyState title="未找到匹配卡牌" description="试试调整筛选条件或搜索关键词" />
   {:else}
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             {#if batchMode}<th class="col-check"></th>{/if}
-            <th class="col-no">变体</th>
+            <th class="col-no">编号</th>
+            <th class="col-name">名称</th>
             <th class="col-rarity">稀有度</th>
             <th class="col-qty">普卡</th>
             <th class="col-qty">闪卡</th>
@@ -92,11 +93,12 @@
                   {#if card.isCustom}
                     <span class="custom-chip">自定</span>
                   {/if}
-                  {#if card.bucket !== 'base'}
+                  <!-- {#if card.bucket !== 'base'}
                     <span class="bucket-chip">{BUCKET_LABELS[card.bucket]}</span>
-                  {/if}
+                  {/if} -->
                 </div>
               </td>
+              <td class="col-name">{card.card_name_cn} {card.sub_title_cn}</td>
               <td class="col-rarity">{card.extendRarityName ?? card.rarityName ?? '—'}</td>
               <td class="col-qty">{card.ownedNormal > 0 ? card.ownedNormal : 0}</td>
               <td class="col-qty foil">{card.ownedFoil > 0 ? card.ownedFoil : 0}</td>
@@ -129,13 +131,13 @@
                     {:else}
                       <button
                         class="row-step inc wide"
-                        title="标记拥有 1 张"
+                        title="添加 1 张"
                         onclick={(e) => {
                           e.stopPropagation()
                           onQuickInc?.(card)
                         }}
                       >
-                        <Plus size={13} strokeWidth={'5'} /> 拥有
+                        <Plus size={13} strokeWidth={'2'} /> 添加
                       </button>
                     {/if}
                   </div>
@@ -173,7 +175,7 @@
 
   table {
     width: 100%;
-    min-width: 560px;
+    min-width: 250px;
     border-collapse: collapse;
     font-size: var(--text-sm);
   }
@@ -249,7 +251,7 @@
     white-space: nowrap;
   }
 
-  .bucket-chip {
+  /* .bucket-chip {
     flex-shrink: 0;
     padding: 1px 6px;
     font-size: 10px;
@@ -257,7 +259,7 @@
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
     background: var(--bg-secondary);
-  }
+  } */
 
   .custom-chip {
     flex-shrink: 0;
@@ -386,6 +388,10 @@
     }
 
     .col-rarity {
+      display: none;
+    }
+
+    .col-name {
       display: none;
     }
 

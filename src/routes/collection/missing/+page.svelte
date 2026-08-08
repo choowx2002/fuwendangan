@@ -273,14 +273,14 @@
       {#if loadingRows}
         <div class="table-tip">加载中...</div>
       {:else if rows.length === 0}
-        <div class="table-tip">该条件下没有卡牌变体</div>
+        <div class="table-tip">该条件下没有卡牌卡牌</div>
       {:else}
         <div class="table-body">
           {#each rows as row (variantKey(row))}
             <div class="table-row" class:satisfied={satisfiedOf(row)}>
               <span class="cell-no">{row.cardNoExtend}</span>
               <span class="cell-name">
-                {row.cardNameCn ?? ''}
+                {row.cardNameCn ?? ''} {row.subCn}
                 {#if satisfiedOf(row)}
                   <span class="satisfied-badge">已集齐</span>
                 {/if}
@@ -509,9 +509,11 @@
     display: flex;
     flex-direction: column;
     align-self: flex-start;
-    border: 1px solid var(--border-color);
+    /* border: 1px solid var(--border-color); */
     border-radius: 12px;
-    overflow: hidden;
+    /* overflow: hidden; */
+    position: relative;
+    width: 100%;
   }
 
   .table-head {
@@ -523,10 +525,16 @@
     font-size: var(--text-xs);
     font-weight: 600;
     color: var(--text-secondary);
+    position: sticky;
+    top: 0;
+    border: 1px solid var(--border-color);
+    z-index: 10;
   }
 
   .table-body {
     background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-top: none;
   }
 
   .table-row {

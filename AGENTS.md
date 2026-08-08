@@ -28,7 +28,7 @@ fuwendangan/
 │   ├── lib/
 │   │   ├── components/         # 可复用组件（AppShell / LoadingModal / collection 等）
 │   │   ├── cards/              # 卡牌工具函数（config / utils）
-│   │   ├── collection/         # 收藏（卡图变体收集）相关逻辑
+│   │   ├── collection/         # 收藏（卡图卡牌收集）相关逻辑
 │   │   ├── db/                 # 数据库模块（核心，统一从 index.ts 导出）
 │   │   │   ├── config/         # 表结构 schema.ts / 常量 / 语言码 / 收藏规则
 │   │   │   ├── repository/     # 仓储层 CRUD：database / card / print / deck / rules /

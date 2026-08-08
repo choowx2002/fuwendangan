@@ -60,20 +60,22 @@ export type CardWithOwned = CardBase & {
   ownedNormal: number
   ownedFoil: number
   ownedTotal: number
-  // 非 promo 变体总数与已拥有变体数（进度用）
+  // 非 promo 卡牌总数与已拥有卡牌数（进度用）
   ownedVariants: number
   totalVariants: number
   // 最近一次收藏录入时间（收藏页「最近录入」排序用）
   lastEdited?: string | null
 }
 
-// 收藏页变体磁贴：以 card_prints 为数据源（一个变体 = card_no + card_no_extend），
+// 收藏页卡牌磁贴：以 card_prints 为数据源（一个卡牌 = card_no + card_no_extend），
 // 仅携带印刷层信息展示；cards_base 只在打开详情弹窗时按需关联。
 export interface VariantWithOwned {
   cardId: string
   // 基础卡编号（cards_base.card_no，稳定唯一），收藏写入与关联用
   cardNo: string
   cardNoExtend: string
+  card_name_cn: string
+  sub_title_cn: string | null
   // 代表印刷（SC > is_default > 首张）的展示信息
   printId: string | null
   // 代表印刷的语言码（缓存命名用，与 cardNoExtend 拼成稳定缓存键）
@@ -85,7 +87,7 @@ export interface VariantWithOwned {
   bucket: VariantBucket
   // cards_base 分类（JSON 数组），关联基础卡详情用
   cardCategory: string[] | null
-  // 是否为自建打印（is_custom=1，独立变体）
+  // 是否为自建打印（is_custom=1，独立卡牌）
   isCustom: boolean
   ownedNormal: number
   ownedFoil: number
@@ -221,7 +223,7 @@ export interface CollectionStats {
   overallCount: number
 }
 
-// 最近录入的收藏卡片（总览 Hero 用）：一个变体 × 语言一行
+// 最近录入的收藏卡片（总览 Hero 用）：一个卡牌 × 语言一行
 export interface RecentCollectionCard {
   cardId: string
   cardNoExtend: string
@@ -240,12 +242,13 @@ export interface RecentCollectionCard {
   printLang: string | null
 }
 
-// 缺卡清单条目（导出用）：一个印刷变体一行（编号/名字/稀有度/拥有张数）
+// 缺卡清单条目（导出用）：一个印刷卡牌一行（编号/名字/稀有度/拥有张数）
 export interface MissingListRow {
   cardId: string
   cardNo: string | null
   cardNoExtend: string
   cardNameCn: string | null
+  subCn: string | null
   rarity: string | null
   ownedQty: number
 }
@@ -271,7 +274,7 @@ export interface OwnershipCheckRow {
   owned: number
 }
 
-// 收藏批量操作项（变体维度）
+// 收藏批量操作项（卡牌维度）
 export interface CollectionItem {
   cardNo: string
   cardNoExtend: string
@@ -355,7 +358,7 @@ export interface CardSearchParams {
   completionMode?: CompletionModeId
   // 按卡图印刷系列过滤（card_no_extend 前 3 位，仅收藏页；不依赖 cards_base.series_name）
   seriesCode?: string
-  // 按变体桶过滤（仅收藏页：base/alt/overnum/rune/token）
+  // 按卡牌桶过滤（仅收藏页：base/alt/overnum/rune/token）
   bucket?: string
 
   // 数组类字段 (使用嵌套对象)
@@ -377,7 +380,7 @@ export interface CardSearchParams {
   return_energy?: number | NumberRange
 }
 
-// 收藏页变体搜索参数（以 card_prints 为数据源）
+// 收藏页卡牌搜索参数（以 card_prints 为数据源）
 export interface CardVariantSearchParams {
   page?: number
   pageSize?: number
@@ -386,7 +389,7 @@ export interface CardVariantSearchParams {
   collectionSort?: CollectionSort
   // 按卡图印刷系列过滤（card_no_extend 前 3 位）
   seriesCode?: string
-  // 按变体桶过滤（base/alt/overnum/rune/token）
+  // 按卡牌桶过滤（base/alt/overnum/rune/token）
   bucket?: string
 }
 

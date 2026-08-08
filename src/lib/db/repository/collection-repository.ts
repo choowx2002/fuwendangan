@@ -1,7 +1,7 @@
 /**
  * 收藏数据仓储层
- * 收藏按「变体（card_no + card_no_extend）× 语言」记录普卡/闪卡数量；
- * 变体引用 cards_base.card_no（稳定编号，不依赖 id），语言使用标准语言码
+ * 收藏按「卡牌（card_no + card_no_extend）× 语言」记录普卡/闪卡数量；
+ * 卡牌引用 cards_base.card_no（稳定编号，不依赖 id），语言使用标准语言码
  * （预设 EN/SC/TC/JP/KR + 自定义语言），状态按语言行记录
  * （owned/wishlist/ordered，当前 UI 仅使用 owned）。
  */
@@ -49,7 +49,7 @@ async function assertValidLanguageCode(language: string): Promise<string> {
   return code
 }
 
-/** 校验变体（cards_base.card_no + card_prints.card_no_extend）确实存在 */
+/** 校验卡牌（cards_base.card_no + card_prints.card_no_extend）确实存在 */
 async function assertVariantExists(cardNo: string, cardNoExtend: string): Promise<void> {
   const db = await getDatabase()
   const rows = await db.select<{ n: number }[]>(
@@ -60,17 +60,17 @@ async function assertVariantExists(cardNo: string, cardNoExtend: string): Promis
     [cardNo, cardNoExtend]
   )
   if (!(rows[0]?.n > 0)) {
-    throw new Error(`该卡图变体不存在（${cardNoExtend}）`)
+    throw new Error(`该卡图卡牌不存在（${cardNoExtend}）`)
   }
 }
 
 // ==================== 数量编辑 ====================
 
 /**
- * 设置某变体某语言的普卡/闪卡数量（传入 undefined 表示不修改该维度）。
- * - 写入前校验变体确实存在于 card_prints（经 cards_base.card_no 关联），语言码必须是预设或已注册的自定义语言；
+ * 设置某卡牌某语言的普卡/闪卡数量（传入 undefined 表示不修改该维度）。
+ * - 写入前校验卡牌确实存在于 card_prints（经 cards_base.card_no 关联），语言码必须是预设或已注册的自定义语言；
  * - 任一数量 > 0 时状态自动提升为 owned；
- * - owned 双零时删除语言行，变体无任何语言行时删除变体行（wishlist/ordered 保留）。
+ * - owned 双零时删除语言行，卡牌无任何语言行时删除卡牌行（wishlist/ordered 保留）。
  */
 export async function upsertLangQty(
   cardNo: string,
@@ -167,7 +167,7 @@ function deriveSeriesCode(cardNoExtend: string): string {
 }
 
 /**
- * 设置某变体某语言的状态（wishlist/ordered 等；行不存在时创建空行）。
+ * 设置某卡牌某语言的状态（wishlist/ordered 等；行不存在时创建空行）。
  * 当前 UI 不使用，供后续状态功能调用。
  */
 export async function setLangStatus(
@@ -218,7 +218,7 @@ export async function setLangStatus(
   )
 }
 
-/** 获取某变体的语言数量明细 */
+/** 获取某卡牌的语言数量明细 */
 export async function getVariantLangs(
   cardNo: string,
   cardNoExtend: string
@@ -234,7 +234,7 @@ export async function getVariantLangs(
   return rows.map(mapLangRow)
 }
 
-/** 获取某卡全部变体的语言明细（详情弹窗用），key 为 card_no_extend */
+/** 获取某卡全部卡牌的语言明细（详情弹窗用），key 为 card_no_extend */
 export async function getCardCollection(cardNo: string): Promise<Map<string, CollectionLang[]>> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
@@ -268,8 +268,8 @@ function mapLangRow(r: any): CollectionLang {
 // ==================== 统计 ====================
 
 /**
- * 收藏统计：按系列×五桶（base/alt/overnum/rune/token）聚合已拥有变体数，
- * 与 series 表预设计数合并；promo 变体全桶排除、单列统计。
+ * 收藏统计：按系列×五桶（base/alt/overnum/rune/token）聚合已拥有卡牌数，
+ * 与 series 表预设计数合并；promo 卡牌全桶排除、单列统计。
  * 完成口径由 completion mode 决定（默认 base = 拥有任一普卡/闪卡数量）。
  */
 export async function getCollectionStats(mode?: CompletionModeId): Promise<CollectionStats> {
@@ -493,7 +493,7 @@ export async function updateCustomPrintImg(printId: string, imgToken: string | n
   ])
 }
 
-/** 更新自定义打印信息；变体号/语言变更时自动迁移既有收藏数量到新键 */
+/** 更新自定义打印信息；卡牌号/语言变更时自动迁移既有收藏数量到新键 */
 export async function updateCustomPrint(
   printId: string,
   patch: {
@@ -548,10 +548,10 @@ export async function updateCustomPrint(
 }
 
 /**
- * 自定打印编辑引起变体号/语言变更时，迁移收藏数量行到新键。
- * - 变体号变更：迁移 collection 行（重算 series_code）；新键已有 collection 则按语言合并后删除旧行。
+ * 自定打印编辑引起卡牌号/语言变更时，迁移收藏数量行到新键。
+ * - 卡牌号变更：迁移 collection 行（重算 series_code）；新键已有 collection 则按语言合并后删除旧行。
  * - 语言变更：迁移 collection_langs 旧语言行到新语言；新语言行已存在则合并数量并按状态规则重算。
- * - 两个变更可叠加：先迁变体号，再迁语言。
+ * - 两个变更可叠加：先迁卡牌号，再迁语言。
  */
 async function migrateCustomPrintCollection(
   baseCardNo: string,
@@ -633,7 +633,7 @@ async function migrateCustomPrintCollection(
   }
 }
 
-/** 把 src 集合的语言行合并进 dest 集合（同名语言数量相加），供变体号合并场景使用 */
+/** 把 src 集合的语言行合并进 dest 集合（同名语言数量相加），供卡牌号合并场景使用 */
 async function mergeCollectionLangs(srcId: string, destId: string): Promise<void> {
   const db = await getDatabase()
   const srcLangs = await db.select<any[]>(
@@ -702,7 +702,7 @@ export async function deleteCustomPrint(printId: string): Promise<string | null>
 // ==================== 卡组持有检查 ====================
 
 /**
- * 卡组持有检查：按卡牌聚合所有变体×语言的 owned 数量（含 promo/自定义打印）与卡组需求比较
+ * 卡组持有检查：按卡牌聚合所有卡牌×语言的 owned 数量（含 promo/自定义打印）与卡组需求比较
  */
 export async function checkDeckOwnership(
   items: { cardPrintId: string; quantity: number }[]
@@ -779,7 +779,7 @@ export async function cleanupOrphans(): Promise<void> {
 
 // ==================== 批量操作 / 最近录入 / 缺卡清单 ====================
 
-/** 批量校验 items 对应的变体确实存在于 card_prints（经 cards_base.card_no 关联），过滤无效项 */
+/** 批量校验 items 对应的卡牌确实存在于 card_prints（经 cards_base.card_no 关联），过滤无效项 */
 async function filterValidItems(items: CollectionItem[]): Promise<CollectionItem[]> {
   const db = await getDatabase()
   const valid: CollectionItem[] = []
@@ -834,8 +834,8 @@ async function loadExistingLangs(
 }
 
 /**
- * 批量标记已拥有：对每个变体，若尚无任一 owned 数量行，则为默认语言 EN 写入普卡 1。
- * 返回实际更新的变体数。
+ * 批量标记已拥有：对每个卡牌，若尚无任一 owned 数量行，则为默认语言 EN 写入普卡 1。
+ * 返回实际更新的卡牌数。
  */
 export async function bulkMarkOwned(items: CollectionItem[]): Promise<number> {
   const valid = await filterValidItems(items)
@@ -854,8 +854,8 @@ export async function bulkMarkOwned(items: CollectionItem[]): Promise<number> {
 }
 
 /**
- * 批量普卡 +1：对每个变体，在最近更新的 owned 语言行上加 1；无 owned 行时为 EN 建行加 1。
- * 返回实际更新的变体数。
+ * 批量普卡 +1：对每个卡牌，在最近更新的 owned 语言行上加 1；无 owned 行时为 EN 建行加 1。
+ * 返回实际更新的卡牌数。
  */
 export async function bulkIncrement(items: CollectionItem[]): Promise<number> {
   const valid = await filterValidItems(items)
@@ -880,7 +880,7 @@ export async function bulkIncrement(items: CollectionItem[]): Promise<number> {
   return updated
 }
 
-/** 批量删除收藏记录（变体行级联删除语言行），返回删除数 */
+/** 批量删除收藏记录（卡牌行级联删除语言行），返回删除数 */
 export async function bulkDeleteCollection(items: CollectionItem[]): Promise<number> {
   const db = await getDatabase()
   const valid = await filterValidItems(items)
@@ -894,8 +894,8 @@ export async function bulkDeleteCollection(items: CollectionItem[]): Promise<num
 
 /**
  * 最近录入的收藏卡片（总览 Hero 展示）。
- * 一个「变体 × 语言」一行：join collection_langs 逐语言取数量，
- * 卡图取该变体的代表印刷（精确语言 → SC → is_default → 首张）。
+ * 一个「卡牌 × 语言」一行：join collection_langs 逐语言取数量，
+ * 卡图取该卡牌的代表印刷（精确语言 → SC → is_default → 首张）。
  */
 export async function getRecentCollectionCards(limit = 6): Promise<RecentCollectionCard[]> {
   const db = await getDatabase()
@@ -969,7 +969,7 @@ export async function getRecentCollectionCards(limit = 6): Promise<RecentCollect
  * 缺卡清单筛选（全部可选，不传则不过滤）
  * - seriesCode：按卡图印刷系列码（card_no_extend 前 3 位大写）过滤
  * - bucket：仅统计该桶（base/alt/overnum/rune/token）
- * - rarities：变体扩展稀有度（card_prints.extend_rarity_name：平卡/异画/超编/签名超编）
+ * - rarities：卡牌扩展稀有度（card_prints.extend_rarity_name：平卡/异画/超编/签名超编）
  * - categories：卡牌类型（cards_base.card_category，JSON 数组任一匹配）
  * - colors：卡牌颜色（cards_base.card_color_list，JSON 数组任一匹配）
  * - language：拥有数只统计指定语言（collection_langs.language_code）的行，不传则跨语言合计
@@ -996,9 +996,9 @@ export async function getMissingListRarityOptions(): Promise<string[]> {
 }
 
 /**
- * 缺卡清单（按印刷变体逐行）：返回符合筛选条件的每个非 promo 变体一行，
+ * 缺卡清单（按印刷卡牌逐行）：返回符合筛选条件的每个非 promo 卡牌一行，
  * 含拥有张数（所选语言行的普卡+闪卡合计，仅统计 owned 状态；不传语言则跨语言合计）。
- * 拥有数在 collection（UNIQUE(card_no, card_no_extend)，变体 1:1）外层聚合，
+ * 拥有数在 collection（UNIQUE(card_no, card_no_extend)，卡牌 1:1）外层聚合，
  * 避免 card_prints 多语言印刷行与 collection_langs 交叉造成笛卡尔积翻倍。
  */
 export async function getMissingVariants(opts?: MissingListFilter): Promise<MissingListRow[]> {
@@ -1031,7 +1031,7 @@ export async function getMissingVariants(opts?: MissingListFilter): Promise<Miss
   const langCond = opts?.language ? ' AND cl.language_code = ?' : ''
   if (opts?.language) params.push(opts.language)
 
-  const sql = `SELECT cb.id AS card_id, cb.card_no, cb.card_name_cn,
+  const sql = `SELECT cb.id AS card_id, cb.card_no, cb.card_name_cn, cb.sub_title_cn,
        v.card_no_extend AS card_no_extend, v.rarity AS rarity,
        COALESCE(q.owned_qty, 0) AS owned_qty
      FROM (
@@ -1068,6 +1068,7 @@ export async function getMissingVariants(opts?: MissingListFilter): Promise<Miss
     cardNo: r.card_no ?? null,
     cardNoExtend: r.card_no_extend,
     cardNameCn: r.card_name_cn ?? null,
+    subCn: r.sub_title_cn ?? null,
     rarity: r.rarity ?? null,
     ownedQty: r.owned_qty ?? 0,
   }))

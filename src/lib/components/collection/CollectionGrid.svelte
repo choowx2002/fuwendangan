@@ -45,7 +45,7 @@
   {#if isLoading && cards.length === 0}
     <SkeletonGrid count={12} />
   {:else if cards.length === 0}
-    <EmptyState title="未找到匹配变体" description="试试调整筛选条件或搜索关键词" />
+    <EmptyState title="未找到匹配卡牌" description="试试调整筛选条件或搜索关键词" />
   {:else}
     {#each cards as card (cardKey(card))}
       {@const selected = selectedIds.has(cardKey(card))}

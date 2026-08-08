@@ -67,7 +67,7 @@
     )
   )
 
-  /** 概要：选中变体的普卡/闪卡/语言数统计 */
+  /** 概要：选中卡牌的普卡/闪卡/语言数统计 */
   const summary = $derived.by(() => {
     const v = selectedVariant
     if (!v) return { total: 0, normal: 0, foil: 0, langs: 0 }
@@ -144,7 +144,7 @@
     })
   })
 
-  // 打开或切换变体后，语言下拉默认指向下一个未添加的语言
+  // 打开或切换卡牌后，语言下拉默认指向下一个未添加的语言
   $effect(() => {
     if (!isOpen) return
     newLangInput = nextLangDefault
@@ -403,7 +403,7 @@
     }}
     onSaved={(printId) => {
       void loadData().then(() => {
-        // 保存后自动定位到刚创建/更新的自定打印变体
+        // 保存后自动定位到刚创建/更新的自定打印卡牌
         const target = variants.find((v) => v.prints.some((p) => p.id === printId))
         if (target) selectedNo = target.cardNoExtend
         onChanged?.()

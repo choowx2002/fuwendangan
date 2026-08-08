@@ -452,7 +452,7 @@
         onToggleSelect={toggleSelect}
       />
     {/if}
-    <div class="total-hint">共 {total} 个变体</div>
+    <div class="total-hint">共 {total} 个卡牌</div>
 
     {#if batchMode}
       <BatchToolbar
@@ -543,6 +543,7 @@
     border-radius: 8px;
     overflow: hidden;
     flex-shrink: 0;
+    margin-left: auto;
   }
 
   .view-btn {

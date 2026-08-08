@@ -5,7 +5,7 @@
  *
  * 谓词约定：
  * - ownedPredicate：作用在 collection_langs 行（别名 cl）上的「已拥有」条件
- * - bucketPredicate：作用在变体桶（base/alt/overnum/rune/token）上的条件
+ * - bucketPredicate：作用在卡牌桶（base/alt/overnum/rune/token）上的条件
  */
 
 import type { CollectionLang, CompletionModeId } from '../types'
