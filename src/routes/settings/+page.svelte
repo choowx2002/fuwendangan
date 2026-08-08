@@ -25,6 +25,8 @@
     renameCustomLanguage,
     deleteCustomLanguage,
     PRESET_LANGUAGE_CODES,
+    clearHistory,
+    captureCollectionSnapshot,
     type CustomLanguage,
     type ImportDeckPayload,
     type ImportMatchPayload,
@@ -761,6 +763,21 @@
     )
   }
 
+  async function manualSnapshot() {
+    await captureCollectionSnapshot('manual')
+    await message('收藏进度快照已记录', { title: '记录快照', kind: 'info' })
+  }
+
+  function clearHistoryAsk() {
+    const before = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    return confirmAndRun(
+      '清空历史',
+      '确定要删除 30 天前的收藏操作记录吗？\n删除后不可恢复，近 30 天的记录将保留。',
+      () => clearHistory({ before }),
+      '已清空 30 天前的收藏历史'
+    )
+  }
+
   async function cleanupVersionsAsk() {
     const confirmed = await ask(
       '确定要清理冗余版本吗？\n每个卡组仅保留最新版本，其余历史版本及其卡牌引用将被删除。',
@@ -933,6 +950,25 @@
         </label>
       </div>
     {/if}
+  </section>
+
+  <!-- 收藏历史 -->
+  <section class="settings-card">
+    <h2 class="card-title">收藏历史</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">手动记录快照</span>
+        <span class="setting-desc">把当前收藏完成度保存为一个进度快照，用于趋势统计</span>
+      </div>
+      <button class="button button-secondary" onclick={manualSnapshot}>记录快照</button>
+    </div>
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">清空历史</span>
+        <span class="setting-desc">删除 30 天前的收藏操作记录（不可恢复），近 30 天保留</span>
+      </div>
+      <button class="button button-ghost" onclick={clearHistoryAsk}>清空 30 天前</button>
+    </div>
   </section>
 
   <!-- 2. 版本与更新 -->

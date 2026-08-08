@@ -53,6 +53,13 @@ export type {
   RecentCollectionCard,
   MissingListRow,
   CollectionItem,
+  CollectionHistoryOpType,
+  CollectionHistoryItemAction,
+  CollectionHistory,
+  CollectionHistoryItem,
+  CollectionHistoryQuery,
+  SnapshotTrigger,
+  CollectionStatsSnapshot,
 } from './types'
 
 // ==================== 配置 ====================
@@ -155,6 +162,19 @@ export {
   type ImportOwnedRow,
   type ImportOwnedResult,
 } from './repository/collection-repository'
+export {
+  getHistory,
+  getHistoryItems,
+  undoHistory,
+  clearHistory,
+  logCollectionHistory,
+  logCollectionHistoryNote,
+  type HistoryItemInput,
+} from './repository/collection-history-repository'
+export {
+  captureCollectionSnapshot,
+  getCollectionSnapshots,
+} from './repository/collection-snapshot-repository'
 export {
   getCustomLanguages,
   isLanguageCodeValid,

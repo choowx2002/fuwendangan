@@ -284,6 +284,77 @@ export interface CollectionItem {
   cardNoExtend: string
 }
 
+// ==================== 收藏历史 ====================
+
+/** 收藏操作类型 */
+export type CollectionHistoryOpType =
+  | 'upsert'
+  | 'bulk_mark_owned'
+  | 'bulk_increment'
+  | 'bulk_delete'
+  | 'csv_import'
+  | 'custom_print_create'
+  | 'custom_print_delete'
+  | 'custom_print_migrate'
+
+/** 明细变更动作 */
+export type CollectionHistoryItemAction = 'set' | 'add' | 'remove' | 'delete_variant'
+
+/** 收藏操作历史（头记录，粗粒度：一次批量操作一条） */
+export interface CollectionHistory {
+  id: string
+  opType: CollectionHistoryOpType
+  source: string
+  note: string | null
+  itemCount: number
+  isUndoable: boolean
+  createdAt: string
+}
+
+/** 收藏操作历史明细（每个受影响卡牌×语言一行，保存 before/after 供撤销） */
+export interface CollectionHistoryItem {
+  id: string
+  historyId: string
+  cardNo: string
+  cardNoExtend: string
+  languageCode: string
+  action: CollectionHistoryItemAction
+  oldStatus: string | null
+  oldNormalQty: number | null
+  oldFoilQty: number | null
+  newStatus: string | null
+  newNormalQty: number | null
+  newFoilQty: number | null
+  cardNameCn?: string | null
+  createdAt: string
+}
+
+/** 收藏历史查询参数 */
+export interface CollectionHistoryQuery {
+  offset?: number
+  limit?: number
+  opType?: CollectionHistoryOpType
+  source?: string
+  q?: string
+}
+
+// ==================== 收藏进度快照 ====================
+
+/** 快照触发来源 */
+export type SnapshotTrigger = 'auto' | 'manual' | 'daily'
+
+/** 收藏进度快照（整体 + 系列明细 JSON，供趋势图） */
+export interface CollectionStatsSnapshot {
+  id: string
+  trigger: SnapshotTrigger
+  overallOwned: number
+  overallCount: number
+  promoOwned: number
+  foilOwned: number
+  seriesStats: SeriesStats[] | null
+  createdAt: string
+}
+
 // 卡组模型
 export interface Deck {
   id: string

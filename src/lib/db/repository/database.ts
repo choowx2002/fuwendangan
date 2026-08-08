@@ -42,11 +42,17 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.collection_langs)
   await db.execute(TABLE_DEFINITIONS.custom_languages)
   await db.execute(TABLE_DEFINITIONS.series)
+  await db.execute(TABLE_DEFINITIONS.collection_history)
+  await db.execute(TABLE_DEFINITIONS.collection_history_items)
+  await db.execute(TABLE_DEFINITIONS.collection_stats_snapshots)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
   await db.execute(TABLE_DEFINITIONS.idx_card_prints_variant)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_collection)
+  await db.execute(TABLE_DEFINITIONS.idx_collection_history_created)
+  await db.execute(TABLE_DEFINITIONS.idx_collection_history_items_history)
+  await db.execute(TABLE_DEFINITIONS.idx_collection_stats_snapshots_created)
 }
 
 /**

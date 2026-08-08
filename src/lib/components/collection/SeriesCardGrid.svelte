@@ -2,10 +2,7 @@
   import type { SeriesStats } from '$lib/db'
   // import { Check } from '@lucide/svelte'
   // import CachedImage from '../cards/CachedImage.svelte'
-  import {
-    BUCKET_LABELS,
-    type VariantBucket,
-  } from '$lib/cards/utils/variant-utils'
+  import { BUCKET_LABELS, type VariantBucket } from '$lib/cards/utils/variant-utils'
 
   let {
     series = [] as SeriesStats[],
@@ -25,7 +22,7 @@
     {@const percent = percentOf(s)}
     {@const missing = Math.max(0, s.totalCount - s.totalOwned)}
     {@const done = s.totalCount > 0 && missing === 0}
-    <button class="series-card" class:done={done} onclick={() => onSelect?.(s.code)}>
+    <button class="series-card" class:done onclick={() => onSelect?.(s.code)}>
       <!-- <div class="series-cover">
         {#if s.coverImage}
           <CachedImage
@@ -62,14 +59,21 @@
           {/if}
         </div>
 
-        <div class="bucket-bars">
+        <div class="bucket-stats">
           {#each BUCKET_ORDER as bucket (bucket)}
+            {@const bucketDone = s.counts[bucket] > 0 && s.owned[bucket] >= s.counts[bucket]}
             <span
-              class="bucket-bar"
+              class="bucket-cell"
               class:has-progress={s.owned[bucket] > 0}
-              class:done={s.counts[bucket] > 0 && s.owned[bucket] >= s.counts[bucket]}
+              class:done={bucketDone}
               title={`${BUCKET_LABELS[bucket]}：${s.owned[bucket]}/${s.counts[bucket]}`}
-            ></span>
+            >
+              <span class="bucket-label">{BUCKET_LABELS[bucket]}</span>
+              <span class="bucket-value">
+                {s.owned[bucket]}/{s.counts[bucket]}
+                {#if bucketDone}<span class="bucket-check">✓</span>{/if}
+              </span>
+            </span>
           {/each}
         </div>
       </div>
@@ -83,13 +87,12 @@
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 14px;
     padding: 4px 2px 24px;
-
   }
 
   .series-card {
     display: flex;
     gap: 12px;
-    padding: 12px;
+    padding: 14px 16px;
     border-radius: 14px;
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -97,7 +100,6 @@
     cursor: pointer;
     text-align: left;
     transition: all 0.15s ease;
-    aspect-ratio: 3 / 2;
   }
 
   .series-card:hover {
@@ -107,10 +109,10 @@
   }
 
   .series-card.done {
-    border-color: rgba(234, 179, 8, 0.55);
+    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
     background: linear-gradient(
       135deg,
-      color-mix(in srgb, #eab308 7%, var(--bg-secondary)),
+      color-mix(in srgb, var(--accent-color) 7%, var(--bg-secondary)),
       var(--bg-secondary)
     );
   }
@@ -158,7 +160,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   .series-name-row {
@@ -169,7 +171,7 @@
   }
 
   .series-name {
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -196,12 +198,8 @@
   .progress-fill {
     height: 100%;
     border-radius: 99px;
-    background: linear-gradient(90deg, #4ade80, #22c55e);
+    background: var(--accent-color);
     transition: width 0.4s ease;
-  }
-
-  .series-card.done .progress-fill {
-    background: linear-gradient(90deg, #fbbf24, #eab308);
   }
 
   .series-metrics {
@@ -226,36 +224,47 @@
     font-weight: 700;
   }
 
-  .bucket-bars {
+  .bucket-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
+  }
+
+  .bucket-cell {
     display: flex;
-    gap: 3px;
-    margin-top: auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
   }
 
-  .bucket-bar {
-    flex: 1;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--border-color);
+  .bucket-label {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
   }
 
-  .bucket-bar.has-progress {
-    background: #4ade80;
+  .bucket-value {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
 
-  .bucket-bar.done {
-    background: #eab308;
-    box-shadow: 0 0 4px rgba(234, 179, 8, 0.6);
+  .bucket-cell.has-progress .bucket-value {
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  .bucket-check {
+    color: var(--accent-color);
+    font-weight: 700;
   }
 
   @media (max-width: 600.99px) {
     .series-grid {
-      grid-template-columns: repeat(2, minimax(0px, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
-
-    /*.series-cover {
-      width: 84px;
-    }*/
   }
 </style>

@@ -20,6 +20,9 @@ export const TABLES = {
   COLLECTION_LANGS: 'collection_langs',
   CUSTOM_LANGUAGES: 'custom_languages',
   SERIES: 'series',
+  COLLECTION_HISTORY: 'collection_history',
+  COLLECTION_HISTORY_ITEMS: 'collection_history_items',
+  COLLECTION_STATS_SNAPSHOTS: 'collection_stats_snapshots',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]

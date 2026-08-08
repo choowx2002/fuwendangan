@@ -2,6 +2,7 @@
 <script lang="ts">
   import Topbar from './Topbar.svelte'
   import Sidebar from './Sidebar.svelte'
+  import BottomNav from './BottomNav.svelte'
   import DownloadProgressBar from '../ui/DownloadProgressBar.svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
   import { networkState } from '../../stores/network.svelte'
@@ -46,6 +47,9 @@
     <main class="content">
       {@render children()}
     </main>
+    {#if !isNotShowBothPage}
+      <BottomNav />
+    {/if}
   </div>
 
   <!-- 移动端遮罩层 -->

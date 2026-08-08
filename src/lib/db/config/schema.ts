@@ -249,6 +249,61 @@ export const TABLE_DEFINITIONS = {
     )
   `,
 
+  collection_history: `
+    CREATE TABLE IF NOT EXISTS collection_history (
+      id TEXT PRIMARY KEY,
+      op_type TEXT NOT NULL,
+      source TEXT NOT NULL,
+      note TEXT,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      is_undoable INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    )
+  `,
+
+  collection_history_items: `
+    CREATE TABLE IF NOT EXISTS collection_history_items (
+      id TEXT PRIMARY KEY,
+      history_id TEXT NOT NULL REFERENCES collection_history(id) ON DELETE CASCADE,
+      card_no TEXT NOT NULL,
+      card_no_extend TEXT NOT NULL,
+      language_code TEXT NOT NULL,
+      action TEXT NOT NULL,
+      old_status TEXT,
+      old_normal_qty INTEGER,
+      old_foil_qty INTEGER,
+      new_status TEXT,
+      new_normal_qty INTEGER,
+      new_foil_qty INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `,
+
+  collection_stats_snapshots: `
+    CREATE TABLE IF NOT EXISTS collection_stats_snapshots (
+      id TEXT PRIMARY KEY,
+      trigger TEXT NOT NULL,
+      overall_owned INTEGER NOT NULL,
+      overall_count INTEGER NOT NULL,
+      promo_owned INTEGER NOT NULL DEFAULT 0,
+      foil_owned INTEGER NOT NULL DEFAULT 0,
+      series_stats TEXT,
+      created_at TEXT NOT NULL
+    )
+  `,
+
+  idx_collection_history_created: `
+    CREATE INDEX IF NOT EXISTS idx_collection_history_created ON collection_history(created_at)
+  `,
+
+  idx_collection_history_items_history: `
+    CREATE INDEX IF NOT EXISTS idx_collection_history_items_history ON collection_history_items(history_id)
+  `,
+
+  idx_collection_stats_snapshots_created: `
+    CREATE INDEX IF NOT EXISTS idx_collection_stats_snapshots_created ON collection_stats_snapshots(created_at)
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS match_games;
@@ -263,5 +318,8 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS card_prints;
     DROP TABLE IF EXISTS cards_base;
     DROP TABLE IF EXISTS icons;
+    DROP TABLE IF EXISTS collection_stats_snapshots;
+    DROP TABLE IF EXISTS collection_history_items;
+    DROP TABLE IF EXISTS collection_history;
   `,
 } as const

@@ -3,7 +3,7 @@
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import { getCollectionStats, getRecentCollectionCards, importOwnedCounts } from '$lib/db'
-  import { Save, Plus, Upload, ScrollText, Download } from '@lucide/svelte'
+  import { Save, Plus, Upload, ScrollText, Download, History } from '@lucide/svelte'
   import { isTauri } from '$lib/db/env'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { parseMissingListCsv } from '$lib/collection/collection-csv'
@@ -130,13 +130,22 @@
       title: '收藏与闪卡',
       actions: [
         {
+          key: 'history',
+          label: '历史',
+          icon: History,
+          variant: 'ghost',
+          title: '收藏操作历史与进度趋势',
+          onClick: () => void goto('/collection/history'),
+          priority: 1,
+        },
+        {
           key: 'import',
           label: '导入 CSV',
           icon: Download,
           variant: 'ghost',
           title: '导入缺卡清单 CSV',
           onClick: pickImportFile,
-          priority: 1
+          priority: 1,
         },
         {
           key: 'custom',
@@ -151,7 +160,7 @@
           icon: ScrollText,
           onClick: () => void goto('/collection/missing'),
           variant: 'primary',
-          priority: 0
+          priority: 0,
         },
       ],
     })
