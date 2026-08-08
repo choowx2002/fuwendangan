@@ -68,7 +68,6 @@
     "dialog:allow-message",
     "dialog:allow-open",
     "dialog:allow-save",
-    "notification:default",
-    "network:allow-non-localhost-networks"
+    "notification:default"
   ]
 }

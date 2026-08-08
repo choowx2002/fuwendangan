@@ -1,5 +1,5 @@
 // src/lib/stores/network.svelte.ts
-import { nonLocalhostNetworks } from 'tauri-plugin-network-api'
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { isTauri } from '../db/env'
 import { showToast } from './ui-store.svelte'
 
@@ -15,27 +15,43 @@ export const networkState = $state({
 })
 
 const PROBE_CACHE_MS = 10000
+const PROBE_TIMEOUT_MS = 4000
+const PROBE_URL = import.meta.env.VITE_SUPABASE_URL
 
 let lastProbeAt = 0
 let lastProbeOnline: boolean | null = null
 let initiated = false
 
 /**
+ * HTTP 可达性探测：
+ * 向 Supabase 发起带超时的轻量请求，收到任意响应（含 4xx/5xx）即认为可联网。
+ * 跨端统一（桌面 / Android / iOS / Web），比枚举网卡更能反映真实连通性。
+ */
+async function probeHttp(): Promise<boolean> {
+  if (!PROBE_URL) {
+    return typeof navigator !== 'undefined' && navigator.onLine !== false
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
+  try {
+    const fetchImpl = isTauri ? tauriFetch : globalThis.fetch
+    await fetchImpl(PROBE_URL, { method: 'GET', signal: controller.signal })
+    return true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * 原生网络探测：
- * - Tauri：通过 tauri-plugin-network 获取非回环 IPv4 网络，有即认为设备已连接网络
- * - Web：退回 navigator.onLine
+ * - 优先用真实 HTTP 探测（tauri-plugin-http / 浏览器 fetch）
+ * - navigator.onLine 为 false 时直接短路，避免无谓请求
  */
 async function probeOnline(): Promise<boolean> {
-  if (isTauri) {
-    try {
-      const networks = await nonLocalhostNetworks()
-      return networks.length > 0
-    } catch (error) {
-      console.warn('[Network] 原生网络探测失败，退回 navigator.onLine:', error)
-      return typeof navigator !== 'undefined' && navigator.onLine !== false
-    }
-  }
-  return typeof navigator !== 'undefined' && navigator.onLine !== false
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false
+  return probeHttp()
 }
 
 async function cachedProbe(): Promise<boolean> {
