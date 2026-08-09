@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { VariantWithOwned } from '$lib/db'
-  import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
   import { LoaderCircle, Plus, Minus, Check } from '@lucide/svelte'
   import EmptyState from './EmptyState.svelte'
+  import { t } from '$lib/i18n'
 
   let {
     cards = [] as VariantWithOwned[],
@@ -47,20 +47,20 @@
       {/each}
     </div>
   {:else if cards.length === 0}
-    <EmptyState title="未找到匹配卡牌" description="试试调整筛选条件或搜索关键词" />
+    <EmptyState title={$t('cards.noResults')} description={$t('cards.adjustFilters')} />
   {:else}
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             {#if batchMode}<th class="col-check"></th>{/if}
-            <th class="col-no">编号</th>
-            <th class="col-name">名称</th>
-            <th class="col-rarity">稀有度</th>
-            <th class="col-qty">普卡</th>
-            <th class="col-qty">闪卡</th>
-            <th class="col-qty">合计</th>
-            {#if quickEdit && !batchMode}<th class="col-actions">操作</th>{/if}
+            <th class="col-no">{$t('collection.noCol')}</th>
+            <th class="col-name">{$t('collection.nameCol')}</th>
+            <th class="col-rarity">{$t('collection.rarityCol')}</th>
+            <th class="col-qty">{$t('collection.normalCol')}</th>
+            <th class="col-qty">{$t('collection.foilCol')}</th>
+            <th class="col-qty">{$t('collection.totalCol')}</th>
+            {#if quickEdit && !batchMode}<th class="col-actions">{$t('collection.actionsCol')}</th>{/if}
           </tr>
         </thead>
         <tbody>
@@ -91,7 +91,7 @@
                 <div class="no-row">
                   <span class="no">{card.cardNoExtend}</span>
                   {#if card.isCustom}
-                    <span class="custom-chip">自定</span>
+                    <span class="custom-chip">{$t('collection.customChip')}</span>
                   {/if}
                   <!-- {#if card.bucket !== 'base'}
                     <span class="bucket-chip">{BUCKET_LABELS[card.bucket]}</span>
@@ -109,7 +109,7 @@
                     {#if card.ownedTotal > 0}
                       <button
                         class="row-step"
-                        title="减一"
+                        title={$t('collection.decOne')}
                         onclick={(e) => {
                           e.stopPropagation()
                           onQuickDec?.(card)
@@ -120,7 +120,7 @@
                       </button>
                       <button
                         class="row-step inc"
-                        title="加一"
+                        title={$t('collection.incOne')}
                         onclick={(e) => {
                           e.stopPropagation()
                           onQuickInc?.(card)
@@ -131,13 +131,13 @@
                     {:else}
                       <button
                         class="row-step inc wide"
-                        title="添加 1 张"
+                        title={$t('collection.addOne')}
                         onclick={(e) => {
                           e.stopPropagation()
                           onQuickInc?.(card)
                         }}
                       >
-                        <Plus size={13} strokeWidth={'2'} /> 添加
+                        <Plus size={13} strokeWidth={'2'} /> {$t('collection.addAction')}
                       </button>
                     {/if}
                   </div>

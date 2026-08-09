@@ -3,6 +3,8 @@ import { printCacheName } from '$lib/db/helper'
 import type { SortKeyItem } from '$lib/db/types'
 import { ZONE_CONFIG } from '$lib/decks/zone'
 import { COLOR_ORDER, normalizeColor, parseColorList } from '$lib/cards/utils/cost-curve-utils'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 import { loadCardImageElement } from './card-image-loader'
 import { writeBytesFile } from './db-file-service'
 
@@ -23,12 +25,12 @@ const RUNE_GAP = 10
 const RUNE_FONT = '600 20px "Noto Sans SC", sans-serif'
 
 export const DECK_IMAGE_SORT_FIELDS = [
-  { value: 'card_color_list', label: '颜色' },
-  { value: 'power', label: '战力' },
-  { value: 'energy', label: '法力' },
-  { value: 'return_energy', label: '符能' },
-  { value: 'print_code', label: '编号' },
-  { value: 'rarity_name', label: '稀有度' },
+  { value: 'card_color_list', label: 'card_color_list', labelKey: 'cards.sortCardColorList' },
+  { value: 'power', label: 'power', labelKey: 'cards.sortPower' },
+  { value: 'energy', label: 'energy', labelKey: 'cards.sortEnergy' },
+  { value: 'return_energy', label: 'return_energy', labelKey: 'cards.sortReturnEnergy' },
+  { value: 'print_code', label: 'print_code', labelKey: 'cards.sortCardNo' },
+  { value: 'rarity_name', label: 'rarity_name', labelKey: 'cards.sortRarity' },
 ]
 
 export interface DeckBackground {
@@ -407,11 +409,11 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
   ctx.textBaseline = 'middle'
   ctx.fillStyle = theme.name
   ctx.font = '700 32px "Noto Sans SC", sans-serif'
-  ctx.fillText(deckName || '未命名卡组', PAD, y + 20)
+  ctx.fillText(deckName || get(t)('builder.unnamedDeck'), PAD, y + 20)
   ctx.textAlign = 'right'
   ctx.font = '400 20px "Noto Sans SC", sans-serif'
   ctx.fillStyle = theme.secondary
-  ctx.fillText(`共 ${totalCards} 张`, WIDTH - PAD, y + 22)
+  ctx.fillText(get(t)('deckDetail.imageTotalCards', { values: { count: totalCards } }), WIDTH - PAD, y + 22)
   ctx.strokeStyle = theme.divider
   ctx.lineWidth = 1
   ctx.beginPath()
@@ -452,7 +454,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
     ctx.textAlign = 'left'
     ctx.fillStyle = theme.secondary
     ctx.font = '600 22px "Noto Sans SC", sans-serif'
-    ctx.fillText(ZONE_CONFIG.mainDeck.label, PAD, y + LABEL_H / 2)
+    ctx.fillText(get(t)(ZONE_CONFIG.mainDeck.labelKey), PAD, y + LABEL_H / 2)
     y += LABEL_H
     mainCards.forEach((card, i) => {
       const col = i % COLS
@@ -472,7 +474,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
     ctx.textAlign = 'left'
     ctx.fillStyle = theme.secondary
     ctx.font = '600 22px "Noto Sans SC", sans-serif'
-    ctx.fillText(ZONE_CONFIG.sideboard.label, PAD, y + LABEL_H / 2)
+    ctx.fillText(get(t)(ZONE_CONFIG.sideboard.labelKey), PAD, y + LABEL_H / 2)
     y += LABEL_H
     sideCards.forEach((card, i) => {
       const col = i % COLS

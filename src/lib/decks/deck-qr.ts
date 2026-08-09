@@ -1,5 +1,7 @@
 import type { DeckCardDetail } from '$lib/db'
 import type { ZoneKey } from './zone'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 
 export const QR_PAYLOAD_VERSION = 'RA1'
 
@@ -74,7 +76,7 @@ export async function decodeQrImageDataUrl(dataUrl: string): Promise<string> {
   const img = new Image()
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve()
-    img.onerror = () => reject(new Error('二维码图片加载失败'))
+    img.onerror = () => reject(new Error(get(t)('decks.qrImgLoadFailed')))
     img.src = dataUrl
   })
   const canvas = document.createElement('canvas')
@@ -83,10 +85,10 @@ export async function decodeQrImageDataUrl(dataUrl: string): Promise<string> {
   canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
   canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) throw new Error('无法创建画布上下文')
+  if (!ctx) throw new Error(get(t)('decks.qrCanvasFailed'))
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
   const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const result = jsQR(data, width, height, { inversionAttempts: 'dontInvert' })
-  if (!result?.data) throw new Error('未能在图片中识别到二维码')
+  if (!result?.data) throw new Error(get(t)('decks.qrNoQrFound'))
   return result.data
 }

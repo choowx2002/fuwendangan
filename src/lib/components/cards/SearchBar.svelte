@@ -2,6 +2,7 @@
   import { Search, X } from '@lucide/svelte'
   import type { FilterOptions, ActiveFilter, FilterType } from '$lib/db/types'
   import { onMount } from 'svelte'
+  import { t } from '$lib/i18n'
 
   interface Props {
     filterOptions: FilterOptions | null
@@ -142,14 +143,14 @@
       bind:this={inputEl}
       type="text"
       bind:value={searchText}
-      placeholder={currentValue ? `正在搜索“${currentValue}”` : '搜索卡牌名称、效果，或输入标签...'}
+      placeholder={currentValue ? $t('cards.searching', { values: { q: currentValue } }) : $t('cards.searchPlaceholder')}
       onfocus={() => (isFocused = true)}
       onblur={() => setTimeout(() => (isFocused = false), 200)}
       onkeydown={handleKeydown}
       autocomplete="off"
     />
     {#if currentValue}
-      <button class="clear-btn" onclick={clearSearch} aria-label="清除">
+      <button class="clear-btn" onclick={clearSearch} aria-label={$t('cards.clear')}>
         <X size={14} />
       </button>
     {/if}
@@ -167,7 +168,7 @@
           }}
         >
           <span class="tag-text">{suggestion.value}</span>
-          <span class="tag-hint">回车添加为筛选条件</span>
+          <span class="tag-hint">{$t('cards.addAsFilter')}</span>
         </button>
       {/each}
     </div>

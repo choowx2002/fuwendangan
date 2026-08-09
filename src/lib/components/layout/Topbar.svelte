@@ -2,6 +2,7 @@
 <script lang="ts">
   import { Menu, ChevronLeft, Ellipsis } from '@lucide/svelte'
   import { topbarState, type TopbarAction } from '../../stores/ui-store.svelte'
+  import { t } from 'svelte-i18n'
 
   let { isSidebarOpen = $bindable() } = $props()
 
@@ -100,11 +101,11 @@
 
 <header class="topbar">
   <div class="left">
-    <button class="icon-btn menu-btn" onclick={toggleSidebar} aria-label="切换菜单">
+    <button class="icon-btn menu-btn" onclick={toggleSidebar} aria-label={$t('common.toggleMenu')}>
       <Menu size={20} />
     </button>
     {#if topbarState.onBack}
-      <button class="icon-btn" onclick={() => topbarState.onBack?.()} aria-label="返回">
+      <button class="icon-btn" onclick={() => topbarState.onBack?.()} aria-label={$t('common.back')}>
         <ChevronLeft size={20} />
       </button>
     {/if}
@@ -140,7 +141,7 @@
       <button
         class="icon-btn"
         class:active={menuOpen}
-        aria-label="更多操作"
+        aria-label={$t('common.moreActions')}
         aria-expanded={menuOpen}
         onclick={() => (menuOpen = !menuOpen)}
       >

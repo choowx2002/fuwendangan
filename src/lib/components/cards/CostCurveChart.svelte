@@ -1,7 +1,6 @@
 <script lang="ts">
   import { ChartBar } from '@lucide/svelte'
   import {
-    COLOR_LABELS,
     COLOR_ORDER,
     COLOR_VARS,
     computeColorTotals,
@@ -10,6 +9,7 @@
     type CostStatCard,
     type CurveMode,
   } from '$lib/cards/utils/cost-curve-utils'
+  import { t } from '$lib/i18n'
 
   interface Props {
     cards: CostStatCard[]
@@ -33,33 +33,33 @@
 <div class="cost-curve">
   <div class="cost-curve-header">
     <ChartBar size={18} />
-    <h3>{curveMode === 'energy' ? '法力曲线' : '符能曲线'}</h3>
+    <h3>{curveMode === 'energy' ? $t('cards.energyCurve') : $t('cards.runeEnergyCurve')}</h3>
     <div class="toggle-button-group curve-toggle">
       <button
         class="toggle-btn"
         class:active={curveMode === 'energy'}
         onclick={() => (curveMode = 'energy')}
       >
-        法力
+        {$t('cards.energy')}
       </button>
       <button
         class="toggle-btn"
         class:active={curveMode === 'return_energy'}
         onclick={() => (curveMode = 'return_energy')}
       >
-        符能
+        {$t('cards.runeEnergy')}
       </button>
     </div>
   </div>
 
   <div class="chart-container">
     {#if costCurve.length === 0}
-      <span class="empty-text">主卡组暂无卡牌</span>
+      <span class="empty-text">{$t('cards.emptyCurve')}</span>
     {:else}
       {#each costCurve as point (point.value)}
         <div
           class="bar-wrapper"
-          title="{curveMode === 'energy' ? '法力' : '符能'} {point.value}：共 {fmt(point.total)} 张"
+          title={$t('cards.curvePoint', { values: { name: curveMode === 'energy' ? $t('cards.energy') : $t('cards.runeEnergy'), value: point.value, count: fmt(point.total) } })}
         >
           <div class="bar-track">
             <div class="bar-stack" style="height: {(point.total / maxCurveTotal) * 100}%">
@@ -84,7 +84,7 @@
       {#each colorLegend as item (item.color)}
         <span class="legend-item">
           <span class="legend-dot" style="background: {COLOR_VARS[item.color]}"></span>
-          {COLOR_LABELS[item.color]}
+          {$t('cards.color' + item.color.charAt(0).toUpperCase() + item.color.slice(1))}
           <strong>{fmt(item.count)}</strong>
         </span>
       {/each}

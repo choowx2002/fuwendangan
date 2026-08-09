@@ -5,6 +5,9 @@
 
 import { isTauri } from '$lib/db/env'
 import { writeTextFile } from '$lib/services/db-file-service'
+import { get } from 'svelte/store'
+import { locale } from 'svelte-i18n'
+import { t } from '$lib/i18n'
 
 export type OwnershipExportFormat = 'txt' | 'csv'
 
@@ -20,19 +23,27 @@ export interface OwnershipExportRow {
 /** 生成持有检查文本（每行一个卡牌，按区域分组） */
 export function buildOwnershipText(items: OwnershipExportRow[], deckName: string): string {
   const lines: string[] = []
-  const t = new Date()
-  lines.push('符文战场 · 卡组持有检查')
-  lines.push(`卡组：${deckName}`)
-  lines.push(`导出时间：${t.toLocaleString('zh-CN')}`)
+  const stamp = new Date()
+  lines.push(get(t)('deckDetail.ownershipExportTitle'))
+  lines.push(get(t)('deckDetail.ownershipExportDeck', { values: { name: deckName } }))
+  lines.push(
+    get(t)('deckDetail.ownershipExportTime', {
+      values: { time: stamp.toLocaleString(get(locale) || 'zh-CN') },
+    })
+  )
   lines.push('='.repeat(36))
   const missing = items.filter((i) => i.insufficient)
-  lines.push(`未足量拥有：${missing.length} / ${items.length}`)
+  lines.push(
+    get(t)('deckDetail.ownershipExportMissing', {
+      values: { count: missing.length, total: items.length },
+    })
+  )
   lines.push('='.repeat(36))
   if (items.length === 0) {
-    lines.push('（无卡牌可检查）')
+    lines.push(get(t)('deckDetail.ownershipExportEmpty'))
   } else {
     for (const item of items) {
-      const mark = item.insufficient ? '' : '（已持有）'
+      const mark = item.insufficient ? '' : get(t)('deckDetail.ownershipExportOwnedMark')
       lines.push(
         `[${item.zoneLabel}] ${item.cardNo} ${item.cardName} ${item.owned}/${item.needed}${mark}`
       )
@@ -50,7 +61,7 @@ function csvCell(value: string | number | null): string {
 
 /** 生成持有检查 CSV（首行表头，便于导入表格） */
 export function buildOwnershipCsv(items: OwnershipExportRow[]): string {
-  const lines: string[] = ['区域,卡名,编号,持有数,需要数,状态']
+  const lines: string[] = [get(t)('deckDetail.ownershipCsvHeader')]
   for (const item of items) {
     lines.push(
       [
@@ -59,7 +70,11 @@ export function buildOwnershipCsv(items: OwnershipExportRow[]): string {
         csvCell(item.cardNo),
         csvCell(item.owned),
         csvCell(item.needed),
-        csvCell(item.insufficient ? '未足量拥有' : '已持有'),
+        csvCell(
+          item.insufficient
+            ? get(t)('deckDetail.ownershipCsvInsufficient')
+            : get(t)('deckDetail.ownershipCsvOwned')
+        ),
       ].join(',')
     )
   }
@@ -87,11 +102,13 @@ export async function saveOwnershipExport(
       const { save } = await import('@tauri-apps/plugin-dialog')
       const isCsv = format === 'csv'
       const dest = await save({
-        title: '保存持有检查',
+        title: get(t)('deckDetail.saveOwnershipTitle'),
         defaultPath: defaultName,
         filters: [
           {
-            name: isCsv ? 'CSV 文件' : '文本文件',
+            name: isCsv
+              ? get(t)('deckDetail.csvFileFilter')
+              : get(t)('deckDetail.textFileFilter'),
             extensions: isCsv ? ['csv'] : ['txt'],
           },
         ],

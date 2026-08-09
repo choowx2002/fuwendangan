@@ -6,10 +6,13 @@
   import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
+  import '$lib/i18n'
   import '../app.css'
   import { onMount } from 'svelte'
   import { afterNavigate } from '$app/navigation'
   import { tick } from 'svelte'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
 
   let { children } = $props()
 
@@ -37,7 +40,11 @@
       setLoadStatus('success')
     } catch (error) {
       console.error('[Layout] 初始化失败:', error)
-      setLoadStatus('error', '初始化失败', error instanceof Error ? error.message : '未知错误')
+      setLoadStatus(
+        'error',
+        get(t)('loading.error'),
+        error instanceof Error ? error.message : get(t)('common.unknownError')
+      )
     }
   }
 

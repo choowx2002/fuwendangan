@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { get } from 'svelte/store'
   import { onMount } from 'svelte'
   import { Package, Sparkles, ArrowLeft, RefreshCw, TriangleAlert, House } from '@lucide/svelte'
+  import { t } from 'svelte-i18n'
   import FoilCard from '../lib/components/cards/FoilCard.svelte'
   import { getCardBackFallback } from '$lib/cards/utils/variant-utils'
   import {
@@ -58,12 +60,14 @@
         if (list.length > 0) {
           selectedSeries = list[0].code
         } else {
-          packError = '本地暂无系列数据，请先在「设置」页同步卡库'
+          packError = get(t)('error.noSeries')
         }
       })
       .catch((error) => {
         console.error('[404 开包] 加载系列失败:', error)
-        packError = `无法加载系列列表：${error instanceof Error ? error.message : '未知错误'}`
+        packError = get(t)('error.loadSeriesFailed', {
+          values: { message: error instanceof Error ? error.message : get(t)('common.unknownError') },
+        })
       })
       .finally(() => {
         seriesLoading = false
@@ -95,7 +99,7 @@
     if (opening || seriesLoading) return
     if (!selectedSeries) {
       packError =
-        seriesList.length === 0 ? '本地暂无系列数据，请先在「设置」页同步卡库' : '请先选择一个系列'
+        seriesList.length === 0 ? get(t)('error.noSeries') : get(t)('error.pickSeries')
       return
     }
     packError = ''
@@ -119,7 +123,7 @@
       stage = 'open'
     } catch (error) {
       console.error('[404 开包] 开包失败:', error)
-      packError = error instanceof Error ? error.message : '开包失败，请稍后再试'
+      packError = error instanceof Error ? error.message : get(t)('error.openFailed')
       stage = 'setup'
     } finally {
       opening = false
@@ -167,7 +171,7 @@
 </script>
 
 <svelte:head>
-  <title>404 · 符文档案</title>
+  <title>{$t('error.title')}</title>
 </svelte:head>
 
 <div class="error-page">
@@ -180,23 +184,23 @@
   {#if view === 'main'}
     <div class="error-main">
       <div class="big-number">404</div>
-      <h1 class="error-title">这张卡牌不在档案里</h1>
+      <h1 class="error-title">{$t('error.heading')}</h1>
       <p class="error-desc">
-        它可能还未被收录，或已悄悄加入了对面的卡组……<br />
-        不过来都来了——开一包试试手气？
+        {$t('error.desc1')}<br />
+        {$t('error.desc2')}
       </p>
       <div class="action-row">
         <button class="button button-primary" onclick={() => (view = 'pack')}>
           <Package size={16} />
-          <span>开一包</span>
+          <span>{$t('error.openPack')}</span>
         </button>
         <a href="/" class="button button-ghost">
           <House size={16} />
-          <span>返回首页</span>
+          <span>{$t('error.home')}</span>
         </a>
         <button class="button button-ghost" onclick={goBack}>
           <ArrowLeft size={16} />
-          <span>返回上一页</span>
+          <span>{$t('error.prev')}</span>
         </button>
       </div>
     </div>
@@ -204,15 +208,15 @@
     <div class="pack-view">
       <div class="pack-header">
         <Sparkles size={20} style="color: var(--accent-color)" />
-        <h2 class="pack-title">神秘补充包</h2>
+        <h2 class="pack-title">{$t('error.packTitle')}</h2>
       </div>
 
       {#if stage === 'setup'}
         <div class="pack-setup">
-          <p class="pack-desc">选一个系列，看看能开出什么吧</p>
+          <p class="pack-desc">{$t('error.packDesc')}</p>
           <div class="pack-controls">
             {#if seriesLoading}
-              <span class="pack-loading">正在加载系列…</span>
+              <span class="pack-loading">{$t('error.packLoading')}</span>
             {:else}
               <select class="series-select" bind:value={selectedSeries} disabled={seriesLoading}>
                 {#each seriesList as s (s.code)}
@@ -225,11 +229,11 @@
                 disabled={seriesLoading}
               >
                 <Package size={16} />
-                <span>开一包</span>
+                <span>{$t('error.openPack')}</span>
               </button>
 
               <button class="button button-secondary" onclick={backToMain}>
-                <span>返回</span>
+                <span>{$t('error.back')}</span>
               </button>
             {/if}
           </div>
@@ -244,9 +248,9 @@
         <div class="pack-result">
           <p class="pack-desc">
             {#if revealedCount < 5}
-              正在拆封「{seriesName}」…点按卡背可提前翻开
+              {$t('error.opening', { values: { series: seriesName } })}
             {:else}
-              「{seriesName}」开出 5 张卡！点按卡面可以翻看卡背
+              {$t('error.opened', { values: { series: seriesName } })}
             {/if}
           </p>
           <div class="card-row">
@@ -262,7 +266,7 @@
                     class="card-back"
                     class:leaving={phase(i) === 'flipping'}
                     onclick={() => revealUpTo(i)}
-                    aria-label="翻开这张卡"
+                    aria-label={$t('error.revealCard')}
                   >
                     <img
                       src={getCardBackFallback(card.print.card_category)}
@@ -297,14 +301,14 @@
           <div class="action-row">
             <button class="button button-primary" onclick={handleOpenPack} disabled={opening}>
               <RefreshCw size={16} />
-              <span>再开一包</span>
+              <span>{$t('error.openAgain')}</span>
             </button>
             <a href="/" class="button button-ghost">
               <House size={16} />
-              <span>返回首页</span>
+              <span>{$t('error.home')}</span>
             </a>
             <button class="button button-secondary" onclick={backToMain}>
-              <span>返回</span>
+              <span>{$t('error.back')}</span>
             </button>
           </div>
         </div>

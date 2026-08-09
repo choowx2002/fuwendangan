@@ -15,6 +15,13 @@ import {
 import type { cardAndPrint } from './types'
 import { ZONE_CONFIG, type ZoneKey } from './zone'
 import { QR_PAYLOAD_VERSION } from './deck-qr'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
+
+export interface ImportError {
+  messageKey: string
+  params: Record<string, string | number>
+}
 
 export interface DecodedDeckResult {
   deck: {
@@ -74,7 +81,7 @@ export function tryParseDeckCodeText(code: string): {
   } catch (e) {
     return {
       deck: null,
-      error: e instanceof Error ? e.message : '解码失败，请检查卡组代码。',
+      error: e instanceof Error ? e.message : get(t)('decks.decodeCodeFailed'),
     }
   }
 }
@@ -168,7 +175,7 @@ export interface OfficialTextEntry {
 
 export interface ParsedOfficialText {
   zones: Record<ZoneKey, OfficialTextEntry[]>
-  errors: string[]
+  errors: ImportError[]
 }
 
 const OFFICIAL_ZONE_LABELS: Record<string, ZoneKey> = {
@@ -200,7 +207,7 @@ export function parseGlobalOfficialText(raw: string): ParsedOfficialText {
     runes: [],
     sideboard: [],
   }
-  const errors: string[] = []
+  const errors: ImportError[] = []
 
   let currentZone: ZoneKey | null = null
   // console.log("parseGlobalOfficialText");
@@ -230,7 +237,10 @@ export function parseGlobalOfficialText(raw: string): ParsedOfficialText {
         const rest = headerMatch[2].trim()
         if (rest) pushEntries(zone, rest)
       } else {
-        errors.push(`无法识别的分区头：${headerMatch[1]}`)
+        errors.push({
+          messageKey: 'decks.importErrUnknownZone',
+          params: { zone: headerMatch[1] },
+        })
         currentZone = null
       }
       continue
@@ -239,14 +249,14 @@ export function parseGlobalOfficialText(raw: string): ParsedOfficialText {
     const entryMatch = /^(\d+)\s+(.+)$/.exec(line)
     if (entryMatch) {
       if (!currentZone) {
-        errors.push(`缺少分区头的卡牌行：${line}`)
+        errors.push({ messageKey: 'decks.importErrLineNoZone', params: { line } })
         continue
       }
       zones[currentZone].push({ name: entryMatch[2].trim(), qty: parseInt(entryMatch[1], 10) })
       continue
     }
 
-    errors.push(`无法解析的行：${line}`)
+    errors.push({ messageKey: 'decks.importErrUnparsableLine', params: { line } })
   }
 
   return { zones, errors }
@@ -312,7 +322,7 @@ export interface ParsedQrPayload {
     side: QrZoneEntry[]
     champion: QrZoneEntry[]
   }
-  errors: string[]
+  errors: ImportError[]
 }
 
 const QR_ZONE_LETTERS: Record<string, 'main' | 'side' | 'champion'> = {
@@ -336,7 +346,10 @@ export function parseQrPayload(raw: string): ParsedQrPayload {
     .map((l) => l.trim())
     .filter(Boolean)
   if (lines.length === 0 || lines[0] !== QR_PAYLOAD_VERSION) {
-    result.errors.push(`不是有效的二维码数据（缺少版本标记 ${QR_PAYLOAD_VERSION}）。`)
+    result.errors.push({
+      messageKey: 'decks.importErrQrVersion',
+      params: { version: QR_PAYLOAD_VERSION },
+    })
     return result
   }
 
@@ -344,7 +357,10 @@ export function parseQrPayload(raw: string): ParsedQrPayload {
     const line = lines[i]
     const m = /^([msc])(\d+)(?:(?::[^:]+:\d+)*)$/.exec(line)
     if (!m) {
-      result.errors.push(`第 ${i + 1} 行格式错误：${line}`)
+      result.errors.push({
+        messageKey: 'decks.importErrQrLineFormat',
+        params: { line: i + 1, text: line },
+      })
       continue
     }
     const zone = QR_ZONE_LETTERS[m[1]]
@@ -356,16 +372,20 @@ export function parseQrPayload(raw: string): ParsedQrPayload {
       const cardNo = pairs[j]
       const qty = parseInt(pairs[j + 1], 10)
       if (!cardNo || Number.isNaN(qty) || qty <= 0) {
-        result.errors.push(`第 ${i + 1} 行存在无效卡牌条目：${cardNo || pairs[j]}`)
+        result.errors.push({
+          messageKey: 'decks.importErrQrInvalidEntry',
+          params: { line: i + 1, card: cardNo || pairs[j] },
+        })
         continue
       }
       actualTotal += qty
       entries.push({ card_no: cardNo, quantity: qty })
     }
     if (declaredTotal !== actualTotal) {
-      result.errors.push(
-        `第 ${i + 1} 行分区总数 ${declaredTotal} 与卡牌数总和 ${actualTotal} 不一致。`
-      )
+      result.errors.push({
+        messageKey: 'decks.importErrQrTotalMismatch',
+        params: { line: i + 1, declared: declaredTotal, actual: actualTotal },
+      })
       continue
     }
     result.zones[zone] = entries

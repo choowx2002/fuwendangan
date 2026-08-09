@@ -2,6 +2,7 @@
   import { downloadState, dismissDownload } from '$lib/stores/ui-store.svelte'
   import { cancelCardImageDownload } from '$lib/services/card-image-download-service'
   import { formatBytes } from '$lib/db'
+  import { t } from 'svelte-i18n'
   import {
     Download,
     X,
@@ -49,16 +50,16 @@
   )
 
   const speedText = $derived(
-    downloadState.speedBps > 0 ? `${formatBytes(downloadState.speedBps, 1)}/s` : '计算中...'
+    downloadState.speedBps > 0 ? `${formatBytes(downloadState.speedBps, 1)}/s` : $t('common.calculating')
   )
 
   const downloadedText = $derived(formatBytes(downloadState.bytesDownloaded, 1))
 
   function formatEta(seconds: number): string {
-    if (!seconds || seconds <= 0 || !isFinite(seconds)) return '计算中...'
-    if (seconds < 60) return `约 ${Math.ceil(seconds)} 秒`
-    if (seconds < 3600) return `约 ${Math.ceil(seconds / 60)} 分钟`
-    return `约 ${(seconds / 3600).toFixed(1)} 小时`
+    if (!seconds || seconds <= 0 || !isFinite(seconds)) return $t('common.calculating')
+    if (seconds < 60) return $t('download.etaSeconds', { values: { count: Math.ceil(seconds) } })
+    if (seconds < 3600) return $t('download.etaMinutes', { values: { count: Math.ceil(seconds / 60) } })
+    return $t('download.etaHours', { values: { count: (seconds / 3600).toFixed(1) } })
   }
 
   const isFinish = $derived(downloadState.status !== 'downloading')
@@ -66,13 +67,13 @@
   const finishTitle = $derived.by(() => {
     switch (downloadState.status) {
       case 'success':
-        return '下载完成'
+        return $t('download.finishSuccess')
       case 'partial':
-        return '下载完成，有失败项'
+        return $t('download.finishPartial')
       case 'cancelled':
-        return '已取消下载'
+        return $t('download.finishCancelled')
       case 'error':
-        return '下载失败'
+        return $t('download.finishError')
     }
   })
 
@@ -80,13 +81,13 @@
     const success = downloadState.completed - downloadState.failed
     switch (downloadState.status) {
       case 'success':
-        return `成功下载 ${downloadState.completed} 张卡图`
+        return $t('download.subSuccess', { values: { count: downloadState.completed } })
       case 'partial':
-        return `成功 ${success} 张，失败 ${downloadState.failed} 张`
+        return $t('download.subPartial', { values: { success, failed: downloadState.failed } })
       case 'cancelled':
-        return `已下载 ${downloadState.completed} 张`
+        return $t('download.subCancelled', { values: { count: downloadState.completed } })
       case 'error':
-        return '下载过程中出现问题，请检查网络后重试'
+        return $t('download.subError')
     }
   })
 </script>
@@ -114,7 +115,7 @@
           <strong>{finishTitle}</strong>
           <span>{finishSub}</span>
         </div>
-        <button class="finish-close" aria-label="关闭" onclick={dismissDownload}>
+        <button class="finish-close" aria-label={$t('common.close')} onclick={dismissDownload}>
           <X size={16} />
         </button>
       </div>
@@ -122,11 +123,11 @@
       <div class="progress-card">
         <div class="bar-header">
           <span class="bar-icon"><Download size={16} /></span>
-          <span class="bar-title">卡图下载中</span>
+          <span class="bar-title">{$t('download.title')}</span>
           <span class="bar-percent">{Math.round(percent)}%</span>
           <button
             class="bar-collapse"
-            aria-label="收起"
+            aria-label={$t('download.collapse')}
             onclick={() => (downloadState.expanded = false)}
           >
             <ChevronDown size={16} />
@@ -154,24 +155,24 @@
             <span class="stat-icon"><Image size={14} /></span>
             <span>
               {downloadState.completed} / {downloadState.total}{#if downloadState.failed > 0}
-                · {downloadState.failed} 张失败
+                · {$t('download.failedCount', { values: { count: downloadState.failed } })}
               {/if}
             </span>
           </div>
         </div>
 
         <div class="bar-footer">
-          <span class="bar-sub">正在下载图片资源，请勿关闭窗口</span>
+          <span class="bar-sub">{$t('download.hint')}</span>
           <button class="cancel-btn" disabled={cancelling} onclick={handleCancel}>
             <X size={14} />
-            {cancelling ? '正在取消...' : '取消下载'}
+            {cancelling ? $t('download.cancelling') : $t('download.cancel')}
           </button>
         </div>
       </div>
     {:else}
       <button
         class="pill"
-        aria-label="展开下载进度"
+        aria-label={$t('download.expand')}
         onclick={() => (downloadState.expanded = true)}
       >
         <span class="pill-icon"><Download size={16} /></span>

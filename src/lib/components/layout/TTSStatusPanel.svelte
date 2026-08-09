@@ -3,6 +3,7 @@
   import { detectTTSServer } from '$lib/services/tts-communication-service'
   import { RefreshCw } from '@lucide/svelte'
   import { onMount } from 'svelte'
+  import { t } from 'svelte-i18n'
 
   const colorMap: Record<string, string> = {
     Black: 'rgb(0,0,0)',
@@ -21,7 +22,7 @@
   })
 
   const statusText = $derived(
-    $ttsState.checking ? '正在检测 TTS 连接...' : $ttsState.sendPort ? 'TTS 已连接' : 'TTS 未连接'
+    $ttsState.checking ? $t('tts.checking') : $ttsState.sendPort ? $t('tts.connected') : $t('tts.disconnected')
   )
 
   const errorText = $derived(
@@ -44,8 +45,8 @@
     <span class="status-text">{statusText}</span>
     <button
       class="tts-refresh"
-      aria-label="重新检测 TTS 连接"
-      title="重新检测 TTS 连接"
+      aria-label={$t('tts.retry')}
+      title={$t('tts.retry')}
       onclick={refresh}
       disabled={$ttsState.checking}
     >
@@ -60,7 +61,7 @@
   {/if}
 
   <div class="color-row">
-    <span class="color-label">TTS 颜色</span>
+    <span class="color-label">{$t('tts.color')}</span>
     <div class="color-picker">
       <span class="color-swatch" style="background: {colorMap[$selectedTTSColor]}"></span>
       <select bind:value={$selectedTTSColor}>

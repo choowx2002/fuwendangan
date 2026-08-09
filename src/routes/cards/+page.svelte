@@ -11,6 +11,8 @@
   import { routeBackConfig } from '$lib/utils/route-config'
   import { ask } from '@tauri-apps/plugin-dialog'
   import { Send, LoaderCircle } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])
@@ -18,7 +20,7 @@
   let sending = $state(false)
 
   $effect(() => {
-    setTopbar({ title: '单卡库' })
+    setTopbar({ title: $t('cards.title') })
   })
 
   // 在卡池中点击卡牌时，打开详情弹窗
@@ -31,12 +33,12 @@
     if (!displayedCards.length) return
 
     const accepted = await ask(
-      `确定将当前列表中的 ${displayedCards.length} 张卡牌发送到 TTS 吗？`,
+      get(t)('cards.ttsBatchConfirm', { values: { count: displayedCards.length } }),
       {
-        title: '批量生成',
+        title: get(t)('cards.ttsBatch'),
         kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
       }
     )
     if (!accepted) return
@@ -44,10 +46,10 @@
     sending = true
     try {
       await multiSpawn([...displayedCards])
-      showToast(`已发送 ${displayedCards.length} 张卡牌到 TTS`, 'success')
+      showToast(get(t)('cards.ttsBatchSent', { values: { count: displayedCards.length } }), 'success')
     } catch (error) {
       console.error('[Cards] 批量生成失败:', error)
-      showToast('批量生成失败，请检查 TTS 连接', 'error')
+      showToast(get(t)('cards.ttsBatchFailed'), 'error')
     } finally {
       sending = false
     }
@@ -106,14 +108,14 @@
       class="fab-btn"
       onclick={spawnMulti}
       disabled={!$ttsState.sendPort || sending}
-      title={!$ttsState.sendPort ? '请先在侧边栏连接 TTS' : undefined}
+      title={!$ttsState.sendPort ? $t('tts.connectFirst') : undefined}
     >
       {#if sending}
         <span class="fab-spinner"><LoaderCircle size={20} /></span>
-        <span>发送中...</span>
+        <span>{$t('cards.sending')}</span>
       {:else}
         <Send size={20} />
-        <span>批量生成</span>
+        <span>{$t('cards.ttsBatch')}</span>
       {/if}
     </button>
   {/if}

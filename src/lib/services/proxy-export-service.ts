@@ -5,6 +5,8 @@ import { sortForExport } from '$lib/decks/deck-export'
 import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
 import { writeBytesFile } from './db-file-service'
 import { loadCardImageElement } from './card-image-loader'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 
 const PROXY_ZONE_ORDER: ZoneKey[] = [
   'legend',
@@ -135,7 +137,7 @@ function renderPlaceholder(label: string): string {
   })
   ctx.font = '20px sans-serif'
   ctx.fillStyle = '#94a3b8'
-  ctx.fillText('(无图片)', CELL_W_PX / 2, CELL_H_PX - 24)
+  ctx.fillText(get(t)('deckDetail.placeholderNoImage'), CELL_W_PX / 2, CELL_H_PX - 24)
   return canvas.toDataURL('image/jpeg', 0.9)
 }
 
@@ -177,7 +179,7 @@ function renderHeader(deckName: string, pageNum: number, totalPages: number): st
   ctx.font = '600 24px sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(deckName || '未命名卡组', 0, HEADER_H_PX / 2)
+  ctx.fillText(deckName || get(t)('builder.unnamedDeck'), 0, HEADER_H_PX / 2)
   ctx.font = '400 20px sans-serif'
   ctx.textAlign = 'right'
   ctx.fillText(`${pageNum} / ${totalPages}`, HEADER_W_PX, HEADER_H_PX / 2)

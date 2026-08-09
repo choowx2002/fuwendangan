@@ -13,7 +13,7 @@
     type DeckListResult,
   } from '$lib/db'
   import { getRelativeTime } from '$lib/utils/time-helper'
-  import { DECK_FORMATS } from '$lib/decks/format'
+  import { DECK_FORMATS, FORMAT_LABEL_KEYS } from '$lib/decks/format'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { ttsState } from '$lib/stores/tts'
   import { spawnDeckToTTS } from '$lib/services/deck-tts-service'
@@ -56,13 +56,15 @@
   import { readTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
   import { isMobile } from '$lib/utils/os'
   import { onMount } from 'svelte'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
 
   let allDecks = $state<DeckListResult[]>([])
   let matchStatsMap = $state<Map<string, import('$lib/db/types').MatchSummary>>(new Map())
   let mobilePlatform = $state(false)
 
   let searchQuery = $state('')
-  let selectedFormat = $state('全部')
+  let selectedFormat = $state('all')
   let showFavoritesOnly = $state(false)
   let activeTags = $state<string[]>([])
   let tagMatchMode = $state<'all' | 'any'>('all')
@@ -100,7 +102,7 @@
   let pendingJsonDecks = $state<ImportDeckPayload[]>([])
   let importingJson = $state(false)
 
-  export const formats = ['全部', ...DECK_FORMATS]
+  export const formats = ['all', ...DECK_FORMATS]
 
   const allTags = $derived(
     [...new Set(allDecks.flatMap((d) => d.tags ?? []))].sort((a, b) => a.localeCompare(b))
@@ -120,7 +122,7 @@
         !q ||
         deck.name.toLowerCase().includes(q) ||
         deckTags.some((t) => t.toLowerCase().includes(q))
-      const matchesFormat = selectedFormat === '全部' || deck.format === selectedFormat
+      const matchesFormat = selectedFormat === 'all' || deck.format === selectedFormat
       const matchesFavorite = !showFavoritesOnly || deck.is_favorite
       const matchesTags =
         activeTags.length === 0 ||
@@ -171,10 +173,10 @@
   }
 
   async function deleteDeckAsk(name: string, deckId: string) {
-    const confirm = await ask(`你确定要删除 ${name} 吗？`, {
+    const confirm = await ask(get(t)('decks.deleteConfirm', { values: { name } }), {
       kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
+      okLabel: get(t)('common.confirm'),
+      cancelLabel: get(t)('common.cancel'),
     })
 
     if (confirm) {
@@ -185,10 +187,10 @@
   }
 
   async function duplicateDeckAsk(name: string, deckId: string) {
-    const confirm = await ask(`你确定要创建 ${name} 副本吗？`, {
+    const confirm = await ask(get(t)('decks.duplicateConfirm', { values: { name } }), {
       kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
+      okLabel: get(t)('common.confirm'),
+      cancelLabel: get(t)('common.cancel'),
     })
 
     if (!confirm) return
@@ -196,11 +198,11 @@
     try {
       const newDeckId = await duplicateDeck(deckId)
       if (newDeckId) {
-        message('复制成功！').then(init)
+        message(get(t)('decks.duplicateSuccess')).then(init)
       }
     } catch (error) {
       console.error(error)
-      message('复制失败')
+      message(get(t)('decks.duplicateFailed'))
     }
   }
 
@@ -209,10 +211,10 @@
     sendingTtsDeckId = deckId
     try {
       const count = await spawnDeckToTTS(deckId)
-      showToast(`已将 ${name} 的 ${count} 张卡牌发送到 TTS`, 'success')
+      showToast(get(t)('decks.ttsSent', { values: { name, count } }), 'success')
     } catch (error) {
       console.error('[Decks] TTS 生成失败:', error)
-      showToast('生成失败，请检查 TTS 连接', 'error')
+      showToast(get(t)('decks.ttsFailed'), 'error')
     } finally {
       sendingTtsDeckId = null
     }
@@ -248,9 +250,16 @@
         validateImportCode()
       }
     } catch {
-      importCodeError = '读取剪贴板失败'
+      importCodeError = get(t)('decks.readClipboardFailed')
       importCodeValid = false
     }
+  }
+
+  function importErrText(
+    errors: import('$lib/decks/deck-import').ImportError[]
+  ): string {
+    const first = errors[0]
+    return first ? get(t)(first.messageKey, { values: first.params }) : ''
   }
 
   function validateImportCode() {
@@ -262,7 +271,7 @@
   async function confirmCodeImport() {
     const { deck: decoded, error } = tryParseDeckCodeText(importCode)
     if (!decoded) {
-      importCodeError = error ?? '无法解析该卡组代码，请检查是否复制完整。'
+      importCodeError = error ?? get(t)('decks.parseCodeFailed')
       importCodeValid = false
       return
     }
@@ -277,9 +286,12 @@
         result.deck.legendCards.length +
         result.deck.championCards.length
       if (totalResolved === 0) {
-        importCodeError = `本地缺少全部卡牌（${result.missingCount} 张），无法导入：${result.missingCodes
-          .slice(0, 5)
-          .join(', ')}`
+        importCodeError = get(t)('decks.allCardsMissing', {
+          values: {
+            count: result.missingCount,
+            codes: result.missingCodes.slice(0, 5).join(', '),
+          },
+        })
         importCodeValid = false
         return
       }
@@ -296,7 +308,7 @@
     const parsed = parseGlobalOfficialText(importText)
     console.log(parsed)
     const hasAny = Object.values(parsed.zones).flat().length > 0 && parsed.errors.length === 0
-    importTextError = parsed.errors[0] ?? ''
+    importTextError = importErrText(parsed.errors)
     importTextValid = hasAny
   }
 
@@ -304,7 +316,7 @@
     const parsed = parseGlobalOfficialText(importText)
     const hasAny = Object.values(parsed.zones).flat().length > 0
     if (!hasAny) {
-      importTextError = parsed.errors[0] ?? '未解析到任何卡牌，请检查文本格式。'
+      importTextError = importErrText(parsed.errors) || get(t)('decks.parseTextFailed')
       importTextValid = false
       return
     }
@@ -319,7 +331,9 @@
         result.deck.legendCards.length +
         result.deck.championCards.length
       if (totalResolved === 0) {
-        importTextError = `本地匹配不到任何卡牌名称：${result.missingCodes.slice(0, 5).join(', ')}`
+        importTextError = get(t)('decks.textNoMatches', {
+          values: { codes: result.missingCodes.slice(0, 5).join(', ') },
+        })
         importTextValid = false
         return
       }
@@ -334,7 +348,7 @@
 
   function validateImportQr() {
     const parsed = parseQrPayload(importQr)
-    importQrError = parsed.errors[0] ?? ''
+    importQrError = importErrText(parsed.errors)
     importQrValid = parsed.errors.length === 0
   }
 
@@ -346,14 +360,14 @@
       const scanned = await scan({ formats: [Format.QRCode] })
       const content = scanned?.content
       if (!content) {
-        importQrError = '未识别到二维码内容'
+        importQrError = get(t)('decks.qrNoContent')
         importQrValid = false
         return
       }
       applyQrContent(content)
     } catch (error) {
       console.error('[ImportQr] 扫码失败:', error)
-      importQrError = '扫码失败，请尝试上传二维码图片。'
+      importQrError = get(t)('decks.qrScanFailed')
       importQrValid = false
     } finally {
       importingQr = false
@@ -365,9 +379,9 @@
     importQrError = ''
     try {
       const src = await open({
-        title: '选择二维码图片',
+        title: get(t)('decks.pickQrImage'),
         multiple: false,
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+        filters: [{ name: get(t)('decks.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
       })
       if (!src || Array.isArray(src)) return
       const dataUrl = await readImageFileAsDataUrl(src)
@@ -375,7 +389,7 @@
       applyQrContent(content)
     } catch (error) {
       console.error('[ImportQr] 解析二维码图片失败:', error)
-      importQrError = error instanceof Error ? error.message : '解析二维码图片失败'
+      importQrError = error instanceof Error ? error.message : get(t)('decks.qrParseFailed')
       importQrValid = false
     } finally {
       importingQr = false
@@ -390,7 +404,7 @@
   async function confirmQrImport() {
     const parsed = parseQrPayload(importQr)
     if (parsed.errors.length > 0) {
-      importQrError = parsed.errors[0]
+      importQrError = importErrText(parsed.errors)
       importQrValid = false
       return
     }
@@ -405,7 +419,9 @@
         result.deck.legendCards.length +
         result.deck.championCards.length
       if (totalResolved === 0) {
-        importQrError = `本地缺少全部卡牌：${result.missingCodes.slice(0, 5).join(', ')}`
+        importQrError = get(t)('decks.qrAllCardsMissing', {
+          values: { codes: result.missingCodes.slice(0, 5).join(', ') },
+        })
         importQrValid = false
         return
       }
@@ -514,9 +530,9 @@
 
   async function openJsonFile() {
     const src = await open({
-      title: '选择导出的 JSON 文件',
+      title: get(t)('decks.selectJsonTitle'),
       multiple: false,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      filters: [{ name: get(t)('decks.jsonFilter'), extensions: ['json'] }],
     })
     if (!src) return
 
@@ -524,8 +540,8 @@
     try {
       content = await readTextFile(String(src))
     } catch (e) {
-      await message(e instanceof Error ? e.message : '读取文件失败', {
-        title: '导入',
+      await message(e instanceof Error ? e.message : get(t)('decks.readFileFailed'), {
+        title: get(t)('decks.importTitle'),
         kind: 'error',
       })
       return
@@ -533,8 +549,8 @@
 
     const decks = parseImportFile(content)
     if (decks.length === 0) {
-      await message('文件格式不正确或没有可导入的卡组，请选择 Rune Archive 导出的 JSON 文件。', {
-        title: '导入',
+      await message(get(t)('decks.invalidJsonFile'), {
+        title: get(t)('decks.importTitle'),
         kind: 'error',
       })
       return
@@ -544,7 +560,7 @@
     jsonDeckList = decks.map((d, i) => ({
       id: String(i),
       name: d.name,
-      updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : '未知',
+      updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : get(t)('common.unknown'),
       versionCount: d.versions.length,
     }))
     selectedJsonDeckIds = jsonDeckList.map((d) => d.id)
@@ -560,12 +576,18 @@
         latestOnly: false,
         filterMissingCards: true,
       })
-      const missingText = missingCards > 0 ? `（跳过 ${missingCards} 张本地缺失的卡牌）` : ''
-      await message(`已导入 ${imported} 副卡组${missingText}！`, { title: '导入', kind: 'info' })
+      const missingText = missingCards > 0 ? get(t)('decks.importSkippedMissing', { values: { count: missingCards } }) : ''
+      await message(get(t)('decks.importSuccess', { values: { imported, extra: missingText } }), {
+        title: get(t)('decks.importTitle'),
+        kind: 'info',
+      })
       showImportModal = false
       init()
     } catch (e) {
-      await message(e instanceof Error ? e.message : '导入失败', { title: '导入', kind: 'error' })
+      await message(e instanceof Error ? e.message : get(t)('decks.importFailed'), {
+        title: get(t)('decks.importTitle'),
+        kind: 'error',
+      })
     } finally {
       importingJson = false
     }
@@ -584,12 +606,12 @@
 
   $effect(() => {
     setTopbar({
-      title: '我的卡组',
-      description: `管理你的所有卡组，共 ${allDecks.length} 副`,
+      title: $t('decks.title'),
+      description: $t('decks.topbarDesc', { values: { count: allDecks.length } }),
       actions: [
         {
           key: 'new-deck',
-          label: '新建卡组',
+          label: $t('decks.newDeck'),
           icon: Plus,
           variant: 'primary',
           priority: 0,
@@ -597,7 +619,7 @@
         },
         {
           key: 'import-deck',
-          label: '导入卡组',
+          label: $t('decks.importDeck'),
           icon: Download,
           variant: 'ghost',
           onClick: () => openImportDeckModal(),
@@ -630,7 +652,7 @@
       </div>
       <input
         type="text"
-        placeholder="搜索卡组名称或标签..."
+        placeholder={$t('decks.searchPlaceholder')}
         bind:value={searchQuery}
         class="search-input"
         onfocus={() => (showTagSuggestions = true)}
@@ -651,7 +673,7 @@
               onclick={() => addTag(tag)}
             >
               <span class="tag-text">{tag}</span>
-              <span class="tag-hint">回车/点击添加为筛选条件</span>
+              <span class="tag-hint">{$t('decks.tagHint')}</span>
             </button>
           {/each}
         </div>
@@ -663,7 +685,13 @@
         <Funnel size={16} class="filter-icon" />
         <select bind:value={selectedFormat} class="format-select">
           {#each formats as format}
-            <option value={format}>{format}</option>
+            <option value={format}
+              >{format === 'all'
+                ? $t('decks.formatAll')
+                : FORMAT_LABEL_KEYS[format]
+                  ? $t(FORMAT_LABEL_KEYS[format])
+                  : format}</option
+            >
           {/each}
         </select>
       </div>
@@ -674,7 +702,7 @@
         onclick={() => (showFavoritesOnly = !showFavoritesOnly)}
       >
         <Folder size={16} />
-        <span>收藏</span>
+        <span>{$t('decks.favorite')}</span>
       </button>
     </div>
   </section>
@@ -687,14 +715,14 @@
           class:active={tagMatchMode === 'all'}
           onclick={() => (tagMatchMode = 'all')}
         >
-          全部满足
+          {$t('decks.tagAll')}
         </button>
         <button
           class="tag-mode-btn"
           class:active={tagMatchMode === 'any'}
           onclick={() => (tagMatchMode = 'any')}
         >
-          任一满足
+          {$t('decks.tagAny')}
         </button>
       </div>
       <div class="active-tags">
@@ -705,22 +733,22 @@
               type="button"
               class="active-tag-remove"
               onclick={() => removeTag(tag)}
-              aria-label="移除标签"
+              aria-label={$t('decks.removeTag')}
             >
               ×
             </button>
           </span>
         {/each}
       </div>
-      <button class="clear-tags-btn" onclick={() => (activeTags = [])}>清除</button>
+      <button class="clear-tags-btn" onclick={() => (activeTags = [])}>{$t('decks.clearTags')}</button>
     </div>
   {/if}
 
   {#if filteredDecks.length === 0}
     <div class="empty-state">
       <Folder size={48} class="empty-icon" />
-      <h3>没有找到匹配的卡组</h3>
-      <p>试试调整筛选条件或创建新卡组</p>
+      <h3>{$t('decks.emptyTitle')}</h3>
+      <p>{$t('decks.emptyDesc')}</p>
     </div>
   {:else}
     <div class="decks-grid">
@@ -737,8 +765,8 @@
             class="pin-btn"
             class:active={$pinnedDeckIds.includes(deck.id)}
             class:mobile-pin={mobilePlatform}
-            title={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
-            aria-label={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
+            title={$pinnedDeckIds.includes(deck.id) ? $t('decks.unpin') : $t('decks.pin')}
+            aria-label={$pinnedDeckIds.includes(deck.id) ? $t('decks.unpin') : $t('decks.pin')}
             onclick={(e) => {
               e.stopPropagation()
               togglePinDeck(deck.id)
@@ -762,27 +790,31 @@
 
           <div class="deck-stats-row">
             <div class="stat-item">
-              <span class="stat-label">版本</span>
+              <span class="stat-label">{$t('decks.statVersion')}</span>
               <span class="stat-value">v{deck.latest_version_number?.toFixed(1)}</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">卡牌</span>
+              <span class="stat-label">{$t('decks.statCards')}</span>
               <span class="stat-value">{deck.latest_version_card_count}</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">战绩</span>
+              <span class="stat-label">{$t('decks.statRecord')}</span>
               <span class="stat-value record">
-                {#if s && s.games > 0}
-                  <span class="win">{s.wins}</span>
+                {#if s && s.match_wins + s.match_losses + s.match_draws > 0}
+                  <span class="win">{s.match_wins}</span>
                   <span class="separator">-</span>
-                  <span class="loss">{s.losses}</span>
+                  <span class="loss">{s.match_losses}</span>
+                  {#if s.match_draws > 0}
+                    <span class="separator">-</span>
+                    <span class="draw">{s.match_draws}</span>
+                  {/if}
                 {:else}
                   <span class="muted">-</span>
                 {/if}
               </span>
             </div>
             <div class="stat-item" title={new Date(deck.updated_at!).toLocaleString()}>
-              <span class="stat-label">更新</span>
+              <span class="stat-label">{$t('decks.statUpdated')}</span>
               <span class="stat-value time">{getRelativeTime(deck.updated_at!)}</span>
             </div>
           </div>
@@ -805,7 +837,7 @@
                 e.stopPropagation()
                 duplicateDeckAsk(deck.name, deck.id)
               }}
-              title="复制卡组副本"
+              title={$t('decks.duplicateTitle')}
             >
               <CopyPlus size={16} />
             </button>
@@ -815,7 +847,7 @@
                 e.stopPropagation()
                 toggleFavoriteAction(deck.id)
               }}
-              title="收藏/取消收藏"
+              title={$t('decks.toggleFavoriteTitle')}
             >
               {#if deck.is_favorite}
                 <HeartIcon fill="red" color={'red'} size={16} />
@@ -829,7 +861,7 @@
                 e.stopPropagation()
                 deleteDeckAsk(deck.name, deck.id)
               }}
-              title="删除卡组"
+              title={$t('decks.deleteTitle')}
             >
               <Trash2 size={16} />
             </button>
@@ -844,12 +876,12 @@
                   generateDeckTTS(deck.name, deck.id)
                 }}
                 disabled={sendingTtsDeckId !== null && sendingTtsDeckId !== deck.id}
-                title="生成卡牌TTS"
+                title={$t('decks.ttsTitle')}
               >
                 {#if sendingTtsDeckId === deck.id}
                   <LoaderCircle size={16} class="spin" />
                 {:else}
-                  TTS 生成
+                  {$t('decks.ttsGenerate')}
                 {/if}
               </button>
             {/if}
@@ -862,8 +894,8 @@
 
 <CommonModal
   open={showImportModal}
-  title="导入卡组"
-  subtitle="通过卡组代码或 Rune Archive JSON 文件导入"
+  title={$t('decks.importTitle')}
+  subtitle={$t('decks.importSubtitle')}
   closable={!importingCode && !importingJson}
   onclose={() => (showImportModal = false)}
 >
@@ -874,10 +906,8 @@
       class:selected={importTab === 'code'}
       onclick={() => (importTab = 'code')}
     >
-      <span class="import-method-label">卡组代码</span>
-      <span class="import-method-desc"
-        >粘贴 Piltover / Riftbound 卡组代码，支持含备牌与选定英雄</span
-      >
+      <span class="import-method-label">{$t('decks.importCodeLabel')}</span>
+      <span class="import-method-desc">{$t('decks.importCodeDesc')}</span>
     </button>
     <button
       type="button"
@@ -885,8 +915,8 @@
       class:selected={importTab === 'json'}
       onclick={() => (importTab = 'json')}
     >
-      <span class="import-method-label">JSON 文件</span>
-      <span class="import-method-desc">从 Rune Archive 导出的 JSON 文件导入副卡组</span>
+      <span class="import-method-label">{$t('decks.importJsonLabel')}</span>
+      <span class="import-method-desc">{$t('decks.importJsonDesc')}</span>
     </button>
     <button
       type="button"
@@ -894,10 +924,8 @@
       class:selected={importTab === 'text'}
       onclick={() => (importTab = 'text')}
     >
-      <span class="import-method-label">国际官方文本</span>
-      <span class="import-method-desc"
-        >粘贴官方英文文本格式卡组清单（Legend/Champion/Main Deck/Battlefield/Rune Pool/Sideboard）</span
-      >
+      <span class="import-method-label">{$t('decks.importOfficialLabel')}</span>
+      <span class="import-method-desc">{$t('decks.importOfficialDesc')}</span>
     </button>
     <button
       type="button"
@@ -906,8 +934,8 @@
       onclick={() => (importTab = 'qr')}
     >
       <QrCode size={18} />
-      <span class="import-method-label">二维码</span>
-      <span class="import-method-desc">扫码或上传二维码图片，识别 Rune Archive RA1 格式卡组</span>
+      <span class="import-method-label">{$t('decks.importQrLabel')}</span>
+      <span class="import-method-desc">{$t('decks.importQrDesc')}</span>
     </button>
   </div>
 
@@ -916,7 +944,7 @@
       <div class="import-textarea-row">
         <textarea
           class="import-code-input"
-          placeholder="粘贴 Piltover / Riftbound 卡组代码，例如 CIAAAAAAAAAQCAAAA...（支持备牌与选定英雄）"
+          placeholder={$t('decks.codePlaceholder')}
           rows={5}
           bind:value={importCode}
           oninput={validateImportCode}
@@ -927,14 +955,14 @@
           onclick={pasteImportCode}
           disabled={importingCode}
         >
-          粘贴
+          {$t('decks.paste')}
         </button>
       </div>
 
       {#if importCode && importCodeValid}
         <div class="import-hint import-hint-ok">
           <CircleCheck size={16} />
-          <span>代码有效</span>
+          <span>{$t('decks.codeValid')}</span>
         </div>
       {:else if importCodeError}
         <div class="import-hint import-hint-error">
@@ -945,26 +973,29 @@
 
       {#if importedResult}
         <div class="import-preview">
-          <p>解析成功：</p>
+          <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>主牌堆 {importedResult.deck.mainDeckCards.length} 张</li>
-            <li>符文 {importedResult.deck.runeCards.length} 张</li>
-            <li>战场 {importedResult.deck.battlefieldCards.length} 张</li>
-            <li>备牌 {importedResult.deck.sideboardCards.length} 张</li>
+            <li>{$t('decks.zoneMain', { values: { count: importedResult.deck.mainDeckCards.length } })}</li>
+            <li>{$t('decks.zoneRune', { values: { count: importedResult.deck.runeCards.length } })}</li>
+            <li>{$t('decks.zoneBattlefield', { values: { count: importedResult.deck.battlefieldCards.length } })}</li>
+            <li>{$t('decks.zoneSideboard', { values: { count: importedResult.deck.sideboardCards.length } })}</li>
             {#if importedResult.deck.legendCards.length > 0}
-              <li>传奇 {importedResult.deck.legendCards.length} 张</li>
+              <li>{$t('decks.zoneLegend', { values: { count: importedResult.deck.legendCards.length } })}</li>
             {/if}
             {#if importedResult.deck.championCards.length > 0}
-              <li>选定英雄 {importedResult.deck.championCards.length} 张</li>
+              <li>{$t('decks.zoneChampion', { values: { count: importedResult.deck.championCards.length } })}</li>
             {/if}
           </ul>
           {#if importedResult.missingCount > 0}
             <p class="import-warn">
-              本地缺少 {importedResult.missingCount} 张卡牌（{importedResult.missingCodes
-                .slice(0, 5)
-                .join(', ')}{importedResult.missingCount > 5
-                ? '...'
-                : ''}），导入后请到编辑器手动补充。
+              {$t('decks.missingWarn', {
+                values: {
+                  count: importedResult.missingCount,
+                  codes: `${importedResult.missingCodes
+                    .slice(0, 5)
+                    .join(', ')}${importedResult.missingCount > 5 ? '...' : ''}`,
+                },
+              })}
             </p>
           {/if}
         </div>
@@ -975,16 +1006,16 @@
       {#if jsonDeckList.length === 0}
         <div class="import-json-empty">
           <FileUp size={40} />
-          <p>选择 Rune Archive 导出的 JSON 文件，预览后选择要导入的卡组。</p>
+          <p>{$t('decks.jsonEmptyDesc')}</p>
           <button class="button button-ghost" onclick={openJsonFile} disabled={importingJson}>
-            选择 JSON 文件
+            {$t('decks.chooseJsonFile')}
           </button>
         </div>
       {:else}
         <div class="import-json-file">
           <span class="import-json-name">{jsonFileName}</span>
           <button class="button button-ghost" onclick={openJsonFile} disabled={importingJson}>
-            重新选择
+            {$t('decks.reselect')}
           </button>
         </div>
         <label class="import-select-all">
@@ -994,7 +1025,7 @@
             onchange={toggleAllJsonDecks}
             disabled={importingJson}
           />
-          <span>全选（{jsonDeckList.length} 副卡组）</span>
+          <span>{$t('decks.selectAll', { values: { count: jsonDeckList.length } })}</span>
         </label>
         <div class="import-json-list">
           {#each jsonDeckList as deck}
@@ -1008,7 +1039,7 @@
               <span class="import-json-info">
                 <span class="import-json-row-name">{deck.name}</span>
                 <span class="import-json-row-meta">
-                  {deck.versionCount} 个版本 · {deck.updatedAt}
+                  {$t('decks.versionCount', { values: { count: deck.versionCount, time: deck.updatedAt } })}
                 </span>
               </span>
             </label>
@@ -1021,7 +1052,7 @@
       <div class="import-textarea-row">
         <textarea
           class="import-code-input"
-          placeholder={"粘贴国际官方文本格式的卡组清单，例如：\nLegend: 1 Master Yi, Wuju Bladesman\nChampion: 1 Master Yi, Tempered\nMain Deck: 3 Charm 3 Defy 3 Discipline...\nBattlefields: 1 The Arena's Greatest...\nRune Pool: 7 Body Rune 5 Calm Rune\nSideboard: 3 Disarming Rake 2 Alpha Strike..."}
+          placeholder={$t('decks.textPlaceholder')}
           rows={9}
           bind:value={importText}
           oninput={validateImportText}
@@ -1031,7 +1062,7 @@
       {#if importText && importTextValid && !importTextError}
         <div class="import-hint import-hint-ok">
           <CircleCheck size={16} />
-          <span>文本格式有效</span>
+          <span>{$t('decks.textValid')}</span>
         </div>
       {:else if importTextError}
         <div class="import-hint import-hint-error">
@@ -1042,22 +1073,25 @@
 
       {#if importedTextResult}
         <div class="import-preview">
-          <p>解析成功：</p>
+          <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>传奇 {importedTextResult.deck.legendCards.length} 张</li>
-            <li>选定英雄 {importedTextResult.deck.championCards.length} 张</li>
-            <li>主牌堆 {importedTextResult.deck.mainDeckCards.length} 张</li>
-            <li>战场 {importedTextResult.deck.battlefieldCards.length} 张</li>
-            <li>符文 {importedTextResult.deck.runeCards.length} 张</li>
-            <li>备牌 {importedTextResult.deck.sideboardCards.length} 张</li>
+            <li>{$t('decks.zoneLegend', { values: { count: importedTextResult.deck.legendCards.length } })}</li>
+            <li>{$t('decks.zoneChampion', { values: { count: importedTextResult.deck.championCards.length } })}</li>
+            <li>{$t('decks.zoneMain', { values: { count: importedTextResult.deck.mainDeckCards.length } })}</li>
+            <li>{$t('decks.zoneBattlefield', { values: { count: importedTextResult.deck.battlefieldCards.length } })}</li>
+            <li>{$t('decks.zoneRune', { values: { count: importedTextResult.deck.runeCards.length } })}</li>
+            <li>{$t('decks.zoneSideboard', { values: { count: importedTextResult.deck.sideboardCards.length } })}</li>
           </ul>
           {#if importedTextResult.missingCount > 0}
             <p class="import-warn">
-              本地匹配不到 {importedTextResult.missingCount} 张（{importedTextResult.missingCodes
-                .slice(0, 5)
-                .join(', ')}{importedTextResult.missingCount > 5
-                ? '...'
-                : ''}），导入后请到编辑器手动补充。
+              {$t('decks.textMissingWarn', {
+                values: {
+                  count: importedTextResult.missingCount,
+                  codes: `${importedTextResult.missingCodes
+                    .slice(0, 5)
+                    .join(', ')}${importedTextResult.missingCount > 5 ? '...' : ''}`,
+                },
+              })}
             </p>
           {/if}
         </div>
@@ -1074,7 +1108,7 @@
             disabled={importingQr}
           >
             <ScanLine size={18} />
-            扫码
+            {$t('decks.scan')}
           </button>
         {/if}
         <button
@@ -1083,17 +1117,17 @@
           onclick={uploadImportQr}
           disabled={importingQr}
         >
-          上传二维码图片
+          {$t('decks.uploadQr')}
         </button>
       </div>
       {#if importingQr}
         <div class="import-hint">
-          <span>正在识别二维码...</span>
+          <span>{$t('decks.qrRecognizing')}</span>
         </div>
       {/if}
       <textarea
         class="import-code-input"
-        placeholder={'或直接粘贴二维码内容（RA1 格式）：\nm13:SC01-001:2:SC01-002:1\ns2:OGN-101:2'}
+        placeholder={$t('decks.qrPlaceholder')}
         rows={5}
         bind:value={importQr}
         oninput={validateImportQr}
@@ -1102,7 +1136,7 @@
       {#if importQr && importQrValid && !importQrError}
         <div class="import-hint import-hint-ok">
           <CircleCheck size={16} />
-          <span>{QR_PAYLOAD_VERSION} 格式有效</span>
+          <span>{$t('decks.formatValid', { values: { format: QR_PAYLOAD_VERSION } })}</span>
         </div>
       {:else if importQrError}
         <div class="import-hint import-hint-error">
@@ -1113,22 +1147,25 @@
 
       {#if importedQrResult}
         <div class="import-preview">
-          <p>解析成功：</p>
+          <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>传奇 {importedQrResult.deck.legendCards.length} 张</li>
-            <li>选定英雄 {importedQrResult.deck.championCards.length} 张</li>
-            <li>主牌堆 {importedQrResult.deck.mainDeckCards.length} 张</li>
-            <li>战场 {importedQrResult.deck.battlefieldCards.length} 张</li>
-            <li>符文 {importedQrResult.deck.runeCards.length} 张</li>
-            <li>备牌 {importedQrResult.deck.sideboardCards.length} 张</li>
+            <li>{$t('decks.zoneLegend', { values: { count: importedQrResult.deck.legendCards.length } })}</li>
+            <li>{$t('decks.zoneChampion', { values: { count: importedQrResult.deck.championCards.length } })}</li>
+            <li>{$t('decks.zoneMain', { values: { count: importedQrResult.deck.mainDeckCards.length } })}</li>
+            <li>{$t('decks.zoneBattlefield', { values: { count: importedQrResult.deck.battlefieldCards.length } })}</li>
+            <li>{$t('decks.zoneRune', { values: { count: importedQrResult.deck.runeCards.length } })}</li>
+            <li>{$t('decks.zoneSideboard', { values: { count: importedQrResult.deck.sideboardCards.length } })}</li>
           </ul>
           {#if importedQrResult.missingCount > 0}
             <p class="import-warn">
-              本地缺少 {importedQrResult.missingCount} 张卡牌（{importedQrResult.missingCodes
-                .slice(0, 5)
-                .join(', ')}{importedQrResult.missingCount > 5
-                ? '...'
-                : ''}），导入后请到编辑器手动补充。
+              {$t('decks.missingWarn', {
+                values: {
+                  count: importedQrResult.missingCount,
+                  codes: `${importedQrResult.missingCodes
+                    .slice(0, 5)
+                    .join(', ')}${importedQrResult.missingCount > 5 ? '...' : ''}`,
+                },
+              })}
             </p>
           {/if}
         </div>
@@ -1137,14 +1174,14 @@
   {/if}
 
   {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showImportModal = false)}>取消</button>
+    <button class="button button-ghost" onclick={() => (showImportModal = false)}>{$t('common.cancel')}</button>
     {#if importTab === 'code'}
       <button
         class="button button-primary"
         disabled={!importCodeValid || importingCode}
         onclick={confirmCodeImport}
       >
-        {importingCode ? '解析中...' : '导入到编辑器'}
+        {importingCode ? $t('decks.parsing') : $t('decks.importToEditor')}
       </button>
     {:else if importTab === 'text'}
       <button
@@ -1152,7 +1189,7 @@
         disabled={!importTextValid || importingText}
         onclick={confirmTextImport}
       >
-        {importingText ? '解析中...' : '导入到编辑器'}
+        {importingText ? $t('decks.parsing') : $t('decks.importToEditor')}
       </button>
     {:else if importTab === 'qr'}
       <button
@@ -1160,7 +1197,7 @@
         disabled={!importQrValid || importingQr}
         onclick={confirmQrImport}
       >
-        {importingQr ? '解析中...' : '导入到编辑器'}
+        {importingQr ? $t('decks.parsing') : $t('decks.importToEditor')}
       </button>
     {:else if jsonDeckList.length > 0}
       <button
@@ -1168,7 +1205,7 @@
         disabled={importingJson || selectedJsonDeckIds.length === 0}
         onclick={confirmJsonImport}
       >
-        {importingJson ? '导入中...' : `导入 ${selectedJsonDeckIds.length} 副卡组`}
+        {importingJson ? $t('decks.importing') : $t('decks.importCount', { values: { count: selectedJsonDeckIds.length } })}
       </button>
     {/if}
   {/snippet}
@@ -1324,7 +1361,7 @@
     display: flex;
     flex-direction: column;
     padding: 20px;
-    border: 1px solid var(--border-color);
+    /*border: 1px solid var(--border-color);*/
     border-radius: var(--radius-lg);
     background: var(--bg-secondary);
     transition: all 0.15s;
@@ -1345,7 +1382,7 @@
 
   .deck-card.pinned {
     border-color: var(--secondary-accent-color);
-    box-shadow: 0 0 0 1px var(--secondary-accent-color) inset;
+    /*box-shadow: 0 0 0 1px var(--secondary-accent-color) inset;*/
   }
 
   .pin-btn {
@@ -1471,6 +1508,10 @@
 
   .stat-value .loss {
     color: #e03e3e;
+  }
+
+  .stat-value .draw {
+    color: var(--text-secondary);
   }
 
   .stat-value .separator {

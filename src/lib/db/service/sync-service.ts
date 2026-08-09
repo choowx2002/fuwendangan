@@ -18,6 +18,8 @@ import { uiState, showToast } from '$lib/stores/ui-store.svelte'
 import { whenOnline, isMetered } from '$lib/stores/network.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { getDatabase } from '../repository/database'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 
 /**
  * 初始化数据库（在 Tauri 环境中执行数据同步）
@@ -58,10 +60,10 @@ export async function initializeDatabase(opts?: { skipMetered?: boolean }): Prom
     if (needsSync) {
       if (opts?.skipMetered !== false && isMetered()) {
         console.warn('[DB] 当前为流量网络，跳过自动同步')
-        showToast('当前为移动数据网络，已跳过自动同步', 'info')
+        showToast(get(t)('common.skipMeteredSync'), 'info')
         return
       }
-      const accepted = await ask('你想要同步数据吗？')
+      const accepted = await ask(get(t)('common.syncDataPrompt'))
       console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
       if (accepted) {
         uiState.status = 'syncing'

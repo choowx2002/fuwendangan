@@ -1,5 +1,6 @@
 <script lang="ts">
   import { X } from '@lucide/svelte'
+  import { t } from 'svelte-i18n'
 
   interface Props {
     open: boolean
@@ -84,7 +85,7 @@
           </div>
 
           {#if closable}
-            <button class="modal-close" aria-label="关闭" onclick={() => onclose?.()}>
+            <button class="modal-close" aria-label={$t('common.close')} onclick={() => onclose?.()}>
               <X size={20} />
             </button>
           {/if}

@@ -9,6 +9,8 @@
   import { ttsState } from '$lib/stores/tts'
   import { sendToTTSTesting } from '$lib/services/tts-communication-service'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   interface Props {
     card: (CardBase & { card_prints?: CardPrint[] }) | null
@@ -92,10 +94,10 @@
     sending = true
     try {
       await sendToTTSTesting([data])
-      showToast(`已发送到 TTS：${card.card_name_cn}`, 'success')
+      showToast(get(t)('cards.sentToTts', { values: { name: card.card_name_cn } }), 'success')
     } catch (error) {
       console.error('[CardModal] 发送卡牌到 TTS 失败:', error)
-      showToast('发送失败，请检查 TTS 连接', 'error')
+      showToast(get(t)('cards.ttsSendFailed'), 'error')
     } finally {
       sending = false
     }
@@ -108,7 +110,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_interactive_supports_focus -->
     <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <button class="close-btn" onclick={onClose} aria-label="关闭">
+      <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
         <X size={20} />
       </button>
 
@@ -160,7 +162,7 @@
 
           {#if selectedVersion[selectedIndex]?.artist}
             <div class="artist-credit">
-              画师: {selectedVersion[selectedIndex].artist}
+              {$t('cards.artist')}: {selectedVersion[selectedIndex].artist}
             </div>
           {/if}
 
@@ -190,13 +192,13 @@
               onclick={spawnCard}
               class="button button-secondary button-sm"
               disabled={!$ttsState.sendPort || sending}
-              title={!$ttsState.sendPort ? '请先在侧边栏连接 TTS' : undefined}
+              title={!$ttsState.sendPort ? $t('tts.connectFirst') : undefined}
             >
               {#if sending}
                 <span class="spawn-spinner"><LoaderCircle size={16} /></span>
-                <span>生成中...</span>
+                <span>{$t('cards.generating')}</span>
               {:else}
-                <span>生成</span>
+                <span>{$t('cards.generate')}</span>
               {/if}
             </button>
           {/if}
@@ -216,7 +218,7 @@
             </div>
             <div class="meta-tags">
               {#if card.card_no}
-                <span class="chip">编号: {selectedVersion[selectedIndex]?.card_no_extend}</span>
+                <span class="chip">{$t('cards.cardNo')}: {selectedVersion[selectedIndex]?.card_no_extend}</span>
               {/if}
               {#if card.rarity_name}
                 <span class="chip rarity"
@@ -262,19 +264,19 @@
             <div class="stats-grid">
               {#if card.energy != null}
                 <div class="stat-box">
-                  <span class="stat-label">法力</span>
+                  <span class="stat-label">{$t('cards.energy')}</span>
                   <span class="stat-value">{card.energy}</span>
                 </div>
               {/if}
               {#if card.return_energy != null}
                 <div class="stat-box">
-                  <span class="stat-label">符能</span>
+                  <span class="stat-label">{$t('cards.runeEnergy')}</span>
                   <span class="stat-value">{card.return_energy}</span>
                 </div>
               {/if}
               {#if card.power != null && !card?.card_category?.includes('法术')}
                 <div class="stat-box">
-                  <span class="stat-label">战力</span>
+                  <span class="stat-label">{$t('cards.power')}</span>
                   <span class="stat-value">{card.power}</span>
                 </div>
               {/if}
@@ -289,7 +291,7 @@
               {:else if card.effect_cn}
                 {@html card.effect_cn}
               {:else}
-                <span class="empty-text">无效果</span>
+                <span class="empty-text">{$t('cards.noEffect')}</span>
               {/if}
               <br />
               {#if card.effect_en?.trim()}
@@ -302,7 +304,7 @@
           <div>
             {#if card.keyword && card.keyword.length > 0}
               <div class="tags-row" style="margin-bottom: 5px;">
-                <span class="card-subtitle" style="padding: 4px 0px;">关键词：</span>
+                <span class="card-subtitle" style="padding: 4px 0px;">{$t('cards.keywords')}:</span>
                 {#each card.keyword as k (k)}
                   <span class="chip">{k}</span>
                 {/each}
@@ -311,7 +313,7 @@
 
             {#if card.advanced_tag && card.advanced_tag.length > 0}
               <div class="tags-row">
-                <span class="card-subtitle" style="padding: 4px 0px;">高级标签：</span>
+                <span class="card-subtitle" style="padding: 4px 0px;">{$t('cards.advancedTags')}:</span>
                 {#each card.advanced_tag as t (t)}
                   <span class="chip">{t}</span>
                 {/each}
@@ -330,7 +332,7 @@
 
         {#if card.is_banned}
           <section class="isBanned">
-            <h1>禁用中</h1>
+            <h1>{$t('cards.banned')}</h1>
           </section>
         {/if}
       </div>

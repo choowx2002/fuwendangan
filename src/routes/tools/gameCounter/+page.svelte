@@ -20,6 +20,7 @@
     Trophy,
     RotateCcw,
     Flag,
+    Timer,
     SlidersHorizontal,
     Search,
     X,
@@ -28,6 +29,8 @@
     Dice6,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   let decks = $state<DeckListResult[]>([])
   let decksLoaded = $state(false)
@@ -77,6 +80,13 @@
     if (meWins >= target && oppWins >= target) return 'both'
     if (meWins >= target) return 'me'
     if (oppWins >= target) return 'opp'
+    // 平局也算一局：达到赛制总场次仍未分出胜负时结束，胜场多者胜，否则平局
+    const maxGames = Number($scoreCounterState.bestOf) || 1
+    if (games.length >= maxGames) {
+      if (meWins > oppWins) return 'me'
+      if (oppWins > meWins) return 'opp'
+      return 'draw'
+    }
     return null
   })
 
@@ -91,6 +101,10 @@
       )
       .slice(0, 50)
   })
+
+  function coinLabel(value: string): string {
+    return get(t)(value === '正面' ? 'tools.coinHeads' : 'tools.coinTails')
+  }
 
   function nowTime() {
     const d = new Date()
@@ -181,7 +195,15 @@
       const myScore = s.mePoints
       const oppScore = s.oppPoints
       const winner: GameRecord['winner'] =
-        winType === 'normal' ? (myScore >= oppScore ? 'me' : 'opp') : 'me'
+        winType === 'draw'
+          ? 'draw'
+          : winType === 'normal'
+            ? myScore > oppScore
+              ? 'me'
+              : myScore < oppScore
+                ? 'opp'
+                : 'draw'
+            : 'me'
       const record: GameRecord = {
         gameNumber: s.games.length + 1,
         winner,
@@ -210,11 +232,7 @@
   function confirmNextGame() {
     const s = $scoreCounterState
     if (reachedInfo === 'both' && s.mePoints === s.oppPoints) {
-      ask('双方比分相同无法判定胜者，请先调整比分或回退。', {
-        title: '无法结算',
-        kind: 'warning',
-        okLabel: '知道了',
-      })
+      settleGame('draw')
       return
     }
     settleGame('normal')
@@ -235,11 +253,11 @@
   }
 
   async function resetScore() {
-    const confirm = await ask('确定要重置计分吗？当前积分和所有小局记录将被清空。', {
-      title: '重置计分',
+    const confirm = await ask(get(t)('tools.resetConfirm'), {
+      title: get(t)('tools.resetScoreTitle'),
       kind: 'warning',
-      okLabel: '重置',
-      cancelLabel: '取消',
+      okLabel: get(t)('common.reset'),
+      cancelLabel: get(t)('common.cancel'),
     })
     if (!confirm) return
     scoreCounterState.update((s) => ({
@@ -283,7 +301,7 @@
       game_number: g.gameNumber,
       my_score: g.myScore,
       opp_score: g.oppScore,
-      win_type: g.winType,
+      win_type: g.winner === 'draw' ? 'draw' : g.winType,
       is_win: g.winner === 'me',
       is_first: null,
     }))
@@ -327,7 +345,7 @@
         },
         gameInputs
       )
-      await message('对局已保存到卡组记录！', { title: '保存成功', kind: 'info' })
+      await message(get(t)('tools.matchSaved'), { title: get(t)('tools.saveSuccessTitle'), kind: 'info' })
       scoreCounterState.update((st) => ({
         ...st,
         mePoints: 0,
@@ -337,7 +355,7 @@
       }))
     } catch (error) {
       console.error('[Tools] 保存对局失败:', error)
-      await message('保存失败，请重试', { title: '保存失败', kind: 'error' })
+      await message(get(t)('tools.saveFailedRetry'), { title: get(t)('tools.saveFailedTitle'), kind: 'error' })
     }
   }
 
@@ -361,21 +379,21 @@
       <button
         class="header-back-btn"
         onclick={() => window.history.back()}
-        aria-label="返回"
-        title="返回"
+        aria-label={$t('common.back')}
+        title={$t('common.back')}
       >
         <ChevronLeft size={18} />
       </button>
       <div class="section-actions">
         <button class="button button-ghost button-sm" onclick={() => (settingsOpen = true)}>
-          <SlidersHorizontal size={16} /> 设置
+          <SlidersHorizontal size={16} /> {$t('tools.settings')}
         </button>
         <button class="button button-ghost button-sm" onclick={() => (historyOpen = true)}>
-          <History size={16} /> 历史记录
+          <History size={16} /> {$t('tools.history')}
           {#if games.length > 0}<span class="history-btn-badge">{games.length}</span>{/if}
         </button>
         <button class="button button-ghost button-sm" onclick={() => (diceOpen = true)}>
-          <Dice6 size={16} /> 骰子
+          <Dice6 size={16} /> {$t('tools.dice')}
         </button>
       </div>
     </div>
@@ -384,23 +402,26 @@
       <div class="match-end-banner">
         {#if matchWinner === 'both'}
           <Trophy size={18} />
-          <span>双方均达到 {bestOfTarget[$scoreCounterState.bestOf]} 胜，请检查比分</span>
+          <span>{$t('tools.bothMatchWins', { values: { count: bestOfTarget[$scoreCounterState.bestOf] } })}</span>
         {:else if matchWinner === 'me'}
           <Trophy size={18} />
-          <span>{$scoreCounterState.meName} 获胜！大比分 {meWins} : {oppWins}</span>
+          <span>{$t('tools.playerWonMatch', { values: { name: $scoreCounterState.meName, me: meWins, opp: oppWins } })}</span>
+        {:else if matchWinner === 'draw'}
+          <Trophy size={18} />
+          <span>{$t('tools.matchDraw', { values: { me: meWins, opp: oppWins } })}</span>
         {:else}
           <Trophy size={18} />
-          <span>{$scoreCounterState.oppName} 获胜！大比分 {meWins} : {oppWins}</span>
+          <span>{$t('tools.playerWonMatch', { values: { name: $scoreCounterState.oppName, me: meWins, opp: oppWins } })}</span>
         {/if}
         <div class="banner-actions">
           {#if $scoreCounterState.deckId}
             <button class="button button-primary button-sm" onclick={saveMatchRecord}>
-              <Save size={14} /> 保存到对局记录
+              <Save size={14} /> {$t('tools.saveToRecords')}
             </button>
           {:else}
-            <span class="banner-hint">选择我方卡组后可将对局保存到记录</span>
+            <span class="banner-hint">{$t('tools.saveHint')}</span>
           {/if}
-          <button class="button button-ghost button-sm" onclick={resetScore}> 不保存，重置 </button>
+          <button class="button button-ghost button-sm" onclick={resetScore}> {$t('tools.noSaveReset')} </button>
         </div>
       </div>
     {/if}
@@ -408,18 +429,24 @@
     {#if gameOver}
       <div class="game-end-banner">
         {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
-          <span>双方同分，无法判定本局胜者，请调整比分</span>
+          <span>{$t('tools.tieNoWinner')}</span>
         {:else if reachedInfo === 'me'}
-          <span>{$scoreCounterState.meName} 已达 {$scoreCounterState.targetScore} 分！</span>
+          <span>{$t('tools.playerReached', { values: { name: $scoreCounterState.meName, score: $scoreCounterState.targetScore } })}</span>
         {:else if reachedInfo === 'opp'}
-          <span>{$scoreCounterState.oppName} 已达 {$scoreCounterState.targetScore} 分！</span>
+          <span>{$t('tools.playerReached', { values: { name: $scoreCounterState.oppName, score: $scoreCounterState.targetScore } })}</span>
         {:else}
-          <span>双方均已达到目标分</span>
+          <span>{$t('tools.bothReached')}</span>
         {/if}
         <div class="banner-actions">
-          <button class="button button-primary button-sm" onclick={confirmNextGame}>
-            确认，下一局
-          </button>
+          {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
+            <button class="button button-primary button-sm" onclick={() => settleGame('draw')}>
+              {$t('tools.settleDraw')}
+            </button>
+          {:else}
+            <button class="button button-primary button-sm" onclick={confirmNextGame}>
+              {$t('tools.confirmNext')}
+            </button>
+          {/if}
         </div>
       </div>
     {/if}
@@ -438,7 +465,7 @@
               class="score-name"
               type="text"
               maxlength="12"
-              placeholder="我方"
+              placeholder={$t('tools.mePlaceholder')}
               bind:value={$scoreCounterState.meName}
             />
             <div class="match-dots">
@@ -458,8 +485,8 @@
         <button
           class="flip-btn"
           class:active={oppFlipped}
-          title="翻转敌方视角"
-          aria-label="翻转敌方视角"
+          title={$t('tools.flipView')}
+          aria-label={$t('tools.flipView')}
           onclick={() => (oppFlipped = !oppFlipped)}
         >
           <FlipVertical2 size={16} />
@@ -478,7 +505,7 @@
                 class="score-name"
                 type="text"
                 maxlength="12"
-                placeholder="对方"
+                placeholder={$t('tools.oppPlaceholder')}
                 bind:value={$scoreCounterState.oppName}
               />
               <div class="match-dots">
@@ -498,60 +525,63 @@
 
     <div class="score-tools-row">
       <button class="button button-ghost button-sm" onclick={() => settleGame('special')}>
-        <Flag size={14} /> 特殊胜利
+        <Flag size={14} /> {$t('tools.specialWin')}
       </button>
       <button class="button button-ghost button-sm" onclick={() => settleGame('concede')}>
-        <RotateCcw size={14} /> 对方认输
+        <RotateCcw size={14} /> {$t('tools.oppConcede')}
       </button>
-      <span class="score-tools-hint">手动结算当前小局（记为胜，不影响目标分检测）</span>
+      <button class="button button-ghost button-sm" onclick={() => settleGame('draw')}>
+        <Timer size={14} /> {$t('tools.timeoutDraw')}
+      </button>
+      <span class="score-tools-hint">{$t('tools.manualSettleHint')}</span>
     </div>
   </section>
 
   <CommonModal
     open={settingsOpen}
-    title="计分器设置"
-    subtitle="配置卡组、对手与赛制信息"
+    title={$t('tools.settingsTitle')}
+    subtitle={$t('tools.settingsSubtitle')}
     width="min(520px, 100%)"
     onclose={() => (settingsOpen = false)}
   >
     <div class="settings-form">
       <label class="field">
-        <span class="field-label">我方卡组</span>
+        <span class="field-label">{$t('tools.myDeck')}</span>
         <select class="input select" bind:value={$scoreCounterState.deckId} disabled={!decksLoaded}>
-          <option value="">不关联（仅记分）</option>
+          <option value="">{$t('tools.noDeckAssoc')}</option>
           {#each decks as deck (deck.id)}
             <option value={deck.id}>{deck.name}</option>
           {/each}
         </select>
       </label>
       <label class="field">
-        <span class="field-label">对手</span>
+        <span class="field-label">{$t('tools.opponent')}</span>
         <input
           class="input"
           type="text"
-          placeholder="选填"
+          placeholder={$t('common.optional')}
           maxlength="50"
           bind:value={$scoreCounterState.opponentName}
         />
       </label>
       <label class="field">
-        <span class="field-label">对手卡组</span>
+        <span class="field-label">{$t('tools.opponentDeck')}</span>
         <input
           class="input"
           type="text"
-          placeholder="选填"
+          placeholder={$t('common.optional')}
           maxlength="50"
           bind:value={$scoreCounterState.opponentDeck}
         />
       </label>
       <div class="field legend-field">
-        <span class="field-label">对手传奇（选填）</span>
+        <span class="field-label">{$t('tools.oppLegend')}</span>
         <div class="legend-search">
           <Search size={14} class="legend-search-icon" />
           <input
             class="input"
             type="text"
-            placeholder="搜索传奇卡牌…"
+            placeholder={$t('tools.searchLegendPlaceholder')}
             maxlength="50"
             bind:value={oppLegendQuery}
           />
@@ -559,7 +589,7 @@
             <button
               class="icon-btn legend-clear-btn"
               type="button"
-              title="清除选择"
+              title={$t('tools.clearSelection')}
               onclick={clearOppLegend}
             >
               <X size={14} />
@@ -567,9 +597,9 @@
           {/if}
         </div>
         {#if legendLoading}
-          <span class="legend-hint">加载中…</span>
+          <span class="legend-hint">{$t('common.loading')}</span>
         {:else if oppLegendFiltered.length === 0}
-          <span class="legend-hint">未找到匹配的传奇卡</span>
+          <span class="legend-hint">{$t('tools.noLegendFound')}</span>
         {:else}
           <div class="legend-row">
             {#each oppLegendFiltered as card (card.id)}
@@ -592,20 +622,20 @@
         {/if}
         {#if $scoreCounterState.oppLegendName}
           <span class="legend-selected-label">
-            已选：{$scoreCounterState.oppLegendName}
+            {$t('tools.selectedLegend', { values: { name: $scoreCounterState.oppLegendName } })}
           </span>
         {/if}
       </div>
       <label class="field">
-        <span class="field-label">赛制</span>
+        <span class="field-label">{$t('tools.bestOf')}</span>
         <select class="input select" bind:value={$scoreCounterState.bestOf}>
-          <option value="1">BO1（1 胜）</option>
-          <option value="3">BO3（2 胜）</option>
-          <option value="5">BO5（3 胜）</option>
+          <option value="1">{$t('tools.bo1')}</option>
+          <option value="3">{$t('tools.bo3')}</option>
+          <option value="5">{$t('tools.bo5')}</option>
         </select>
       </label>
       <label class="field">
-        <span class="field-label">目标分</span>
+        <span class="field-label">{$t('tools.targetScore')}</span>
         <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
       </label>
     </div>
@@ -618,25 +648,25 @@
           settingsOpen = false
         }}
       >
-        重置计分
+        {$t('tools.resetScore')}
       </button>
-      <button class="button button-primary" onclick={() => (settingsOpen = false)}> 完成 </button>
+      <button class="button button-primary" onclick={() => (settingsOpen = false)}> {$t('tools.done')} </button>
     {/snippet}
   </CommonModal>
 
   <CommonModal
     open={historyOpen}
-    title="历史日志"
-    subtitle={`${games.length} 局`}
+    title={$t('tools.historyTitle')}
+    subtitle={$t('tools.gameCount', { values: { count: games.length } })}
     width="min(600px, 100%)"
     onclose={() => (historyOpen = false)}
   >
     {#if games.length === 0 && mePoints === 0 && oppPoints === 0 && currentActions.length === 0}
-      <p class="history-empty">还没有对局记录，用 +1/-1 开始计分</p>
+      <p class="history-empty">{$t('tools.noGames')}</p>
     {:else}
       <ul class="history-list">
         <li class="history-item history-inprogress">
-          <span class="history-time">进行中</span>
+          <span class="history-time">{$t('tools.inProgress')}</span>
           <span class="history-desc">
             {$scoreCounterState.meName}
             {mePoints} :
@@ -664,21 +694,33 @@
         {/if}
         {#each [...games].reverse() as g, i (g.gameNumber)}
           <li class="history-item">
-            <span class="history-time">第 {g.gameNumber} 局</span>
+            <span class="history-time">{$t('tools.gameNumber', { values: { number: g.gameNumber } })}</span>
             <span class="history-desc">
               <span class="history-side" class:me={g.winner === 'me'}>
-                {g.winner === 'me' ? $scoreCounterState.meName : $scoreCounterState.oppName}
+                {g.winner === 'me'
+                  ? $scoreCounterState.meName
+                  : g.winner === 'opp'
+                    ? $scoreCounterState.oppName
+                    : $t('tools.draw')}
               </span>
               <span class="history-score">
                 {g.myScore} : {g.oppScore}
               </span>
-              <span class="history-result" class:win={g.winner === 'me'}>
-                {g.winner === 'me' ? '胜' : '负'}
+              <span
+                class="history-result"
+                class:win={g.winner === 'me'}
+                class:draw={g.winner === 'draw'}
+              >
+                {g.winner === 'me'
+                  ? $t('tools.win')
+                  : g.winner === 'opp'
+                    ? $t('tools.loss')
+                    : $t('tools.draw')}
               </span>
               {#if g.winType === 'special'}
-                <span class="history-type">特殊胜利</span>
+                <span class="history-type">{$t('tools.specialWin')}</span>
               {:else if g.winType === 'concede'}
-                <span class="history-type">对方认输</span>
+                <span class="history-type">{$t('tools.oppConcede')}</span>
               {/if}
               <span class="history-time raw">· {g.time}</span>
             </span>
@@ -707,7 +749,7 @@
 
     {#snippet footer()}
       <button class="button button-ghost" onclick={revertLastGame} disabled={games.length === 0}>
-        回退上一局
+        {$t('tools.revertLast')}
       </button>
       <button
         class="button button-danger-outline"
@@ -716,16 +758,16 @@
           historyOpen = false
         }}
       >
-        清空记录
+        {$t('tools.clearRecords')}
       </button>
-      <button class="button button-primary" onclick={() => (historyOpen = false)}> 关闭 </button>
+      <button class="button button-primary" onclick={() => (historyOpen = false)}> {$t('common.close')} </button>
     {/snippet}
   </CommonModal>
 
   <CommonModal
     open={diceOpen}
-    title="骰子"
-    subtitle="投掷 d20 / 掷硬币"
+    title={$t('tools.dice')}
+    subtitle={$t('tools.diceSubtitle')}
     width="min(400px, 100%)"
     onclose={() => (diceOpen = false)}
   >
@@ -736,14 +778,14 @@
           class:active={rngMode === 'dice'}
           onclick={() => (rngMode = 'dice')}
         >
-          投掷 d20
+          {$t('tools.rollD20')}
         </button>
         <button
           class="toggle-btn"
           class:active={rngMode === 'coin'}
           onclick={() => (rngMode = 'coin')}
         >
-          掷硬币
+          {$t('tools.flipCoin')}
         </button>
       </div>
 
@@ -752,15 +794,15 @@
           class="rng-faces dice"
           class:rolling={diceRolling}
           onclick={rollDice}
-          aria-label="投掷骰子"
+          aria-label={$t('tools.rollDiceAria')}
         >
           <span class="dice-face">{diceRolling ? '?' : (diceResult ?? '20')}</span>
         </button>
         <span class="rng-result" class:ready={diceResult !== null}>
-          {diceResult !== null ? `掷出 ${diceResult}` : '点击投掷'}
+          {diceResult !== null ? $t('tools.rolled', { values: { value: diceResult } }) : $t('tools.clickRoll')}
         </span>
         <div class="rng-history">
-          <span class="rng-history-label">骰子</span>
+          <span class="rng-history-label">{$t('tools.dice')}</span>
           {#if diceHistory.length === 0}
             <span class="rng-history-empty">—</span>
           {:else}
@@ -776,21 +818,21 @@
           class="rng-faces coin"
           class:flipping={coinFlipping}
           onclick={flipCoin}
-          aria-label="掷硬币"
+          aria-label={$t('tools.flipCoinAria')}
         >
-          <span class="coin-face">{coinFlipping ? '…' : (coinResult ?? '?')}</span>
+          <span class="coin-face">{coinFlipping ? '…' : (coinResult ? coinLabel(coinResult) : '?')}</span>
         </button>
         <span class="rng-result" class:ready={coinResult !== null}>
-          {coinResult ?? '点击掷币'}
+          {coinResult ? coinLabel(coinResult) : $t('tools.clickFlip')}
         </span>
         <div class="rng-history">
-          <span class="rng-history-label">硬币</span>
+          <span class="rng-history-label">{$t('tools.coin')}</span>
           {#if coinHistory.length === 0}
             <span class="rng-history-empty">—</span>
           {:else}
             <div class="rng-history-chips">
               {#each coinHistory as item, i (i)}
-                <span class="chip coin-chip">{item}</span>
+                <span class="chip coin-chip">{coinLabel(item)}</span>
               {/each}
             </div>
           {/if}
@@ -1474,6 +1516,10 @@
   .history-result.win {
     color: #0f7b6c;
     background: color-mix(in srgb, #0f7b6c 12%, transparent);
+  }
+  .history-result.draw {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
   }
 
   .history-type {

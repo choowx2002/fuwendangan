@@ -1,6 +1,7 @@
 <script lang="ts">
   import { hideLoading, uiState } from '$lib/stores/ui-store.svelte'
   import { CircleCheck, CircleAlert, RefreshCw, X } from '@lucide/svelte'
+  import { t } from 'svelte-i18n'
 
   interface Props {
     status: 'loading' | 'syncing' | 'downloading' | 'success' | 'error'
@@ -17,36 +18,36 @@
     switch (status) {
       case 'loading':
         return {
-          text: text?.trim() ?? '正在初始化数据库...',
-          subtext: subtext?.trim() ?? '首次启动可能需要几秒钟',
+          text: text?.trim() ?? $t('loading.init'),
+          subtext: subtext?.trim() ?? $t('loading.initSub'),
           showGif: true,
         }
 
       case 'syncing':
         return {
-          text: text?.trim() ?? '正在同步卡牌数据...',
-          subtext: subtext?.trim() ?? '从云端拉取最新卡库',
+          text: text?.trim() ?? $t('loading.syncing'),
+          subtext: subtext?.trim() ?? $t('loading.syncingSub'),
           showGif: true,
         }
 
       case 'success':
         return {
-          text: text?.trim() ?? '初始化完成',
-          subtext: subtext?.trim() ?? '即将进入应用',
+          text: text?.trim() ?? $t('loading.success'),
+          subtext: subtext?.trim() ?? $t('loading.successSub'),
           showGif: false,
         }
 
       case 'error':
         return {
-          text: text?.trim() ?? '初始化失败',
-          subtext: subtext?.trim() ?? '请检查网络连接后重试',
+          text: text?.trim() ?? $t('loading.error'),
+          subtext: subtext?.trim() ?? $t('loading.errorSub'),
           showGif: false,
         }
 
       case 'downloading':
         return {
-          text: text?.trim() ?? '正在下载卡牌...',
-          subtext: subtext?.trim() ?? '正在同步图片资源',
+          text: text?.trim() ?? $t('loading.downloading'),
+          subtext: subtext?.trim() ?? $t('loading.downloadingSub'),
           showGif: true,
         }
     }
@@ -62,7 +63,7 @@
         {#if status === 'downloading'}
           <div class="progress-wrapper">
             <div class="progress-info">
-              <span>下载进度</span>
+              <span>{$t('loading.progress')}</span>
               <span>{Math.round(progress)}%</span>
             </div>
 
@@ -90,21 +91,21 @@
     {#if status === 'error' && onRetry}
       <button class="button button-secondary" onclick={onRetry}>
         <RefreshCw size={16} />
-        <span>重试</span>
+        <span>{$t('common.retry')}</span>
       </button>
     {/if}
 
     {#if status === 'error'}
       <button class="button button-secondary" onclick={hideLoading}>
         <X size={16} />
-        <span>关闭</span>
+        <span>{$t('common.close')}</span>
       </button>
     {/if}
 
     {#if status === 'downloading' && onCancel}
       <button class="button button-text" onclick={onCancel}>
         <X size={16} />
-        <span>取消下载</span>
+        <span>{$t('common.cancelDownload')}</span>
       </button>
     {/if}
   </div>

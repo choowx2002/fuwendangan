@@ -2,26 +2,27 @@
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { Swords, Dice6, ChevronRight } from '@lucide/svelte'
   import { goto } from '$app/navigation'
+  import { t } from '$lib/i18n'
 
   const toolCards = [
     {
       icon: Swords,
-      label: '对战记录',
-      desc: '双人对战计分器，记录每局比分与对局历史',
+      labelKey: 'tools.gameCounter',
+      descKey: 'tools.gameCounterDesc',
       color: '#e03e3e',
       href: '/tools/gameCounter',
     },
     {
       icon: Dice6,
-      label: '骰子',
-      desc: '掷 d20 骰子 / 掷硬币，随机数生成',
+      labelKey: 'tools.dice',
+      descKey: 'tools.diceDesc',
       color: '#d9730d',
       href: '/tools/dice',
     },
   ]
 
   $effect(() => {
-    setTopbar({ title: '对战工具' })
+    setTopbar({ title: $t('tools.title') })
   })
 </script>
 
@@ -33,8 +34,8 @@
           <tool.icon size={28} />
         </div>
         <div class="tool-info">
-          <span class="tool-label">{tool.label}</span>
-          <span class="tool-desc">{tool.desc}</span>
+          <span class="tool-label">{$t(tool.labelKey)}</span>
+          <span class="tool-desc">{$t(tool.descKey)}</span>
         </div>
         <span class="tool-arrow"><ChevronRight size={18} /></span>
       </button>

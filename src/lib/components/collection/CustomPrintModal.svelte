@@ -19,6 +19,8 @@
     saveRemoteImageAsToken,
   } from '$lib/services/image-cache-service'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   interface Props {
     cardId: string
@@ -68,13 +70,13 @@
     try {
       const c = await getCardById(id)
       if (!c) {
-        baseCardError = '未找到原型卡'
+        baseCardError = get(t)('collection.baseCardNotFound')
         return
       }
       baseCard = { id: c.id, cardNo: c.card_no ?? '', name: c.card_name_cn ?? c.card_name_en ?? '' }
     } catch (err) {
       console.error('[CustomPrintModal] 原型卡加载失败:', err)
-      baseCardError = '原型卡加载失败'
+      baseCardError = get(t)('collection.baseCardLoadFailed')
     }
   }
 
@@ -93,7 +95,7 @@
     } catch (err) {
       console.error('[CustomPrintModal] 原型卡搜索失败:', err)
       cardSearchResults = []
-      cardSearchError = '搜索失败，请重试'
+      cardSearchError = get(t)('common.searchFailedRetry')
     } finally {
       cardSearching = false
     }
@@ -176,9 +178,9 @@
     const existing = prints.filter((p) => p.card_no_extend === no && p.id !== editId)
     variantConflict =
       existing.length > 0
-        ? `该卡牌号已存在（已有语言：${[...new Set(existing.map((p) => p.language ?? '未知'))].join(
-            '、'
-          )}）`
+        ? get(t)('collection.variantConflict', {
+            values: { langs: [...new Set(existing.map((p) => p.language ?? get(t)('common.unknown')))].join('、') },
+          })
         : ''
   }
 
@@ -200,7 +202,7 @@
   async function pickImage() {
     const selected = await open({
       multiple: false,
-      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+      filters: [{ name: get(t)('collection.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
     })
     if (typeof selected !== 'string' || !selected) return
     const token = `custom-${Date.now()}`
@@ -208,7 +210,7 @@
     if (ok) {
       imgToken = token
     } else {
-      errorMsg = '图片复制失败'
+      errorMsg = get(t)('collection.imgCopyFailed')
     }
   }
 
@@ -224,11 +226,11 @@
   async function applyImgUrl() {
     const url = imgUrl.trim()
     if (!url) {
-      errorMsg = '请输入图片 URL'
+      errorMsg = get(t)('collection.enterImgUrl')
       return
     }
     if (!/^https?:\/\//i.test(url)) {
-      errorMsg = 'URL 需以 http:// 或 https:// 开头'
+      errorMsg = get(t)('collection.urlSchemeRequired')
       return
     }
     clearError()
@@ -240,10 +242,10 @@
         imgToken = token
         imgUrl = ''
       } else {
-        errorMsg = '图片下载失败，请确认链接可访问'
+        errorMsg = get(t)('collection.imgDownloadFailedConfirm')
       }
     } catch (err) {
-      errorMsg = err instanceof Error ? err.message : '图片下载失败'
+      errorMsg = err instanceof Error ? err.message : get(t)('collection.imgDownloadFailed')
     } finally {
       imgApplying = false
     }
@@ -251,7 +253,7 @@
 
   async function save() {
     if (!cardNoExtend.trim()) {
-      errorMsg = '请填写卡图编号'
+      errorMsg = get(t)('collection.enterCardNo')
       return
     }
     if (variantConflict) {
@@ -259,8 +261,8 @@
       return
     }
     if (!editPrint && !baseCard) {
-      errorMsg = '请先选择原型卡'
-      showToast('请先选择原型卡', 'error')
+      errorMsg = get(t)('collection.selectBaseFirst')
+      showToast(get(t)('collection.selectBaseFirst'), 'error')
       return
     }
     saving = true
@@ -292,11 +294,11 @@
       if (editPrint && originalImgToken && originalImgToken !== imgToken) {
         void deleteCachedImage(originalImgToken)
       }
-      showToast(editPrint ? '自定打印已更新' : '自定打印已创建', 'success')
+      showToast(editPrint ? get(t)('collection.customPrintUpdated') : get(t)('collection.customPrintCreated'), 'success')
       onSaved(printId)
       onClose()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '保存失败'
+      const msg = err instanceof Error ? err.message : get(t)('collection.saveFailed')
       errorMsg = msg
       showToast(msg, 'error')
       // 创建失败时清理本次已复制的卡图缓存，避免孤儿文件
@@ -324,43 +326,47 @@
       tabindex="-1"
       oninput={clearError}
     >
-      <button class="close-btn" onclick={onClose} aria-label="关闭">
+      <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
         <X size={20} />
       </button>
       <h3 class="modal-title">
-        {editPrint ? '编辑自定打印' : cardNo ? `新建自定打印（原型 ${cardNo}）` : '新建自定打印'}
+        {editPrint
+          ? $t('collection.editCustomPrint')
+          : cardNo
+            ? $t('collection.newCustomPrintWithProto', { values: { cardNo } })
+            : $t('collection.newCustomPrint')}
       </h3>
 
       {#if editPrint}
         <div class="field">
-          <span class="field-label">原型卡（Base）</span>
+          <span class="field-label">{$t('collection.baseCardLabel')}</span>
           <div class="base-card-row">
             <span class="base-card-info">
               {baseCard
                 ? `${baseCard.cardNo} · ${baseCard.name}`
                 : baseCardError
                   ? baseCardError
-                  : '加载中...'}
+                  : $t('common.loading')}
             </span>
           </div>
         </div>
       {:else}
         <div class="field">
-          <span class="field-label">原型卡（Base）</span>
+          <span class="field-label">{$t('collection.baseCardLabel')}</span>
           <div class="base-card-row">
             <span class="base-card-info">
               {baseCard
                 ? `${baseCard.cardNo} · ${baseCard.name}`
                 : baseCardError
                   ? baseCardError
-                  : '尚未选择'}
+                  : $t('collection.notSelected')}
             </span>
             <button
               class="btn-ghost"
               type="button"
               onclick={() => (showCardSearch = !showCardSearch)}
             >
-              {showCardSearch ? '收起' : baseCard ? '更换' : '选择原型卡'}
+              {showCardSearch ? $t('collection.collapse') : baseCard ? $t('collection.changeBase') : $t('collection.selectBase')}
             </button>
           </div>
           {#if showCardSearch}
@@ -368,13 +374,13 @@
               <div class="card-search-row">
                 <input
                   bind:value={cardSearchText}
-                  placeholder="按卡号或卡名搜索"
+                  placeholder={$t('collection.searchByNoOrName')}
                   onkeydown={(e) => {
                     if (e.key === 'Enter') void searchBaseCards()
                   }}
                 />
                 <button class="btn-ghost" type="button" onclick={() => void searchBaseCards()}>
-                  <Search size={14} /> 搜索
+                  <Search size={14} /> {$t('common.search')}
                 </button>
               </div>
               <div class="card-search-results">
@@ -387,9 +393,9 @@
                 {#if cardSearchError}
                   <div class="cs-empty">{cardSearchError}</div>
                 {:else if cardSearching}
-                  <div class="cs-empty">搜索中...</div>
+                  <div class="cs-empty">{$t('common.searching')}</div>
                 {:else if cardSearchText && cardSearchResults.length === 0}
-                  <div class="cs-empty">未找到匹配卡牌</div>
+                  <div class="cs-empty">{$t('cards.noResults')}</div>
                 {/if}
               </div>
             </div>
@@ -398,11 +404,11 @@
       {/if}
 
       <div class="field">
-        <label for="cp-extend">卡图编号（卡牌号）</label>
+        <label for="cp-extend">{$t('collection.cardNoLabel')}</label>
         <input
           id="cp-extend"
           bind:value={cardNoExtend}
-          placeholder={baseCard?.cardNo ? `如 ${baseCard.cardNo}-C01` : '如 C01'}
+          placeholder={baseCard?.cardNo ? $t('collection.exampleNo', { values: { cardNo: baseCard.cardNo } }) : $t('collection.exampleNoShort')}
         />
         {#if variantConflict}
           <small class="conflict-msg">{variantConflict}</small>
@@ -411,7 +417,7 @@
 
       <div class="form-row">
         <div class="field">
-          <label for="cp-rarity">扩展稀有度</label>
+          <label for="cp-rarity">{$t('collection.extendRarityLabel')}</label>
           <select id="cp-rarity" bind:value={extendRarityName}>
             {#each RARITY_OPTIONS as r (r)}
               <option value={r}>{r}</option>
@@ -420,7 +426,7 @@
         </div>
 
         <div class="field">
-          <label for="cp-lang">语言</label>
+          <label for="cp-lang">{$t('collection.languageLabel')}</label>
           <select id="cp-lang" bind:value={language}>
             {#each langOptions as code (code)}
               <option value={code}>{languageDisplayName(code, customLangNames)}</option>
@@ -430,32 +436,32 @@
       </div>
 
       <div class="field">
-        <label for="cp-artist">画师（可选）</label>
-        <input id="cp-artist" bind:value={artist} placeholder="画师名" />
+        <label for="cp-artist">{$t('collection.artistOptional')}</label>
+        <input id="cp-artist" bind:value={artist} placeholder={$t('collection.artistPlaceholder')} />
       </div>
 
       <div class="field">
-        <span class="field-label">卡图</span>
+        <span class="field-label">{$t('collection.cardImageLabel')}</span>
         {#if imgToken}
           <div class="img-row">
             <img
               src={previewUrl}
-              alt="预览"
+              alt={$t('collection.previewAlt')}
               class="img-preview"
               onerror={(e) => {
                 ;(e.currentTarget as HTMLImageElement).style.display = 'none'
               }}
             />
-            <button class="btn-ghost" onclick={removeImage} type="button">移除</button>
+            <button class="btn-ghost" onclick={removeImage} type="button">{$t('collection.remove')}</button>
           </div>
         {:else}
           <div class="img-source">
-            <button class="btn-ghost" onclick={pickImage} type="button">选择本地图片</button>
-            <span class="img-or">或</span>
+            <button class="btn-ghost" onclick={pickImage} type="button">{$t('collection.pickLocalImage')}</button>
+            <span class="img-or">{$t('collection.or')}</span>
             <div class="img-url-row">
               <input
                 bind:value={imgUrl}
-                placeholder="输入图片 URL（https://...）"
+                placeholder={$t('collection.enterImgUrlPlaceholder')}
                 onkeydown={(e) => {
                   if (e.key === 'Enter') void applyImgUrl()
                 }}
@@ -466,22 +472,22 @@
                 type="button"
                 disabled={imgApplying}
               >
-                {imgApplying ? '下载中...' : '应用'}
+                {imgApplying ? $t('collection.downloading') : $t('common.apply')}
               </button>
             </div>
           </div>
         {/if}
-        <small class="hint">不选则不显示卡图</small>
+        <small class="hint">{$t('collection.noImgHint')}</small>
       </div>
 
       {#if !editPrint}
         <div class="qty-row">
           <div class="field inline">
-            <label for="cp-normal">普卡</label>
+            <label for="cp-normal">{$t('collection.normalCol')}</label>
             <input id="cp-normal" type="number" bind:value={normalQty} min="0" />
           </div>
           <div class="field inline">
-            <label for="cp-foil">闪卡</label>
+            <label for="cp-foil">{$t('collection.foilCol')}</label>
             <input id="cp-foil" type="number" bind:value={foilQty} min="0" />
           </div>
         </div>
@@ -492,9 +498,9 @@
       {/if}
 
       <div class="actions">
-        <button class="btn-cancel" onclick={onClose} type="button">取消</button>
+        <button class="btn-cancel" onclick={onClose} type="button">{$t('common.cancel')}</button>
         <button class="btn-save" onclick={save} type="button" disabled={saving}>
-          {saving ? '保存中...' : '保存'}
+          {saving ? $t('collection.saving') : $t('common.save')}
         </button>
       </div>
     </div>

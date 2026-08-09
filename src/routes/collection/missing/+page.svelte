@@ -23,8 +23,18 @@
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   const DEFAULT_NEED = 3
+
+  const BUCKET_LABEL_KEYS: Record<VariantBucket, string> = {
+    base: 'collection.bucketBase',
+    alt: 'collection.bucketAlt',
+    overnum: 'collection.bucketOvernum',
+    rune: 'collection.bucketRune',
+    token: 'collection.bucketToken',
+  }
 
   const urlSeries = page.url.searchParams.get('seriesCode') ?? ''
   const urlBucket = page.url.searchParams.get('bucket')
@@ -195,15 +205,24 @@
               series ? (chosen?.totalCount ?? 0) : (stats?.overallCount ?? 0)
             )
       const stamp = new Date().toISOString().slice(0, 10)
-      const code = series || '全部系列'
-      const ok = await saveMissingList(content, `缺卡清单-${code}-${stamp}.${format}`, format)
+      const code = series || get(t)('collection.allSeries')
+      const ok = await saveMissingList(
+        content,
+        `${get(t)('collection.missingListPrefix')}-${code}-${stamp}.${format}`,
+        format
+      )
       if (ok) {
-        showToast(`已保存 ${textRows.length} 条缺卡明细`, 'success')
+        showToast(get(t)('collection.savedDetail', { values: { count: textRows.length } }), 'success')
       } else {
-        showToast('已取消保存', 'info')
+        showToast(get(t)('collection.saveCancelled'), 'info')
       }
     } catch (err) {
-      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.exportFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       exporting = false
       showExportModal = false
@@ -220,7 +239,7 @@
 
   $effect(() => {
     setTopbar({
-      title: '缺卡清单',
+      title: $t('collection.missingList'),
       description: seriesTitle,
       onBack: () => goto('/collection'),
     })
@@ -233,38 +252,38 @@
       <div class="filter-bar">
         <button class="filter-toggle" onclick={() => (filtersCollapsed = !filtersCollapsed)}>
           <Filter size={14} />
-          筛选
-          {#if selectedCount > 0}<span class="filter-count">{selectedCount} 项</span>{/if}
+          {$t('collection.filter')}
+          {#if selectedCount > 0}<span class="filter-count">{$t('collection.selectedCount', { values: { count: selectedCount } })}</span>{/if}
           <span class="chevron-wrap" class:rotated={!filtersCollapsed}>
             <ChevronDown class="chevron" size={14} />
           </span>
         </button>
         {#if bucket}
           <span class="bucket-badge">
-            桶：{BUCKET_LABELS[bucket as VariantBucket]}
-            <button class="badge-clear" onclick={() => (bucket = null)} aria-label="清除桶筛选">
+            {$t('collection.bucketLabel')}: {$t(BUCKET_LABEL_KEYS[bucket as VariantBucket])}
+            <button class="badge-clear" onclick={() => (bucket = null)} aria-label={$t('collection.clearBucket')}>
               <X size={12} />
             </button>
           </span>
         {/if}
-        <button class="reset-btn" onclick={resetFilters}>重置</button>
+        <button class="reset-btn" onclick={resetFilters}>{$t('common.reset')}</button>
       </div>
 
       <div class="filter-body" class:hidden={filtersCollapsed}>
         <div class="select-row">
           <div class="option-group">
-            <div class="option-label">弹</div>
+            <div class="option-label">{$t('collection.setLabel')}</div>
             <select class="series-select" bind:value={series}>
-              <option value="">全部系列</option>
+              <option value="">{$t('collection.allSeries')}</option>
               {#each seriesOptions as s (s.code)}
                 <option value={s.code}>{s.nameCn ?? s.code}</option>
               {/each}
             </select>
           </div>
           <div class="option-group">
-            <div class="option-label">语言</div>
+            <div class="option-label">{$t('collection.languageLabel')}</div>
             <select class="series-select" bind:value={language}>
-              <option value="">全部语言</option>
+              <option value="">{$t('collection.allLanguages')}</option>
               {#each langOptions as code (code)}
                 <option value={code}>{languageDisplayName(code, customLangNames)}</option>
               {/each}
@@ -273,7 +292,7 @@
         </div>
 
         <div class="option-group">
-          <div class="option-label">稀有度</div>
+          <div class="option-label">{$t('collection.rarityLabel')}</div>
           <div class="chips">
             {#each rarityOptions as r (r)}
               <button
@@ -288,7 +307,7 @@
         </div>
 
         <div class="option-group">
-          <div class="option-label">类型</div>
+          <div class="option-label">{$t('collection.typeLabel')}</div>
           <div class="chips">
             {#each categoryOptions as c (c)}
               <button
@@ -303,7 +322,7 @@
         </div>
 
         <div class="option-group">
-          <div class="option-label">颜色</div>
+          <div class="option-label">{$t('collection.colorLabel')}</div>
           <div class="chips">
             {#each colorOptions as c (c)}
               <button
@@ -323,7 +342,7 @@
       <div class="table-head">
         <span class="head-cell">
           <button class="sort-btn" class:active={sortKey === 'no'} onclick={() => toggleSort('no')}>
-            编号
+            {$t('collection.noCol')}
             <span class="sort-glyph">{sortKey === 'no' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
           </button>
         </span>
@@ -333,7 +352,7 @@
             class:active={sortKey === 'name'}
             onclick={() => toggleSort('name')}
           >
-            名字
+            {$t('collection.nameCol')}
             <span class="sort-glyph">{sortKey === 'name' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
           </button>
         </span>
@@ -343,7 +362,7 @@
             class:active={sortKey === 'rarity'}
             onclick={() => toggleSort('rarity')}
           >
-            稀有度
+            {$t('collection.rarityCol')}
             <span class="sort-glyph">{sortKey === 'rarity' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
           </button>
         </span>
@@ -353,7 +372,7 @@
             class:active={sortKey === 'owned'}
             onclick={() => toggleSort('owned')}
           >
-            拥有
+            {$t('collection.ownedCol')}
             <span class="sort-glyph">{sortKey === 'owned' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
           </button>
         </span>
@@ -363,15 +382,15 @@
             class:active={sortKey === 'need'}
             onclick={() => toggleSort('need')}
           >
-            需求
+            {$t('collection.needCol')}
             <span class="sort-glyph">{sortKey === 'need' ? (sortAsc ? '↑' : '↓') : '↕'}</span>
           </button>
         </span>
       </div>
       {#if loadingRows}
-        <div class="table-tip">加载中...</div>
+        <div class="table-tip">{$t('common.loading')}</div>
       {:else if rows.length === 0}
-        <div class="table-tip">该条件下没有卡牌卡牌</div>
+        <div class="table-tip">{$t('collection.noRows')}</div>
       {:else}
         <div class="table-body">
           {#each sortedRows as row (variantKey(row))}
@@ -381,7 +400,7 @@
                 {row.cardNameCn ?? ''}
                 {row.subCn}
                 {#if satisfiedOf(row)}
-                  <span class="satisfied-badge">已集齐</span>
+                  <span class="satisfied-badge">{$t('collection.satisfied')}</span>
                 {/if}
               </span>
               <span class="cell-rarity rarity-col">{row.rarity ?? ''}</span>
@@ -403,11 +422,13 @@
 
   <div class="action-bar">
     <div class="action-stats">
-      共 {rows.length} · 缺 {missingRows.length} · 已集齐 {satisfiedCount}
+      {$t('collection.statsSummary', {
+        values: { total: rows.length, missing: missingRows.length, satisfied: satisfiedCount },
+      })}
     </div>
     <label class="include-check">
       <input type="checkbox" bind:checked={includeComplete} />
-      包含已集齐
+      {$t('collection.includeComplete')}
     </label>
     <button
       class="button button-primary export-btn"
@@ -415,19 +436,19 @@
       disabled={exporting || loadingRows || rows.length === 0}
     >
       <Save size={14} />
-      {exporting ? '导出中...' : '导出'}
+      {exporting ? $t('collection.exporting') : $t('common.export')}
     </button>
   </div>
 </div>
 
 <CommonModal
   open={showExportModal}
-  title="导出缺卡清单"
-  subtitle={`当前 ${includeComplete ? rows.length : missingRows.length} 个卡牌`}
+  title={$t('collection.exportMissingTitle')}
+  subtitle={$t('collection.exportCount', { values: { count: includeComplete ? rows.length : missingRows.length } })}
   closable={!exporting}
   onclose={() => (showExportModal = false)}
 >
-  <div class="export-format-label">文件格式</div>
+  <div class="export-format-label">{$t('collection.fileFormat')}</div>
   <div class="export-format-group">
     <button
       class="export-format-option"
@@ -436,8 +457,8 @@
       onclick={() => (exportFormat = 'txt')}
     >
       <FileText size={16} />
-      <span class="export-format-name">文本 (.txt)</span>
-      <span class="export-format-desc">带系列信息与合计的纯文本清单</span>
+      <span class="export-format-name">{$t('deckDetail.txtOption')}</span>
+      <span class="export-format-desc">{$t('collection.txtFormatDesc')}</span>
     </button>
     <button
       class="export-format-option"
@@ -446,8 +467,8 @@
       onclick={() => (exportFormat = 'csv')}
     >
       <FileText size={16} />
-      <span class="export-format-name">表格 (.csv)</span>
-      <span class="export-format-desc">含表头，便于导入 Excel / 表格工具</span>
+      <span class="export-format-name">{$t('deckDetail.csvOption')}</span>
+      <span class="export-format-desc">{$t('collection.csvFormatDesc')}</span>
     </button>
   </div>
 
@@ -457,14 +478,14 @@
       disabled={exporting}
       onclick={() => (showExportModal = false)}
     >
-      取消
+      {$t('common.cancel')}
     </button>
     <button
       class="button button-primary"
       disabled={exporting || rows.length === 0}
       onclick={() => handleExport(exportFormat)}
     >
-      {exporting ? '导出中...' : '导出'}
+      {exporting ? $t('collection.exporting') : $t('common.export')}
     </button>
   {/snippet}
 </CommonModal>

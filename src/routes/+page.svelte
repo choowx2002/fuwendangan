@@ -7,6 +7,8 @@
   import { Swords, Dice6, Pin, ChevronRight, UserRound } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
+  import { get } from 'svelte/store'
+  import { t } from 'svelte-i18n'
 
   interface HomeDeck {
     id: string
@@ -14,6 +16,7 @@
     format: string | null
     wins: number
     losses: number
+    draws: number
     updated: string
     pinned: boolean
   }
@@ -25,15 +28,13 @@
   const quickTools = [
     {
       icon: Swords,
-      label: '对战记录',
-      desc: '双人对战计分',
+      labelKey: 'home.toolsGameCounter',
       color: '#e03e3e',
       href: '/tools/gameCounter',
     },
     {
       icon: Dice6,
-      label: '骰子',
-      desc: '掷骰 / 掷币',
+      labelKey: 'home.toolsDice',
       color: '#d9730d',
       href: '/tools/dice',
     },
@@ -67,9 +68,10 @@
           id: d.id,
           name: d.name,
           format: d.format,
-          wins: s?.wins ?? 0,
-          losses: s?.losses ?? 0,
-          updated: d.updated_at ? getRelativeTime(d.updated_at) : '未知',
+          wins: s?.match_wins ?? 0,
+          losses: s?.match_losses ?? 0,
+          draws: s?.match_draws ?? 0,
+          updated: d.updated_at ? getRelativeTime(d.updated_at) : get(t)('common.unknown'),
           pinned: isDeckPinned(d.id),
         }
       })
@@ -78,8 +80,10 @@
 
   $effect(() => {
     setTopbar({
-      title: '首页',
-      description: `欢迎回来，${$playerName.trim() || '玩家'}。今天想玩点什么？`,
+      title: $t('home.topbarTitle'),
+      description: $t('home.topbarDesc', {
+        values: { name: $playerName.trim() || $t('common.unknown') },
+      }),
     })
   })
 </script>
@@ -89,11 +93,21 @@
   <section class="hero">
     <div class="hero-content">
       <span class="hero-date">{todayText()}</span>
-      <h1 class="hero-title">欢迎回来{$playerName.trim() ? `，${$playerName.trim()}` : ''}</h1>
-      <p class="hero-sub">今天想玩点什么？</p>
+      <h1 class="hero-title">
+        {#if $playerName.trim()}
+          {$t('home.welcomeBackWithName', { values: { name: $playerName.trim() } })}
+        {:else}
+          {$t('home.welcomeBack')}
+        {/if}
+      </h1>
+      <p class="hero-sub">{$t('home.whatToPlay')}</p>
       <div class="hero-actions">
-        <button class="hero-btn primary" onclick={() => goto('/decks/builder')}>新建卡组</button>
-        <button class="hero-btn" onclick={() => goto('/cards')}>浏览单卡库</button>
+        <button class="hero-btn primary" onclick={() => goto('/decks/builder')}>
+          {$t('home.newDeck')}
+        </button>
+        <button class="hero-btn" onclick={() => goto('/cards')}>
+          {$t('home.browseCards')}
+        </button>
       </div>
     </div>
   </section>
@@ -103,8 +117,8 @@
       <div class="setup-card-info">
         <span class="setup-card-icon"><UserRound size={16} /></span>
         <div class="setup-card-text">
-          <span class="setup-card-title">设置玩家用户名</span>
-          <span class="setup-card-desc">用于首页问候、卡组图案水印、对局记录与计分器默认名</span>
+          <span class="setup-card-title">{$t('home.setupPlayerName')}</span>
+          <span class="setup-card-desc">{$t('home.setupPlayerNameDesc')}</span>
         </div>
       </div>
       <div class="setup-card-form">
@@ -112,7 +126,7 @@
           class="setup-input"
           type="text"
           maxlength="20"
-          placeholder="输入你的昵称"
+          placeholder={$t('home.nicknamePlaceholder')}
           bind:value={homeName}
         />
         <button
@@ -122,12 +136,14 @@
             if (!homeName.trim()) return
             $playerName = homeName.trim()
             setTopbar({
-              title: '首页',
-              description: `欢迎回来，${$playerName}。今天想玩点什么？`,
+              title: $t('home.topbarTitle'),
+              description: $t('home.topbarDesc', {
+                values: { name: $playerName },
+              }),
             })
           }}
         >
-          保存
+          {$t('common.save')}
         </button>
       </div>
     </section>
@@ -136,8 +152,8 @@
   <!-- 对战工具（紧凑按钮行） -->
   <section class="section">
     <div class="section-header">
-      <h2 class="section-title">对战工具</h2>
-      <a href="/tools" class="see-all">打开工具箱 <ChevronRight size={14} /></a>
+      <h2 class="section-title">{$t('home.tools')}</h2>
+      <a href="/tools" class="see-all">{$t('home.openToolbox')} <ChevronRight size={14} /></a>
     </div>
     <div class="tools-row">
       {#each quickTools as tool}
@@ -145,7 +161,7 @@
           <span class="tool-chip-icon" style="background: {tool.color}15; color: {tool.color}">
             <tool.icon size={16} />
           </span>
-          <span class="tool-chip-label">{tool.label}</span>
+          <span class="tool-chip-label">{$t(tool.labelKey)}</span>
         </a>
       {/each}
     </div>
@@ -154,8 +170,8 @@
   <!-- 最近使用的卡组 -->
   <section class="section">
     <div class="section-header">
-      <h2 class="section-title">最近使用的卡组</h2>
-      <a href="/decks" class="see-all">管理卡组 <ChevronRight size={14} /></a>
+      <h2 class="section-title">{$t('home.recentDecks')}</h2>
+      <a href="/decks" class="see-all">{$t('home.manageDecks')} <ChevronRight size={14} /></a>
     </div>
     <div class="deck-list">
       {#each orderedDecks as deck}
@@ -171,13 +187,16 @@
             {/if}
           </div>
           <div class="deck-stats">
-            <span class="stat win">{deck.wins}胜</span>
-            <span class="stat loss">{deck.losses}负</span>
+            <span class="stat win">{$t('home.wins', { values: { count: deck.wins } })}</span>
+            <span class="stat loss">{$t('home.losses', { values: { count: deck.losses } })}</span>
+            {#if deck.draws > 0}
+              <span class="stat draw">{$t('home.draws', { values: { count: deck.draws } })}</span>
+            {/if}
             <span class="stat time">{deck.updated}</span>
           </div>
         </a>
       {:else}
-        <p class="deck-empty">暂无卡组，去创建一个吧。</p>
+        <p class="deck-empty">{$t('home.noDecks')}</p>
       {/each}
     </div>
   </section>
@@ -501,6 +520,10 @@
   }
   .stat.loss {
     color: #e03e3e;
+    font-weight: 500;
+  }
+  .stat.draw {
+    color: var(--text-secondary);
     font-weight: 500;
   }
 

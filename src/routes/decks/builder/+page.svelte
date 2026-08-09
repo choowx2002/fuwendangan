@@ -42,6 +42,8 @@
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import type { cardAndPrint } from '$lib/decks/types'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
 
   let legendCards = $state<cardAndPrint[]>([])
   let championCards = $state<cardAndPrint[]>([])
@@ -50,11 +52,11 @@
   let runeCards = $state<cardAndPrint[]>([])
   let sideboardCards = $state<cardAndPrint[]>([])
 
-  let deckName = $state('未命名卡组')
+  let deckName = $state(get(t)('builder.unnamedDeck'))
   let selectedZone = $state<ZoneKey>('mainDeck')
 
   let showSaveModal = $state(false)
-  let saveDeckName = $state('未命名卡组')
+  let saveDeckName = $state(get(t)('builder.unnamedDeck'))
   let saveDeckDescription = $state('')
   let saveDeckNote = $state('')
   let editingDeckId = $state<string | null>(null)
@@ -136,6 +138,14 @@
 
   let isTouchDevice = $state(false)
   let useVerticalResize = $state(false)
+  function translateIssue(issue: import('$lib/decks/deck-validator').DeckIssue): string {
+    const params: Record<string, string | number> = {}
+    for (const [key, value] of Object.entries(issue.params)) {
+      params[key] = key === 'zone' ? get(t)(String(value)) : value
+    }
+    return get(t)(issue.messageKey, { values: params })
+  }
+
   let hasErrors = $derived(deckIssues.some((issue) => issue.severity === 'error'))
   let showErrorModal = $state(false)
   let showOwnershipModal = $state(false)
@@ -145,7 +155,7 @@
 
   async function runOwnershipCheck() {
     if (allDeckCards.length === 0) {
-      message('卡组为空，无需检查')
+      message(get(t)('builder.emptyOwnershipCheck'))
       return
     }
     loadingOwnership = true
@@ -180,10 +190,10 @@
 
     if (isDirty) {
       navigation.cancel()
-      const confirmed = await ask('您有未保存的卡组修改，离开将丢失这些更改。确定要离开吗？', {
+      const confirmed = await ask(get(t)('builder.unsavedChanges'), {
         kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '继续编辑',
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('builder.keepEditing'),
       })
       if (confirmed) {
         confirmBack = confirmed
@@ -223,14 +233,14 @@
     try {
       const loaded = await loadDeckForEdit(deckId)
       if (!loaded) {
-        message('未找到该卡组')
+        message(get(t)('builder.deckNotFound'))
         goto('/decks')
         return
       }
 
       editingDeckId = deckId
-      deckName = loaded.deck.name || '未命名卡组'
-      saveDeckName = loaded.deck.name || '未命名卡组'
+      deckName = loaded.deck.name || get(t)('builder.unnamedDeck')
+      saveDeckName = loaded.deck.name || get(t)('builder.unnamedDeck')
       saveDeckDescription = loaded.deck.description || ''
       legendCards = loaded.legendCards
       championCards = loaded.championCards
@@ -241,14 +251,14 @@
       isDirty = false
     } catch (error) {
       console.error('加载卡组失败:', error)
-      message('加载卡组失败')
+      message(get(t)('builder.loadFailed'))
     }
   }
 
   function applyImportedDeck(result: import('$lib/decks/deck-import').DecodedDeckResult) {
     editingDeckId = null
-    deckName = '导入的卡组'
-    saveDeckName = '导入的卡组'
+    deckName = get(t)('builder.importedDeck')
+    saveDeckName = get(t)('builder.importedDeck')
     saveDeckDescription = ''
     legendCards = result.deck.legendCards
     championCards = result.deck.championCards
@@ -261,20 +271,24 @@
 
   async function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
-      message('该卡牌为禁卡，无法加入卡组！')
+      message(get(t)('builder.bannedCard'))
       return
     }
 
     // Promo / 自定义打印不可入卡组
     if (card.card_prints?.every((p) => p.is_promo || p.is_custom)) {
-      message('Promo/自定打印卡牌无法加入卡组')
+      message(get(t)('builder.promoNotAllowed'))
       return
     }
 
     const capacityError = checkZoneCapacity(selectedZone, getZoneCards(selectedZone).length)
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
     if (capacityError && !isReplacable) {
-      message(capacityError)
+      message(
+        get(t)(capacityError.messageKey, {
+          values: { zone: get(t)(capacityError.params.zone), max: capacityError.params.max },
+        })
+      )
       return
     }
 
@@ -425,7 +439,11 @@
     const cards = getZoneCards(zone)
 
     if (cards.length >= ZONE_CONFIG[zone].maxCount) {
-      message(`${ZONE_CONFIG[zone].name} 区域已达到最大容量 ${ZONE_CONFIG[zone].maxCount} 张！`)
+      message(
+        get(t)('builder.zoneCapacity', {
+          values: { zoneName: ZONE_CONFIG[zone].name, maxCount: ZONE_CONFIG[zone].maxCount },
+        })
+      )
       return
     }
 
@@ -458,26 +476,30 @@
 
   async function handleSave() {
     if (hasErrors) {
-      message('你的构筑存在问题哦')
+      message(get(t)('builder.constructionIssues'))
       return
     }
 
     if (deckIssues.filter((i) => i.severity === 'warning').length) {
       const ignoreWarning = await ask(
-        `是否要继续保存？\n${deckIssues
-          .filter((i) => i.severity === 'warning')
-          .map((i) => i.message)
-          .join('\n')}`,
+        get(t)('builder.continueSavePrompt', {
+          values: {
+            issues: deckIssues
+              .filter((i) => i.severity === 'warning')
+              .map((i) => translateIssue(i))
+              .join('\n'),
+          },
+        }),
         {
-          okLabel: '确定保存',
-          cancelLabel: '继续编辑',
+          okLabel: get(t)('builder.saveAnyway'),
+          cancelLabel: get(t)('builder.keepEditing'),
         }
       )
 
       if (!ignoreWarning) return
     }
 
-    saveDeckName = deckName === '未命名卡组' ? '' : deckName
+    saveDeckName = deckName === get(t)('builder.unnamedDeck') ? '' : deckName
     saveDeckDescription = ''
     saveDeckNote = ''
     showSaveModal = true
@@ -487,7 +509,7 @@
     const name = saveDeckName.trim()
 
     if (!name) {
-      message('请输入卡组名称')
+      message(get(t)('builder.enterName'))
       return
     }
 
@@ -549,7 +571,7 @@
       }
 
       console.error('保存失败:', error)
-      message('保存失败，请重试')
+      message(get(t)('builder.saveFailed'))
     } finally {
       isSaving = false
     }
@@ -823,13 +845,13 @@
     }
   }
 
-  const zoneDisplayConfig: { key: ZoneKey; label: string }[] = [
-    { key: 'legend', label: '传奇' },
-    { key: 'champion', label: '英雄' },
-    { key: 'mainDeck', label: '主牌堆' },
-    { key: 'battlefields', label: '战场' },
-    { key: 'runes', label: '符文' },
-    { key: 'sideboard', label: '备牌' },
+  const zoneDisplayConfig: { key: ZoneKey; labelKey: string }[] = [
+    { key: 'legend', labelKey: 'builder.legend' },
+    { key: 'champion', labelKey: 'builder.champion' },
+    { key: 'mainDeck', labelKey: 'builder.mainDeck' },
+    { key: 'battlefields', labelKey: 'builder.battlefields' },
+    { key: 'runes', labelKey: 'builder.runes' },
+    { key: 'sideboard', labelKey: 'builder.sideboard' },
   ]
 
   const mainDeckStatCards = $derived(mainDeckCards.map((card) => ({ ...card, quantity: 1 })))
@@ -907,7 +929,7 @@
   <button
     class="grip-button"
     class:resizing={isResizing}
-    aria-label="resize panel"
+    aria-label={$t('builder.resizePanel')}
     onpointerdown={handlePointerDown}
   >
     {#if isMobile1}
@@ -932,7 +954,7 @@
         style="margin-right: auto; color: var(--secondary-accent-color);"
         onclick={() => window.history.back()}
       >
-        取消
+        {$t('common.cancel')}
       </button>
 
       {#if hasErrors}
@@ -957,7 +979,7 @@
         {:else}
           <Save size={16} />
         {/if}
-        <span>保存</span>
+        <span>{$t('common.save')}</span>
       </button>
 
       <button
@@ -965,13 +987,13 @@
         onclick={runOwnershipCheck}
         disabled={allDeckCards.length === 0}
         style="min-width: auto;"
-        title="检查卡组卡牌是否已拥有"
+        title={$t('builder.checkOwnership')}
       >
         <CircleCheck size={16} />
-        <span>持有检查</span>
+        <span>{$t('builder.ownershipCheck')}</span>
       </button>
 
-      <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title="更多选项">
+      <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title={$t('common.moreActions')}>
         <EllipsisVerticalIcon size={16} />
       </button>
     </div>
@@ -981,7 +1003,7 @@
         <div class="zone-section" id="legend-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'legend')}
-              >传奇</span
+              >{$t('builder.legend')}</span
             >
             <div class="display-mode-switch">
               <button
@@ -991,7 +1013,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                文字
+                {$t('builder.textMode')}
               </button>
 
               <button
@@ -1001,7 +1023,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                卡图
+                {$t('builder.graphicMode')}
               </button>
             </div>
           </div>
@@ -1009,7 +1031,7 @@
             {#each groupCards(legendCards) as group}
               {@render cardItem(group, 'legend', true)}
             {:else}
-              <div class="empty-zone">该区域为空</div>
+              <div class="empty-zone">{$t('builder.emptyZone')}</div>
             {/each}
           </div>
         </div>
@@ -1017,7 +1039,7 @@
         <div class="zone-section" id="champion-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'champion')}
-              >英雄</span
+              >{$t('builder.champion')}</span
             >
             <div class="display-mode-switch">
               <button
@@ -1027,7 +1049,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                文字
+                {$t('builder.textMode')}
               </button>
 
               <button
@@ -1037,7 +1059,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                卡图
+                {$t('builder.graphicMode')}
               </button>
             </div>
           </div>
@@ -1045,7 +1067,7 @@
             {#each groupCards(championCards) as group}
               {@render cardItem(group, 'champion', true)}
             {:else}
-              <div class="empty-zone">该区域为空</div>
+              <div class="empty-zone">{$t('builder.emptyZone')}</div>
             {/each}
           </div>
         </div>
@@ -1055,7 +1077,9 @@
         <div class="zone-section full-space" id="maindeck-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
-              主牌堆 ({mainDeckCards.length}/{ZONE_CONFIG.mainDeck.maxCount})
+              {$t('builder.zoneCount', {
+                values: { name: $t('builder.mainDeck'), count: mainDeckCards.length, max: ZONE_CONFIG.mainDeck.maxCount },
+              })}
             </span>
 
             <div style="display: flex;column-gap: 5px; ">
@@ -1064,14 +1088,14 @@
                   class:active={mainDeckDisplayMode === 'grouped'}
                   onclick={() => (mainDeckDisplayMode = 'grouped')}
                 >
-                  合并
+                  {$t('builder.grouped')}
                 </button>
 
                 <button
                   class:active={mainDeckDisplayMode === 'single'}
                   onclick={() => (mainDeckDisplayMode = 'single')}
                 >
-                  单张
+                  {$t('builder.single')}
                 </button>
               </div>
 
@@ -1083,7 +1107,7 @@
                     updateGlobalDisplayMode()
                   }}
                 >
-                  文字
+                  {$t('builder.textMode')}
                 </button>
 
                 <button
@@ -1093,7 +1117,7 @@
                     updateGlobalDisplayMode()
                   }}
                 >
-                  卡图
+                  {$t('builder.graphicMode')}
                 </button>
               </div>
             </div>
@@ -1107,13 +1131,13 @@
               {#each groupCards(mainDeckCards) as group}
                 {@render cardItem(group, 'mainDeck', true)}
               {:else}
-                <div class="empty-zone">该区域为空</div>
+                <div class="empty-zone">{$t('builder.emptyZone')}</div>
               {/each}
             {:else}
               {#each mainDeckCards as card}
                 {@render cardItem({ card, count: 1 }, 'mainDeck', false)}
               {:else}
-                <div class="empty-zone">该区域为空</div>
+                <div class="empty-zone">{$t('builder.emptyZone')}</div>
               {/each}
             {/if}
           </div>
@@ -1128,7 +1152,13 @@
               role="presentation"
               onclick={() => (selectedZone = 'battlefields')}
             >
-              战场 ({battlefieldCards.length}/{ZONE_CONFIG.battlefields.maxCount})
+              {$t('builder.zoneCount', {
+                values: {
+                  name: $t('builder.battlefields'),
+                  count: battlefieldCards.length,
+                  max: ZONE_CONFIG.battlefields.maxCount,
+                },
+              })}
             </span>
 
             <div class="display-mode-switch">
@@ -1139,7 +1169,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                文字
+                {$t('builder.textMode')}
               </button>
 
               <button
@@ -1149,7 +1179,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                卡图
+                {$t('builder.graphicMode')}
               </button>
             </div>
           </div>
@@ -1161,7 +1191,7 @@
             {#each groupCards(battlefieldCards) as group}
               {@render cardItem(group, 'battlefields', true)}
             {:else}
-              <div class="empty-zone">该区域为空</div>
+              <div class="empty-zone">{$t('builder.emptyZone')}</div>
             {/each}
           </div>
         </div>
@@ -1171,7 +1201,9 @@
         <div class="zone-section full-space" id="runes-zone">
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
-              >符文 ({runeCards.length}/{ZONE_CONFIG.runes.maxCount})</span
+              >{$t('builder.zoneCount', {
+                values: { name: $t('builder.runes'), count: runeCards.length, max: ZONE_CONFIG.runes.maxCount },
+              })}</span
             >
 
             <div class="display-mode-switch">
@@ -1182,7 +1214,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                文字
+                {$t('builder.textMode')}
               </button>
 
               <button
@@ -1192,7 +1224,7 @@
                   updateGlobalDisplayMode()
                 }}
               >
-                卡图
+                {$t('builder.graphicMode')}
               </button>
             </div>
           </div>
@@ -1204,7 +1236,7 @@
             {#each groupCards(runeCards) as group}
               {@render cardItem(group, 'runes', true)}
             {:else}
-              <div class="empty-zone">该区域为空</div>
+              <div class="empty-zone">{$t('builder.emptyZone')}</div>
             {/each}
           </div>
         </div>
@@ -1218,7 +1250,9 @@
               role="presentation"
               onclick={() => (selectedZone = 'sideboard')}
             >
-              备牌 ({sideboardCards.length}/{ZONE_CONFIG.sideboard.maxCount})
+              {$t('builder.zoneCount', {
+                values: { name: $t('builder.sideboard'), count: sideboardCards.length, max: ZONE_CONFIG.sideboard.maxCount },
+              })}
             </span>
 
             <div style="display: flex;column-gap: 5px; ">
@@ -1227,14 +1261,14 @@
                   class:active={sideboardDisplayMode === 'grouped'}
                   onclick={() => (sideboardDisplayMode = 'grouped')}
                 >
-                  合并
+                  {$t('builder.grouped')}
                 </button>
 
                 <button
                   class:active={sideboardDisplayMode === 'single'}
                   onclick={() => (sideboardDisplayMode = 'single')}
                 >
-                  单张
+                  {$t('builder.single')}
                 </button>
               </div>
               <div class="display-mode-switch">
@@ -1245,7 +1279,7 @@
                     updateGlobalDisplayMode()
                   }}
                 >
-                  文字
+                  {$t('builder.textMode')}
                 </button>
 
                 <button
@@ -1255,7 +1289,7 @@
                     updateGlobalDisplayMode()
                   }}
                 >
-                  卡图
+                  {$t('builder.graphicMode')}
                 </button>
               </div>
             </div>
@@ -1269,13 +1303,13 @@
               {#each groupCards(sideboardCards) as group}
                 {@render cardItem(group, 'sideboard', true)}
               {:else}
-                <div class="empty-zone">该区域为空</div>
+                <div class="empty-zone">{$t('builder.emptyZone')}</div>
               {/each}
             {:else}
               {#each sideboardCards as card}
                 {@render cardItem({ card, count: 1 }, 'sideboard', false)}
               {:else}
-                <div class="empty-zone">该区域为空</div>
+                <div class="empty-zone">{$t('builder.emptyZone')}</div>
               {/each}
             {/if}
           </div>
@@ -1342,7 +1376,7 @@
             class="button button-primary button-sm"
             onclick={() => (showCurrentCardDetails = !showCurrentCardDetails)}
           >
-            {showCurrentCardDetails ? '收起' : '详情'}
+            {showCurrentCardDetails ? $t('builder.collapse') : $t('builder.details')}
           </button>
 
           <button
@@ -1374,7 +1408,7 @@
             disabled={printModalTarget?.card.selectedPrints === currentPrint.id}
             onclick={() => changePrintsId(currentPrint.id)}
           >
-            切换
+            {$t('builder.switchPrint')}
           </button>
         </div>
       {/snippet}
@@ -1383,19 +1417,19 @@
 
   <CommonModal
     open={showSaveModal}
-    title="保存卡组"
-    subtitle={editingDeckId ? '为你的卡组设置名称和备注' : '为你的卡组设置名称和描述'}
+    title={$t('builder.saveDeckTitle')}
+    subtitle={editingDeckId ? $t('builder.saveSubtitleEdit') : $t('builder.saveSubtitleNew')}
     closable={!isSaving}
     onclose={cancelSaveDeck}
   >
     <label class="save-modal-field">
       <span class="save-modal-label">
-        卡组名称 <span class="required">*</span>
+        {$t('builder.deckNameLabel')} <span class="required">*</span>
       </span>
       <input
         class="save-modal-input"
         type="text"
-        placeholder="例如：蜘蛛快攻"
+        placeholder={$t('builder.deckNamePlaceholder')}
         maxlength="100"
         bind:value={saveDeckName}
         disabled={isSaving}
@@ -1410,10 +1444,10 @@
 
     {#if editingDeckId}
       <label class="save-modal-field">
-        <span class="save-modal-label">备注</span>
+        <span class="save-modal-label">{$t('common.note')}</span>
         <textarea
           class="save-modal-textarea"
-          placeholder="为这个版本补充一些说明……"
+          placeholder={$t('builder.notePlaceholder')}
           maxlength="300"
           rows="5"
           bind:value={saveDeckNote}
@@ -1421,10 +1455,10 @@
       </label>
     {:else}
       <label class="save-modal-field">
-        <span class="save-modal-label">Description</span>
+        <span class="save-modal-label">{$t('builder.description')}</span>
         <textarea
           class="save-modal-textarea"
-          placeholder="简单描述一下这个卡组……"
+          placeholder={$t('builder.descriptionPlaceholder')}
           maxlength="500"
           rows="5"
           bind:value={saveDeckDescription}
@@ -1434,7 +1468,7 @@
 
     {#snippet footer()}
       <button class="button button-ghost footer-btn" disabled={isSaving} onclick={cancelSaveDeck}>
-        取消
+        {$t('common.cancel')}
       </button>
       {#if editingDeckId}
         <button
@@ -1444,10 +1478,10 @@
         >
           {#if isSaving}
             <LoaderCircle class="animate-spin" size={16} />
-            <span>保存中...</span>
+            <span>{$t('common.saving')}</span>
           {:else}
             <Save size={16} />
-            <span>覆盖当前卡组</span>
+            <span>{$t('builder.overwriteDeck')}</span>
           {/if}
         </button>
         <button
@@ -1457,10 +1491,10 @@
         >
           {#if isSaving}
             <LoaderCircle class="animate-spin" size={16} />
-            <span>保存中...</span>
+            <span>{$t('common.saving')}</span>
           {:else}
             <Save size={16} />
-            <span>保存为新版本</span>
+            <span>{$t('builder.saveNewVersion')}</span>
           {/if}
         </button>
       {:else}
@@ -1471,10 +1505,10 @@
         >
           {#if isSaving}
             <LoaderCircle class="animate-spin" size={16} />
-            <span>保存中...</span>
+            <span>{$t('common.saving')}</span>
           {:else}
             <Save size={16} />
-            <span>保存卡组</span>
+            <span>{$t('builder.saveDeck')}</span>
           {/if}
         </button>
       {/if}
@@ -1485,7 +1519,7 @@
     closeOnOverlay={true}
     onclose={() => (showErrorModal = !showErrorModal)}
     open={showErrorModal}
-    title={`卡组校验未通过 (${deckIssues.length} 个问题)`}
+    title={$t('builder.validationFailed', { values: { count: deckIssues.length } })}
   >
     <div class="issues-panel">
       <ul class="issues-list">
@@ -1497,7 +1531,7 @@
               {:else}<TriangleAlert size={12} />
               {/if}
             </span>
-            <span class="issue-text">{@html issue.message}</span>
+            <span class="issue-text">{@html translateIssue(issue)}</span>
           </li>
         {/each}
       </ul>
@@ -1505,7 +1539,7 @@
 
     {#snippet footer()}
       <button class="button button-primary" onclick={() => (showErrorModal = !showErrorModal)}>
-        <span>了解</span>
+        <span>{$t('builder.gotIt')}</span>
       </button>
     {/snippet}
   </CommonModal>
@@ -1514,7 +1548,7 @@
     closeOnOverlay={true}
     onclose={() => (showOwnershipModal = !showOwnershipModal)}
     open={showOwnershipModal}
-    title="持有检查"
+    title={$t('builder.ownershipCheck')}
   >
     <div class="ownership-panel">
       <div class="ownership-mode-toggle">
@@ -1523,32 +1557,32 @@
           disabled={loadingOwnership}
           onclick={() => switchOwnershipMode('card')}
         >
-          按卡牌
+          {$t('builder.byCard')}
         </button>
         <button
           class:active={ownershipMatchMode === 'print'}
           disabled={loadingOwnership}
           onclick={() => switchOwnershipMode('print')}
         >
-          按印刷号
+          {$t('builder.byPrint')}
         </button>
       </div>
       {#if loadingOwnership}
         <div class="ownership-loading">
           <LoaderCircle class="animate-spin" size={16} />
-          <span>检查中...</span>
+          <span>{$t('builder.checking')}</span>
         </div>
       {:else if ownershipRows.length === 0}
-        <p class="ownership-empty">检查完毕，全部持有。</p>
+        <p class="ownership-empty">{$t('builder.allOwned')}</p>
       {:else}
-        <p class="ownership-hint">以下卡牌未足量拥有：</p>
+        <p class="ownership-hint">{$t('builder.insufficientOwned')}</p>
         <table class="ownership-table">
           <thead>
             <tr>
-              <th>卡牌</th>
-              <th>编号</th>
-              <th>持有</th>
-              <th>需要</th>
+              <th>{$t('builder.cardCol')}</th>
+              <th>{$t('builder.noCol')}</th>
+              <th>{$t('builder.ownedCol')}</th>
+              <th>{$t('builder.neededCol')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1567,7 +1601,7 @@
 
     {#snippet footer()}
       <button class="button button-primary" onclick={() => (showOwnershipModal = false)}>
-        <span>关闭</span>
+        <span>{$t('common.close')}</span>
       </button>
     {/snippet}
   </CommonModal>
@@ -1578,14 +1612,14 @@
       showMoreMenu = false
       showDisplayModeAdvanced = false
     }}
-    title="更多选项"
-    subtitle="卡组管理工具"
+    title={$t('common.moreActions')}
+    subtitle={$t('builder.moreMenuSubtitle')}
     closable={true}
   >
     <div class="more-menu-content">
       <div class="more-menu-item more-menu-toggle">
         <span class="toggle-label">
-          <span>{showAllZoneMode ? '显示所有区域' : '显示选定区域'}</span>
+          <span>{showAllZoneMode ? $t('builder.showAllZones') : $t('builder.showSelectedZones')}</span>
         </span>
         <div class="toggle-button-group">
           <button
@@ -1594,7 +1628,7 @@
               showAllZoneMode = !showAllZoneMode
             }}
           >
-            所有
+            {$t('builder.allZones')}
           </button>
           <button
             class="toggle-btn {!showAllZoneMode ? 'active' : ''}"
@@ -1602,7 +1636,7 @@
               showAllZoneMode = !showAllZoneMode
             }}
           >
-            选定
+            {$t('builder.selectedZones')}
           </button>
         </div>
       </div>
@@ -1610,11 +1644,11 @@
       <div>
         <div
           role="presentation"
-          aria-label="显示模式设置"
+          aria-label={$t('builder.displayModeAria')}
           class="more-menu-item more-menu-expandable more-menu-toggle"
         >
           <span class="toggle-label">
-            <span>显示模式</span>
+            <span>{$t('builder.displayMode')}</span>
           </span>
           <div class="expand-control">
             <div class="toggle-button-group">
@@ -1628,7 +1662,7 @@
                   })
                 }}
               >
-                文字
+                {$t('builder.textMode')}
               </button>
               <button
                 class="toggle-btn {globalDisplayMode === 'graphic' ? 'active' : ''}"
@@ -1640,7 +1674,7 @@
                   })
                 }}
               >
-                卡图
+                {$t('builder.graphicMode')}
               </button>
             </div>
             <ChevronRightIcon
@@ -1658,7 +1692,7 @@
             {#each zoneDisplayConfig as zoneCfg}
               <div class="display-mode-zone-row">
                 <span class="zone-label">
-                  {zoneCfg.label}
+                  {$t(zoneCfg.labelKey)}
                 </span>
                 <div class="toggle-button-group">
                   <button
@@ -1668,7 +1702,7 @@
                       updateGlobalDisplayMode()
                     }}
                   >
-                    文字
+                    {$t('builder.textMode')}
                   </button>
                   <button
                     class="toggle-btn {zoneDisplayModes[zoneCfg.key] === 'graphic' ? 'active' : ''}"
@@ -1677,7 +1711,7 @@
                       updateGlobalDisplayMode()
                     }}
                   >
-                    卡图
+                    {$t('builder.graphicMode')}
                   </button>
                 </div>
               </div>
@@ -1688,7 +1722,7 @@
 
       <div class="more-menu-item more-menu-input">
         <span class="toggle-label">
-          <span>卡图列数</span>
+          <span>{$t('builder.graphicColumns')}</span>
         </span>
         <input
           type="number"
@@ -1712,7 +1746,7 @@
           }}
         >
           <ArrowUpDownIcon size={18} />
-          <span>{revertLayout ? '恢复默认布局' : '切换布局'}</span>
+          <span>{revertLayout ? $t('builder.restoreLayout') : $t('builder.toggleLayout')}</span>
         </button>
       {/if}
 
@@ -1724,7 +1758,7 @@
             showMoreMenu = false
           }}
         >
-          <span>整理卡组</span>
+          <span>{$t('builder.arrangeDeck')}</span>
         </button>
         <button
           class="button button-md button-secondary"
@@ -1733,7 +1767,7 @@
             showMoreMenu = false
           }}
         >
-          <span>卡组统计</span>
+          <span>{$t('builder.deckStats')}</span>
         </button>
       </div>
     </div>
@@ -1746,7 +1780,7 @@
           showDisplayModeAdvanced = false
         }}
       >
-        <span>关闭</span>
+        <span>{$t('common.close')}</span>
       </button>
     {/snippet}
   </CommonModal>
@@ -1754,45 +1788,45 @@
   <CommonModal
     open={showDeckStats}
     onclose={() => (showDeckStats = false)}
-    title="卡组统计"
-    subtitle="卡组构成分析"
+    title={$t('builder.deckStats')}
+    subtitle={$t('builder.deckStatsSubtitle')}
   >
     <div class="deck-stats-content">
       <div class="stat-row">
-        <span class="stat-label">总卡牌数</span>
+        <span class="stat-label">{$t('builder.totalCards')}</span>
         <span class="stat-value">{allDeckCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">传奇</span>
+        <span class="stat-label">{$t('builder.legend')}</span>
         <span class="stat-value">{legendCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">英雄</span>
+        <span class="stat-label">{$t('builder.champion')}</span>
         <span class="stat-value">{championCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">主牌堆</span>
+        <span class="stat-label">{$t('builder.mainDeck')}</span>
         <span class="stat-value">{mainDeckCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">战场</span>
+        <span class="stat-label">{$t('builder.battlefields')}</span>
         <span class="stat-value">{battlefieldCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">符文</span>
+        <span class="stat-label">{$t('builder.runes')}</span>
         <span class="stat-value">{runeCards.length}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">备牌</span>
+        <span class="stat-label">{$t('builder.sideboard')}</span>
         <span class="stat-value">{sideboardCards.length}</span>
       </div>
       <div class="stat-divider"></div>
-      <div class="stats-section-title">费用 / 颜色</div>
+      <div class="stats-section-title">{$t('builder.costColor')}</div>
       <CostCurveChart cards={mainDeckStatCards} />
       <div class="stat-divider"></div>
-      <div class="stats-section-title">类型统计（主牌堆）</div>
+      <div class="stats-section-title">{$t('builder.typeStats')}</div>
       {#if typeTotals.length === 0}
-        <div class="stats-empty">主牌堆暂无卡牌</div>
+        <div class="stats-empty">{$t('builder.mainDeckEmpty')}</div>
       {:else}
         {#each typeTotals as [cat, count]}
           <div class="stat-row">
@@ -1803,14 +1837,14 @@
       {/if}
       <div class="stat-divider"></div>
       <div class="stat-row stat-total">
-        <span class="stat-label">合计</span>
+        <span class="stat-label">{$t('builder.total')}</span>
         <span class="stat-value">{allDeckCards.length}</span>
       </div>
     </div>
 
     {#snippet footer()}
       <button class="button button-primary" onclick={() => (showDeckStats = false)}>
-        <span>了解</span>
+        <span>{$t('builder.gotIt')}</span>
       </button>
     {/snippet}
   </CommonModal>

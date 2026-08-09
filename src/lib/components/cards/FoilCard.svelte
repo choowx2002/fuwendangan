@@ -4,6 +4,7 @@
   import { getCardBackFallback } from '$lib/cards/utils/variant-utils'
   import CachedImage from './CachedImage.svelte'
   import { Expand, X } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let {
     print = undefined as CardPrint | undefined,
@@ -151,7 +152,7 @@
         borderRadius="12px"
         lazy={false}
       />
-      <button class="btn-close" title="关闭" onclick={() => (enlarged = false)}>
+      <button class="btn-close" title={$t('common.close')} onclick={() => (enlarged = false)}>
         <X size={18} />
       </button>
     </div>

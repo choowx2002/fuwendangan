@@ -4,6 +4,7 @@
   import type { RuleBooks } from '$lib/db/types'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { onMount } from 'svelte'
+  import { t } from '$lib/i18n'
 
   let docs = $state<RuleBooks[]>([])
 
@@ -25,14 +26,14 @@
   })
 
   $effect(() => {
-    setTopbar({ title: '游戏文档' })
+    setTopbar({ title: $t('rules.title') })
   })
 </script>
 
 <div class="page-container">
   <section class="section">
     <div class="section-header">
-      <h2 class="section-title">文件</h2>
+      <h2 class="section-title">{$t('rules.documents')}</h2>
     </div>
     <div class="deck-list">
       {#each docs as doc}

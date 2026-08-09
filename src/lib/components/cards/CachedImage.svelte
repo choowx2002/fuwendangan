@@ -1,6 +1,7 @@
 <script lang="ts">
   import { type ObjectFitType, loadImageFromAppFolder } from '$lib/services/image-cache-service'
   import { LoaderCircle } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let {
     src = '',
@@ -160,7 +161,7 @@
       {#if placeholder}
         <img
           src={placeholder}
-          alt="加载中..."
+          alt={$t('common.loading')}
           style="width: 100%; height: 100%; {fitStyles[fit]}; opacity: 0.5;"
         />
       {:else}
@@ -170,7 +171,7 @@
       {/if}
     {:else if error}
       {#if errorImage}
-        <img src={errorImage} alt="加载失败" style="width: 100%; height: 100%; {fitStyles[fit]};" />
+        <img src={errorImage} alt={$t('cards.imageLoadFailed')} style="width: 100%; height: 100%; {fitStyles[fit]};" />
       {:else if src && !src.startsWith('local://')}
         <div class="error-placeholder">
           <img
@@ -181,13 +182,13 @@
           />
           {#if showImgDownloadError}
             <div class="error-tip">
-              <strong>无法加载图片</strong>
-              <span>可能原因：</span>
+              <strong>{$t('cards.imageLoadErrorTitle')}</strong>
+              <span>{$t('cards.possibleCauses')}</span>
               <ul>
-                <li>网络连接异常</li>
-                <li>图片服务器暂时不可用</li>
-                <li>中国大陆地区可能因网络环境导致无法访问</li>
-                <li>图片资源不存在或已被移除</li>
+                <li>{$t('cards.causeNetwork')}</li>
+                <li>{$t('cards.causeServer')}</li>
+                <li>{$t('cards.causeRegion')}</li>
+                <li>{$t('cards.causeMissing')}</li>
               </ul>
             </div>
           {/if}
@@ -206,7 +207,7 @@
             <circle cx="8.5" cy="8.5" r="1.5" />
             <polyline points="21 15 16 10 5 21" />
           </svg>
-          <span style="color: var(--text-tertiary); font-size: 14px;">图片加载失败</span>
+          <span style="color: var(--text-tertiary); font-size: 14px;">{$t('cards.imageLoadFailed')}</span>
         </div>
       {/if}
     {:else if imageUrl}

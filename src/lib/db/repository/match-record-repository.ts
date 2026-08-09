@@ -15,6 +15,11 @@ import type {
 import { getDatabase } from './database'
 
 /**
+ * SQL 平局条件：显式 win_type='draw'，或正常比分且双方同分（兼容历史数据）
+ */
+const DRAW_SQL = `(g.win_type = 'draw' OR (g.win_type = 'normal' AND g.my_score = g.opp_score AND g.my_score IS NOT NULL))`
+
+/**
  * 获取当前时间戳（ISO 8601）
  */
 function now(): string {
@@ -284,11 +289,58 @@ export async function getDeckMatchStats(deckId: string): Promise<MatchSummary | 
   const matchCount = rows[0]?.c ?? 0
   if (matchCount === 0) return null
 
+  const matchResult = (await getMatchResultCounts([deckId])).get(deckId)
+
   return {
     deck_id: deckId,
     matches: matchCount,
     ...(await getGameAggregates(deckId)),
+    match_wins: matchResult?.match_wins ?? 0,
+    match_losses: matchResult?.match_losses ?? 0,
+    match_draws: matchResult?.match_draws ?? 0,
   }
+}
+
+/**
+ * 批量统计多个卡组的对局级结果（wins > losses 记胜，反之记负，相等记平）
+ */
+async function getMatchResultCounts(deckIds: string[]): Promise<
+  Map<string, { match_wins: number; match_losses: number; match_draws: number }>
+> {
+  const result = new Map<string, { match_wins: number; match_losses: number; match_draws: number }>()
+  if (deckIds.length === 0) return result
+
+  const db = await getDatabase()
+  const placeholders = deckIds.map(() => '?').join(', ')
+
+  const rows = await db.select<
+    { deck_id: string; match_wins: number; match_losses: number; match_draws: number }[]
+  >(
+    `SELECT r.deck_id,
+            COALESCE(SUM(CASE WHEN m.wins > m.losses THEN 1 ELSE 0 END), 0) as match_wins,
+            COALESCE(SUM(CASE WHEN m.losses > m.wins THEN 1 ELSE 0 END), 0) as match_losses,
+            COALESCE(SUM(CASE WHEN m.wins = m.losses THEN 1 ELSE 0 END), 0) as match_draws
+     FROM ${TABLES.MATCH_RECORDS} r
+     JOIN (
+       SELECT g.match_id,
+              COALESCE(SUM(CASE WHEN g.is_win = 1 THEN 1 ELSE 0 END), 0) as wins,
+              COALESCE(SUM(CASE WHEN g.is_win = 0 AND NOT ${DRAW_SQL} THEN 1 ELSE 0 END), 0) as losses
+       FROM ${TABLES.MATCH_GAMES} g
+       GROUP BY g.match_id
+     ) m ON m.match_id = r.id
+     WHERE r.deck_id IN (${placeholders})
+     GROUP BY r.deck_id`,
+    deckIds
+  )
+
+  for (const row of rows) {
+    result.set(row.deck_id, {
+      match_wins: row.match_wins,
+      match_losses: row.match_losses,
+      match_draws: row.match_draws,
+    })
+  }
+  return result
 }
 
 /**
@@ -316,6 +368,9 @@ export async function getMatchStatsForDecks(deckIds: string[]): Promise<Map<stri
       wins: 0,
       losses: 0,
       draws: 0,
+      match_wins: 0,
+      match_losses: 0,
+      match_draws: 0,
       first_games: 0,
       first_wins: 0,
       second_games: 0,
@@ -339,8 +394,8 @@ export async function getMatchStatsForDecks(deckIds: string[]): Promise<Map<stri
     `SELECT r.deck_id,
             COUNT(g.id) as games,
             COALESCE(SUM(CASE WHEN g.is_win = 1 THEN 1 ELSE 0 END), 0) as wins,
-            COALESCE(SUM(CASE WHEN g.is_win = 0 AND NOT (g.win_type = 'normal' AND g.my_score = g.opp_score AND g.my_score IS NOT NULL) THEN 1 ELSE 0 END), 0) as losses,
-            COALESCE(SUM(CASE WHEN g.win_type = 'normal' AND g.my_score = g.opp_score AND g.my_score IS NOT NULL THEN 1 ELSE 0 END), 0) as draws,
+            COALESCE(SUM(CASE WHEN g.is_win = 0 AND NOT ${DRAW_SQL} THEN 1 ELSE 0 END), 0) as losses,
+            COALESCE(SUM(CASE WHEN ${DRAW_SQL} THEN 1 ELSE 0 END), 0) as draws,
             COALESCE(SUM(CASE WHEN g.is_first = 1 THEN 1 ELSE 0 END), 0) as first_games,
             COALESCE(SUM(CASE WHEN g.is_first = 1 AND g.is_win = 1 THEN 1 ELSE 0 END), 0) as first_wins,
             COALESCE(SUM(CASE WHEN g.is_first = 0 THEN 1 ELSE 0 END), 0) as second_games,
@@ -363,6 +418,16 @@ export async function getMatchStatsForDecks(deckIds: string[]): Promise<Map<stri
       summary.first_wins = row.first_wins
       summary.second_games = row.second_games
       summary.second_wins = row.second_wins
+    }
+  }
+
+  const matchCounts = await getMatchResultCounts(deckIds)
+  for (const [deckId, counts] of matchCounts) {
+    const summary = result.get(deckId)
+    if (summary) {
+      summary.match_wins = counts.match_wins
+      summary.match_losses = counts.match_losses
+      summary.match_draws = counts.match_draws
     }
   }
 
@@ -402,8 +467,8 @@ async function getGameAggregates(
   >(
     `SELECT COUNT(g.id) as games,
             COALESCE(SUM(CASE WHEN g.is_win = 1 THEN 1 ELSE 0 END), 0) as wins,
-            COALESCE(SUM(CASE WHEN g.is_win = 0 AND NOT (g.win_type = 'normal' AND g.my_score = g.opp_score AND g.my_score IS NOT NULL) THEN 1 ELSE 0 END), 0) as losses,
-            COALESCE(SUM(CASE WHEN g.win_type = 'normal' AND g.my_score = g.opp_score AND g.my_score IS NOT NULL THEN 1 ELSE 0 END), 0) as draws,
+            COALESCE(SUM(CASE WHEN g.is_win = 0 AND NOT ${DRAW_SQL} THEN 1 ELSE 0 END), 0) as losses,
+            COALESCE(SUM(CASE WHEN ${DRAW_SQL} THEN 1 ELSE 0 END), 0) as draws,
             COALESCE(SUM(CASE WHEN g.is_first = 1 THEN 1 ELSE 0 END), 0) as first_games,
             COALESCE(SUM(CASE WHEN g.is_first = 1 AND g.is_win = 1 THEN 1 ELSE 0 END), 0) as first_wins,
             COALESCE(SUM(CASE WHEN g.is_first = 0 THEN 1 ELSE 0 END), 0) as second_games,

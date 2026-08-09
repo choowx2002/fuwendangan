@@ -3,7 +3,7 @@
   import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
   import NumberRangeSlider from '../ui/NumberRangeSlider.svelte'
-  import { iconLanguage } from '$lib/cards/config/constants'
+  import { t } from '$lib/i18n'
 
   interface Props {
     isOpen: boolean
@@ -37,21 +37,21 @@
       type,
       title:
         type === 'card_color_list'
-          ? '颜色'
+          ? $t('cards.filterColor')
           : type === 'card_category'
-            ? '类别'
+            ? $t('cards.filterCategory')
             : type === 'region'
-              ? '地区'
+              ? $t('cards.filterRegion')
               : type === 'tag'
-                ? '标签'
+                ? $t('cards.filterTag')
                 : type === 'keyword'
-                  ? '关键字'
+                  ? $t('cards.filterKeyword')
                   : type === 'advanced_tag'
-                    ? '进阶标签'
+                    ? $t('cards.filterAdvancedTag')
                     : type === 'series'
-                      ? '系列'
+                      ? $t('cards.filterSeries')
                       : type === 'rarity'
-                        ? '稀有度'
+                        ? $t('cards.filterRarity')
                         : type,
       options: options || [],
     })
@@ -109,21 +109,21 @@
         <!-- 头部 -->
         <header class="modal-header">
           <h2 style="display: flex; align-items: center; gap: 5px">
-            筛选条件
+            {$t('cards.filterTitle')}
             <div
               style="display: flex; align-items: baseline; gap: 5px; font-size: var(--text-sm); color: var(--text-secondary)"
             >
               <div
                 style="width: 10px; background-color: var(--accent-color); aspect-ratio: 1/1;"
               ></div>
-              可有
+              {$t('cards.optional')}
               <div style="width: 10px; background-color: royalblue; aspect-ratio: 1/1;"></div>
-              必有
+              {$t('cards.required')}
               <div style="width: 10px; background-color: #f5412a; aspect-ratio: 1/1;"></div>
-              排除
+              {$t('cards.excluded')}
             </div>
           </h2>
-          <button class="close-btn" onclick={onClose} aria-label="关闭">
+          <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
             <X size={20} />
           </button>
         </header>
@@ -135,7 +135,7 @@
             <div class="range-grid">
               <div class="range-item">
                 <div class="range-label">
-                  <span>法力</span>
+                  <span>{$t('cards.energy')}</span>
                   <!-- 🆕 直接显示对象的 min 和 max -->
                   {#if energy.min === energy.max}
                     <span class="range-value">{energy.min}</span>
@@ -154,7 +154,7 @@
 
               <div class="range-item">
                 <div class="range-label">
-                  <span>符能</span>
+                  <span>{$t('cards.runeEnergy')}</span>
                   {#if return_energy.min === return_energy.max}
                     <span class="range-value">{return_energy.min}</span>
                   {:else}
@@ -171,7 +171,7 @@
 
               <div class="range-item">
                 <div class="range-label">
-                  <span>战力</span>
+                  <span>{$t('cards.power')}</span>
                   {#if power.min === power.max}
                     <span class="range-value">{power.min}</span>
                   {:else}
@@ -213,10 +213,10 @@
                             width="20"
                           />
                         {:else}
-                          {iconLanguage[option] ? iconLanguage[option] : option}
+                          {$t('cards.colorColorless')}
                         {/if}
                       {:else}
-                        {iconLanguage[option] ? iconLanguage[option] : option}
+                        {option}
                       {/if}
 
                       <!-- {#if mode === 'require'}
@@ -237,11 +237,11 @@
         <!-- 底部操作栏 (移动端极其友好) -->
         <footer class="modal-footer">
           <div>
-            <span class="count">{activeFilters.length} 项已激活</span>
-            <button class="button button-text" onclick={handleClearAll}>重置</button>
+            <span class="count">{$t('cards.activeCount', { values: { count: activeFilters.length } })}</span>
+            <button class="button button-text" onclick={handleClearAll}>{$t('common.reset')}</button>
           </div>
 
-          <button class="button button-primary" onclick={onClose}>完成</button>
+          <button class="button button-primary" onclick={onClose}>{$t('cards.done')}</button>
         </footer>
       </div>
     </div>

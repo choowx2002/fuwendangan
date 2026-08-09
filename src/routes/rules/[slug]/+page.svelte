@@ -12,13 +12,15 @@
   import { goto } from '$app/navigation'
   import { showToast } from '$lib/stores/ui-store.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   const THEMES = [
-    { id: 'parchment', label: '羊皮纸', color: '#d7c8b4', text: '#3f2d1a' },
-    { id: 'paper', label: '纸白', color: '#ffffff', text: '#333333' },
-    { id: 'dark', label: '深色', color: '#21252e', text: '#d6d8de' },
-    { id: 'ink', label: '墨蓝', color: '#2a3a4d', text: '#d8e0ea' },
-    { id: 'forest', label: '森林', color: '#f5f7ec', text: '#2f3a25' },
+    { id: 'parchment', labelKey: 'rules.themeParchment', color: '#d7c8b4', text: '#3f2d1a' },
+    { id: 'paper', labelKey: 'rules.themePaper', color: '#ffffff', text: '#333333' },
+    { id: 'dark', labelKey: 'rules.themeDark', color: '#21252e', text: '#d6d8de' },
+    { id: 'ink', labelKey: 'rules.themeInk', color: '#2a3a4d', text: '#d8e0ea' },
+    { id: 'forest', labelKey: 'rules.themeForest', color: '#f5f7ec', text: '#2f3a25' },
   ]
 
   let loading = $state(true)
@@ -129,13 +131,13 @@
     const text = buildCopyText(list)
     try {
       await writeText(text)
-      showToast(`已复制 ${list.length} 条规则`, 'success')
+      showToast(get(t)('rules.copiedCount', { values: { count: list.length } }), 'success')
       if (list.length > 1) {
         selectedRules = new Set()
       }
     } catch (error) {
       console.error('复制失败', error)
-      showToast('复制失败', 'error')
+      showToast(get(t)('rules.copyFailed'), 'error')
     }
   }
 
@@ -182,28 +184,28 @@
 <div class="page" data-theme={$rulesTheme}>
   <!-- 顶部阅读工具栏 -->
   <header class="toolbar">
-    <button class="tb-btn" onclick={goBack} aria-label="返回" title="返回">
+    <button class="tb-btn" onclick={goBack} aria-label={$t('common.back')} title={$t('common.back')}>
       <ChevronLeft size={18} />
     </button>
     <span class="tb-title">{page.params.slug}</span>
     <span class="tb-spacer"></span>
 
-    <button class="tb-btn" onclick={openSearch} aria-label="搜索" title="搜索">
+    <button class="tb-btn" onclick={openSearch} aria-label={$t('common.search')} title={$t('common.search')}>
       <Search size={18} />
     </button>
 
-    <div class="lang-seg" role="group" aria-label="语言">
+    <div class="lang-seg" role="group" aria-label={$t('rules.language')}>
       <button class:active={$lang === 'zh'} onclick={() => setLang('zh')}>中</button>
       <button class:active={$lang === 'en'} onclick={() => setLang('en')}>EN</button>
-      <button class:active={$lang === 'both'} onclick={() => setLang('both')}>双语</button>
+      <button class:active={$lang === 'both'} onclick={() => setLang('both')}>{$t('rules.bothLang')}</button>
     </div>
 
     <button
       class="tb-btn"
       class:active={themeMenuOpen}
       onclick={toggleThemeMenu}
-      aria-label="背景主题"
-      title="背景主题"
+      aria-label={$t('rules.backgroundTheme')}
+      title={$t('rules.backgroundTheme')}
     >
       <Palette size={18} />
     </button>
@@ -212,8 +214,8 @@
       class="tb-btn"
       class:active={copyMode}
       onclick={toggleCopyMode}
-      aria-label="多选复制"
-      title="多选复制"
+      aria-label={$t('rules.multiCopy')}
+      title={$t('rules.multiCopy')}
     >
       <CheckSquare size={18} />
     </button>
@@ -222,16 +224,16 @@
   <!-- 主题选择 -->
   {#if themeMenuOpen}
     <div class="theme-menu">
-      <div class="theme-menu-label">背景主题</div>
+      <div class="theme-menu-label">{$t('rules.backgroundTheme')}</div>
       <div class="theme-grid">
-        {#each THEMES as t (t.id)}
+        {#each THEMES as theme (theme.id)}
           <button
             class="theme-option"
-            class:active={$rulesTheme === t.id}
-            onclick={() => applyTheme(t.id)}
+            class:active={$rulesTheme === theme.id}
+            onclick={() => applyTheme(theme.id)}
           >
-            <span class="theme-swatch" style="background: {t.color}; color: {t.text}">Aa</span>
-            <span class="theme-name">{t.label}</span>
+            <span class="theme-swatch" style="background: {theme.color}; color: {theme.text}">Aa</span>
+            <span class="theme-name">{$t(theme.labelKey)}</span>
           </button>
         {/each}
       </div>
@@ -241,12 +243,12 @@
   <!-- 正文 -->
   <main class="main" id="main">
     {#if loading}
-      <div class="loading">加载中...</div>
+      <div class="loading">{$t('common.loading')}</div>
     {:else}
       <div class="content-wrap">
         <div class="book">
           <header class="book-header">
-            <h1 class="book-title">符文战场</h1>
+            <h1 class="book-title">{$t('rules.bookTitle')}</h1>
             <div class="book-sub">{page.params.slug}</div>
           </header>
 
@@ -261,7 +263,7 @@
                   data-rn={rule.rule_number}
                   use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
                 >
-                  <div class="chapter-num">Chapter {rule.rule_number}</div>
+                  <div class="chapter-num">{$t('rules.chapterLabel', { values: { number: rule.rule_number } })}</div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
                   {#if $lang === 'both'}
                     <div class="chapter-title-en">{rule.text_en}</div>
@@ -310,8 +312,8 @@
                   {#if !copyMode}
                     <button
                       class="row-copy"
-                      title="复制规则"
-                      aria-label="复制规则"
+                      title={$t('rules.copyRule')}
+                      aria-label={$t('rules.copyRule')}
                       onclick={(e) => {
                         e.stopPropagation()
                         copyRule(rule)
@@ -325,7 +327,7 @@
             {/each}
           </div>
 
-          <footer class="book-footer">— 完 —</footer>
+          <footer class="book-footer">{$t('rules.endOfBook')}</footer>
         </div>
       </div>
     {/if}
@@ -334,11 +336,11 @@
   <!-- 多选复制浮动条 -->
   {#if copyMode}
     <div class="multi-bar">
-      <span class="multi-count">已选 {selectedCount} 条</span>
+      <span class="multi-count">{$t('rules.selectedCount', { values: { count: selectedCount } })}</span>
       <button class="multi-copy" onclick={copySelected} disabled={selectedCount === 0}>
-        <Copy size={14} /> 复制全部
+        <Copy size={14} /> {$t('rules.copyAll')}
       </button>
-      <button class="multi-cancel" onclick={toggleCopyMode}>取消</button>
+      <button class="multi-cancel" onclick={toggleCopyMode}>{$t('common.cancel')}</button>
     </div>
   {/if}
 
@@ -351,11 +353,11 @@
           bind:this={searchInput}
           bind:value={searchQuery}
           oninput={scheduleSearch}
-          placeholder="搜索规则…"
+          placeholder={$t('rules.searchPlaceholder')}
           class="search-modal-input"
         />
         {#if searchQuery}
-          <button class="search-modal-clear" onclick={clearSearch} aria-label="清除搜索">
+          <button class="search-modal-clear" onclick={clearSearch} aria-label={$t('rules.clearSearch')}>
             <X size={14} />
           </button>
         {/if}
@@ -364,9 +366,9 @@
 
     <div class="search-results">
       {#if !effectiveQuery.trim()}
-        <div class="search-empty">输入关键词搜索规则</div>
+        <div class="search-empty">{$t('rules.searchHint')}</div>
       {:else if searchResults.length === 0}
-        <div class="search-empty">未找到匹配内容</div>
+        <div class="search-empty">{$t('rules.noMatches')}</div>
       {:else}
         {#each searchResults as r (r.id)}
           <!-- svelte-ignore a11y_click_events_have_key_events -->

@@ -1,13 +1,14 @@
 <script lang="ts">
   import { page } from '$app/state'
   import { LayoutDashboard, Library, Swords, Sparkles, BookOpen } from '@lucide/svelte'
+  import { t } from 'svelte-i18n'
 
   const navItems = [
-    { icon: LayoutDashboard, label: '首页', href: '/' },
-    { icon: Library, label: '单卡库', href: '/cards' },
-    { icon: Swords, label: '我的卡组', href: '/decks' },
-    { icon: Sparkles, label: '收藏与闪卡', href: '/collection' },
-    { icon: BookOpen, label: '游戏文档', href: '/rules' },
+    { icon: LayoutDashboard, key: 'home', href: '/' },
+    { icon: Library, key: 'cards', href: '/cards' },
+    { icon: Swords, key: 'decks', href: '/decks' },
+    { icon: Sparkles, key: 'collection', href: '/collection' },
+    { icon: BookOpen, key: 'rules', href: '/rules' },
   ]
 
   function isActive(href: string) {
@@ -17,7 +18,7 @@
   }
 </script>
 
-<nav class="bottom-nav" aria-label="底部导航">
+<nav class="bottom-nav" aria-label={$t('nav.sectionTools')}>
   {#each navItems as item}
     {@const Icon = item.icon}
     {@const active = isActive(item.href)}
@@ -28,7 +29,7 @@
       aria-current={active ? 'page' : undefined}
     >
       <Icon size={22} strokeWidth={1.75} fill={active ? 'currentColor' : 'none'} />
-      <span class="bottom-nav-label">{item.label}</span>
+      <span class="bottom-nav-label">{$t(`nav.${item.key}`)}</span>
     </a>
   {/each}
 </nav>

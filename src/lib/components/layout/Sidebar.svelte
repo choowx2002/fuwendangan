@@ -20,20 +20,21 @@
   import { isTauri } from '$lib/db'
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import TTSStatusPanel from './TTSStatusPanel.svelte'
+  import { t } from 'svelte-i18n'
   let { isOpen = $bindable() } = $props()
 
   const navItems = [
-    { icon: LayoutDashboard, label: '首页', href: '/' },
-    { icon: Library, label: '单卡库', href: '/cards' },
-    { icon: Swords, label: '我的卡组', href: '/decks' },
-    { icon: Sparkles, label: '收藏与闪卡', href: '/collection' },
-    { icon: Gamepad2, label: '模拟器', href: '/simulator' },
+    { icon: LayoutDashboard, key: 'home', href: '/' },
+    { icon: Library, key: 'cards', href: '/cards' },
+    { icon: Swords, key: 'decks', href: '/decks' },
+    { icon: Sparkles, key: 'collection', href: '/collection' },
+    { icon: Gamepad2, key: 'simulator', href: '/simulator' },
   ]
 
   const toolItems = [
-    { icon: Library, label: '游戏文档', href: '/rules' },
-    { icon: Wrench, label: '对战工具', href: '/tools' },
-    { icon: Settings, label: '设置', href: '/settings' },
+    { icon: Library, key: 'rules', href: '/rules' },
+    { icon: Wrench, key: 'tools', href: '/tools' },
+    { icon: Settings, key: 'settings', href: '/settings' },
   ]
 
   function closeIfMobile() {
@@ -85,7 +86,7 @@
       </div>
     </div>
 
-    <button class="icon-btn" aria-label="最小化" onclick={toggleMinimize}>
+    <button class="icon-btn" aria-label={$t('common.minimize')} onclick={toggleMinimize}>
       {#if !sidebarState.isMinimized}
         <ChevronLeft size={16} />
       {:else}
@@ -107,7 +108,7 @@
       >
         <item.icon size={18} strokeWidth={1.75} />
         <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
-          >{item.label}</span
+          >{$t(`nav.${item.key}`)}</span
         >
       </a>
     {/each}
@@ -117,7 +118,7 @@
 
   <nav class="nav-section">
     <div class="section-title willHidden" class:isHidden={isOpen && sidebarState.isMinimized}>
-      工具与设置
+      {$t('nav.sectionTools')}
     </div>
     {#each toolItems as item}
       <a
@@ -131,7 +132,7 @@
       >
         <item.icon size={18} strokeWidth={1.75} />
         <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
-          >{item.label}</span
+          >{$t(`nav.${item.key}`)}</span
         >
       </a>
     {/each}
@@ -151,7 +152,7 @@
           <Pin size={18} strokeWidth={1.75} />
         {/if}
         <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
-          >置顶窗口</span
+          >{$t('common.pinWindow')}</span
         >
       </button>
     {/if}

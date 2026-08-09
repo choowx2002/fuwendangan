@@ -17,18 +17,21 @@
   } from '$lib/db'
   import { History, Undo2, ChevronDown, Search, Camera } from '@lucide/svelte'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
+  import { locale } from '$lib/stores/settings'
 
   const PAGE_SIZE = 30
 
   const OP_TYPE_LABELS: Record<CollectionHistoryOpType, string> = {
-    upsert: '数量编辑',
-    bulk_mark_owned: '批量标记',
-    bulk_increment: '批量 +1',
-    bulk_delete: '批量删除',
-    csv_import: 'CSV 导入',
-    custom_print_create: '新建自定义卡',
-    custom_print_delete: '删除自定义卡',
-    custom_print_migrate: '打印迁移',
+    upsert: 'collection.opUpsert',
+    bulk_mark_owned: 'collection.opBulkMarkOwned',
+    bulk_increment: 'collection.opBulkIncrement',
+    bulk_delete: 'collection.opBulkDelete',
+    csv_import: 'collection.opCsvImport',
+    custom_print_create: 'collection.opCustomPrintCreate',
+    custom_print_delete: 'collection.opCustomPrintDelete',
+    custom_print_migrate: 'collection.opCustomPrintMigrate',
   }
 
   let rows = $state<CollectionHistory[]>([])
@@ -94,11 +97,16 @@
     undoingId = row.id
     try {
       await undoHistory(row.id)
-      showToast('已撤销该操作', 'success')
+      showToast(get(t)('collection.undoSuccess'), 'success')
       rows = rows.map((r) => (r.id === row.id ? { ...r, isUndoable: false } : r))
       void loadSnapshots()
     } catch (err) {
-      showToast(`撤销失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.undoFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       undoingId = null
     }
@@ -106,14 +114,14 @@
 
   async function handleManualSnapshot() {
     await captureCollectionSnapshot('manual')
-    showToast('已记录当前收藏进度快照', 'success')
+    showToast(get(t)('collection.snapshotSuccess'), 'success')
     void loadSnapshots()
   }
 
   const groups = $derived.by(() => {
     const map = new Map<string, CollectionHistory[]>()
     for (const r of rows) {
-      const d = new Date(r.createdAt).toLocaleDateString('zh-CN', {
+      const d = new Date(r.createdAt).toLocaleDateString($locale, {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -146,7 +154,7 @@
 
   function formatTime(iso: string): string {
     const d = new Date(iso)
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleTimeString($locale, { hour: '2-digit', minute: '2-digit' })
   }
 
   function describe(it: CollectionHistoryItem, prefix: 'old' | 'new'): string {
@@ -155,8 +163,8 @@
     const n = prefix === 'old' ? it.oldNormalQty : it.newNormalQty
     const f = prefix === 'old' ? it.oldFoilQty : it.newFoilQty
     if (status) parts.push(status)
-    if (n != null) parts.push(`普${n}`)
-    if (f != null) parts.push(`闪${f}`)
+    if (n != null) parts.push(get(t)('collection.normalCount', { values: { count: n } }))
+    if (f != null) parts.push(get(t)('collection.foilCount', { values: { count: f } }))
     return parts.join(' ')
   }
 
@@ -166,23 +174,23 @@
     const before = describe(it, 'old')
     const after = describe(it, 'new')
     if (hasOld && hasNew) return `${before} → ${after}`
-    if (hasOld) return `${before} → 删除`
-    if (hasNew) return `新增 ${after}`
+    if (hasOld) return `${before} → ${get(t)('collection.deleted')}`
+    if (hasNew) return get(t)('collection.added', { values: { text: after } })
     return '—'
   }
 
   $effect(() => {
     setTopbar({
-      title: '收藏历史',
-      description: '操作记录与收藏进度趋势',
+      title: $t('collection.history'),
+      description: $t('collection.historyDesc'),
       onBack: () => void goto('/collection'),
       actions: [
         {
           key: 'snapshot',
-          label: '记录快照',
+          label: $t('collection.recordSnapshot'),
           icon: Camera,
           variant: 'ghost',
-          title: '手动记录当前收藏进度快照',
+          title: $t('collection.recordSnapshotTitle'),
           onClick: () => void handleManualSnapshot(),
         },
       ],
@@ -198,26 +206,26 @@
 <div class="page-wrapper">
   <div class="filter-bar">
     <select class="type-select" bind:value={opType} onchange={() => void load(true)}>
-      <option value="">全部类型</option>
-      {#each Object.entries(OP_TYPE_LABELS) as [key, label]}
-        <option value={key}>{label}</option>
+      <option value="">{$t('collection.allTypes')}</option>
+      {#each Object.entries(OP_TYPE_LABELS) as [key, labelKey]}
+        <option value={key}>{$t(labelKey)}</option>
       {/each}
     </select>
     <div class="search-box">
       <span class="search-icon"><Search size={15} /></span>
-      <input bind:value={q} oninput={debouncedSearch} placeholder="搜索卡牌编号 / 名称" />
+      <input bind:value={q} oninput={debouncedSearch} placeholder={$t('collection.historySearchPlaceholder')} />
     </div>
   </div>
 
   <div class="chart-card">
     <div class="chart-header">
-      <span class="chart-title">收藏进度趋势</span>
-      <span class="chart-sub">{snapshots.length} 个快照</span>
+      <span class="chart-title">{$t('collection.progressTrend')}</span>
+      <span class="chart-sub">{$t('collection.snapshotCount', { values: { count: snapshots.length } })}</span>
     </div>
     {#if chartLoading && snapshots.length === 0}
-      <div class="chart-empty">加载中...</div>
+      <div class="chart-empty">{$t('common.loading')}</div>
     {:else if !chart}
-      <div class="chart-empty">快照不足，进行几次收藏编辑后这里会显示已完成数量的变化趋势</div>
+      <div class="chart-empty">{$t('collection.notEnoughSnapshots')}</div>
     {:else}
       <svg class="trend-chart" viewBox="0 0 600 150" preserveAspectRatio="none">
         <defs>
@@ -239,8 +247,8 @@
         {/each}
       </svg>
       <div class="chart-meta">
-        <span>最低 {chart.min}</span>
-        <span>当前已收集 {chart.current}</span>
+        <span>{$t('collection.chartMin', { values: { count: chart.min } })}</span>
+        <span>{$t('collection.chartCurrent', { values: { count: chart.current } })}</span>
       </div>
     {/if}
   </div>
@@ -262,7 +270,7 @@
             >
               <div class="row-title">
                 <span class="row-icon"><History size={16} /></span>
-                <span class="op-label">{OP_TYPE_LABELS[row.opType] ?? row.opType}</span>
+                <span class="op-label">{$t(OP_TYPE_LABELS[row.opType] ?? '')}</span>
                 {#if row.note}
                   <span class="note">{row.note}</span>
                 {/if}
@@ -271,7 +279,7 @@
                 {#if row.isUndoable}
                   <button
                     class="undo-btn"
-                    title="撤销该操作"
+                    title={$t('collection.undoTitle')}
                     disabled={undoingId === row.id}
                     onclick={(e) => {
                       e.stopPropagation()
@@ -283,10 +291,10 @@
                     {:else}
                       <Undo2 size={14} />
                     {/if}
-                    撤销
+                    {$t('collection.undo')}
                   </button>
                 {/if}
-                <span class="item-count">{row.itemCount} 项</span>
+                <span class="item-count">{$t('collection.itemCount', { values: { count: row.itemCount } })}</span>
                 <span class="time">{formatTime(row.createdAt)}</span>
                 <span class={expandedId === row.id ? 'chevron rotate' : 'chevron'}>
                   <ChevronDown size={16} />
@@ -296,9 +304,9 @@
             {#if expandedId === row.id}
               <div class="row-detail">
                 {#if itemsLoading}
-                  <div class="detail-loading">加载中...</div>
+                  <div class="detail-loading">{$t('common.loading')}</div>
                 {:else if expandedItems.length === 0}
-                  <div class="detail-loading">无明细</div>
+                  <div class="detail-loading">{$t('collection.noDetail')}</div>
                 {:else}
                   {#each expandedItems as it}
                     <div class="detail-row">
@@ -319,13 +327,13 @@
     {/each}
 
     {#if !loading && rows.length === 0}
-      <div class="empty-tip">暂无操作记录</div>
+      <div class="empty-tip">{$t('collection.noHistory')}</div>
     {/if}
 
     {#if rows.length < total}
       <div class="load-more-wrap">
         <button class="button button-ghost" onclick={() => void load(false)} disabled={loading}>
-          {loading ? '加载中...' : `加载更多（${rows.length}/${total}）`}
+          {loading ? $t('common.loading') : $t('collection.loadMore', { values: { current: rows.length, total } })}
         </button>
       </div>
     {/if}

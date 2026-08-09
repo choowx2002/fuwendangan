@@ -5,7 +5,8 @@ import type { cardAndPrint } from './types'
 export interface DeckIssue {
   severity: 'error' | 'warning'
   type: 'banned' | 'capacity' | 'name_limit' | 'weiwo_limit'
-  message: string
+  messageKey: string
+  params: Record<string, string | number>
   cardNames?: (string | null)[]
 }
 
@@ -46,7 +47,8 @@ export function validateDeck(deck: {
       issues.push({
         severity: 'error',
         type: 'capacity',
-        message: `${zone.label} 区域卡牌数量 (${cards.length}) 超过了最大限制 (${zone.maxCount})！`,
+        messageKey: 'builder.issueCapacityOver',
+        params: { zone: zone.labelKey, count: cards.length, max: zone.maxCount },
       })
     }
 
@@ -54,7 +56,8 @@ export function validateDeck(deck: {
       issues.push({
         severity: 'warning',
         type: 'capacity',
-        message: `${zone.label} 区域卡牌数量 (${cards.length}) 不足 (${zone.maxCount})！`,
+        messageKey: 'builder.issueCapacityUnder',
+        params: { zone: zone.labelKey, count: cards.length, max: zone.maxCount },
       })
     }
 
@@ -63,7 +66,8 @@ export function validateDeck(deck: {
       issues.push({
         severity: 'error',
         type: 'banned',
-        message: `以下禁卡不能加入卡组: ${bannedCards.map((c) => c.card_name_cn).join('、')}`,
+        messageKey: 'builder.issueBanned',
+        params: { names: bannedCards.map((c) => c.card_name_cn).join('、') },
         cardNames: bannedCards.map((c) => c.card_name_cn),
       })
     }
@@ -93,7 +97,8 @@ export function validateDeck(deck: {
       issues.push({
         severity: 'error',
         type: 'name_limit',
-        message: `同名卡牌 <b>"${data.name}"</b> 在 选定英雄 + 主牌堆 + 备牌 中最多只能加入 3 张 (当前: ${data.count} 张)！`,
+        messageKey: 'builder.issueNameLimit',
+        params: { name: data.name, count: data.count },
         cardNames: [data.name],
       })
     }
@@ -118,7 +123,8 @@ export function validateDeck(deck: {
       issues.push({
         severity: 'error',
         type: 'weiwo_limit',
-        message: `带有“唯我”特性的卡牌「${name}」在卡组中只能有 1 张 (当前有 ${count} 张)！`,
+        messageKey: 'builder.issueWeiwoLimit',
+        params: { name, count },
         cardNames: [name],
       })
     }
@@ -127,10 +133,13 @@ export function validateDeck(deck: {
   return issues
 }
 
-export function checkZoneCapacity(zone: ZoneKey, currentCount: number): string | null {
+export function checkZoneCapacity(zone: ZoneKey, currentCount: number) {
   const config = ZONE_CONFIG[zone]
   if (currentCount >= config.maxCount) {
-    return `${config.name} 区域已达到最大容量 ${config.maxCount} 张！`
+    return {
+      messageKey: 'builder.issueZoneFull',
+      params: { zone: config.labelKey, max: config.maxCount },
+    }
   }
   return null
 }

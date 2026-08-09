@@ -22,10 +22,11 @@
     getDeckMatchStats,
     getMatchesByDeck,
     deleteMatch,
+    gameResult,
     type MatchSummary,
     type MatchWithGames,
   } from '$lib/db/index.js'
-  import { DECK_FORMATS } from '$lib/decks/format'
+  import { DECK_FORMATS, FORMAT_LABEL_KEYS } from '$lib/decks/format'
   import {
     computeVersionDiff,
     computeTotalCards,
@@ -74,6 +75,8 @@
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
   import MatchRecordModal from '$lib/components/decks/MatchRecordModal.svelte'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
   import {
     History,
     ChartPie,
@@ -197,10 +200,11 @@
   }
 
   function matchSummaryText(match: MatchWithGames): string {
-    const wins = match.games.filter((g) => g.is_win).length
-    const losses = match.games.filter((g) => !g.is_win).length
-    const draws = match.games.length - wins - losses
-    if (draws > 0) return `${wins} 胜 ${losses} 负 ${draws} 平`
+    const results = match.games.map((g) => gameResult(g))
+    const wins = results.filter((r) => r === 'win').length
+    const losses = results.filter((r) => r === 'loss').length
+    const draws = results.filter((r) => r === 'draw').length
+    if (draws > 0) return get(t)('records.summary', { values: { wins, losses, draws } })
     return `${wins} : ${losses}`
   }
 
@@ -230,9 +234,9 @@
   async function pickBackgroundImage() {
     if (isTauri) {
       const src = await open({
-        title: '选择背景图片',
+        title: get(t)('deckDetail.pickBgImage'),
         multiple: false,
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+        filters: [{ name: get(t)('decks.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
       })
       if (!src || Array.isArray(src)) return
       try {
@@ -441,7 +445,7 @@
     ownershipZones
       .filter(({ row }) => ownershipIncludeComplete || row.owned < row.needed)
       .map(({ row, zone }) => ({
-        zoneLabel: ZONE_CONFIG[zone as ZoneKey]?.label ?? zone,
+        zoneLabel: get(t)(ZONE_CONFIG[zone as ZoneKey].labelKey),
         cardName: row.cardName,
         cardNo: row.cardNoExtend || row.cardNo,
         owned: row.owned,
@@ -457,20 +461,28 @@
       const content =
         ownershipExportFormat === 'csv'
           ? buildOwnershipCsv(ownershipExportRows)
-          : buildOwnershipText(ownershipExportRows, deck?.name ?? '未命名卡组')
+          : buildOwnershipText(
+              ownershipExportRows,
+              deck?.name ?? get(t)('builder.unnamedDeck')
+            )
       const stamp = new Date().toISOString().slice(0, 10)
       const ok = await saveOwnershipExport(
         content,
-        `卡组持有检查-${deck?.name ?? 'deck'}-${stamp}.${ownershipExportFormat}`,
+        `${get(t)('deckDetail.ownershipFilePrefix')}-${deck?.name ?? 'deck'}-${stamp}.${ownershipExportFormat}`,
         ownershipExportFormat
       )
       if (ok) {
-        showToast(`已保存 ${ownershipExportRows.length} 条持有检查`, 'success')
+        showToast(get(t)('deckDetail.ownershipSaved', { values: { count: ownershipExportRows.length } }), 'success')
       } else {
-        showToast('已取消保存', 'info')
+        showToast(get(t)('deckDetail.saveCancelled'), 'info')
       }
     } catch (err) {
-      showToast(`导出失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('deckDetail.exportFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       exportingOwnership = false
     }
@@ -487,10 +499,10 @@
   }
 
   async function confirmDeleteMatch(match: MatchWithGames) {
-    const confirm = await ask(`确定删除这场对局吗？小局记录将一并删除。`, {
+    const confirm = await ask(get(t)('records.deleteConfirm'), {
       kind: 'warning',
-      okLabel: '删除',
-      cancelLabel: '取消',
+      okLabel: get(t)('common.delete'),
+      cancelLabel: get(t)('common.cancel'),
     })
     if (!confirm) return
     await deleteMatch(match.id)
@@ -500,11 +512,11 @@
   async function confirmDeleteDeck() {
     if (!deck) return
     const confirm = await ask(
-      `你确定要删除 ${deck.name} 吗？该卡组的所有版本与对局记录将一并删除。`,
+      get(t)('deckDetail.deleteDeckConfirm', { values: { name: deck.name } }),
       {
         kind: 'warning',
-        okLabel: '删除',
-        cancelLabel: '取消',
+        okLabel: get(t)('common.delete'),
+        cancelLabel: get(t)('common.cancel'),
       }
     )
     if (!confirm) return
@@ -538,16 +550,16 @@
   $effect(() => {
     const badges: { key: string; text: string }[] = []
     if (deck?.format) badges.push({ key: 'format', text: deck.format })
-    if (deck?.is_favorite) badges.push({ key: 'favorite', text: '收藏' })
+    if (deck?.is_favorite) badges.push({ key: 'favorite', text: $t('deckDetail.favorite') })
     setTopbar({
-      title: deck?.name || '加载中...',
+      title: deck?.name || $t('deckDetail.loading'),
       badges,
       actions: [
         {
           key: 'edit-info',
           icon: Info,
-          title: '编辑信息',
-          label: '信息',
+          title: $t('deckDetail.editInfo'),
+          label: $t('deckDetail.infoLabel'),
           disabled: !deck,
           onClick: openEditInfo,
           priority: 5,
@@ -555,8 +567,8 @@
         {
           key: 'share',
           icon: Upload,
-          title: '导出 / 复制卡组',
-          label: '导出',
+          title: $t('deckDetail.shareDeck'),
+          label: $t('common.export'),
           onClick: () => {
             shareFormat = 'text'
             showShareModal = true
@@ -566,8 +578,8 @@
         {
           key: 'ownership',
           icon: CircleCheck,
-          title: '持有检查',
-          label: '持有检查',
+          title: $t('builder.ownershipCheck'),
+          label: $t('builder.ownershipCheck'),
           disabled: !deck || cards.length === 0,
           onClick: runOwnershipCheck,
           priority: 5,
@@ -575,8 +587,8 @@
         {
           key: 'delete',
           icon: Trash2,
-          title: '删除卡组',
-          label: '删除',
+          title: $t('decks.deleteTitle'),
+          label: $t('common.delete'),
           variant: 'danger',
           disabled: !deck,
           onClick: confirmDeleteDeck,
@@ -584,7 +596,7 @@
         },
         {
           key: 'edit',
-          label: '编辑卡组',
+          label: $t('deckDetail.editDeck'),
           icon: PencilLine,
           variant: 'primary',
           priority: 0,
@@ -676,16 +688,16 @@
 
   const PHASE_LABEL: Record<SimPhase, string> = {
     idle: '',
-    initial: '调度阶段',
-    draw: '抽牌阶段',
+    initial: 'deckDetail.simInitial',
+    draw: 'deckDetail.simDraw',
   }
 
   const simHint = $derived(
     simPhase === 'idle'
-      ? '抽取 4 张起手牌。'
+      ? $t('deckDetail.simHintIdle')
       : simPhase === 'initial'
-        ? '点选最多 2 张要调度的牌（放回重抽），然后确认。'
-        : `可继续抽牌（每次 1 张），牌库剩余 ${simDeck.length} 张。`
+        ? $t('deckDetail.simHintMulligan')
+        : $t('deckDetail.simHintDraw', { values: { count: simDeck.length } })
   )
 
   function buildPool(): DeckCardDetail[] {
@@ -765,48 +777,48 @@
   const shareFormats = [
     {
       id: 'text',
-      label: '纯文本',
-      description: '标准格式，便于分享或导入外部工具。',
+      labelKey: 'deckDetail.formatText',
+      descriptionKey: 'deckDetail.formatTextDesc',
       support: ['export', 'copy'],
     },
     {
       id: 'official',
-      label: '国际官方文本',
-      description: '官方卡组文本格式，可导入本应用或官方工具。',
+      labelKey: 'decks.importOfficialLabel',
+      descriptionKey: 'deckDetail.formatOfficialDesc',
       support: ['export', 'copy'],
     },
     {
       id: 'code',
-      label: 'Piltover Archive卡组代码',
-      description: '含主牌堆、符文、备牌与选定英雄，可导入 Piltover Archive 等工具。',
+      labelKey: 'deckDetail.formatCode',
+      descriptionKey: 'deckDetail.formatCodeDesc',
       support: ['export', 'copy'],
     },
     {
       id: 'pdf',
-      label: 'PROXY 打印 PDF',
-      description: 'A4 竖版 3×3 代牌，含主牌堆、战场、符文与备牌，可打印裁剪。',
+      labelKey: 'deckDetail.formatPdf',
+      descriptionKey: 'deckDetail.formatPdfDesc',
       support: ['export'],
       media: true,
       icon: FileText,
-      shortLabel: 'PDF',
+      shortLabelKey: 'pdf',
     },
     {
       id: 'image',
-      label: '卡组图案',
-      description: '生成卡组清单图片（英雄、符文与主/备牌），可导出 JPG、复制或分享。',
+      labelKey: 'deckDetail.formatImage',
+      descriptionKey: 'deckDetail.formatImageDesc',
       support: ['export', 'copy'],
       media: true,
       icon: ImageIcon,
-      shortLabel: '图案',
+      shortLabelKey: 'deckDetail.formatImageShort',
     },
     {
       id: 'qr',
-      label: '二维码',
-      description: '编码卡组代码与 main/side/champion 分区数量，供扫码工具识别。',
+      labelKey: 'decks.importQrLabel',
+      descriptionKey: 'deckDetail.formatQrDesc',
       support: ['export', 'copy'],
       media: true,
       icon: QrCode,
-      shortLabel: '二维码',
+      shortLabelKey: 'decks.importQrLabel',
     },
   ]
 
@@ -954,7 +966,7 @@
         mimeType: isPng ? 'image/png' : 'image/jpeg',
         title: fileName,
       })
-      showToast('已打开分享面板', 'success')
+      showToast(get(t)('deckDetail.sharePanelOpened'), 'success')
     } finally {
       await remove(relFile, { baseDir: BaseDirectory.AppCache }).catch(() => {})
     }
@@ -1015,7 +1027,7 @@
           return
         }
         const dest = await save({
-          title: '导出 PROXY PDF',
+          title: get(t)('deckDetail.exportPdfTitle'),
           defaultPath: `${deck?.name || 'deck'}-proxy.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         })
@@ -1041,9 +1053,9 @@
           return
         }
         const dest = await save({
-          title: '导出卡组图案',
+          title: get(t)('deckDetail.exportImageTitle'),
           defaultPath: `${deck?.name || 'deck'}.jpg`,
-          filters: [{ name: 'JPG 图片', extensions: ['jpg'] }],
+          filters: [{ name: 'JPG', extensions: ['jpg'] }],
         })
         if (!dest) return
         await writeImageToPath(dataUrl, dest)
@@ -1068,9 +1080,9 @@
           return
         }
         const dest = await save({
-          title: '导出二维码',
+          title: get(t)('deckDetail.exportQrTitle'),
           defaultPath: fileName,
-          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+          filters: [{ name: 'PNG', extensions: ['png'] }],
         })
         if (!dest) return
         await writeImageToPath(qrDataUrl, dest)
@@ -1093,7 +1105,7 @@
 
     const isCode = shareFormat === 'code'
     const dest = await save({
-      title: '导出卡组',
+      title: get(t)('deckDetail.exportDeckTitle'),
       defaultPath: `${deck?.name || 'deck'}${isCode ? '.code' : '.txt'}`,
       filters: isCode
         ? [{ name: 'Deck Code', extensions: ['code'] }]
@@ -1118,16 +1130,16 @@
       </div>
     {/if}
     <div class="deck-meta">
-      <span>总卡牌数: <strong>{totalCardCount}</strong></span>
+      <span>{$t('deckDetail.totalCardsLabel')} <strong>{totalCardCount}</strong></span>
       <span class="divider">•</span>
       <span
-        >创建时间: {deck?.created_at
+        >{$t('deckDetail.createdAt')} {deck?.created_at
           ? new Date(deck.created_at).toLocaleDateString()
-          : '未知'}</span
+          : $t('common.unknown')}</span
       >
       {#if deck?.updated_at}
         <span class="divider">•</span>
-        <span>更新时间: {getRelativeTime(deck.updated_at)}</span>
+        <span>{$t('deckDetail.updatedAt')} {getRelativeTime(deck.updated_at)}</span>
       {/if}
     </div>
   </div>
@@ -1137,12 +1149,10 @@
       <div class="match-section-header">
         <div class="match-section-title">
           <Swords size={18} />
-          <h2>对局记录</h2>
+          <h2>{$t('records.title')}</h2>
           {#if matchStats}
             <span class="match-winrate-badge">
-              胜率 {matchStats.games > 0
-                ? Math.round((matchStats.wins / matchStats.games) * 100)
-                : 0}%
+              {$t('deckDetail.winRate', { values: { value: matchStats.games > 0 ? Math.round((matchStats.wins / matchStats.games) * 100) : 0 } })}
             </span>
           {/if}
         </div>
@@ -1151,10 +1161,10 @@
             class="button button-ghost button-sm"
             onclick={() => goto(`/decks/${page.params.deckid}/records`)}
           >
-            查看全部 <ChevronRight size={14} />
+            {$t('deckDetail.viewAll')} <ChevronRight size={14} />
           </button>
           <button class="button button-primary button-sm" onclick={openCreateMatch}>
-            <Plus size={14} /> 记录对局
+            <Plus size={14} /> {$t('match.recordTitle')}
           </button>
         </div>
       </div>
@@ -1163,24 +1173,24 @@
         <div class="match-summary">
           <div class="summary-item">
             <span class="summary-value">{matchStats.matches}</span>
-            <span class="summary-label">场次</span>
+            <span class="summary-label">{$t('records.statMatches')}</span>
           </div>
           <div class="summary-item">
             <span class="summary-value">{matchStats.games}</span>
-            <span class="summary-label">小局</span>
+            <span class="summary-label">{$t('records.statGames')}</span>
           </div>
           <div class="summary-item">
             <span class="summary-value summary-win">{matchStats.wins}</span>
-            <span class="summary-label">胜</span>
+            <span class="summary-label">{$t('records.statWins')}</span>
           </div>
           <div class="summary-item">
             <span class="summary-value summary-loss">{matchStats.losses}</span>
-            <span class="summary-label">负</span>
+            <span class="summary-label">{$t('records.statLosses')}</span>
           </div>
           {#if matchStats.draws > 0}
             <div class="summary-item">
               <span class="summary-value">{matchStats.draws}</span>
-              <span class="summary-label">平</span>
+              <span class="summary-label">{$t('records.statDraws')}</span>
             </div>
           {/if}
           {#if matchStats.first_games > 0}
@@ -1188,7 +1198,7 @@
               <span class="summary-value summary-win">
                 {Math.round((matchStats.first_wins / matchStats.first_games) * 100)}%
               </span>
-              <span class="summary-label">先手胜率</span>
+              <span class="summary-label">{$t('records.statFirstWinRate')}</span>
             </div>
           {/if}
           {#if matchStats.second_games > 0}
@@ -1196,7 +1206,7 @@
               <span class="summary-value summary-loss">
                 {Math.round((matchStats.second_wins / matchStats.second_games) * 100)}%
               </span>
-              <span class="summary-label">后手胜率</span>
+              <span class="summary-label">{$t('records.statSecondWinRate')}</span>
             </div>
           {/if}
         </div>
@@ -1213,10 +1223,10 @@
                 onclick={() => toggleMatchExpand(match.id)}
               >
                 <span class="match-item-date">
-                  {match.played_at ? new Date(match.played_at).toLocaleDateString() : '未填日期'}
+                  {match.played_at ? new Date(match.played_at).toLocaleDateString() : $t('records.noDate')}
                 </span>
                 <span class="match-item-opponent">
-                  {match.player_name || '我'} vs {match.opponent_name || '无名对手'}
+                  {match.player_name || $t('records.me')} vs {match.opponent_name || $t('records.unknownOpponent')}
                 </span>
                 {#if match.group_name}
                   <span class="match-group-badge">{match.group_name}</span>
@@ -1244,37 +1254,46 @@
                         name={`${match.opp_legend_print_code ?? match.opp_legend_id ?? 'none'}-${match.opp_legend_lang ?? match.opp_legend_print_id ?? 'none'}`}
                         className="match-legend-thumb"
                       />
-                      <span class="match-legend-label">对手传奇：</span>
+                      <span class="match-legend-label">{$t('records.oppLegend')}</span>
                       <span class="match-legend-name">{match.opp_legend_name}</span>
                     </div>
                   {/if}
                   <ul class="game-list">
                     {#each match.games as game (game.id)}
                       <li class="game-item">
-                        <span class="game-number-badge">第 {game.game_number} 局</span>
+                        <span class="game-number-badge">{$t('match.gameNumber', { values: { n: game.game_number } })}</span>
                         {#if game.is_first !== null}
                           <span
                             class="game-turn-badge"
                             class:first={game.is_first}
                             class:second={!game.is_first}
                           >
-                            {game.is_first ? '先手' : '后手'}
+                            {game.is_first ? $t('records.first') : $t('records.second')}
                           </span>
                         {/if}
                         <span class="game-score">
                           {#if game.my_score !== null && game.opp_score !== null}
                             {game.my_score} : {game.opp_score}
                           {:else}
-                            未记比分
+                            {$t('records.noScore')}
                           {/if}
                         </span>
-                        <span class="game-result" class:win={game.is_win} class:loss={!game.is_win}>
-                          {game.is_win ? '胜' : '负'}
+                        <span
+                          class="game-result"
+                          class:win={gameResult(game) === 'win'}
+                          class:loss={gameResult(game) === 'loss'}
+                          class:draw={gameResult(game) === 'draw'}
+                        >
+                          {gameResult(game) === 'win'
+                            ? $t('match.win')
+                            : gameResult(game) === 'loss'
+                              ? $t('match.loss')
+                              : $t('match.draw')}
                         </span>
                         {#if game.win_type === 'concede'}
-                          <span class="game-special-badge">对方认输</span>
+                          <span class="game-special-badge">{$t('match.oppConcede')}</span>
                         {:else if game.win_type === 'special'}
-                          <span class="game-special-badge special">特殊胜利</span>
+                          <span class="game-special-badge special">{$t('match.specialWin')}</span>
                         {/if}
                         {#if game.win_reason}
                           <span class="game-reason">{game.win_reason}</span>
@@ -1290,13 +1309,13 @@
                       class="button button-text button-sm"
                       onclick={() => openEditMatch(match)}
                     >
-                      <PencilLine size={13} /> 编辑
+                      <PencilLine size={13} /> {$t('common.edit')}
                     </button>
                     <button
                       class="button button-text button-sm"
                       onclick={() => confirmDeleteMatch(match)}
                     >
-                      <Trash2 size={13} /> 删除
+                      <Trash2 size={13} /> {$t('common.delete')}
                     </button>
                   </div>
                 </div>
@@ -1306,7 +1325,7 @@
         </ul>
       {:else}
         <div class="match-empty">
-          <p>还没有对局记录，点击「记录对局」开始记录你的第一场对局吧。</p>
+          <p>{$t('deckDetail.noMatches')}</p>
         </div>
       {/if}
     </section>
@@ -1341,9 +1360,9 @@
     <div class="analysis-card sim-card">
       <div class="analysis-card-header">
         <Dices size={18} />
-        <h3>起手模拟</h3>
+        <h3>{$t('deckDetail.simTitle')}</h3>
         {#if simPhase !== 'idle'}
-          <span class="sim-phase-badge">{PHASE_LABEL[simPhase]}</span>
+          <span class="sim-phase-badge">{$t(PHASE_LABEL[simPhase])}</span>
         {/if}
       </div>
 
@@ -1367,13 +1386,13 @@
                 isLandscape={false}
               />
               {#if mulliganSelection.has(instance.uid)}
-                <span class="sim-check">调度</span>
+                <span class="sim-check">{$t('deckDetail.simMulligan')}</span>
               {/if}
             </button>
           {/each}
         </div>
       {:else}
-        <div class="sim-empty">点击下方「抽4」开始模拟</div>
+        <div class="sim-empty">{$t('deckDetail.simEmpty')}</div>
       {/if}
 
       <div class="sim-actions">
@@ -1382,24 +1401,24 @@
           disabled={simPhase !== 'idle' || mainCards.length === 0}
           onclick={drawFour}
         >
-          抽4
+          {$t('deckDetail.draw4')}
         </button>
         <button
           class="button button-secondary"
           disabled={simPhase !== 'initial'}
           onclick={confirmMulligan}
         >
-          调度2{mulliganSelection.size > 0 ? ` · ${mulliganSelection.size}` : ''}
+          {$t('deckDetail.mulligan2')}{mulliganSelection.size > 0 ? ` · ${mulliganSelection.size}` : ''}
         </button>
         <button
           class="button button-secondary"
           disabled={simPhase !== 'draw' || simDeck.length === 0}
           onclick={drawOne}
         >
-          抽1
+          {$t('deckDetail.draw1')}
         </button>
         <button class="button button-ghost" disabled={simPhase === 'idle'} onclick={resetSim}>
-          重置
+          {$t('common.reset')}
         </button>
       </div>
     </div>
@@ -1424,7 +1443,7 @@
             </div>
           </button>
         {:else}
-          <div class="hero-card hero-placeholder">该卡位为空</div>
+          <div class="hero-card hero-placeholder">{$t('deckDetail.emptySlot')}</div>
         {/if}
         {#if championCards[0]}
           <button
@@ -1442,7 +1461,7 @@
             </div>
           </button>
         {:else}
-          <div class="hero-card hero-placeholder">该卡位为空</div>
+          <div class="hero-card hero-placeholder">{$t('deckDetail.emptySlot')}</div>
         {/if}
 
         {#if mergedRunes.length > 0}
@@ -1468,7 +1487,7 @@
             {/each}
           </ul>
         {:else}
-          <div class="hero-placeholder rune-placeholder">暂无符文</div>
+          <div class="hero-placeholder rune-placeholder">{$t('deckDetail.noRunes')}</div>
         {/if}
 
         {#if battlefieldCards.length > 0}
@@ -1506,7 +1525,7 @@
       {#if mainCards.length > 0}
         <section class="card-zone">
           <h3>
-            {ZONE_CONFIG.mainDeck.label}
+            {$t('builder.mainDeck')}
             <span class="count-badge">
               {zoneCounts.mainDeck} / {ZONE_CONFIG.mainDeck.maxCount}
             </span>
@@ -1539,7 +1558,7 @@
       {#if sideboardCards.length > 0}
         <section class="card-zone">
           <h3>
-            {ZONE_CONFIG.sideboard.label}
+            {$t('builder.sideboard')}
             <span class="count-badge">
               {zoneCounts.sideboard} / {ZONE_CONFIG.sideboard.maxCount}
             </span>
@@ -1571,7 +1590,7 @@
     </main>
 
     <aside class="version-sidebar">
-      <h3><History size={18} /> 版本历史</h3>
+      <h3><History size={18} /> {$t('deckDetail.versionHistory')}</h3>
       <ul class="version-list">
         {#each versionRows as row (row.version.id)}
           {@const expanded = expandedVersions.has(row.version.id)}
@@ -1584,21 +1603,21 @@
               >
             </div>
             <div class="version-note-row">
-              <div class="version-note">{row.version.note || '无备注'}</div>
+              <div class="version-note">{row.version.note || $t('deckDetail.noNote')}</div>
               <button
                 type="button"
                 class="icon-btn note-edit-btn"
-                title="编辑备注"
+                title={$t('deckDetail.editNote')}
                 onclick={() => openEditNote(row.version)}
               >
                 <Pencil size={13} />
               </button>
             </div>
-            <div class="version-stats">总卡数: <strong>{row.totalCards}</strong></div>
+            <div class="version-stats">{$t('deckDetail.totalCardsShort')} <strong>{row.totalCards}</strong></div>
             {#if row.isInitial}
-              <div class="version-diff version-diff-initial">初始版本</div>
+              <div class="version-diff version-diff-initial">{$t('deckDetail.initialVersion')}</div>
             {:else if row.diff.length === 0}
-              <div class="version-diff version-diff-empty">无卡牌变化</div>
+              <div class="version-diff version-diff-empty">{$t('deckDetail.noChanges')}</div>
             {:else}
               <ul class="version-diff">
                 {#each visibleDiff as item (row.version.id + item.kind + item.card_id)}
@@ -1626,20 +1645,20 @@
                   type="button"
                   onclick={() => toggleVersionExpand(row.version.id)}
                 >
-                  {expanded ? '收起' : `…共 ${row.diff.length} 项变化`}
+                  {expanded ? $t('deckDetail.collapse') : $t('deckDetail.diffChanges', { values: { count: row.diff.length } })}
                 </button>
               {/if}
             {/if}
           </li>
         {:else}
-          <li class="empty-hint">暂无版本历史</li>
+          <li class="empty-hint">{$t('deckDetail.noVersions')}</li>
         {/each}
       </ul>
     </aside>
   </div>
 </div>
 
-<CommonModal open={showShareModal} title="导出 / 复制卡组" onclose={() => (showShareModal = false)}>
+<CommonModal open={showShareModal} title={$t('deckDetail.shareDeck')} onclose={() => (showShareModal = false)}>
   <div class="share-format-list">
     {#each shareFormats.filter((f) => !f.media) as format (format.id)}
       <button
@@ -1660,8 +1679,8 @@
           }
         }}
       >
-        <span class="share-format-label">{format.label}</span>
-        <span class="share-format-desc">{format.description}</span>
+        <span class="share-format-label">{$t(format.labelKey)}</span>
+        <span class="share-format-desc">{$t(format.descriptionKey)}</span>
       </button>
     {/each}
 
@@ -1690,7 +1709,7 @@
             <span class="share-format-card-icon">
               <FormatIcon size={22} />
             </span>
-            <span class="share-format-card-label">{format.shortLabel}</span>
+            <span class="share-format-card-label">{$t(format.shortLabelKey ?? '')}</span>
           </button>
         {/each}
       </div>
@@ -1699,7 +1718,7 @@
 
   {#if shareFormat === 'text' || shareFormat === 'code' || shareFormat === 'official'}
     <div class="text-preview-section">
-      <div class="text-preview-title">预览</div>
+      <div class="text-preview-title">{$t('deckDetail.preview')}</div>
       {#if shareFormat === 'text'}
         <div class="text-lang-switch">
           <button
@@ -1708,7 +1727,7 @@
             class:selected={textLang === 'cn'}
             onclick={() => (textLang = 'cn')}
           >
-            中文
+            {$t('deckDetail.chinese')}
           </button>
           <button
             type="button"
@@ -1723,17 +1742,17 @@
       {#if shareFormat === 'code' && deckCodeResult.error}
         <div class="share-format-error">
           <CircleAlert size={16} />
-          <span>卡组代码生成失败：{deckCodeResult.error}</span>
+          <span>{$t('deckDetail.codeGenFailed', { values: { error: deckCodeResult.error } })}</span>
         </div>
       {:else}
-        <pre class="text-preview-box selectable">{currentShareText() || '（无可导出的内容）'}</pre>
+        <pre class="text-preview-box selectable">{currentShareText() || $t('deckDetail.noExportContent')}</pre>
       {/if}
     </div>
   {/if}
 
   {#if shareFormat === 'pdf'}
     <div class="pdf-zone-select">
-      <div class="pdf-zone-title">选择要导出的区域（{selectedPdfZoneCount} 张）</div>
+      <div class="pdf-zone-title">{$t('deckDetail.selectZones', { values: { count: selectedPdfZoneCount } })}</div>
       <div class="pdf-zone-grid">
         {#each Object.keys(ZONE_CONFIG) as zone (zone)}
           {@const zoneKey = zone as ZoneKey}
@@ -1750,8 +1769,8 @@
                 <Square size={14} />
               {/if}
             </span>
-            <span class="pdf-zone-label">{ZONE_CONFIG[zoneKey].label}</span>
-            <span class="pdf-zone-count">{zoneCounts[zoneKey]} 张</span>
+            <span class="pdf-zone-label">{$t('builder.' + zoneKey)}</span>
+            <span class="pdf-zone-count">{$t('deckDetail.cardsCount', { values: { count: zoneCounts[zoneKey] } })}</span>
           </button>
         {/each}
       </div>
@@ -1760,16 +1779,16 @@
 
   {#if shareFormat === 'image'}
     <div class="image-sort-section">
-      <div class="image-sort-title">预览</div>
+      <div class="image-sort-title">{$t('deckDetail.preview')}</div>
       {#if imagePreviewUrl}
         <div class="image-preview-box">
-          <img class="image-preview-img" src={imagePreviewUrl} alt="卡组图案预览" />
+          <img class="image-preview-img" src={imagePreviewUrl} alt={$t('deckDetail.imagePreviewAlt')} />
           {#if imagePreviewing}
-            <div class="image-preview-loading">正在更新预览...</div>
+            <div class="image-preview-loading">{$t('deckDetail.updatingPreview')}</div>
           {/if}
         </div>
       {:else}
-        <p class="image-sort-desc">先预览生成效果，再导出或复制。</p>
+        <p class="image-sort-desc">{$t('deckDetail.imagePreviewHint')}</p>
         <button
           type="button"
           class="button button-secondary button-sm"
@@ -1777,13 +1796,13 @@
           onclick={generateImagePreview}
         >
           <ImageIcon size={14} />
-          {imagePreviewing ? '生成中...' : '生成预览'}
+          {imagePreviewing ? $t('deckDetail.generating') : $t('deckDetail.generatePreview')}
         </button>
       {/if}
     </div>
 
     <div class="image-sort-section">
-      <div class="image-sort-title">背景</div>
+      <div class="image-sort-title">{$t('deckDetail.background')}</div>
       <div class="image-bg-color-row">
         {#each IMAGE_BG_PRESETS as preset (preset)}
           <button
@@ -1799,18 +1818,18 @@
           type="color"
           class="bg-color-picker"
           bind:value={imageBgColor}
-          title="自定义背景色"
+          title={$t('deckDetail.customBgColor')}
         />
       </div>
       <div class="image-bg-color-row">
-        <span class="overlay-label">字体颜色</span>
+        <span class="overlay-label">{$t('deckDetail.textColorLabel')}</span>
         {#each IMAGE_TEXT_PRESETS as preset (preset)}
           {#if preset === ''}
             <button
               type="button"
               class="bg-swatch bg-swatch-auto"
               class:selected={imageTextColor === ''}
-              title="自动（跟随背景深浅）"
+              title={$t('deckDetail.autoTextColor')}
               onclick={() => (imageTextColor = '')}
             >
               A
@@ -1830,21 +1849,21 @@
           type="color"
           class="bg-color-picker"
           bind:value={imageTextColor}
-          title="自定义字体颜色"
+          title={$t('deckDetail.customTextColor')}
         />
       </div>
       <div class="image-bg-image-row">
         <button type="button" class="button button-ghost button-sm" onclick={pickBackgroundImage}>
           <ImageIcon size={14} />
-          {imageBgImage ? '更换背景图' : '选择本地背景图'}
+          {imageBgImage ? $t('deckDetail.changeBgImage') : $t('deckDetail.chooseBgImage')}
         </button>
         {#if imageBgImage}
           <div class="bg-image-preview">
-            <img src={imageBgImage} alt="背景预览" />
+            <img src={imageBgImage} alt={$t('deckDetail.bgPreviewAlt')} />
             <button
               type="button"
               class="icon-btn bg-image-remove"
-              title="移除背景图"
+              title={$t('deckDetail.removeBgImage')}
               onclick={() => (imageBgImage = null)}
             >
               <X size={14} />
@@ -1854,7 +1873,7 @@
       </div>
       {#if imageBgImage}
         <div class="image-bg-color-row">
-          <span class="overlay-label">遮罩颜色</span>
+          <span class="overlay-label">{$t('deckDetail.maskColor')}</span>
           {#each IMAGE_MASK_PRESETS as preset (preset)}
             <button
               type="button"
@@ -1869,11 +1888,11 @@
             type="color"
             class="bg-color-picker"
             bind:value={imageMaskColor}
-            title="自定义遮罩颜色"
+            title={$t('deckDetail.customMaskColor')}
           />
         </div>
         <div class="image-bg-overlay-row">
-          <span class="overlay-label">遮罩强度 {imageBgOverlay}%</span>
+          <span class="overlay-label">{$t('deckDetail.maskStrength', { values: { value: imageBgOverlay } })}</span>
           <input type="range" min="0" max="100" step="5" bind:value={imageBgOverlay} />
         </div>
       {/if}
@@ -1887,42 +1906,42 @@
     </div>
 
     <div class="image-sort-section">
-      <div class="image-sort-title">卡牌排序</div>
-      <p class="image-sort-desc">调整主牌堆与备牌在图案中的排列顺序（可多级排序）。</p>
+      <div class="image-sort-title">{$t('deckDetail.cardSort')}</div>
+      <p class="image-sort-desc">{$t('deckDetail.cardSortDesc')}</p>
       <SortModal bind:sortByList={imageSortList} fields={DECK_IMAGE_SORT_FIELDS} />
     </div>
   {/if}
 
   {#if shareFormat === 'qr'}
     <div class="qr-section">
-      <div class="text-preview-title">预览</div>
+      <div class="text-preview-title">{$t('deckDetail.preview')}</div>
       {#if qrPayloadText}
         <div class="qr-preview-box">
           {#if qrDataUrl}
-            <img src={qrDataUrl} alt="卡组二维码" class="qr-preview-img" width={320} height={320} />
+            <img src={qrDataUrl} alt={$t('deckDetail.qrPreviewAlt')} class="qr-preview-img" width={320} height={320} />
           {:else}
-            <div class="image-preview-loading">正在生成二维码...</div>
+            <div class="image-preview-loading">{$t('deckDetail.generatingQr')}</div>
           {/if}
         </div>
         <pre class="text-preview-box selectable">{qrPayloadText}</pre>
       {:else}
-        <p class="image-sort-desc">当前卡组无法生成二维码（需有有效卡组代码）。</p>
+        <p class="image-sort-desc">{$t('deckDetail.qrUnavailable')}</p>
       {/if}
       <p class="qr-hint">
-        版本 {QR_PAYLOAD_VERSION}，编码卡组代码与 main/side/champion 分区数量（其余并入 main）。
+        {$t('deckDetail.qrHint', { values: { version: QR_PAYLOAD_VERSION } })}
       </p>
     </div>
   {/if}
 
   {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showShareModal = false)}>取消</button>
+    <button class="button button-ghost" onclick={() => (showShareModal = false)}>{$t('common.cancel')}</button>
     {#if shareFormat !== 'pdf'}
       <button
         class="button button-primary"
         disabled={!currentShareTextAvailable() || exporting}
         onclick={confirmCopy}
       >
-        {(shareFormat === 'image' || shareFormat === 'qr') && mobilePlatform ? '分享' : '复制'}
+        {(shareFormat === 'image' || shareFormat === 'qr') && mobilePlatform ? $t('deckDetail.share') : $t('common.copy')}
       </button>
     {/if}
     <button
@@ -1930,7 +1949,7 @@
       disabled={!currentShareTextAvailable() || exporting}
       onclick={confirmExport}
     >
-      下载
+      {$t('common.download')}
     </button>
   {/snippet}
 </CommonModal>
@@ -1939,30 +1958,30 @@
   <LoadingModal
     status="downloading"
     text={shareFormat === 'image'
-      ? '正在生成卡组图案...'
+      ? $t('deckDetail.generatingImage')
       : shareFormat === 'qr'
-        ? '正在生成二维码...'
-        : '正在生成 PROXY PDF...'}
-    subtext="正在加载卡图并排版"
+        ? $t('deckDetail.generatingQr')
+        : $t('deckDetail.generatingPdf')}
+    subtext={$t('deckDetail.loadingCardsLayout')}
     progress={exportProgress}
   />
 {/if}
 
 <CommonModal
   open={showEditInfoModal}
-  title="编辑卡组信息"
-  subtitle="修改名称、描述、格式、标签与收藏状态"
+  title={$t('deckDetail.editDeckInfo')}
+  subtitle={$t('deckDetail.editDeckInfoSub')}
   closable={!savingInfo}
   onclose={() => (showEditInfoModal = false)}
 >
   <label class="edit-info-field">
     <span class="edit-info-label">
-      卡组名称 <span class="edit-info-required">*</span>
+      {$t('builder.deckNameLabel')} <span class="edit-info-required">*</span>
     </span>
     <input
       class="edit-info-input"
       type="text"
-      placeholder="卡组名称"
+      placeholder={$t('deckDetail.deckNamePlaceholder')}
       maxlength="100"
       bind:value={editName}
       disabled={savingInfo}
@@ -1976,10 +1995,10 @@
   </label>
 
   <label class="edit-info-field">
-    <span class="edit-info-label">描述</span>
+    <span class="edit-info-label">{$t('builder.description')}</span>
     <textarea
       class="edit-info-textarea"
-      placeholder="简单描述一下这个卡组……"
+      placeholder={$t('builder.descriptionPlaceholder')}
       maxlength="500"
       rows="4"
       bind:value={editDescription}
@@ -1987,17 +2006,17 @@
   </label>
 
   <label class="edit-info-field">
-    <span class="edit-info-label">格式</span>
+    <span class="edit-info-label">{$t('deckDetail.format')}</span>
     <select class="edit-info-select" bind:value={editFormat} disabled={savingInfo}>
-      <option value="">无（未知格式）</option>
+      <option value="">{$t('deckDetail.unknownFormat')}</option>
       {#each editFormatOptions() as format (format)}
-        <option value={format}>{format}</option>
+        <option value={format}>{FORMAT_LABEL_KEYS[format] ? $t(FORMAT_LABEL_KEYS[format]) : format}</option>
       {/each}
     </select>
   </label>
 
   <div class="edit-info-field">
-    <span class="edit-info-label">标签</span>
+    <span class="edit-info-label">{$t('deckDetail.tags')}</span>
     {#if editTags.length > 0}
       <div class="edit-info-tags">
         {#each editTags as tag (tag)}
@@ -2008,7 +2027,7 @@
               class="edit-info-tag-remove"
               disabled={savingInfo}
               onclick={() => removeEditTag(tag)}
-              aria-label="移除标签"
+              aria-label={$t('decks.removeTag')}
             >
               ×
             </button>
@@ -2020,7 +2039,7 @@
       <input
         class="edit-info-input edit-info-tag-input"
         type="text"
-        placeholder="输入标签后按 Enter 或逗号添加"
+        placeholder={$t('deckDetail.tagInputPlaceholder')}
         maxlength="20"
         bind:value={editTagInput}
         disabled={savingInfo}
@@ -2039,7 +2058,7 @@
 
   <label class="edit-info-favorite">
     <input type="checkbox" bind:checked={editFavorite} disabled={savingInfo} />
-    <span> 收藏 </span>
+    <span>{$t('deckDetail.favorite')}</span>
   </label>
 
   {#snippet footer()}
@@ -2048,21 +2067,21 @@
       disabled={savingInfo}
       onclick={() => (showEditInfoModal = false)}
     >
-      取消
+      {$t('common.cancel')}
     </button>
     <button
       class="button button-primary"
       disabled={savingInfo || !editName.trim()}
       onclick={saveEditInfo}
     >
-      {savingInfo ? '保存中...' : '保存'}
+      {savingInfo ? $t('common.saving') : $t('common.save')}
     </button>
   {/snippet}
 </CommonModal>
 
 <CommonModal
   open={editingNoteVersionId !== null}
-  title="编辑版本备注"
+  title={$t('deckDetail.editVersionNote')}
   subtitle={editingNoteVersionId
     ? `v${versions.find((v) => v.id === editingNoteVersionId)?.version_number ?? ''}`
     : ''}
@@ -2070,10 +2089,10 @@
   onclose={() => (editingNoteVersionId = null)}
 >
   <label class="edit-info-field">
-    <span class="edit-info-label">备注</span>
+    <span class="edit-info-label">{$t('common.note')}</span>
     <textarea
       class="edit-info-textarea"
-      placeholder="为这个版本补充一些说明……"
+      placeholder={$t('builder.notePlaceholder')}
       maxlength="300"
       rows="4"
       bind:value={editNoteValue}
@@ -2086,10 +2105,10 @@
       disabled={savingNote}
       onclick={() => (editingNoteVersionId = null)}
     >
-      取消
+      {$t('common.cancel')}
     </button>
     <button class="button button-primary" disabled={savingNote} onclick={saveEditNote}>
-      {savingNote ? '保存中...' : '保存'}
+      {savingNote ? $t('common.saving') : $t('common.save')}
     </button>
   {/snippet}
 </CommonModal>
@@ -2106,8 +2125,8 @@
 
 <CommonModal
   open={showOwnershipModal}
-  title="持有检查"
-  subtitle="对比收藏，查看卡组中未足量拥有的卡牌"
+  title={$t('builder.ownershipCheck')}
+  subtitle={$t('deckDetail.ownershipSubtitle')}
   closable={!loadingOwnership}
   onclose={() => (showOwnershipModal = false)}
 >
@@ -2118,39 +2137,39 @@
         disabled={loadingOwnership}
         onclick={() => switchOwnershipMode('card')}
       >
-        按卡牌
+        {$t('builder.byCard')}
       </button>
       <button
         class:active={ownershipMatchMode === 'print'}
         disabled={loadingOwnership}
         onclick={() => switchOwnershipMode('print')}
       >
-        按印刷号
+        {$t('builder.byPrint')}
       </button>
     </div>
     {#if loadingOwnership}
       <div class="ownership-loading">
         <LoaderCircle class="animate-spin" size={16} />
-        <span>检查中...</span>
+        <span>{$t('builder.checking')}</span>
       </div>
     {:else if ownershipZones.length === 0}
-      <p class="ownership-empty">检查完毕，全部持有。</p>
+      <p class="ownership-empty">{$t('builder.allOwned')}</p>
     {:else}
-      <p class="ownership-hint">以下卡牌未足量拥有：</p>
+      <p class="ownership-hint">{$t('builder.insufficientOwned')}</p>
       <table class="ownership-table">
         <thead>
           <tr>
-            <th>区域</th>
-            <th>卡牌</th>
-            <th>编号</th>
-            <th>持有</th>
-            <th>需要</th>
+            <th>{$t('deckDetail.zoneCol')}</th>
+            <th>{$t('builder.cardCol')}</th>
+            <th>{$t('builder.noCol')}</th>
+            <th>{$t('builder.ownedCol')}</th>
+            <th>{$t('builder.neededCol')}</th>
           </tr>
         </thead>
         <tbody>
           {#each ownershipZones as { row, zone } (row.cardNo + '##' + row.cardNoExtend)}
             <tr>
-              <td class="cell-zone">{ZONE_CONFIG[zone as ZoneKey]?.label ?? ''}</td>
+              <td class="cell-zone">{$t('builder.' + zone)}</td>
               <td class="cell-name">{row.cardName}</td>
               <td class="cell-no">{row.cardNoExtend || row.cardNo}</td>
               <td class="cell-owned" class:insufficient={row.owned < row.needed}>{row.owned}</td>
@@ -2171,15 +2190,15 @@
             bind:checked={ownershipIncludeComplete}
             disabled={exportingOwnership}
           />
-          保留已经满足的卡
+          {$t('deckDetail.keepComplete')}
         </label>
         <select
           class="ownership-format-select"
           bind:value={ownershipExportFormat}
           disabled={exportingOwnership}
         >
-          <option value="txt">文本 (.txt)</option>
-          <option value="csv">表格 (.csv)</option>
+          <option value="txt">{$t('deckDetail.txtOption')}</option>
+          <option value="csv">{$t('deckDetail.csvOption')}</option>
         </select>
       </div>
     {/if}
@@ -2188,7 +2207,7 @@
       disabled={exportingOwnership}
       onclick={() => (showOwnershipModal = false)}
     >
-      关闭
+      {$t('common.close')}
     </button>
     {#if ownershipZones.length > 0}
       <button
@@ -2196,7 +2215,7 @@
         disabled={exportingOwnership || ownershipExportRows.length === 0}
         onclick={exportOwnership}
       >
-        {exportingOwnership ? '导出中...' : '导出'}
+        {exportingOwnership ? $t('deckDetail.exporting') : $t('common.export')}
       </button>
     {/if}
   {/snippet}
@@ -3830,6 +3849,11 @@
   .game-result.loss {
     color: #fff;
     background: #dc2626;
+  }
+
+  .game-result.draw {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
   }
 
   .game-special-badge {

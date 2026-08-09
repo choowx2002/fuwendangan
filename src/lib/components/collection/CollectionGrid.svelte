@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { VariantWithOwned } from '$lib/db'
-  import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
   import CachedImage from '../cards/CachedImage.svelte'
   import { LoaderCircle, Plus, Minus, Check } from '@lucide/svelte'
   import SkeletonGrid from './SkeletonGrid.svelte'
   import EmptyState from './EmptyState.svelte'
+  import { t } from '$lib/i18n'
 
   let {
     cards = [] as VariantWithOwned[],
@@ -45,7 +45,7 @@
   {#if isLoading && cards.length === 0}
     <SkeletonGrid count={12} />
   {:else if cards.length === 0}
-    <EmptyState title="未找到匹配卡牌" description="试试调整筛选条件或搜索关键词" />
+    <EmptyState title={$t('cards.noResults')} description={$t('cards.adjustFilters')} />
   {:else}
     {#each cards as card (cardKey(card))}
       {@const selected = selectedIds.has(cardKey(card))}
@@ -78,7 +78,7 @@
             </span>
           {:else}
             {#if card.ownedFoil > 0}
-              <span class="foil-badge">闪</span>
+              <span class="foil-badge">{$t('collection.foilBadge')}</span>
             {/if}
             {#if card.ownedTotal > 0}
               <span class="owned-badge">{card.ownedTotal}</span>
@@ -113,7 +113,7 @@
               {:else}
                 <button
                   class="step-btn inc wide"
-                  title="标记拥有 1 张"
+                  title={$t('collection.markOne')}
                   onclick={(e) => {
                     e.stopPropagation()
                     onQuickInc?.(card)
@@ -128,10 +128,10 @@
         <div class="tile-no-row">
           <span class="tile-no">{card.cardNoExtend}</span>
           {#if card.isCustom}
-            <span class="custom-chip">自定</span>
+            <span class="custom-chip">{$t('collection.customChip')}</span>
           {/if}
           {#if card.bucket !== 'base'}
-            <span class="bucket-chip">{BUCKET_LABELS[card.bucket]}</span>
+            <span class="bucket-chip">{$t('collection.bucket' + card.bucket[0].toUpperCase() + card.bucket.slice(1))}</span>
           {/if}
         </div>
         <!-- <div class="tile-owned" class:insufficient={card.ownedTotal === 0}>

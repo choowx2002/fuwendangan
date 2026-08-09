@@ -229,6 +229,7 @@ export {
   parseTags,
   getBestPrint,
   printCacheName,
+  gameResult,
   buildSearchParams,
   buildOrderBy,
   formatBytes,

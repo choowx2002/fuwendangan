@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { BUCKET_LABELS, type VariantBucket } from '$lib/cards/utils/variant-utils'
+  import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import { ChevronDown } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let {
     owned = {} as Partial<Record<VariantBucket, number>>,
@@ -10,6 +11,14 @@
   } = $props()
 
   const BUCKET_ORDER: VariantBucket[] = ['base', 'alt', 'overnum', 'rune', 'token']
+
+  const BUCKET_LABEL_KEYS: Record<VariantBucket, string> = {
+    base: 'collection.bucketBase',
+    alt: 'collection.bucketAlt',
+    overnum: 'collection.bucketOvernum',
+    rune: 'collection.bucketRune',
+    token: 'collection.bucketToken',
+  }
 
   // 默认收起，点击摘要展开；仅内存，不持久化
   let expanded = $state(false)
@@ -29,9 +38,9 @@
     class="bucket-summary"
     onclick={() => (expanded = !expanded)}
     aria-expanded={expanded}
-    title={expanded ? '收起桶列表' : '展开桶列表'}
+    title={expanded ? $t('collection.collapseBuckets') : $t('collection.expandBuckets')}
   >
-    <strong>系列进度</strong>
+    <strong>{$t('collection.seriesProgress')}</strong>
     <span class="muted">
       {totalOwned} / {totalCount}（{percent}%）
     </span>
@@ -51,9 +60,9 @@
           class:active={activeBucket === bucket}
           class:done
           onclick={() => onSelect?.(activeBucket === bucket ? null : bucket)}
-          title={`${BUCKET_LABELS[bucket]}：${bOwned}/${bCount}${bCount > 0 && bOwned < bCount ? `，还缺 ${bCount - bOwned} 张` : ''}`}
+          title={`${$t(BUCKET_LABEL_KEYS[bucket])}：${bOwned}/${bCount}${bCount > 0 && bOwned < bCount ? `，${$t('collection.bucketMissing', { values: { count: bCount - bOwned } })}` : ''}`}
         >
-          <span class="bucket-label">{BUCKET_LABELS[bucket]}</span>
+          <span class="bucket-label">{$t(BUCKET_LABEL_KEYS[bucket])}</span>
           <span class="bucket-metrics" class:missing={bCount > 0 && bOwned < bCount}>
             {bOwned}/{bCount}
           </span>

@@ -1,5 +1,7 @@
 import { writable } from 'svelte/store'
 import { Store } from '@tauri-apps/plugin-store'
+import { locale as i18nLocale } from 'svelte-i18n'
+import { isSupportedLocale, systemLocale } from '$lib/i18n'
 
 let storePromise: Promise<Store> | null = null
 
@@ -43,6 +45,17 @@ export const rulesTheme = persistentWritable('rulesTheme', 'parchment')
 
 /** 玩家用户名（用于首页问候 / 卡组图案水印 / 对局记录 / 计分器默认名） */
 export const playerName = persistentWritable('playerName', '')
+
+/** 界面语言（zh-CN / en），默认跟随系统语言 */
+export const locale = persistentWritable('locale', systemLocale())
+
+locale.subscribe((value) => {
+  const next = isSupportedLocale(value) ? value : systemLocale()
+  i18nLocale.set(next)
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = next
+  }
+})
 
 /**
  * settings.json 全部持久化项完成初始读取后的 resolve 标记。

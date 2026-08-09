@@ -1,33 +1,34 @@
 <script lang="ts">
   import type { CollectionSort, CollectionSortKey } from '$lib/db'
   import { ArrowDownAZ, ArrowUpAZ, ChevronDown } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let {
     sort = { key: 'card_no', isAsc: true } as CollectionSort,
     onChange = undefined as ((sort: CollectionSort) => void) | undefined,
   } = $props()
 
-  const OPTIONS: { key: CollectionSortKey; label: string }[] = [
-    { key: 'card_no', label: '卡号' },
-    { key: 'rarity', label: '稀有度' },
-    { key: 'owned', label: '持有数' },
-    { key: 'progress', label: '进度' },
-    { key: 'recent', label: '最近录入' },
+  const OPTIONS: { key: CollectionSortKey; labelKey: string }[] = [
+    { key: 'card_no', labelKey: 'collection.sortCardNo' },
+    { key: 'rarity', labelKey: 'collection.rarityLabel' },
+    { key: 'owned', labelKey: 'collection.sortOwned' },
+    { key: 'progress', labelKey: 'collection.sortProgress' },
+    { key: 'recent', labelKey: 'collection.sortRecent' },
   ]
 
   let open = $state(false)
 
-  const currentLabel = $derived(OPTIONS.find((o) => o.key === sort.key)?.label ?? '卡号')
+  const currentLabel = $derived($t(OPTIONS.find((o) => o.key === sort.key)?.labelKey ?? 'collection.sortCardNo'))
 </script>
 
 <div class="sort-dropdown">
   <button class="sort-trigger" onclick={() => (open = !open)}>
-    <span>排序：{currentLabel}</span>
+    <span>{$t('collection.sortBy')}: {currentLabel}</span>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <span
       class="dir-toggle"
-      title={sort.isAsc ? '升序' : '降序'}
+      title={sort.isAsc ? $t('common.ascending') : $t('common.descending')}
       onclick={(e) => {
         e.stopPropagation()
         onChange?.({ key: sort.key, isAsc: !sort.isAsc })
@@ -58,7 +59,7 @@
             open = false
           }}
         >
-          {opt.label}
+          {$t(opt.labelKey)}
           {#if sort.key === opt.key}
             {sort.isAsc ? '↑' : '↓'}
           {/if}

@@ -14,6 +14,8 @@
   import type { CardBase, CardPrint, MatchWinType, MatchWithGames } from '$lib/db/types'
   import type { DeckVersion } from '$lib/db/index.js'
   import { playerName } from '$lib/stores/settings'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
 
   interface Props {
     open: boolean
@@ -246,6 +248,7 @@
   }
 
   function deriveResult(game: GameDraft): 'win' | 'loss' | 'draw' | null {
+    if (game.winType === 'draw') return 'draw'
     if (game.winType !== 'normal') return game.result
     const my = scoreToStr(game.myScore).trim()
     const opp = scoreToStr(game.oppScore).trim()
@@ -260,26 +263,26 @@
 
   function validate(): string | null {
     const filled = games.filter((g) => !isUnusedGame(g))
-    if (filled.length === 0) return '至少需要记录一个小局'
+    if (filled.length === 0) return get(t)('match.minOneGame')
     for (const game of filled) {
-      if (game.isFirst === null) return '请选择先手或后手'
+      if (game.isFirst === null) return get(t)('match.chooseTurn')
       if (game.winType === 'normal') {
         const my = scoreToStr(game.myScore).trim()
         const opp = scoreToStr(game.oppScore).trim()
-        if (my === '' || opp === '') return '正常比分的对局需要填写双方积分'
+        if (my === '' || opp === '') return get(t)('match.normalNeedsScore')
         const myNum = Number(my)
         const oppNum = Number(opp)
         if (!Number.isInteger(myNum) || myNum < 0 || !Number.isInteger(oppNum) || oppNum < 0) {
-          return '积分需为非负整数'
+          return get(t)('match.scoreNonNegative')
         }
       } else {
         for (const score of [scoreToStr(game.myScore).trim(), scoreToStr(game.oppScore).trim()]) {
           if (score === '') continue
           const num = Number(score)
-          if (!Number.isInteger(num) || num < 0) return '积分需为非负整数'
+          if (!Number.isInteger(num) || num < 0) return get(t)('match.scoreNonNegative')
         }
         if (game.winType === 'special' && !game.winReason.trim()) {
-          return '特殊胜利请填写原因'
+          return get(t)('match.specialNeedsReason')
         }
       }
     }
@@ -300,7 +303,9 @@
         const myStr = scoreToStr(game.myScore).trim()
         const oppStr = scoreToStr(game.oppScore).trim()
         let isWin: boolean
-        if (game.winType === 'normal') {
+        if (game.winType === 'draw') {
+          isWin = false
+        } else if (game.winType === 'normal') {
           isWin = Number(myStr) > Number(oppStr)
         } else {
           isWin = game.result === 'win'
@@ -349,25 +354,29 @@
       onclose()
     } catch (error) {
       console.error('[MatchRecord] 保存对局失败:', error)
-      errorMsg = '保存失败，请重试'
+      errorMsg = get(t)('match.saveFailed')
     } finally {
       saving = false
     }
   }
 
-  const title = $derived(editing ? '编辑对局' : '记录对局')
-  const subtitle = $derived(`第 ${step} 步 / 共 2 步${step === 1 ? ' · 对局信息' : ' · 小局比分'}`)
+  const title = $derived(editing ? $t('match.editTitle') : $t('match.recordTitle'))
+  const subtitle = $derived(
+    $t('match.subtitle', {
+      values: { step, phase: $t(step === 1 ? 'match.stepInfo' : 'match.stepScores') },
+    })
+  )
 </script>
 
 <CommonModal {open} {title} {subtitle} width="min(680px, 100%)" closable={!saving} {onclose}>
   {#if step === 1}
     <div class="match-form">
       <label class="field">
-        <span class="field-label">分组</span>
+        <span class="field-label">{$t('match.group')}</span>
         <input
           class="input"
           type="text"
-          placeholder="如：RQ比赛系列（选填）"
+          placeholder={$t('match.groupPlaceholder')}
           maxlength="50"
           list="match-group-suggestions"
           bind:value={groupName}
@@ -382,22 +391,22 @@
 
       <div class="field-row">
         <label class="field">
-          <span class="field-label">对手名称</span>
+          <span class="field-label">{$t('match.oppName')}</span>
           <input
             class="input"
             type="text"
-            placeholder="选填"
+            placeholder={$t('common.optional')}
             maxlength="50"
             bind:value={opponentName}
             disabled={saving}
           />
         </label>
         <label class="field">
-          <span class="field-label">对手卡组</span>
+          <span class="field-label">{$t('match.oppDeck')}</span>
           <input
             class="input"
             type="text"
-            placeholder="选填"
+            placeholder={$t('common.optional')}
             maxlength="50"
             bind:value={opponentDeck}
             disabled={saving}
@@ -406,13 +415,13 @@
       </div>
 
       <div class="field legend-field">
-        <span class="field-label">对手传奇（选填）</span>
+        <span class="field-label">{$t('match.oppLegend')}</span>
         <div class="legend-search">
           <Search size={14} class="legend-search-icon" />
           <input
             class="input"
             type="text"
-            placeholder="搜索传奇卡牌…"
+            placeholder={$t('match.legendSearch')}
             maxlength="50"
             bind:value={legendQuery}
             disabled={saving}
@@ -421,7 +430,7 @@
             <button
               class="icon-btn legend-clear-btn"
               type="button"
-              title="清除选择"
+              title={$t('match.clearSelect')}
               onclick={clearLegend}
               disabled={saving}
             >
@@ -430,9 +439,9 @@
           {/if}
         </div>
         {#if legendLoading}
-          <span class="legend-hint">加载中…</span>
+          <span class="legend-hint">{$t('match.legendLoading')}</span>
         {:else if legendFiltered.length === 0}
-          <span class="legend-hint">未找到匹配的传奇卡</span>
+          <span class="legend-hint">{$t('match.noLegendFound')}</span>
         {:else}
           <div class="legend-row">
             {#each legendFiltered as card (card.id)}
@@ -461,10 +470,10 @@
 
       <div class="field-row">
         <label class="field">
-          <span class="field-label">卡组版本</span>
+          <span class="field-label">{$t('match.deckVersion')}</span>
           {#if deckVersions.length > 0}
             <select class="input select" bind:value={deckVersionId} disabled={saving}>
-              <option value="">不关联</option>
+              <option value="">{$t('match.noAssociation')}</option>
               {#each deckVersions as v (v.id)}
                 <option value={v.id}>
                   v{v.version_number}
@@ -474,32 +483,32 @@
               {/each}
             </select>
           {:else}
-            <input class="input" type="text" value="暂无版本" disabled />
+            <input class="input" type="text" value={$t('match.noVersion')} disabled />
           {/if}
         </label>
         <label class="field">
-          <span class="field-label">对局日期</span>
+          <span class="field-label">{$t('match.date')}</span>
           <input class="input" type="date" bind:value={playedAt} disabled={saving} />
         </label>
       </div>
 
       <div class="field-row">
         <label class="field">
-          <span class="field-label">赛制</span>
+          <span class="field-label">{$t('match.matchFormat')}</span>
           <select class="input select" bind:value={bestOf} disabled={saving}>
             <option value="1">BO1</option>
             <option value="3">BO3</option>
             <option value="5">BO5</option>
-            <option value="">不限</option>
+            <option value="">{$t('match.anyFormat')}</option>
           </select>
         </label>
       </div>
 
       <label class="field">
-        <span class="field-label">备注</span>
+        <span class="field-label">{$t('common.note')}</span>
         <textarea
           class="input textarea"
-          placeholder="对局整体备注（选填）"
+          placeholder={$t('match.notePlaceholder')}
           maxlength="500"
           rows="3"
           bind:value={note}
@@ -509,27 +518,27 @@
   {:else}
     <div class="match-form">
       <div class="games-header">
-        <span class="field-label">小局列表</span>
+        <span class="field-label">{$t('match.gamesList')}</span>
         <button
           class="button button-ghost button-sm"
           type="button"
           onclick={addGame}
           disabled={saving}
         >
-          <Plus size={14} /> 添加小局
+          <Plus size={14} /> {$t('match.addGame')}
         </button>
       </div>
 
       {#if !editing && (bestOf === '3' || bestOf === '5')}
         <p class="games-hint">
-          已按 BO{bestOf} 预置 {bestOf} 局；只打了部分时，留空的小局会自动忽略
+          {$t('match.boHint', { values: { bestOf } })}
         </p>
       {/if}
 
       {#each games as game, index (index)}
         <div class="game-card">
           <div class="game-card-header">
-            <span class="game-number">第 {index + 1} 局</span>
+            <span class="game-number">{$t('match.gameNumber', { values: { number: index + 1 } })}</span>
             <div class="game-end-type">
               <button
                 type="button"
@@ -537,7 +546,7 @@
                 class:active={game.winType === 'normal'}
                 onclick={() => (game.winType = 'normal')}
               >
-                正常比分
+                {$t('match.normalScore')}
               </button>
               <button
                 type="button"
@@ -545,7 +554,7 @@
                 class:active={game.winType === 'concede'}
                 onclick={() => (game.winType = 'concede')}
               >
-                对方认输
+                {$t('match.oppConcede')}
               </button>
               <button
                 type="button"
@@ -553,14 +562,22 @@
                 class:active={game.winType === 'special'}
                 onclick={() => (game.winType = 'special')}
               >
-                特殊胜利
+                {$t('match.specialWin')}
+              </button>
+              <button
+                type="button"
+                class="end-type-btn"
+                class:active={game.winType === 'draw'}
+                onclick={() => (game.winType = 'draw')}
+              >
+                {$t('match.drawWin')}
               </button>
             </div>
             {#if games.length > 1}
               <button
                 type="button"
                 class="icon-btn game-remove"
-                title="删除该小局"
+                title={$t('match.removeGame')}
                 onclick={() => removeGame(index)}
                 disabled={saving}
               >
@@ -570,7 +587,7 @@
           </div>
 
           <div class="turn-toggle">
-            <span class="turn-toggle-label">先后手</span>
+            <span class="turn-toggle-label">{$t('match.turnOrder')}</span>
             <button
               type="button"
               class="end-type-btn"
@@ -578,7 +595,7 @@
               onclick={() => (game.isFirst = game.isFirst === true ? null : true)}
               disabled={saving}
             >
-              我方先手
+              {$t('match.ourFirst')}
             </button>
             <button
               type="button"
@@ -587,17 +604,17 @@
               onclick={() => (game.isFirst = game.isFirst === false ? null : false)}
               disabled={saving}
             >
-              对方先手
+              {$t('match.oppFirst')}
             </button>
           </div>
 
-          {#if game.winType === 'normal'}
+          {#if game.winType === 'normal' || game.winType === 'draw'}
             <div class="score-row">
               <input
                 class="input score-input"
                 type="number"
                 min="0"
-                placeholder="我方"
+                placeholder={$t('match.ourScore')}
                 bind:value={game.myScore}
                 disabled={saving}
               />
@@ -606,7 +623,7 @@
                 class="input score-input"
                 type="number"
                 min="0"
-                placeholder="对方"
+                placeholder={$t('match.oppScore')}
                 bind:value={game.oppScore}
                 disabled={saving}
               />
@@ -617,12 +634,12 @@
                 class:draw={deriveResult(game) === 'draw'}
               >
                 {deriveResult(game) === 'win'
-                  ? '胜'
+                  ? $t('match.win')
                   : deriveResult(game) === 'loss'
-                    ? '负'
+                    ? $t('match.loss')
                     : deriveResult(game) === 'draw'
-                      ? '平'
-                      : '待比分'}
+                      ? $t('match.draw')
+                      : $t('match.pending')}
               </span>
             </div>
           {:else}
@@ -634,7 +651,7 @@
                   class:active={game.result === 'win'}
                   onclick={() => (game.result = 'win')}
                 >
-                  我方胜
+                  {$t('match.ourWin')}
                 </button>
                 <button
                   type="button"
@@ -642,14 +659,14 @@
                   class:active={game.result === 'loss'}
                   onclick={() => (game.result = 'loss')}
                 >
-                  我方负
+                  {$t('match.ourLoss')}
                 </button>
               </div>
               <input
                 class="input score-input"
                 type="number"
                 min="0"
-                placeholder="比分可选"
+                placeholder={$t('match.scoreOptional')}
                 bind:value={game.myScore}
                 disabled={saving}
               />
@@ -658,7 +675,7 @@
                 class="input score-input"
                 type="number"
                 min="0"
-                placeholder="比分可选"
+                placeholder={$t('match.scoreOptional')}
                 bind:value={game.oppScore}
                 disabled={saving}
               />
@@ -667,15 +684,15 @@
                 class:win={game.result === 'win'}
                 class:loss={game.result === 'loss'}
               >
-                {game.result === 'win' ? '胜' : '负'}
+                {game.result === 'win' ? $t('match.win') : $t('match.loss')}
               </span>
             </div>
             <input
               class="input"
               type="text"
               placeholder={game.winType === 'concede'
-                ? '原因（选填），如：对手第 3 回合认输'
-                : '原因，如：集齐三枚符文规则胜利'}
+                ? $t('match.concedeReasonPlaceholder')
+                : $t('match.specialReasonPlaceholder')}
               maxlength="100"
               bind:value={game.winReason}
               disabled={saving}
@@ -684,7 +701,7 @@
 
           <textarea
             class="input textarea"
-            placeholder="本局复盘记录（选填）……"
+            placeholder={$t('match.logPlaceholder')}
             maxlength="2000"
             rows="2"
             bind:value={game.log}
@@ -700,9 +717,9 @@
 
   {#snippet footer()}
     {#if step === 1}
-      <button class="button button-ghost" onclick={onclose} disabled={saving}>取消</button>
+      <button class="button button-ghost" onclick={onclose} disabled={saving}>{$t('common.cancel')}</button>
       <button class="button button-primary" onclick={goToStep2} disabled={saving}>
-        下一步 <ChevronRight size={16} />
+        {$t('match.next')} <ChevronRight size={16} />
       </button>
     {:else}
       <button
@@ -713,11 +730,11 @@
         }}
         disabled={saving}
       >
-        <ChevronLeft size={16} /> 上一步
+        <ChevronLeft size={16} /> {$t('match.prev')}
       </button>
       <button class="button button-primary" onclick={save} disabled={saving}>
         <Save size={16} />
-        {saving ? '保存中...' : '保存'}
+        {saving ? $t('common.saving') : $t('common.save')}
       </button>
     {/if}
   {/snippet}

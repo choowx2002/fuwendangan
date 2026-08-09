@@ -5,9 +5,11 @@
   import CachedImage from '../cards/CachedImage.svelte'
   import { printCacheName } from '$lib/db/helper'
   import { seriesCodeOfCard } from '$lib/collection/collection-utils'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   let {
-    placeholder = '搜索卡牌（全局）...',
+    placeholder = get(t)('collection.searchCards'),
     onSelect = undefined as ((card: CardWithOwned) => void) | undefined,
   } = $props()
 
@@ -73,7 +75,7 @@
   {#if open}
     <div class="results">
       {#if results.length === 0}
-        <p class="result-empty">未找到匹配卡牌</p>
+        <p class="result-empty">{$t('cards.noResults')}</p>
       {:else}
         {#each results as card (card.id)}
           <button class="result-item" onclick={() => pick(card)}>
@@ -94,7 +96,7 @@
           </button>
         {/each}
         <p class="result-hint">
-          <CornerDownLeft size={11} /> 回车跳转第一项
+          <CornerDownLeft size={11} /> {$t('collection.enterFirst')}
         </p>
       {/if}
     </div>

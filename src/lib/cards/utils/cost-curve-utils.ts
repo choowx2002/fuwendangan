@@ -12,16 +12,6 @@ export const COLOR_VARS: Record<string, string> = {
   neutral: 'var(--card-color-neutral)',
 }
 
-export const COLOR_LABELS: Record<string, string> = {
-  red: '红',
-  orange: '橙',
-  yellow: '黄',
-  green: '绿',
-  blue: '蓝',
-  purple: '紫',
-  neutral: '无色',
-}
-
 export function normalizeColor(raw: string): string {
   const map: Record<string, string> = {
     red: 'red',

@@ -2,21 +2,22 @@
   import type { SortKeyItem } from '$lib/db/types'
   import { dndzone } from 'svelte-dnd-action'
   import { fade, fly } from 'svelte/transition'
+  import { t } from '$lib/i18n'
 
   // --- 数据与状态 ---
   const DEFAULT_FIELDS = [
-    { value: 'card_no', label: '编号' },
-    { value: 'card_category', label: '类型' },
-    { value: 'card_color_list', label: '颜色' },
-    { value: 'power', label: '战力' },
-    { value: 'energy', label: '法力' },
-    { value: 'return_energy', label: '符能' },
+    { value: 'card_no', label: 'card_no', labelKey: 'cards.sortCardNo' },
+    { value: 'card_category', label: 'card_category', labelKey: 'cards.sortCardCategory' },
+    { value: 'card_color_list', label: 'card_color_list', labelKey: 'cards.sortCardColorList' },
+    { value: 'power', label: 'power', labelKey: 'cards.sortPower' },
+    { value: 'energy', label: 'energy', labelKey: 'cards.sortEnergy' },
+    { value: 'return_energy', label: 'return_energy', labelKey: 'cards.sortReturnEnergy' },
   ]
 
   interface SortModalProps {
     sortByList: SortKeyItem[]
     onChangeSubmit?: () => void
-    fields?: { value: string; label: string }[]
+    fields?: { value: string; label: string; labelKey?: string }[]
   }
 
   let {
@@ -83,7 +84,7 @@
   <svg class="trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M3 6h18M3 12h18M3 18h18" />
   </svg>
-  <span>排序</span>
+  <span>{$t('cards.sortLabel')}</span>
   {#if sortByList.length > 0}
     <span class="badge">{sortByList.length}</span>
   {/if}
@@ -106,8 +107,8 @@
     >
       <!-- Modal Header -->
       <div class="modal-header">
-        <h3>排序设置</h3>
-        <button class="icon-btn close-btn" onclick={closeModal} aria-label="关闭">
+        <h3>{$t('cards.sortSettings')}</h3>
+        <button class="icon-btn close-btn" onclick={closeModal} aria-label={$t('common.close')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
@@ -118,8 +119,8 @@
       <div class="modal-body">
         {#if sortByList.length === 0}
           <div class="empty-state">
-            <p>暂无排序规则</p>
-            <p class="sub-text">点击下方按钮添加排序条件</p>
+            <p>{$t('cards.noSortRules')}</p>
+            <p class="sub-text">{$t('cards.addSortHint')}</p>
           </div>
         {:else}
           <div
@@ -137,7 +138,7 @@
             {#each sortByList as item, i (item.id)}
               <div class="sort-row" class:dragging={false}>
                 <!-- Drag Handle -->
-                <div class="drag-handle" title="拖拽排序">
+                <div class="drag-handle" title={$t('cards.dragSort')}>
                   <svg viewBox="0 0 24 24" fill="currentColor">
                     <circle cx="9" cy="6" r="1.5" />
                     <circle cx="15" cy="6" r="1.5" />
@@ -156,7 +157,7 @@
                   <select bind:value={item.name}>
                     {#each fields as field}
                       <option value={field.value} disabled={checkIsDisable(field.value, item.name)}
-                        >{field.label}</option
+                        >{field.labelKey ? $t(field.labelKey) : field.label}</option
                       >
                     {/each}
                   </select>
@@ -174,8 +175,8 @@
                 <!-- Direction Select -->
                 <div class="select-wrapper direction">
                   <select bind:value={item.isAsc}>
-                    <option value={true}>升序 (A-Z)</option>
-                    <option value={false}>降序 (Z-A)</option>
+                    <option value={true}>{$t('cards.asc')}</option>
+                    <option value={false}>{$t('cards.desc')}</option>
                   </select>
                   <svg
                     class="chevron"
@@ -189,7 +190,7 @@
                 </div>
 
                 <!-- Remove Button -->
-                <button class="icon-btn remove-btn" onclick={() => removeSort(i)} aria-label="移除">
+                <button class="icon-btn remove-btn" onclick={() => removeSort(i)} aria-label={$t('cards.remove')}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path
                       d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
@@ -216,11 +217,11 @@
             >
               <path d="M12 5v14M5 12h14" />
             </svg>
-            添加排序条件
+            {$t('cards.addSortCondition')}
           </button>
         </div>
 
-        <button class="button button-primary" onclick={closeModal}> 完成 </button>
+        <button class="button button-primary" onclick={closeModal}> {$t('cards.done')} </button>
       </div>
     </div>
   </div>

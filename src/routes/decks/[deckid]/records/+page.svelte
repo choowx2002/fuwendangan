@@ -5,24 +5,22 @@
     getDeckById,
     getDeckMatchStats,
     getMatchesByDeck,
-    deleteMatch,
+    gameResult,
     type Deck,
     type MatchSummary,
     type MatchWithGames,
   } from '$lib/db/index.js'
   import MatchRecordModal from '$lib/components/decks/MatchRecordModal.svelte'
-  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { onMount } from 'svelte'
-  import { ChevronRight, PencilLine, Plus, Swords, Trash2 } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { ChevronRight, Plus, Swords } from '@lucide/svelte'
+  import { get } from 'svelte/store'
+  import { t } from '$lib/i18n'
 
   let deck = $state<Deck>()
   let matches = $state<MatchWithGames[]>([])
   let stats = $state<MatchSummary | null>(null)
-  let expandedMatchIds = $state<Set<string>>(new Set())
   let showMatchModal = $state(false)
-  let editingMatch = $state<MatchWithGames | null>(null)
 
   let filterGroup = $state('all')
   let filterResult = $state('all')
@@ -40,12 +38,14 @@
       list = list.filter((m) => (m.group_name ?? '') === filterGroup)
     }
     if (filterResult !== 'all') {
-      const wantWin = filterResult === 'win'
       list = list.filter((m) => {
-        const wins = m.games.filter((g) => g.is_win).length
-        const losses = m.games.filter((g) => !g.is_win).length
+        const results = m.games.map((g) => gameResult(g))
+        const wins = results.filter((r) => r === 'win').length
+        const losses = results.filter((r) => r === 'loss').length
+        const draws = results.filter((r) => r === 'draw').length
         if (filterResult === 'win') return wins > losses
         if (filterResult === 'loss') return losses > wins
+        if (filterResult === 'draw') return draws > 0
         return true
       })
     }
@@ -65,21 +65,12 @@
     return list
   })
 
-  function toggleMatchExpand(id: string) {
-    const next = new Set(expandedMatchIds)
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
-    expandedMatchIds = next
-  }
-
   function matchSummaryText(match: MatchWithGames): string {
-    const wins = match.games.filter((g) => g.is_win).length
-    const losses = match.games.filter((g) => !g.is_win).length
-    const draws = match.games.length - wins - losses
-    if (draws > 0) return `${wins} 胜 ${losses} 负 ${draws} 平`
+    const results = match.games.map((g) => gameResult(g))
+    const wins = results.filter((r) => r === 'win').length
+    const losses = results.filter((r) => r === 'loss').length
+    const draws = results.filter((r) => r === 'draw').length
+    if (draws > 0) return get(t)('records.summary', { values: { wins, losses, draws } })
     return `${wins} : ${losses}`
   }
 
@@ -105,24 +96,7 @@
   }
 
   function openCreateMatch() {
-    editingMatch = null
     showMatchModal = true
-  }
-
-  function openEditMatch(match: MatchWithGames) {
-    editingMatch = match
-    showMatchModal = true
-  }
-
-  async function confirmDeleteMatch(match: MatchWithGames) {
-    const confirm = await ask(`确定删除这场对局吗？小局记录将一并删除。`, {
-      kind: 'warning',
-      okLabel: '删除',
-      cancelLabel: '取消',
-    })
-    if (!confirm) return
-    await deleteMatch(match.id)
-    await loadData()
   }
 
   beforeNavigate(({ from, cancel, type, delta }) => {
@@ -136,13 +110,13 @@
 
   $effect(() => {
     setTopbar({
-      title: deck?.name ? `${deck.name} · 对局记录` : '对局记录',
-      description: `共 ${matches.length} 场`,
+      title: deck?.name ? $t('records.titleWithDeck', { values: { name: deck.name } }) : $t('records.title'),
+      description: $t('records.count', { values: { count: matches.length } }),
       onBack: () => goto(`/decks/${page.params.deckid}`),
       actions: [
         {
           key: 'record',
-          label: '记录对局',
+          label: $t('match.recordTitle'),
           icon: Plus,
           variant: 'primary',
           priority: 0,
@@ -158,36 +132,36 @@
     <div class="records-stats">
       <div class="stat-card">
         <span class="stat-value">{stats.matches}</span>
-        <span class="stat-label">场次</span>
+        <span class="stat-label">{$t('records.statMatches')}</span>
       </div>
       <div class="stat-card">
         <span class="stat-value">{stats.games}</span>
-        <span class="stat-label">小局</span>
+        <span class="stat-label">{$t('records.statGames')}</span>
       </div>
       <div class="stat-card">
         <span class="stat-value stat-win">{stats.wins}</span>
-        <span class="stat-label">胜</span>
+        <span class="stat-label">{$t('records.statWins')}</span>
       </div>
       <div class="stat-card">
         <span class="stat-value stat-loss">{stats.losses}</span>
-        <span class="stat-label">负</span>
+        <span class="stat-label">{$t('records.statLosses')}</span>
       </div>
       {#if stats.draws > 0}
         <div class="stat-card">
           <span class="stat-value">{stats.draws}</span>
-          <span class="stat-label">平</span>
+          <span class="stat-label">{$t('records.statDraws')}</span>
         </div>
       {/if}
       <div class="stat-card">
         <span class="stat-value">{winRate}%</span>
-        <span class="stat-label">胜率</span>
+        <span class="stat-label">{$t('records.statWinRate')}</span>
       </div>
       {#if stats.first_games > 0}
         <div class="stat-card">
           <span class="stat-value">
             {Math.round((stats.first_wins / stats.first_games) * 100)}%
           </span>
-          <span class="stat-label">先手胜率</span>
+          <span class="stat-label">{$t('records.statFirstWinRate')}</span>
         </div>
       {/if}
       {#if stats.second_games > 0}
@@ -195,7 +169,7 @@
           <span class="stat-value">
             {Math.round((stats.second_wins / stats.second_games) * 100)}%
           </span>
-          <span class="stat-label">后手胜率</span>
+          <span class="stat-label">{$t('records.statSecondWinRate')}</span>
         </div>
       {/if}
     </div>
@@ -208,7 +182,7 @@
         class:active={filterGroup === 'all'}
         onclick={() => (filterGroup = 'all')}
       >
-        全部分组
+        {$t('records.allGroups')}
       </button>
       {#each allGroups as group (group)}
         <button
@@ -227,28 +201,35 @@
         class:active={filterResult === 'all'}
         onclick={() => (filterResult = 'all')}
       >
-        全部
+        {$t('records.allResults')}
       </button>
       <button
         class="filter-chip"
         class:active={filterResult === 'win'}
         onclick={() => (filterResult = 'win')}
       >
-        胜场
+        {$t('records.winMatches')}
       </button>
       <button
         class="filter-chip"
         class:active={filterResult === 'loss'}
         onclick={() => (filterResult = 'loss')}
       >
-        负场
+        {$t('records.lossMatches')}
+      </button>
+      <button
+        class="filter-chip"
+        class:active={filterResult === 'draw'}
+        onclick={() => (filterResult = 'draw')}
+      >
+        {$t('records.drawMatches')}
       </button>
     </div>
 
     <input
       class="search-input"
       type="text"
-      placeholder="搜索对手 / 分组 / 备注 / 复盘……"
+      placeholder={$t('records.searchPlaceholder')}
       bind:value={searchText}
     />
   </div>
@@ -256,19 +237,18 @@
   {#if filteredMatches.length > 0}
     <ul class="records-list">
       {#each filteredMatches as match (match.id)}
-        {@const expanded = expandedMatchIds.has(match.id)}
         <li class="record-item">
           <div
             class="record-item-header"
             role="presentation"
-            onclick={() => toggleMatchExpand(match.id)}
+            onclick={() => goto(`/decks/${page.params.deckid}/records/${match.id}/logs`)}
           >
             <div class="record-item-main">
               <span class="record-item-date">
-                {match.played_at ? new Date(match.played_at).toLocaleDateString() : '未填日期'}
+                {match.played_at ? new Date(match.played_at).toLocaleDateString() : $t('records.noDate')}
               </span>
               <span class="record-item-opponent">
-                {match.player_name || '我'} vs {match.opponent_name || '无名对手'}
+                {match.player_name || $t('records.me')} vs {match.opponent_name || $t('records.unknownOpponent')}
               </span>
               {#if match.group_name}
                 <span class="record-group-badge">{match.group_name}</span>
@@ -282,85 +262,18 @@
             </div>
             <div class="record-item-side">
               <span class="record-item-result">{matchSummaryText(match)}</span>
-              <span class="record-item-chevron" class:rotate={expanded}>
+              <span class="record-item-chevron">
                 <ChevronRight size={16} />
               </span>
             </div>
           </div>
-
-          {#if expanded}
-            <div class="record-item-detail">
-              {#if match.note}
-                <p class="record-note">{match.note}</p>
-              {/if}
-              {#if match.opp_legend_name}
-                <div class="record-legend-row">
-                  <CardSimpleImage
-                    url={match.opp_legend_image}
-                    name={`${match.opp_legend_print_code ?? match.opp_legend_id ?? 'none'}-${match.opp_legend_lang ?? match.opp_legend_print_id ?? 'none'}`}
-                    className="record-legend-thumb"
-                  />
-                  <span class="record-legend-label">对手传奇：</span>
-                  <span class="record-legend-name">{match.opp_legend_name}</span>
-                </div>
-              {/if}
-              <ul class="record-game-list">
-                {#each match.games as game (game.id)}
-                  <li class="record-game-item">
-                    <span class="game-number-badge">第 {game.game_number} 局</span>
-                    {#if game.is_first !== null}
-                      <span
-                        class="game-turn-badge"
-                        class:first={game.is_first}
-                        class:second={!game.is_first}
-                      >
-                        {game.is_first ? '先手' : '后手'}
-                      </span>
-                    {/if}
-                    <span class="game-score">
-                      {#if game.my_score !== null && game.opp_score !== null}
-                        {game.my_score} : {game.opp_score}
-                      {:else}
-                        未记比分
-                      {/if}
-                    </span>
-                    <span class="game-result" class:win={game.is_win} class:loss={!game.is_win}>
-                      {game.is_win ? '胜' : '负'}
-                    </span>
-                    {#if game.win_type === 'concede'}
-                      <span class="game-special-badge">对方认输</span>
-                    {:else if game.win_type === 'special'}
-                      <span class="game-special-badge special">特殊胜利</span>
-                    {/if}
-                    {#if game.win_reason}
-                      <span class="game-reason">{game.win_reason}</span>
-                    {/if}
-                  </li>
-                  {#if game.log}
-                    <li class="record-game-log">📝 {game.log}</li>
-                  {/if}
-                {/each}
-              </ul>
-              <div class="record-item-actions">
-                <button class="button button-text button-sm" onclick={() => openEditMatch(match)}>
-                  <PencilLine size={13} /> 编辑
-                </button>
-                <button
-                  class="button button-text button-sm"
-                  onclick={() => confirmDeleteMatch(match)}
-                >
-                  <Trash2 size={13} /> 删除
-                </button>
-              </div>
-            </div>
-          {/if}
         </li>
       {/each}
     </ul>
   {:else}
     <div class="records-empty">
       <Swords size={40} />
-      <p>暂无对局记录，点击「记录对局」开始记录吧。</p>
+      <p>{$t('records.empty')}</p>
     </div>
   {/if}
 </div>
@@ -368,7 +281,7 @@
 <MatchRecordModal
   open={showMatchModal}
   deckId={page.params.deckid ?? ''}
-  editing={editingMatch}
+  editing={null}
   onclose={() => (showMatchModal = false)}
   onSaved={() => loadData()}
 />
@@ -552,23 +465,6 @@
     border: 1px solid color-mix(in srgb, var(--accent-color, #4f46e5) 25%, transparent);
   }
 
-  .game-turn-badge {
-    padding: 2px 8px;
-    font-size: 11px;
-    border-radius: 999px;
-    white-space: nowrap;
-  }
-
-  .game-turn-badge.first {
-    color: #fff;
-    background: #2563eb;
-  }
-
-  .game-turn-badge.second {
-    color: #fff;
-    background: #ea580c;
-  }
-
   .record-item-side {
     display: flex;
     align-items: center;
@@ -590,131 +486,6 @@
     display: flex;
     color: var(--text-secondary);
     transition: transform 0.2s;
-  }
-
-  .record-item-chevron.rotate {
-    transform: rotate(90deg);
-  }
-
-  .record-item-detail {
-    padding: 14px 18px;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-primary);
-  }
-
-  .record-note {
-    margin: 0 0 12px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    white-space: pre-wrap;
-  }
-
-  .record-legend-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-    font-size: 13px;
-  }
-
-  :global(.record-legend-thumb) {
-    width: 28px;
-    /* height: 38px; */
-    object-fit: cover;
-    border-radius: 4px;
-    flex-shrink: 0;
-  }
-
-  .record-legend-label {
-    color: var(--text-secondary);
-  }
-
-  .record-legend-name {
-    font-weight: 600;
-  }
-
-  .record-game-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .record-game-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 13px;
-  }
-
-  .game-number-badge {
-    padding: 2px 8px;
-    font-size: 11px;
-    border-radius: 999px;
-    color: var(--text-primary);
-    background: var(--bg-hover);
-    white-space: nowrap;
-  }
-
-  .game-score {
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .game-result {
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 999px;
-    white-space: nowrap;
-  }
-
-  .game-result.win {
-    color: #fff;
-    background: #16a34a;
-  }
-
-  .game-result.loss {
-    color: #fff;
-    background: #dc2626;
-  }
-
-  .game-special-badge {
-    padding: 2px 8px;
-    font-size: 11px;
-    border-radius: 999px;
-    color: #92400e;
-    background: color-mix(in srgb, #f59e0b 18%, transparent);
-    white-space: nowrap;
-  }
-
-  .game-special-badge.special {
-    color: #7c3aed;
-    background: color-mix(in srgb, #a855f7 18%, transparent);
-  }
-
-  .game-reason {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .record-game-log {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    padding: 4px 0 2px 42px;
-    white-space: pre-wrap;
-  }
-
-  .record-item-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 4px;
-    margin-top: 12px;
   }
 
   .records-empty {

@@ -8,11 +8,12 @@
   import CustomPrintModal from './CustomPrintModal.svelte'
   import {
     type VariantBucket,
-    BUCKET_LABELS,
     classifyVariant,
   } from '$lib/cards/utils/variant-utils'
   import { isTauri } from '$lib/db/env'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   interface Props {
     card: (CardWithOwned & { card_prints?: CardPrint[] }) | null
@@ -23,6 +24,14 @@
   }
 
   let { card, isOpen, onClose, onChanged, initialVariant }: Props = $props()
+
+  const BUCKET_LABEL_KEYS: Record<VariantBucket, string> = {
+    base: 'collection.bucketBase',
+    alt: 'collection.bucketAlt',
+    overnum: 'collection.bucketOvernum',
+    rune: 'collection.bucketRune',
+    token: 'collection.bucketToken',
+  }
 
   interface VariantView {
     cardNoExtend: string
@@ -155,7 +164,12 @@
       .then(() => loadData())
       .then(() => onChanged?.())
       .catch((err) => {
-        showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+        showToast(
+          get(t)('collection.opFailedWith', {
+            values: { msg: err instanceof Error ? err.message : get(t)('common.unknownError') },
+          }),
+          'error'
+        )
       })
   }
 
@@ -178,13 +192,18 @@
     const confirmed = isTauri
       ? await (
           await import('@tauri-apps/plugin-dialog')
-        ).ask(`确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`, {
-          title: '删除自定打印',
-          kind: 'warning',
-          okLabel: '删除',
-          cancelLabel: '取消',
-        })
-      : window.confirm(`确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`)
+        ).ask(
+          get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } }),
+          {
+            title: get(t)('collection.deleteCustomTitle'),
+            kind: 'warning',
+            okLabel: get(t)('collection.deleteAction'),
+            cancelLabel: get(t)('common.cancel'),
+          }
+        )
+      : window.confirm(
+          get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } })
+        )
     if (!confirmed) return
     try {
       const { deleteCustomPrint } = await import('$lib/db')
@@ -195,9 +214,14 @@
       }
       await loadData()
       onChanged?.()
-      showToast('自定打印已删除', 'success')
+      showToast(get(t)('collection.customPrintDeleted'), 'success')
     } catch (err) {
-      showToast(`删除失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.deleteFailedWith', {
+          values: { msg: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     }
   }
 
@@ -214,7 +238,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-      <button class="close-btn" onclick={onClose} aria-label="关闭">
+      <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
         <X size={20} />
       </button>
 
@@ -235,7 +259,7 @@
                 isHover={false}
               />
             {:else}
-              <div class="no-image">无图</div>
+              <div class="no-image">{$t('collection.noImage')}</div>
             {/if}
           </div>
 
@@ -246,9 +270,9 @@
                 class:active={selectedNo === v.cardNoExtend}
                 class:foil={v.hasFoil}
                 onclick={() => (selectedNo = v.cardNoExtend)}
-                title={`${v.cardNoExtend}${v.hasFoil ? '（有闪卡）' : ''}`}
+                title={`${v.cardNoExtend}${v.hasFoil ? $t('collection.hasFoilSuffix') : ''}`}
               >
-                {BUCKET_LABELS[v.bucket]}
+                {$t(BUCKET_LABEL_KEYS[v.bucket])}
                 {#if v.isCustom}<em>*</em>{/if}
                 <span class="tab-badge" class:zero={v.totalOwned === 0}>{v.totalOwned}</span>
                 {#if v.hasFoil}<span class="foil-dot"></span>{/if}
@@ -260,10 +284,10 @@
         <div class="edit-col">
           {#if sortedVariants.length === 0}
             <div class="empty-box">
-              <p class="empty-title">该卡暂无卡图打印</p>
-              <p class="empty-sub">可在下方新建自定打印后开始收藏</p>
+              <p class="empty-title">{$t('collection.noPrints')}</p>
+              <p class="empty-sub">{$t('collection.noPrintsHint')}</p>
               <button class="btn-mini" onclick={openCreateCustom}>
-                <Plus size={13} /> 自定打印
+                <Plus size={13} /> {$t('collection.customPrint')}
               </button>
             </div>
           {:else if selectedVariant}
@@ -271,25 +295,25 @@
 
             <div class="variant-head">
               <span class="head-no">{v.cardNoExtend}</span>
-              <span class="chip">{BUCKET_LABELS[v.bucket]}</span>
+              <span class="chip">{$t(BUCKET_LABEL_KEYS[v.bucket])}</span>
               {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no
                     .toUpperCase()
                     .slice(0, 3)}
-                <span class="chip proto">原型 {card.card_no}</span>
+                <span class="chip proto">{$t('collection.protoChip', { values: { cardNo: card.card_no } })}</span>
               {/if}
               {#if v.isCustom}
-                <span class="chip promo">自定</span>
+                <span class="chip promo">{$t('collection.customChip')}</span>
               {/if}
               <span class="chip total-chip">{v.totalOwned}</span>
 
               {#if isTauri && v.isCustom}
                 <div class="head-actions">
-                  <button class="icon-btn" title="编辑自定打印" onclick={() => openEdit(v)}>
+                  <button class="icon-btn" title={$t('collection.editCustomPrint')} onclick={() => openEdit(v)}>
                     <Pencil size={14} />
                   </button>
                   <button
                     class="icon-btn danger"
-                    title="删除自定打印"
+                    title={$t('collection.deleteCustomTitle')}
                     onclick={() => removeCustom(v)}
                   >
                     <Trash2 size={14} />
@@ -299,30 +323,30 @@
             </div>
 
             <div class="summary">
-              已收藏
+              {$t('collection.collectedPrefix')}
               <strong>{summary.total}</strong>
-              张 · 普
+              {$t('collection.cardUnit')} · {$t('collection.normalSuffix')}
               <strong>{summary.normal}</strong>
-              · 闪
+              · {$t('collection.foilSuffix')}
               <strong class="foil">{summary.foil}</strong>
-              · 语言 <strong>{summary.langs}</strong> 种
+              · {$t('collection.langsSuffix')} <strong>{summary.langs}</strong>{$t('collection.langKindsUnit')}
             </div>
 
             {#if v.langs.length === 0}
               <div class="empty-langs">
-                <p class="empty-title">还没有收藏记录</p>
+                <p class="empty-title">{$t('collection.noCollectionRows')}</p>
                 <p class="empty-sub">
-                  选择语言后点「添加卡牌」，自动记为 1 张普卡，可用 +/− 调整数量
+                  {$t('collection.noCollectionHint')}
                 </p>
                 <div class="add-row">{@render langAddControl()}</div>
               </div>
             {:else}
               <div class="matrix">
                 <div class="matrix-head">
-                  <span>语言</span>
-                  <span class="col-qty">普卡</span>
-                  <span class="col-qty">闪卡</span>
-                  <span class="col-total">合计</span>
+                  <span>{$t('collection.languageLabel')}</span>
+                  <span class="col-qty">{$t('collection.normalCol')}</span>
+                  <span class="col-qty">{$t('collection.foilCol')}</span>
+                  <span class="col-total">{$t('collection.totalCol')}</span>
                 </div>
                 {#each v.langs as l (l.id)}
                   <div class="matrix-row" class:has-foil={(l.foil_qty ?? 0) > 0}>
@@ -342,7 +366,7 @@
 
           <div class="toolbar">
             <button class="btn-mini" onclick={openCreateCustom}>
-              <Plus size={13} /> 自定打印
+              <Plus size={13} /> {$t('collection.customPrint')}
             </button>
           </div>
         </div>
@@ -353,9 +377,12 @@
   {#snippet stepper(v: VariantView, lang: string, kind: 'normal' | 'foil', qty: number)}
     <div class="stepper" class:foil={kind === 'foil'}>
       <button
-        aria-label={`${languageDisplayName(lang, customLangNames)} ${
-          kind === 'normal' ? '普卡' : '闪卡'
-        } 减一`}
+        aria-label={$t('collection.decOneAria', {
+          values: {
+            lang: languageDisplayName(lang, customLangNames),
+            kind: kind === 'normal' ? $t('collection.normalCol') : $t('collection.foilCol'),
+          },
+        })}
         onclick={() =>
           saveAndReload(
             v.cardNoExtend,
@@ -368,9 +395,12 @@
       </button>
       <span class="qty">{qty}</span>
       <button
-        aria-label={`${languageDisplayName(lang, customLangNames)} ${
-          kind === 'normal' ? '普卡' : '闪卡'
-        } 加一`}
+        aria-label={$t('collection.incOneAria', {
+          values: {
+            lang: languageDisplayName(lang, customLangNames),
+            kind: kind === 'normal' ? $t('collection.normalCol') : $t('collection.foilCol'),
+          },
+        })}
         onclick={() =>
           saveAndReload(
             v.cardNoExtend,
@@ -384,11 +414,11 @@
   {/snippet}
 
   {#snippet langAddControl()}
-    <select class="lang-input" bind:value={newLangInput} title="选择要添加的语言">
+    <select class="lang-input" bind:value={newLangInput} title={$t('collection.selectLangTitle')}>
       {#each langOptions as code (code)}
         {@const added = selectedVariant?.langs.some((l) => l.language_code === code)}
         <option value={code} disabled={added}>
-          {languageDisplayName(code, customLangNames)}{added ? '（已添加）' : ''}
+          {languageDisplayName(code, customLangNames)}{added ? $t('collection.alreadyAdded') : ''}
         </option>
       {/each}
     </select>
@@ -397,7 +427,7 @@
       onclick={() => selectedVariant && addLangTo(selectedVariant)}
       disabled={isAddDisabled}
     >
-      <Plus size={14} /> 添加卡牌
+      <Plus size={14} /> {$t('collection.addCardAction')}
     </button>
   {/snippet}
 

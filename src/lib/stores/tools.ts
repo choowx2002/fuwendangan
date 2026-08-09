@@ -33,10 +33,13 @@ function isGameRecord(v: unknown): v is GameRecord {
   }
   return (
     typeof v.gameNumber === 'number' &&
-    (v.winner === 'me' || v.winner === 'opp') &&
+    (v.winner === 'me' || v.winner === 'opp' || v.winner === 'draw') &&
     typeof v.myScore === 'number' &&
     typeof v.oppScore === 'number' &&
-    (v.winType === 'normal' || v.winType === 'special' || v.winType === 'concede')
+    (v.winType === 'normal' ||
+      v.winType === 'special' ||
+      v.winType === 'concede' ||
+      v.winType === 'draw')
   )
 }
 
@@ -69,10 +72,10 @@ export interface ActionEntry {
 
 export interface GameRecord {
   gameNumber: number
-  winner: 'me' | 'opp'
+  winner: 'me' | 'opp' | 'draw'
   myScore: number
   oppScore: number
-  winType: 'normal' | 'special' | 'concede'
+  winType: 'normal' | 'special' | 'concede' | 'draw'
   time: string
   actions?: ActionEntry[]
 }

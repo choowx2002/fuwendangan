@@ -556,7 +556,7 @@ export interface TreeNode extends Rule {
 
 // ==================== 对局记录 ====================
 
-export type MatchWinType = 'normal' | 'concede' | 'special'
+export type MatchWinType = 'normal' | 'concede' | 'special' | 'draw'
 
 // 一场对局（可能包含多场小局，如 BO3）
 export interface MatchRecord {
@@ -612,6 +612,9 @@ export interface MatchSummary {
   wins: number
   losses: number
   draws: number
+  match_wins: number
+  match_losses: number
+  match_draws: number
   first_games: number
   first_wins: number
   second_games: number

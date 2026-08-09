@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Check, Plus, Trash2, X } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let {
     selectedCount = 0,
@@ -12,19 +13,19 @@
 </script>
 
 <div class="batch-toolbar">
-  <span class="batch-info">已选 {selectedCount} 张</span>
+  <span class="batch-info">{$t('collection.batchSelected', { values: { count: selectedCount } })}</span>
   <div class="batch-actions">
     <button class="batch-btn" onclick={onMark} disabled={busy || selectedCount === 0}>
-      <Check size={14} /> 标记已拥有
+      <Check size={14} /> {$t('collection.batchMark')}
     </button>
     <button class="batch-btn" onclick={onIncrement} disabled={busy || selectedCount === 0}>
-      <Plus size={14} /> 普卡 +1
+      <Plus size={14} /> {$t('collection.batchNormalInc')}
     </button>
     <button class="batch-btn danger" onclick={onDelete} disabled={busy || selectedCount === 0}>
-      <Trash2 size={14} /> 删除记录
+      <Trash2 size={14} /> {$t('collection.batchDelete')}
     </button>
     <button class="batch-btn" onclick={onCancel} disabled={busy}>
-      <X size={14} /> 取消
+      <X size={14} /> {$t('common.cancel')}
     </button>
   </div>
 </div>

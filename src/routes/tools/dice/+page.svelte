@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Coins, Dice6, History, ChevronLeft } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
 
   let rngMode = $state<'dice' | 'coin'>('dice')
 
@@ -10,6 +11,10 @@
   let diceResult = $state<number | null>(null)
   let diceRolling = $state(false)
   let diceHistory = $state<number[]>([])
+
+  function coinLabel(value: string): string {
+    return $t(value === '正面' ? 'tools.coinHeads' : 'tools.coinTails')
+  }
 
   function flipCoin() {
     if (coinFlipping) return
@@ -36,7 +41,7 @@
 </script>
 
 <div class="dice-page">
-  <button class="back-btn" onclick={() => window.history.back()} aria-label="返回" title="返回">
+  <button class="back-btn" onclick={() => window.history.back()} aria-label={$t('common.back')} title={$t('common.back')}>
     <ChevronLeft size={18} />
   </button>
 
@@ -50,18 +55,18 @@
         class:active={rngMode === 'dice'}
         onclick={() => (rngMode = 'dice')}
       >
-        投掷 d20
+        {$t('tools.rollD20')}
       </button>
       <button
         class="toggle-btn"
         class:active={rngMode === 'coin'}
         onclick={() => (rngMode = 'coin')}
       >
-        掷硬币
+        {$t('tools.flipCoin')}
       </button>
     </div>
     {#if rngMode === 'dice'}
-      <button class="dice" class:rolling={diceRolling} onclick={rollDice} aria-label="投掷骰子">
+      <button class="dice" class:rolling={diceRolling} onclick={rollDice} aria-label={$t('tools.rollDiceAria')}>
         <span class="dice-face">
           {#if diceRolling}
             ?
@@ -71,20 +76,20 @@
         </span>
       </button>
       <span class="rng-result" class:ready={diceResult !== null}>
-        {diceResult !== null ? `掷出 ${diceResult}` : '点击投掷'}
+        {diceResult !== null ? $t('tools.rolled', { values: { value: diceResult } }) : $t('tools.clickRoll')}
       </span>
     {:else}
-      <button class="coin" class:flipping={coinFlipping} onclick={flipCoin} aria-label="掷硬币">
+      <button class="coin" class:flipping={coinFlipping} onclick={flipCoin} aria-label={$t('tools.flipCoinAria')}>
         <span class="coin-face">
           {#if coinFlipping}
             …
           {:else}
-            {coinResult ?? '?'}
+            {coinResult ? coinLabel(coinResult) : '?'}
           {/if}
         </span>
       </button>
       <span class="rng-result" class:ready={coinResult !== null}>
-        {coinResult ?? '点击掷币'}
+        {coinResult ? coinLabel(coinResult) : $t('tools.clickFlip')}
       </span>
     {/if}
   </div>
@@ -92,11 +97,11 @@
   <div class="history-panel">
     <div class="history-title">
       <History size={14} />
-      <span>本轮记录</span>
+      <span>{$t('tools.roundLog')}</span>
     </div>
     <div class="rng-history">
       <div class="rng-history-col">
-        <span class="rng-history-label">{rngMode === 'dice' ? '骰子' : '硬币'}</span>
+        <span class="rng-history-label">{rngMode === 'dice' ? $t('tools.dice') : $t('tools.coin')}</span>
         {#if rngMode === 'dice'}
           {#if diceHistory.length === 0}
             <span class="rng-history-empty">—</span>
@@ -113,7 +118,7 @@
           {:else}
             <div class="rng-history-chips">
               {#each coinHistory as item, i (i)}
-                <span class="chip coin-chip">{item}</span>
+                <span class="chip coin-chip">{coinLabel(item)}</span>
               {/each}
             </div>
           {/if}

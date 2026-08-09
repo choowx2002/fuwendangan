@@ -1,6 +1,7 @@
 <!-- src/lib/components/ui/NumberRangeSlider.svelte -->
 <script lang="ts">
   import type { NumberRange } from '$lib/db/types'
+  import { t } from 'svelte-i18n'
 
   interface Props {
     value: NumberRange
@@ -109,7 +110,7 @@
 </script>
 
 <div
-  aria-label="数值范围选择"
+  aria-label={$t('slider.rangeLabel')}
   role="group"
   class="custom-range-slider"
   onpointerdown={onTrackPointerDown}

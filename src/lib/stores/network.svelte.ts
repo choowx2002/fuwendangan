@@ -2,6 +2,8 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { isTauri } from '../db/env'
 import { showToast } from './ui-store.svelte'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 
 export interface NetworkStatus {
   online: boolean
@@ -97,9 +99,9 @@ function applyState(online: boolean) {
   networkState.checked = true
   if (online !== prev) {
     if (online) {
-      showToast('网络已恢复', 'success')
+      showToast(get(t)('common.networkRestored'), 'success')
     } else {
-      showToast('网络已离线，当前使用本地数据', 'info')
+      showToast(get(t)('common.networkOfflineLocal'), 'info')
     }
   }
 }

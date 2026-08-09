@@ -17,6 +17,8 @@ import {
 import { stat, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { isMobile } from '$lib/utils/os'
 import { whenOnline } from '$lib/stores/network.svelte'
+import { get } from 'svelte/store'
+import { t } from '$lib/i18n'
 import {
   isPermissionGranted,
   requestPermission,
@@ -48,8 +50,8 @@ const initNotificationMobile = async () => {
     try {
       await createChannel({
         id: CHANNEL_ID,
-        name: '卡图下载进度',
-        description: '显示卡牌图片下载的后台进度',
+        name: get(t)('download.channelName'),
+        description: get(t)('download.channelDesc'),
         importance: Importance.Low, // Low 级别不会弹出 heads-up 遮挡屏幕
         vibration: false,
         sound: undefined,
@@ -65,11 +67,16 @@ const initNotificationMobile = async () => {
  */
 const updateProgressNotification = (completed: number, total: number, failed: number) => {
   const percent = Math.round((completed / total) * 100)
+  const failedSuffix = failed
+    ? get(t)('download.progressFailedSuffix', { values: { count: failed } })
+    : ''
   sendNotification({
     id: NOTIFICATION_ID,
     channelId: CHANNEL_ID,
-    title: '卡牌资源下载',
-    body: `${percent}% (${completed}/${total})${failed ? ` · ${failed} 失败` : ''}`,
+    title: get(t)('download.notificationTitle'),
+    body: get(t)('download.progressBody', {
+      values: { percent, completed, total },
+    }) + failedSuffix,
     icon: 'icon',
     ongoing: true, // 正在进行中，禁止用户滑动删除
     autoCancel: false,
@@ -115,8 +122,8 @@ export async function startCardImageDownload(missing: any[]) {
   }
 
   if (!(await whenOnline())) {
-    await message('网络不可用，无法下载卡牌资源。请检查网络连接后重试。', {
-      title: '卡牌资源下载',
+    await message(get(t)('download.offlineMessage'), {
+      title: get(t)('download.notificationTitle'),
       kind: 'error',
     })
     return
@@ -230,7 +237,12 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
     if (cancelRequested) {
       finishDownload('cancelled')
       if (onMobile && permissionGranted) {
-        finishNotification('卡牌下载已取消', `已下载 ${completed} 张，失败 ${failed} 张`)
+        finishNotification(
+          get(t)('download.cancelledTitle'),
+          get(t)('download.cancelledBody', {
+            values: { completed, failed },
+          })
+        )
       }
       return
     }
@@ -239,7 +251,12 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
     finishDownload(failed > 0 ? 'partial' : 'success')
 
     if (onMobile && permissionGranted) {
-      finishNotification('卡牌资源下载完成', `成功 ${completed - failed} 张，失败 ${failed} 张`)
+      finishNotification(
+        get(t)('download.completeTitle'),
+        get(t)('download.completeBody', {
+          values: { success: completed - failed, failed },
+        })
+      )
     }
   } catch (error) {
     console.error('[CardImageDownload]', error)
@@ -247,13 +264,13 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
 
     if (onMobile && permissionGranted) {
       finishNotification(
-        '卡牌资源下载失败',
-        error instanceof Error ? error.message : '下载卡图时发生未知错误。'
+        get(t)('download.failedTitle'),
+        error instanceof Error ? error.message : get(t)('download.failedBody')
       )
     }
 
-    await message(error instanceof Error ? error.message : '下载卡图时发生未知错误。', {
-      title: '下载卡牌出现问题',
+    await message(error instanceof Error ? error.message : get(t)('download.failedBody'), {
+      title: get(t)('download.problemTitle'),
       kind: 'error',
     })
   }

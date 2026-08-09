@@ -34,6 +34,8 @@
   import CollectionSortDropdown from '$lib/components/collection/CollectionSortDropdown.svelte'
   import BatchToolbar from '$lib/components/collection/BatchToolbar.svelte'
   import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   const PAGE_SIZE = 42
   const seriesCode = (page.params.seriesCode ?? '').toUpperCase()
@@ -59,11 +61,11 @@
   let showCustomCreate = $state(false)
   let view = $state<'grid' | 'table'>('grid')
 
-  const OWNERSHIP_OPTIONS: { key: OwnershipType; label: string }[] = [
-    { key: 'all', label: '全部' },
-    { key: 'owned', label: '已拥有' },
-    { key: 'missing', label: '未拥有' },
-    { key: 'foil', label: '有闪卡' },
+  const OWNERSHIP_OPTIONS: { key: OwnershipType; labelKey: string }[] = [
+    { key: 'all', labelKey: 'collection.ownershipAll' },
+    { key: 'owned', labelKey: 'collection.ownershipOwned' },
+    { key: 'missing', labelKey: 'collection.ownershipMissing' },
+    { key: 'foil', labelKey: 'collection.ownershipFoil' },
   ]
 
   const PREFS_KEY = `collection:prefs:${seriesCode}`
@@ -136,7 +138,12 @@
       hasMore = res.page < res.totalPages
       cards = reset ? res.data : [...cards, ...res.data]
     } catch (err) {
-      showToast(`加载失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.loadFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       isLoading = false
       loadingMore = false
@@ -189,9 +196,14 @@
     batchBusy = true
     try {
       const n = await bulkMarkOwned(items)
-      showToast(`已标记 ${n} 张已拥有`, 'success')
+      showToast(get(t)('collection.batchMarked', { values: { count: n } }), 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.opFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -205,9 +217,14 @@
     batchBusy = true
     try {
       const n = await bulkIncrement(items)
-      showToast(`已为 ${n} 张卡普卡 +1`, 'success')
+      showToast(get(t)('collection.batchIncremented', { values: { count: n } }), 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.opFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -221,20 +238,28 @@
     const confirmed = isTauri
       ? await (
           await import('@tauri-apps/plugin-dialog')
-        ).ask(`确定删除选中的 ${items.length} 张收藏记录？此操作不可恢复。`, {
-          title: '删除收藏记录',
-          kind: 'warning',
-          okLabel: '删除',
-          cancelLabel: '取消',
-        })
-      : window.confirm(`确定删除选中的 ${items.length} 张收藏记录？此操作不可恢复。`)
+        ).ask(
+          get(t)('collection.deleteConfirm', { values: { count: items.length } }),
+          {
+            title: get(t)('collection.deleteTitle'),
+            kind: 'warning',
+            okLabel: get(t)('common.delete'),
+            cancelLabel: get(t)('common.cancel'),
+          }
+        )
+      : window.confirm(get(t)('collection.deleteConfirm', { values: { count: items.length } }))
     if (!confirmed) return
     batchBusy = true
     try {
       const n = await bulkDeleteCollection(items)
-      showToast(`已删除 ${n} 条收藏记录`, 'success')
+      showToast(get(t)('collection.batchDeleted', { values: { count: n } }), 'success')
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.opFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       batchBusy = false
       selectedIds = new Set()
@@ -246,7 +271,12 @@
     card.ownedTotal += 1
     card.ownedNormal += 1
     void bulkIncrement([{ cardNo: card.cardNo, cardNoExtend: card.cardNoExtend }]).catch((err) => {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.opFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
       void runSearch(true)
     })
     void loadStats()
@@ -268,7 +298,12 @@
       await upsertLangQty(card.cardNo, card.cardNoExtend, row.language_code, patch)
       void loadStats()
     } catch (err) {
-      showToast(`操作失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.opFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
       void runSearch(true)
     }
   }
@@ -292,7 +327,12 @@
         lastEdited: card.lastEdited,
       }
     } catch (err) {
-      showToast(`打开详情失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.openDetailFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     }
   }
 
@@ -326,26 +366,26 @@
       actions: [
         {
           key: 'custom',
-          label: '自定义卡',
+          label: $t('collection.customCards'),
           icon: Plus,
-          title: '新建自定义卡',
+          title: $t('collection.newCustomCard'),
           onClick: () => (showCustomCreate = true),
         },
         {
           key: 'batch',
-          label: batchMode ? '退出批量' : '批量',
+          label: batchMode ? $t('collection.exitBatch') : $t('collection.batch'),
           icon: batchMode ? X : ListChecks,
           active: batchMode,
-          title: '批量操作',
+          title: $t('collection.batchTitle'),
           onClick: toggleBatchMode,
         },
         {
           key: 'missing',
-          label: '缺卡清单',
+          label: $t('collection.missingList'),
           icon: ScrollText,
           variant: 'primary',
           priority: 0,
-          title: '缺卡清单',
+          title: $t('collection.missingList'),
           onClick: () =>
             void goto(
               `/collection/missing?seriesCode=${seriesCode}${activeBucket ? `&bucket=${activeBucket}` : ''}`
@@ -380,14 +420,14 @@
             void runSearch(true)
           }}
         >
-          {opt.label}
+          {$t(opt.labelKey)}
         </button>
       {/each}
     </div>
 
     <input
       class="search-input"
-      placeholder="搜索编号/画师/稀有度..."
+      placeholder={$t('collection.seriesSearchPlaceholder')}
       bind:value={searchText}
       onkeydown={(e) => {
         if (e.key === 'Enter') void runSearch(true)
@@ -402,11 +442,11 @@
       }}
     />
 
-    <div class="view-toggle" role="group" aria-label="视图切换">
+    <div class="view-toggle" role="group" aria-label={$t('collection.viewToggle')}>
       <button
         class="view-btn"
         class:active={view === 'grid'}
-        title="网格视图"
+        title={$t('collection.gridView')}
         onclick={() => (view = 'grid')}
       >
         <LayoutGrid size={15} />
@@ -414,7 +454,7 @@
       <button
         class="view-btn"
         class:active={view === 'table'}
-        title="表格视图"
+        title={$t('collection.tableView')}
         onclick={() => (view = 'table')}
       >
         <Table size={15} />
@@ -454,7 +494,7 @@
         onToggleSelect={toggleSelect}
       />
     {/if}
-    <div class="total-hint">共 {total} 个卡牌</div>
+    <div class="total-hint">{$t('collection.totalCards', { values: { count: total } })}</div>
 
     {#if batchMode}
       <BatchToolbar

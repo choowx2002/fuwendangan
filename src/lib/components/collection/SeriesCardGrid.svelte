@@ -2,7 +2,8 @@
   import type { SeriesStats } from '$lib/db'
   // import { Check } from '@lucide/svelte'
   // import CachedImage from '../cards/CachedImage.svelte'
-  import { BUCKET_LABELS, type VariantBucket } from '$lib/cards/utils/variant-utils'
+  import type { VariantBucket } from '$lib/cards/utils/variant-utils'
+  import { t } from '$lib/i18n'
 
   let {
     series = [] as SeriesStats[],
@@ -10,6 +11,14 @@
   } = $props()
 
   const BUCKET_ORDER: VariantBucket[] = ['base', 'alt', 'overnum', 'rune', 'token']
+
+  const BUCKET_LABEL_KEYS: Record<VariantBucket, string> = {
+    base: 'collection.bucketBase',
+    alt: 'collection.bucketAlt',
+    overnum: 'collection.bucketOvernum',
+    rune: 'collection.bucketRune',
+    token: 'collection.bucketToken',
+  }
 
   function percentOf(s: SeriesStats): number {
     if (!s || s.totalCount <= 0) return 0
@@ -53,9 +62,9 @@
         <div class="series-metrics">
           <span class="metric-owned">{s.totalOwned}/{s.totalCount}</span>
           {#if missing > 0}
-            <span class="metric-missing">还缺 {missing} 张</span>
+            <span class="metric-missing">{$t('collection.missingCount', { values: { count: missing } })}</span>
           {:else if s.totalCount > 0}
-            <span class="metric-done">已集齐</span>
+            <span class="metric-done">{$t('collection.satisfied')}</span>
           {/if}
         </div>
 
@@ -66,9 +75,9 @@
               class="bucket-cell"
               class:has-progress={s.owned[bucket] > 0}
               class:done={bucketDone}
-              title={`${BUCKET_LABELS[bucket]}：${s.owned[bucket]}/${s.counts[bucket]}`}
+              title={`${$t(BUCKET_LABEL_KEYS[bucket])}：${s.owned[bucket]}/${s.counts[bucket]}`}
             >
-              <span class="bucket-label">{BUCKET_LABELS[bucket]}</span>
+              <span class="bucket-label">{$t(BUCKET_LABEL_KEYS[bucket])}</span>
               <span class="bucket-value">
                 {s.owned[bucket]}/{s.counts[bucket]}
                 {#if bucketDone}<span class="bucket-check">✓</span>{/if}

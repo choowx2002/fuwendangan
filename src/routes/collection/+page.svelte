@@ -14,6 +14,8 @@
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
   import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
   import { deriveSeriesCode } from '$lib/collection/collection-utils'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
 
   let stats = $state<CollectionStats | null>(null)
   let recent = $state<RecentCollectionCard[]>([])
@@ -50,9 +52,9 @@
         const { open } = await import('@tauri-apps/plugin-dialog')
         const { readTextFile } = await import('$lib/services/db-file-service')
         const src = await open({
-          title: '选择缺卡清单 CSV 文件',
+          title: get(t)('collection.pickMissingCsv'),
           multiple: false,
-          filters: [{ name: 'CSV 文件', extensions: ['csv'] }],
+          filters: [{ name: get(t)('collection.csvFile'), extensions: ['csv'] }],
         })
         if (!src) return
         const content = await readTextFile(String(src))
@@ -72,7 +74,12 @@
         input.click()
       }
     } catch (err) {
-      showToast(`读取文件失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.readFileFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     }
   }
 
@@ -84,7 +91,9 @@
         language: r.language,
         ownedQty: r.ownedQty,
       })),
-      errors: parsed.errors.map((e) => `第 ${e.line} 行：${e.reason}`),
+      errors: parsed.errors.map((e) =>
+        get(t)('collection.csvLineError', { values: { line: e.line, reason: e.reason } })
+      ),
       fileName,
     }
     importMode = 'add'
@@ -97,14 +106,24 @@
     try {
       const result = await importOwnedCounts(importPreview.rows, importMode)
       const skippedText = result.skipped.length
-        ? `（跳过 ${result.skipped.length} 条，如编号不存在/语言非法）`
+        ? get(t)('collection.skippedInfo', { values: { count: result.skipped.length } })
         : ''
-      showToast(`已导入 ${result.applied} 条${skippedText}`, 'success')
+      showToast(
+        get(t)('collection.importedCount', {
+          values: { count: result.applied, skipped: skippedText },
+        }),
+        'success'
+      )
       showImportModal = false
       importPreview = null
       void loadAll()
     } catch (err) {
-      showToast(`导入失败：${err instanceof Error ? err.message : '未知错误'}`, 'error')
+      showToast(
+        get(t)('collection.importFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
     } finally {
       importing = false
     }
@@ -127,36 +146,36 @@
 
   $effect(() => {
     setTopbar({
-      title: '收藏与闪卡',
+      title: $t('collection.title'),
       actions: [
         {
           key: 'history',
-          label: '历史',
+          label: $t('collection.history'),
           icon: History,
           variant: 'ghost',
-          title: '收藏操作历史与进度趋势',
+          title: $t('collection.historyTitle'),
           onClick: () => void goto('/collection/history'),
           priority: 1,
         },
         {
           key: 'import',
-          label: '导入 CSV',
+          label: $t('collection.importCsv'),
           icon: Download,
           variant: 'ghost',
-          title: '导入缺卡清单 CSV',
+          title: $t('collection.importCsvTitle'),
           onClick: pickImportFile,
           priority: 1,
         },
         {
           key: 'custom',
-          label: '自定义卡',
+          label: $t('collection.customCards'),
           icon: Plus,
-          title: '新建自定义卡',
+          title: $t('collection.newCustomCard'),
           onClick: () => (showCustomCreate = true),
         },
         {
           key: 'missing',
-          label: '缺卡清单',
+          label: $t('collection.missingList'),
           icon: ScrollText,
           onClick: () => void goto('/collection/missing'),
           variant: 'primary',
@@ -178,12 +197,12 @@
 
   <div class="series-area">
     {#if loading && !stats}
-      <div class="loading-tip">正在加载收藏进度...</div>
+      <div class="loading-tip">{$t('collection.loadingProgress')}</div>
     {:else if stats && stats.series.length === 0}
       <EmptyState
-        title="还没有收藏记录"
-        description="去卡牌图鉴浏览全部卡牌，把拥有的卡录入收藏吧"
-        actionLabel="浏览卡牌图鉴"
+        title={$t('collection.emptyTitle')}
+        description={$t('collection.emptyDesc')}
+        actionLabel={$t('collection.browseCards')}
         onAction={() => void goto('/cards')}
       />
     {:else}
@@ -203,7 +222,7 @@
 
 <CommonModal
   open={showImportModal}
-  title="导入缺卡清单 CSV"
+  title={$t('collection.importCsvTitle')}
   subtitle={importPreview?.fileName ?? ''}
   closable={!importing}
   onclose={() => {
@@ -219,8 +238,8 @@
           disabled={importing}
           onclick={() => (importMode = 'add')}
         >
-          <span class="import-format-name">累加模式</span>
-          <span class="import-format-desc">将 CSV「拥有数」加到对应语言当前数量上</span>
+          <span class="import-format-name">{$t('collection.addMode')}</span>
+          <span class="import-format-desc">{$t('collection.addModeDesc')}</span>
         </button>
         <button
           class="import-format-option"
@@ -228,14 +247,14 @@
           disabled={importing}
           onclick={() => (importMode = 'overwrite')}
         >
-          <span class="import-format-name">覆盖模式</span>
-          <span class="import-format-desc">将对应语言数量精确设置为 CSV「拥有数」</span>
+          <span class="import-format-name">{$t('collection.overwriteMode')}</span>
+          <span class="import-format-desc">{$t('collection.overwriteModeDesc')}</span>
         </button>
       </div>
       <div class="import-stats">
-        已解析 {importPreview.rows.length} 行
+        {$t('collection.parsedRows', { values: { count: importPreview.rows.length } })}
         {#if importPreview.errors.length > 0}
-          · 跳过 <span class="import-error">{importPreview.errors.length} 行</span>
+          · {$t('collection.skippedRows', { values: { count: importPreview.errors.length } })}
         {/if}
       </div>
       {#if importPreview.errors.length > 0}
@@ -254,14 +273,14 @@
       disabled={importing}
       onclick={() => (showImportModal = false)}
     >
-      取消
+      {$t('common.cancel')}
     </button>
     <button
       class="button button-primary"
       disabled={importing || !importPreview || importPreview.rows.length === 0}
       onclick={confirmImport}
     >
-      {importing ? '导入中...' : '确认导入'}
+      {importing ? $t('collection.importing') : $t('collection.confirmImport')}
     </button>
   {/snippet}
 </CommonModal>
@@ -352,10 +371,6 @@
   .import-stats {
     font-size: var(--text-sm);
     color: var(--text-secondary);
-  }
-
-  .import-error {
-    color: var(--danger-color, #e5484d);
   }
 
   .import-errors {

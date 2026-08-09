@@ -12,7 +12,32 @@ import type {
   SqliteCardBase,
   SqliteDeck,
   NumberRange,
+  MatchWinType,
 } from './types'
+
+export type GameResult = 'win' | 'loss' | 'draw'
+
+/**
+ * 判定一小局的结果（胜/负/平）
+ * 平局条件：显式 win_type='draw'，或正常比分且双方同分（兼容历史数据）
+ */
+export function gameResult(g: {
+  win_type: MatchWinType
+  is_win: boolean
+  my_score: number | null
+  opp_score: number | null
+}): GameResult {
+  if (g.win_type === 'draw') return 'draw'
+  if (
+    g.win_type === 'normal' &&
+    g.my_score !== null &&
+    g.opp_score !== null &&
+    g.my_score === g.opp_score
+  ) {
+    return 'draw'
+  }
+  return g.is_win ? 'win' : 'loss'
+}
 
 /**
  * 辅助函数：将 SQLite 行数据反序列化为前端使用的 CardBase 模型

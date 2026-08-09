@@ -17,6 +17,7 @@
   import { page } from '$app/state'
   import CachedImage from './CachedImage.svelte'
   import type { ZoneKey } from '$lib/decks/zone'
+  import { t } from '$lib/i18n'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
   // --- 组件 Props ---
@@ -358,37 +359,37 @@
           class:active={zone === 'legend'}
           onclick={(e) => {
             changeZone('legend', e)
-          }}>传奇</button
+          }}>{$t('builder.legend')}</button
         >
         <button
           class:active={zone === 'champion'}
           onclick={(e) => {
             changeZone('champion', e)
-          }}>选定英雄</button
+          }}>{$t('builder.champion')}</button
         >
         <button
           class:active={zone === 'mainDeck'}
           onclick={(e) => {
             changeZone('mainDeck', e)
-          }}>主牌堆</button
+          }}>{$t('builder.mainDeck')}</button
         >
         <button
           class:active={zone === 'battlefields'}
           onclick={(e) => {
             changeZone('battlefields', e)
-          }}>战场</button
+          }}>{$t('builder.battlefields')}</button
         >
         <button
           class:active={zone === 'runes'}
           onclick={(e) => {
             changeZone('runes', e)
-          }}>符文</button
+          }}>{$t('builder.runes')}</button
         >
         <button
           class:active={zone === 'sideboard'}
           onclick={(e) => {
             changeZone('sideboard', e)
-          }}>备牌</button
+          }}>{$t('builder.sideboard')}</button
         >
       </div>
     {/if}
@@ -414,13 +415,13 @@
     </div>
     {#if expandedFilter || !isMobileSmall}
       {#if !showDeckCount}
-        <h2 style="font-size: var(--text-base);color: var(--text-secondary)">数量：{totalCards}</h2>
+        <h2 style="font-size: var(--text-base);color: var(--text-secondary)">{$t('cards.countLabel')}：{totalCards}</h2>
       {/if}
       <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
 
       <button class="button button-ghost" onclick={() => (isFilterOpen = true)}>
         <SlidersHorizontal size={18} />
-        <span>筛选</span>
+        <span>{$t('cards.filter')}</span>
         {#if totalActiveCount > 0}
           <span class="badge">{totalActiveCount}</span>
         {/if}
@@ -473,11 +474,11 @@
         {#if isLoadingMore}
           <div class="loading-more">
             <LoaderCircle class="animate-spin" size={16} />
-            <span>正在加载更多...</span>
+            <span>{$t('cards.loadingMore')}</span>
           </div>
         {:else if !hasMore}
           <div class="no-more">
-            <span>—— 已经到底啦 ——</span>
+            <span>{$t('cards.noMore')}</span>
           </div>
         {/if}
 
@@ -485,7 +486,7 @@
       </div>
     {:else}
       <div class="empty-state">
-        <p>未找到匹配卡牌</p>
+        <p>{$t('cards.noResults')}</p>
       </div>
     {/if}
   </section>

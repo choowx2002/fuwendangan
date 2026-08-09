@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import CachedImage from '../cards/CachedImage.svelte'
+  import { t } from '$lib/i18n'
 
   let {
     stats = undefined as CollectionStats | undefined,
@@ -40,21 +41,21 @@
     </div>
 
     <div class="hero-info">
-      <div class="hero-title">收藏总进度</div>
+      <div class="hero-title">{$t('collection.overallProgress')}</div>
       <div class="hero-chips">
         <span class="chip promo-chip">Promo ×{stats?.promoOwned ?? 0}</span>
-        <span class="chip foil-chip">闪卡 ×{stats?.foilOwned ?? 0}</span>
+        <span class="chip foil-chip">{$t('collection.foilCountLabel')} ×{stats?.foilOwned ?? 0}</span>
         {#if percent === 100}
-          <span class="chip done-chip">全系列集齐</span>
+          <span class="chip done-chip">{$t('collection.allComplete')}</span>
         {/if}
       </div>
     </div>
   </div>
 
   <div class="recent-col">
-    <div class="recent-title">最近录入</div>
+    <div class="recent-title">{$t('collection.recentAdded')}</div>
     {#if recent.length === 0}
-      <p class="recent-empty">暂无收藏记录，从系列卡片开始录入吧</p>
+      <p class="recent-empty">{$t('collection.noRecent')}</p>
     {:else}
       <div class="recent-list">
         {#each recent as r (r.cardId + r.cardNoExtend + r.langCode)}
@@ -72,7 +73,7 @@
                 isLandscape={false}
               />
               {#if (r.ownedFoil ?? 0) > 0}
-                <span class="mini-foil">闪</span>
+                <span class="mini-foil">{$t('collection.foilBadge')}</span>
               {/if}
               {#if r.langCode !== 'SC'}
                 <span class="lang-badge">{r.langCode}</span>

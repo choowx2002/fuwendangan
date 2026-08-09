@@ -7,6 +7,7 @@
   import { sidebarState } from '../../stores/ui-store.svelte'
   import { networkState } from '../../stores/network.svelte'
   import { page } from '$app/state'
+  import { t } from 'svelte-i18n'
   let { children } = $props()
   let isSidebarOpen = $state(false)
 
@@ -63,7 +64,7 @@
   <DownloadProgressBar />
 
   {#if !networkState.online && networkState.checked}
-    <div class="offline-banner" role="status">离线模式 · 使用本地数据</div>
+    <div class="offline-banner" role="status">{$t('appShell.offline')}</div>
   {/if}
 </div>
 

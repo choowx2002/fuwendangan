@@ -36,7 +36,9 @@
     showTTSFeatures,
     playerName,
     darkMode,
+    locale,
   } from '$lib/stores/settings'
+  import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
 
   import {
@@ -58,17 +60,19 @@
   import { Download, Upload, FileText, FileUp } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
+  import { get } from 'svelte/store'
+  import { t } from 'svelte-i18n'
 
   // --- 状态管理 ---
   let appVersion = $state('1.0.0')
   let cardDataUpdateStatus = $state<'idle' | 'checking' | 'upToDate' | 'error'>('idle')
   let busyText = $state('')
 
-  let dbSize = $state<string>('计算中...')
-  let dbPath = $state<string>('加载中...')
+  let dbSize = $state<string>(get(t)('common.calculating'))
+  let dbPath = $state<string>(get(t)('common.loading'))
   let dbFilePath = $state<string>('')
-  let imagePath = $state<string>('加载中...')
-  let imageCacheSize = $state<string>('计算中...')
+  let imagePath = $state<string>(get(t)('common.loading'))
+  let imageCacheSize = $state<string>(get(t)('common.calculating'))
   let imageCoverage = $state<{
     existingCount: number
     totalCount: number
@@ -77,7 +81,7 @@
   let inMobile = $state<boolean>(false)
   let onloadInfo = $state<boolean>(false)
 
-  let lastSyncText = $state<string>('加载中...')
+  let lastSyncText = $state<string>(get(t)('common.loading'))
   let deckCount = $state<number>(0)
   let statRows = $state<{ label: string; count: number; size: string }[]>([])
 
@@ -128,6 +132,10 @@
     }
   })
 
+  function _t(key: string, values?: Record<string, unknown>) {
+    return get(t)(key, values)
+  }
+
   async function loadImageCoverage() {
     try {
       const { missing, existingCount, totalCount } = await prepareCardImageDownload()
@@ -170,8 +178,8 @@
 
       // 4. 最后同步时间
       lastSyncText = dbVersion?.updated_at
-        ? `${dbVersion.name ?? '数据'} · ${new Date(dbVersion.updated_at).toLocaleString()}`
-        : '从未同步'
+        ? `${dbVersion.name ?? _t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
+        : _t('settings.neverSynced')
 
       // 5. 各表统计
       const rows = stats.tables.map((t) => ({
@@ -183,7 +191,7 @@
       const residual = stats.totalBytes - tableBytes
       if (residual > 0) {
         rows.push({
-          label: '其他（空闲/系统页）',
+          label: _t('settings.otherTable'),
           count: 0,
           size: formatBytes(residual),
         })
@@ -195,10 +203,10 @@
       const imageCacheSizeByte = await getImageDirSize()
       imageCacheSize = formatBytes(imageCacheSizeByte)
     } catch (e) {
-      dbSize = '获取失败'
-      imageCacheSize = '获取失败'
-      dbPath = '获取失败'
-      lastSyncText = '获取失败'
+      dbSize = _t('settings.getFailed')
+      imageCacheSize = _t('settings.getFailed')
+      dbPath = _t('settings.getFailed')
+      lastSyncText = _t('settings.getFailed')
       console.error('[初始化失败]', e)
     } finally {
       onloadInfo = false
@@ -208,11 +216,11 @@
   function getStatusText(status: string): string {
     switch (status) {
       case 'checking':
-        return '正在检查更新...'
+        return _t('settings.checkingUpdate')
       case 'upToDate':
-        return '卡牌数据已是最新'
+        return _t('settings.upToDate')
       case 'error':
-        return '检查更新失败'
+        return _t('settings.checkUpdateFailed')
       default:
         return ''
     }
@@ -224,7 +232,7 @@
       const net = await getNetworkStatus()
       if (!net.online) {
         cardDataUpdateStatus = 'error'
-        showToast('网络不可用，无法检查更新', 'error')
+        showToast(_t('settings.networkUnavailable'), 'error')
         return
       }
       setLoadStatus('syncing')
@@ -239,21 +247,18 @@
   }
 
   async function handleResetDb() {
-    const accpected = await ask(
-      '确定要重置数据库吗？\n此操作会删除全部本地数据（卡组、卡牌、规则、收藏等）并重新初始化。',
-      {
-        title: '重置数据库',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
+    const accpected = await ask(_t('settings.resetDbConfirm'), {
+      title: _t('settings.resetDb'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
     if (accpected) {
-      await withBusy('正在重置数据库...', async () => {
+      await withBusy(_t('settings.resetDbBusy'), async () => {
         await resetDatabase()
         await loadDbInfo()
       })
-      message('数据库已成功重置！')
+      message(_t('settings.resetDbSuccess'))
     }
   }
 
@@ -262,22 +267,22 @@
   }
 
   async function handleResetImageCache() {
-    const accpected = await ask('确定要重置卡图缓存吗？\n此操作会删除您所有卡图缓存。', {
-      title: '重置卡图缓存',
+    const accpected = await ask(_t('settings.resetImageCacheConfirm'), {
+      title: _t('settings.resetImageCache'),
       kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
     })
     if (accpected) {
       try {
-        await withBusy('正在清空卡图缓存...', async () => {
+        await withBusy(_t('settings.resetImageCacheBusy'), async () => {
           await clearLocalCache()
           const imageCacheSizeByte = await getImageDirSize()
           imageCacheSize = formatBytes(imageCacheSizeByte)
         })
-        await message('卡图缓存已清除')
+        await message(_t('settings.resetImageCacheSuccess'))
       } catch (e) {
-        setLoadStatus('error', '重置缓存失败', e instanceof Error ? e.message : '未知错误')
+        setLoadStatus('error', _t('settings.resetImageCacheFailed'), e instanceof Error ? e.message : _t('common.unknownError'))
       }
     }
   }
@@ -291,23 +296,20 @@
       const { missing } = await prepareCardImageDownload()
 
       if (missing.length === 0) {
-        await message('所有卡牌资源已经存在，无需下载。', {
-          title: '卡牌资源',
+        await message(_t('settings.imagesExist'), {
+          title: _t('settings.cardResourceTitle'),
           kind: 'info',
         })
 
         return
       }
 
-      const accepted = await ask(
-        `为了下载大约${missing.length}张卡牌资源，本应用需要下载数据。如果您正在使用手机热点或移动网络，下载可能会消耗较多流量。\n\n是否继续执行？`,
-        {
-          title: '卡牌资源下载',
-          kind: 'warning',
-          okLabel: '确定',
-          cancelLabel: '取消',
-        }
-      )
+      const accepted = await ask(_t('settings.downloadConfirm', { values: { count: missing.length } }), {
+        title: _t('settings.cardResourceDownloadTitle'),
+        kind: 'warning',
+        okLabel: _t('common.confirm'),
+        cancelLabel: _t('common.cancel'),
+      })
 
       if (!accepted) {
         return
@@ -317,8 +319,8 @@
     } catch (error) {
       console.error('[Settings] 准备卡图下载失败:', error)
 
-      await message(error instanceof Error ? error.message : '无法准备卡图下载任务。', {
-        title: '卡牌资源下载',
+      await message(error instanceof Error ? error.message : _t('settings.prepareDownloadFailed'), {
+        title: _t('settings.cardResourceDownloadTitle'),
         kind: 'error',
       })
     }
@@ -329,14 +331,14 @@
     if (!dbFilePath) return
 
     const dest = await save({
-      title: '选择备份保存位置',
+      title: _t('settings.backupSaveTitle'),
       defaultPath: `rune-archive-backup-${new Date().toISOString().slice(0, 10)}.db`,
-      filters: [{ name: 'SQLite 数据库', extensions: ['db', 'sqlite', 'sqlite3'] }],
+      filters: [{ name: _t('settings.sqliteFilter'), extensions: ['db', 'sqlite', 'sqlite3'] }],
     })
     if (!dest) return
 
     try {
-      await withBusy('正在备份数据库...', async () => {
+      await withBusy(_t('settings.backupBusy'), async () => {
         await closeDatabase()
         try {
           await copyFile(dbFilePath, dest)
@@ -345,9 +347,9 @@
           await loadDbInfo()
         }
       })
-      await message('数据库备份成功！', { title: '备份', kind: 'info' })
+      await message(_t('settings.backupSuccess'), { title: _t('settings.backup'), kind: 'info' })
     } catch (e) {
-      await message(e instanceof Error ? e.message : '备份失败', { title: '备份', kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.backupFailed'), { title: _t('settings.backup'), kind: 'error' })
     }
   }
 
@@ -355,25 +357,22 @@
     if (!dbFilePath) return
 
     const src = await open({
-      title: '选择备份文件',
+      title: _t('settings.restoreOpenTitle'),
       multiple: false,
-      filters: [{ name: 'SQLite 数据库', extensions: ['db', 'sqlite', 'sqlite3'] }],
+      filters: [{ name: _t('settings.sqliteFilter'), extensions: ['db', 'sqlite', 'sqlite3'] }],
     })
     if (!src) return
 
-    const confirmed = await ask(
-      '恢复备份将覆盖当前全部本地数据（含卡组、卡牌、规则等）。\n确定要继续吗？',
-      {
-        title: '恢复备份',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
+    const confirmed = await ask(_t('settings.restoreConfirm'), {
+      title: _t('settings.restoreConfirmTitle'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
     if (!confirmed) return
 
     try {
-      await withBusy('正在恢复数据库...', async () => {
+      await withBusy(_t('settings.restoreBusy'), async () => {
         await closeDatabase()
         try {
           await copyFile(String(src), dbFilePath)
@@ -382,9 +381,9 @@
           await loadDbInfo()
         }
       })
-      await message('数据库恢复成功！', { title: '恢复', kind: 'info' })
+      await message(_t('settings.restoreSuccess'), { title: _t('settings.restore'), kind: 'info' })
     } catch (e) {
-      await message(e instanceof Error ? e.message : '恢复失败', { title: '恢复', kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.restoreFailed'), { title: _t('settings.restore'), kind: 'error' })
     }
   }
 
@@ -429,9 +428,9 @@
     if (selectedDeckIds.length === 0) return
 
     const dest = await save({
-      title: '选择导出文件位置',
+      title: _t('settings.exportSaveTitle'),
       defaultPath: `rune-archive-decks-${exportMode}-${new Date().toISOString().slice(0, 10)}.json`,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      filters: [{ name: _t('settings.jsonFilter'), extensions: ['json'] }],
     })
     if (!dest) return
 
@@ -446,7 +445,7 @@
         decks: [] as unknown[],
       }
 
-      await withBusy('正在导出卡组...', async () => {
+      await withBusy(_t('settings.exportBusy'), async () => {
         const allDecks = await getDecks()
         const jobs = allDecks
           .filter((deck) => selectedDeckIds.includes(deck.id))
@@ -519,10 +518,10 @@
         }
         await writeTextFile(dest, JSON.stringify(data, null, 2))
       })
-      await message(`已导出 ${data.decks.length} 副卡组！`, { title: '导出', kind: 'info' })
+      await message(_t('settings.exportSuccess', { values: { count: data.decks.length } }), { title: _t('settings.export'), kind: 'info' })
       showExportModal = false
     } catch (e) {
-      await message(e instanceof Error ? e.message : '导出失败', { title: '导出', kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.exportFailed'), { title: _t('settings.export'), kind: 'error' })
     } finally {
       isExporting = false
     }
@@ -671,18 +670,18 @@
 
   async function openImportModal() {
     const src = await open({
-      title: '选择导出的 JSON 文件',
+      title: _t('settings.importOpenTitle'),
       multiple: false,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      filters: [{ name: _t('settings.jsonFilter'), extensions: ['json'] }],
     })
     if (!src) return
 
     let content: string
     try {
-      content = await withBusy('正在读取并解析文件...', async () => readTextFile(String(src)))
+      content = await withBusy(_t('settings.importReadBusy'), async () => readTextFile(String(src)))
     } catch (e) {
-      await message(e instanceof Error ? e.message : '读取文件失败', {
-        title: '导入',
+      await message(e instanceof Error ? e.message : _t('settings.importReadFailed'), {
+        title: _t('settings.import'),
         kind: 'error',
       })
       return
@@ -690,8 +689,8 @@
 
     const decks = parseImportFile(content)
     if (decks.length === 0) {
-      await message('文件格式不正确或没有可导入的卡组，请选择 Rune Archive 导出的 JSON 文件。', {
-        title: '导入',
+      await message(_t('settings.importInvalidFile'), {
+        title: _t('settings.import'),
         kind: 'error',
       })
       return
@@ -701,7 +700,7 @@
     importDeckList = decks.map((d) => ({
       id: d.name,
       name: d.name,
-      updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : '未知',
+      updatedAt: d.updated_at ? new Date(d.updated_at).toLocaleString() : _t('common.unknown'),
       versionCount: d.versions.length,
     }))
     selectedImportDeckIds = importDeckList.map((d) => d.id)
@@ -716,18 +715,22 @@
     isImporting = true
     try {
       const chosen = pendingImportDecks.filter((p) => selectedImportDeckIds.includes(p.name))
-      const { imported, missingCards } = await withBusy('正在导入卡组...', () =>
+      const { imported, missingCards } = await withBusy(_t('settings.importBusy'), () =>
         importDecksFromJson(chosen, {
           latestOnly: importMode === 'latest',
           filterMissingCards: true,
         })
       )
-      const missingText = missingCards > 0 ? `（跳过 ${missingCards} 张本地缺失的卡牌）` : ''
-      await message(`已导入 ${imported} 副卡组${missingText}！`, { title: '导入', kind: 'info' })
+      const missingText =
+        missingCards > 0 ? _t('settings.importSkippedMissing', { values: { count: missingCards } }) : ''
+      await message(
+        _t('settings.importSuccess', { values: { count: imported, extra: missingText } }),
+        { title: _t('settings.import'), kind: 'info' }
+      )
       showImportModal = false
       await loadDbInfo()
     } catch (e) {
-      await message(e instanceof Error ? e.message : '导入失败', { title: '导入', kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.importFailed'), { title: _t('settings.import'), kind: 'error' })
     } finally {
       isImporting = false
     }
@@ -743,15 +746,15 @@
     const confirmed = await ask(desc, {
       title,
       kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
     })
     if (!confirmed) return
 
     try {
-      await withBusy(`正在${title}...`, action)
+      await withBusy(_t('settings.confirmAndRunBusy', { values: { action: title } }), action)
     } catch (e) {
-      await message(e instanceof Error ? e.message : `${title}失败`, {
+      await message(e instanceof Error ? e.message : _t('settings.actionFailed', { values: { action: title } }), {
         title,
         kind: 'error',
       })
@@ -763,95 +766,89 @@
 
   function clearAllDecksAsk() {
     return confirmAndRun(
-      '清空所有卡组',
-      `确定要清空所有卡组吗？\n当前共 ${deckCount} 副卡组，其版本与卡牌引用都将被删除。`,
+      _t('settings.clearAllDecks'),
+      _t('settings.clearAllDecksConfirm', { values: { count: deckCount } }),
       () => deleteAllDecks(),
-      '所有卡组已清空'
+      _t('settings.clearAllDecksSuccess')
     )
   }
 
   async function manualSnapshot() {
     await captureCollectionSnapshot('manual')
-    await message('收藏进度快照已记录', { title: '记录快照', kind: 'info' })
+    await message(_t('settings.snapshotRecorded'), { title: _t('settings.snapshotTitle'), kind: 'info' })
   }
 
   function clearHistoryAsk() {
     const before = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     return confirmAndRun(
-      '清空历史',
-      '确定要删除 30 天前的收藏操作记录吗？\n删除后不可恢复，近 30 天的记录将保留。',
+      _t('settings.clearHistory'),
+      _t('settings.clearHistoryConfirm'),
       () => clearHistory({ before }),
-      '已清空 30 天前的收藏历史'
+      _t('settings.clearHistorySuccess')
     )
   }
 
   async function cleanupVersionsAsk() {
-    const confirmed = await ask(
-      '确定要清理冗余版本吗？\n每个卡组仅保留最新版本，其余历史版本及其卡牌引用将被删除。',
-      {
-        title: '清理冗余版本',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
+    const confirmed = await ask(_t('settings.cleanupVersionsConfirm'), {
+      title: _t('settings.cleanupVersions'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
     if (!confirmed) return
 
-    const deleted = await withBusy('正在清理冗余版本...', () => cleanupDeckVersions())
-    await message(`已清理 ${deleted} 个冗余版本`, { kind: 'info' })
+    const deleted = await withBusy(_t('settings.cleanupVersionsBusy'), () => cleanupDeckVersions())
+    await message(_t('settings.cleanupVersionsSuccess', { values: { count: deleted } }), { kind: 'info' })
     await loadDbInfo()
   }
 
   async function clearCardDataAsk() {
-    const confirmed = await ask(
-      '确定要清空卡牌数据吗？\n此操作会删除卡牌基础数据与卡图，并清空筛选设置与同步标记（卡组与收藏将保留）。\n下次同步将重新拉取数据。',
-      {
-        title: '清空卡牌数据',
-        kind: 'warning',
-        okLabel: '确定',
-        cancelLabel: '取消',
-      }
-    )
+    const confirmed = await ask(_t('settings.clearCardDataConfirm'), {
+      title: _t('settings.clearCardData'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
     if (!confirmed) return
 
-    await withBusy('正在清空卡牌数据...', () => clearCardData())
-    await message('卡牌数据已清空，下次同步将重新拉取', { kind: 'info' })
+    await withBusy(_t('settings.clearCardDataBusy'), () => clearCardData())
+    await message(_t('settings.clearCardDataSuccess'), { kind: 'info' })
     await loadDbInfo()
   }
 
   function clearRulesAsk() {
     return confirmAndRun(
-      '清空规则数据',
-      '确定要清空规则数据吗？',
+      _t('settings.clearRules'),
+      _t('settings.clearRulesConfirm'),
       () => clearRules(),
-      '规则数据已清空'
+      _t('settings.clearRulesSuccess')
     )
   }
 
   function clearIconsAsk() {
     return confirmAndRun(
-      '清空图标数据',
-      '确定要清空图标数据吗？',
+      _t('settings.clearIcons'),
+      _t('settings.clearIconsConfirm'),
       () => clearIcons(),
-      '图标数据已清空'
+      _t('settings.clearIconsSuccess')
     )
   }
 
   function clearFilterAsk() {
     return confirmAndRun(
-      '清空筛选设置',
-      '确定要清空筛选设置吗？',
+      _t('settings.clearFilter'),
+      _t('settings.clearFilterConfirm'),
       () => clearFilterOptions(),
-      '筛选设置已清空'
+      _t('settings.clearFilterSuccess')
     )
   }
 
   function resetSyncAsk() {
     return confirmAndRun(
-      '重置同步状态',
-      '确定要重置同步状态吗？\n仅清除本地同步标记，不会删除任何数据。下次启动应用时将重新同步数据。',
+      _t('settings.resetSync'),
+      _t('settings.resetSyncConfirm'),
       () => clearVersion(),
-      '同步状态已重置'
+      _t('settings.resetSyncSuccess')
     )
   }
 
@@ -868,10 +865,10 @@
       newLangCode = ''
       newLangName = ''
       await loadCustomLangs()
-      langMsg = '已添加自定义语言'
+      langMsg = _t('settings.langAdded')
     } catch (e) {
       langMsgError = true
-      langMsg = e instanceof Error ? e.message : '添加失败'
+      langMsg = e instanceof Error ? e.message : _t('settings.addFailed')
     }
   }
 
@@ -887,30 +884,30 @@
       await renameCustomLanguage(code, editingName)
       editingCode = ''
       await loadCustomLangs()
-      langMsg = '已重命名'
+      langMsg = _t('settings.renamed')
     } catch (e) {
       langMsgError = true
-      langMsg = e instanceof Error ? e.message : '重命名失败'
+      langMsg = e instanceof Error ? e.message : _t('settings.renameFailed')
     }
   }
 
   async function removeLang(code: string) {
     langMsg = ''
     langMsgError = false
-    const confirmed = await ask(`确定删除自定义语言 ${code} 吗？`, {
-      title: '删除自定义语言',
+    const confirmed = await ask(_t('settings.deleteLangConfirm', { values: { code } }), {
+      title: _t('settings.deleteCustomLang'),
       kind: 'warning',
-      okLabel: '删除',
-      cancelLabel: '取消',
+      okLabel: _t('common.delete'),
+      cancelLabel: _t('common.cancel'),
     })
     if (!confirmed) return
     try {
       await deleteCustomLanguage(code)
       await loadCustomLangs()
-      langMsg = '已删除'
+      langMsg = _t('settings.deleted')
     } catch (e) {
       langMsgError = true
-      langMsg = e instanceof Error ? e.message : '删除失败'
+      langMsg = e instanceof Error ? e.message : _t('settings.deleteFailed')
     }
   }
 
@@ -924,18 +921,45 @@
   })
 
   $effect(() => {
-    setTopbar({ title: '设置' })
+    setTopbar({ title: $t('settings.title') })
   })
 </script>
 
 <div class="settings-container">
   <!-- 1. 通用设置 -->
   <section class="settings-card">
-    <h2 class="card-title">通用设置</h2>
+    <h2 class="card-title">{$t('settings.general')}</h2>
+
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">暗色模式</span>
-        <span class="setting-desc">切换应用整体为暗色主题</span>
+        <span class="setting-label">{$t('settings.playerName')}</span>
+        <span class="setting-desc"> {$t('settings.playerNameDesc')} </span>
+      </div>
+      <input
+        class="setting-input"
+        type="text"
+        maxlength="20"
+        placeholder={$t('settings.playerNamePlaceholder')}
+        bind:value={$playerName}
+      />
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.language')}</span>
+        <span class="setting-desc">{$t('settings.languageDesc')}</span>
+      </div>
+      <select class="setting-input lang-select" bind:value={$locale}>
+        {#each SUPPORTED_LOCALES as code}
+          <option value={code}>{code}</option>
+        {/each}
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.darkMode')}</span>
+        <span class="setting-desc">{$t('settings.darkModeDesc')}</span>
       </div>
       <label class="switch">
         <input type="checkbox" bind:checked={$darkMode} />
@@ -945,9 +969,9 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">展示其他语言卡图</span>
+        <span class="setting-label">{$t('settings.showForeignArt')}</span>
         <span class="setting-desc">
-          在卡组中显示非默认语言的卡牌原画。中国大陆地区受网络环境影响，图片可能无法正常加载。
+          {$t('settings.showForeignArtDesc')}
         </span>
       </div>
       <label class="switch">
@@ -956,25 +980,11 @@
       </label>
     </div>
 
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">玩家用户名</span>
-        <span class="setting-desc"> 用于首页问候、卡组图案水印、对局记录与计分器默认名 </span>
-      </div>
-      <input
-        class="setting-input"
-        type="text"
-        maxlength="20"
-        placeholder="未设置"
-        bind:value={$playerName}
-      />
-    </div>
-
     {#if !inMobile}
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-label">显示TTS功能</span>
-          <span class="setting-desc">开启后可在单卡库生成卡牌到 Tabletop Simulator（桌面端）</span>
+          <span class="setting-label">{$t('settings.showTTS')}</span>
+          <span class="setting-desc">{$t('settings.showTTSDesc')}</span>
         </div>
         <label class="switch">
           <input type="checkbox" bind:checked={$showTTSFeatures} />
@@ -986,44 +996,44 @@
 
   <!-- 收藏历史 -->
   <section class="settings-card">
-    <h2 class="card-title">收藏历史</h2>
+    <h2 class="card-title">{$t('settings.collectionHistory')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">手动记录快照</span>
-        <span class="setting-desc">把当前收藏完成度保存为一个进度快照，用于趋势统计</span>
+        <span class="setting-label">{$t('settings.manualSnapshot')}</span>
+        <span class="setting-desc">{$t('settings.manualSnapshotDesc')}</span>
       </div>
-      <button class="button button-secondary" onclick={manualSnapshot}>记录快照</button>
+      <button class="button button-secondary" onclick={manualSnapshot}>{$t('settings.recordSnapshot')}</button>
     </div>
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">清空历史</span>
-        <span class="setting-desc">删除 30 天前的收藏操作记录（不可恢复），近 30 天保留</span>
+        <span class="setting-label">{$t('settings.clearHistory')}</span>
+        <span class="setting-desc">{$t('settings.clearHistoryDesc')}</span>
       </div>
-      <button class="button button-ghost" onclick={clearHistoryAsk}>清空 30 天前</button>
+      <button class="button button-ghost" onclick={clearHistoryAsk}>{$t('settings.clear30d')}</button>
     </div>
   </section>
 
   <!-- 2. 版本与更新 -->
   <section class="settings-card">
-    <h2 class="card-title">版本与更新</h2>
+    <h2 class="card-title">{$t('settings.versionUpdate')}</h2>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">应用版本</span>
-        <span class="setting-desc">当前客户端版本号</span>
+        <span class="setting-label">{$t('settings.appVersion')}</span>
+        <span class="setting-desc">{$t('settings.appVersionDesc')}</span>
       </div>
       <span class="version-tag">{appVersion}</span>
     </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">卡牌数据更新</span>
+        <span class="setting-label">{$t('settings.cardDataUpdate')}</span>
         <span
           class="setting-desc status-text"
           class:text-success={cardDataUpdateStatus === 'upToDate'}
           class:text-error={cardDataUpdateStatus === 'error'}
         >
-          {getStatusText(cardDataUpdateStatus) || '点击检查卡牌数据库更新'}
+          {getStatusText(cardDataUpdateStatus) || $t('settings.clickCheckUpdate')}
         </span>
       </div>
       <button
@@ -1031,30 +1041,30 @@
         onclick={checkCardDataUpdate}
         disabled={cardDataUpdateStatus === 'checking'}
       >
-        {cardDataUpdateStatus === 'checking' ? '检查中' : '检查更新'}
+        {cardDataUpdateStatus === 'checking' ? $t('settings.checking') : $t('settings.checkUpdate')}
       </button>
     </div>
   </section>
 
   <!-- 3. 反馈与帮助 -->
   <section class="settings-card">
-    <h2 class="card-title">反馈与帮助</h2>
+    <h2 class="card-title">{$t('settings.feedback')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">反馈文档</span>
-        <span class="setting-desc">打开反馈页面，提交 Bug 或功能建议。</span>
+        <span class="setting-label">{$t('settings.feedbackDoc')}</span>
+        <span class="setting-desc">{$t('settings.feedbackDocDesc')}</span>
       </div>
-      <button class="button button-ghost" onclick={openHelpDoc}> 访问链接 ↗ </button>
+      <button class="button button-ghost" onclick={openHelpDoc}> {$t('settings.visitLink')} </button>
     </div>
   </section>
 
   <!-- 4. 本地数据库 -->
   <section class="settings-card">
-    <h2 class="card-title">本地数据库</h2>
+    <h2 class="card-title">{$t('settings.localDb')}</h2>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">数据库存储路径</span>
+        <span class="setting-label">{$t('settings.dbPath')}</span>
         <span
           role="presentation"
           class="setting-desc file-path"
@@ -1067,16 +1077,16 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">数据库占用大小</span>
-        <span class="setting-desc">包含卡组数据、卡牌基础数据及缓存</span>
+        <span class="setting-label">{$t('settings.dbSize')}</span>
+        <span class="setting-desc">{$t('settings.dbSizeDesc')}</span>
       </div>
       <span class="version-tag">{dbSize}</span>
     </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">最后同步时间</span>
-        <span class="setting-desc">本地数据与远端数据的同步状态</span>
+        <span class="setting-label">{$t('settings.lastSync')}</span>
+        <span class="setting-desc">{$t('settings.lastSyncDesc')}</span>
       </div>
       <span class="version-tag">{lastSyncText}</span>
     </div>
@@ -1085,7 +1095,7 @@
       {#each statRows as row}
         <div class="stat-row">
           <span class="stat-label">{row.label}</span>
-          <span class="stat-value">{row.count} 条 · {row.size}</span>
+          <span class="stat-value">{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span>
         </div>
       {/each}
     </div>
@@ -1093,11 +1103,11 @@
     <div class="db-actions">
       <button class="button button-ghost" disabled={onloadInfo} onclick={backupDatabase}>
         <Download size={16} />
-        备份数据库
+        {$t('settings.backupDb')}
       </button>
       <button class="button button-ghost" disabled={onloadInfo} onclick={restoreDatabase}>
         <Upload size={16} />
-        恢复备份
+        {$t('settings.restoreBackup')}
       </button>
       <button
         class="button button-ghost"
@@ -1105,103 +1115,103 @@
         onclick={openExportModal}
       >
         <FileText size={16} />
-        导出全部卡组
+        {$t('settings.exportAllDecks')}
       </button>
       <button class="button button-ghost" disabled={onloadInfo} onclick={openImportModal}>
         <FileUp size={16} />
-        导入卡组
+        {$t('settings.importDecks')}
       </button>
       <button class="button button-danger-outline" disabled={onloadInfo} onclick={handleResetDb}>
-        重置数据库
+        {$t('settings.resetDb')}
       </button>
     </div>
   </section>
 
   <!-- 5. 数据管理（删除） -->
   <section class="settings-card">
-    <h2 class="card-title">数据管理</h2>
+    <h2 class="card-title">{$t('settings.dataManage')}</h2>
 
     <div class="manage-block-header">
-      <span class="manage-block-title">批量删除</span>
-      <span class="manage-block-desc">对全部本地数据执行删除操作</span>
+      <span class="manage-block-title">{$t('settings.batchDelete')}</span>
+      <span class="manage-block-desc">{$t('settings.batchDeleteDesc')}</span>
     </div>
 
     <div class="manage-list">
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清空所有卡组</span>
-          <span class="manage-desc">删除全部卡组及其版本与卡牌引用</span>
+          <span class="manage-title">{$t('settings.clearAllDecks')}</span>
+          <span class="manage-desc">{$t('settings.clearAllDecksDesc')}</span>
         </div>
         <button
           class="button button-danger-outline"
           disabled={deckCount === 0}
           onclick={clearAllDecksAsk}
         >
-          清空
+          {$t('common.clear')}
         </button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清理冗余版本</span>
-          <span class="manage-desc">每个卡组仅保留最新版本，删除历史版本</span>
+          <span class="manage-title">{$t('settings.cleanupVersions')}</span>
+          <span class="manage-desc">{$t('settings.cleanupVersionsDesc')}</span>
         </div>
-        <button class="button button-ghost" onclick={cleanupVersionsAsk}>清理</button>
+        <button class="button button-ghost" onclick={cleanupVersionsAsk}>{$t('common.cleanup')}</button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清空卡牌数据</span>
-          <span class="manage-desc"
-            >删除卡牌基础数据与卡图，并清空筛选与同步标记（卡组与收藏保留），下次同步重新拉取。</span
-          >
+          <span class="manage-title">{$t('settings.clearCardData')}</span>
+          <span class="manage-desc">{$t('settings.clearCardDataDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearCardDataAsk}>清空</button>
+        <button class="button button-danger-outline" onclick={clearCardDataAsk}>{$t('common.clear')}</button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清空规则数据</span>
-          <span class="manage-desc">删除所有规则文档内容</span>
+          <span class="manage-title">{$t('settings.clearRules')}</span>
+          <span class="manage-desc">{$t('settings.clearRulesDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearRulesAsk}>清空</button>
+        <button class="button button-danger-outline" onclick={clearRulesAsk}>{$t('common.clear')}</button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清空图标数据</span>
-          <span class="manage-desc">删除所有卡牌图标信息</span>
+          <span class="manage-title">{$t('settings.clearIcons')}</span>
+          <span class="manage-desc">{$t('settings.clearIconsDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearIconsAsk}>清空</button>
+        <button class="button button-danger-outline" onclick={clearIconsAsk}>{$t('common.clear')}</button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">清空筛选设置</span>
-          <span class="manage-desc">删除保存的筛选选项</span>
+          <span class="manage-title">{$t('settings.clearFilter')}</span>
+          <span class="manage-desc">{$t('settings.clearFilterDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearFilterAsk}>清空</button>
+        <button class="button button-danger-outline" onclick={clearFilterAsk}>{$t('common.clear')}</button>
       </div>
 
       <div class="manage-row">
         <div class="manage-info">
-          <span class="manage-title">重置同步状态</span>
-          <span class="manage-desc">清除本地同步标记，下次启动自动重新同步</span>
+          <span class="manage-title">{$t('settings.resetSync')}</span>
+          <span class="manage-desc">{$t('settings.resetSyncDesc')}</span>
         </div>
-        <button class="button button-ghost" onclick={resetSyncAsk}>重置</button>
+        <button class="button button-ghost" onclick={resetSyncAsk}>{$t('common.reset')}</button>
       </div>
     </div>
   </section>
 
   <!-- 6. 本地图片 -->
   <section class="settings-card">
-    <h2 class="card-title">本地卡图缓存</h2>
+    <h2 class="card-title">{$t('settings.localImageCache')}</h2>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">缓存覆盖</span>
+        <span class="setting-label">{$t('settings.cacheCoverage')}</span>
         <span class="setting-desc">
-          本地已缓存 {imageCoverage?.existingCount ?? '-'} / {imageCoverage?.totalCount ?? '-'} 张卡图
+          {$t('settings.cachedImages', {
+            values: { existing: imageCoverage?.existingCount ?? '-', total: imageCoverage?.totalCount ?? '-' },
+          })}
           {#if imageCoverage && imageCoverage.totalCount > 0}
             （{Math.round((imageCoverage.existingCount / imageCoverage.totalCount) * 100)}%）
           {/if}
@@ -1219,12 +1229,14 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">卡牌资源下载</span>
-        <span class="setting-desc">下载所有缺失的中文卡图作为缓存</span>
+        <span class="setting-label">{$t('settings.cardResourceDownload')}</span>
+        <span class="setting-desc">{$t('settings.cardResourceDownloadDesc')}</span>
       </div>
       {#if isCardImageDownloading()}
         <button class="button button-primary" disabled>
-          下载中 {Math.round((downloadState.completed / downloadState.total) * 100)}%...
+          {$t('settings.downloadingPercent', {
+            values: { percent: Math.round((downloadState.completed / downloadState.total) * 100) },
+          })}
         </button>
       {:else}
         <button
@@ -1233,23 +1245,23 @@
           onclick={startDownloadAll}
         >
           {#if imageCoverage && imageCoverage.missingCount === 0}
-            已是最新 ✓
+            {$t('settings.alreadyLatest')}
           {:else if imageCoverage}
-            下载全部卡图（{imageCoverage.missingCount} 张）
+            {$t('settings.downloadAllImages', { values: { count: imageCoverage.missingCount } })}
           {:else}
-            开始下载
+            {$t('settings.startDownload')}
           {/if}
         </button>
       {/if}
     </div>
 
     {#if isCardImageDownloading()}
-      <p class="download-hint">正在后台下载，窗口底部有实时进度条，可随时取消。</p>
+      <p class="download-hint">{$t('settings.downloadHint')}</p>
     {/if}
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">卡图缓存路径</span>
+        <span class="setting-label">{$t('settings.imageCachePath')}</span>
         <span
           role="presentation"
           class="setting-desc file-path"
@@ -1262,7 +1274,7 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">卡图缓存占用大小</span>
+        <span class="setting-label">{$t('settings.imageCacheSize')}</span>
       </div>
       <span class="version-tag">{imageCacheSize}</span>
     </div>
@@ -1273,22 +1285,20 @@
         disabled={onloadInfo}
         onclick={handleResetImageCache}
       >
-        重置卡图缓存
+        {$t('settings.resetImageCache')}
       </button>
     </div>
   </section>
 
   <!-- 7. 自定义语言 -->
   <section class="settings-card">
-    <h2 class="card-title">自定义语言</h2>
+    <h2 class="card-title">{$t('settings.customLang')}</h2>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">预设语言</span>
+        <span class="setting-label">{$t('settings.presetLang')}</span>
         <span class="setting-desc">
-          {PRESET_LANGUAGE_CODES.join(
-            ' / '
-          )}。收藏中的语言使用标准语言码，预设之外的语言可在此添加。
+          {$t('settings.presetLangDesc', { values: { codes: PRESET_LANGUAGE_CODES.join(' / ') } })}
         </span>
       </div>
     </div>
@@ -1297,10 +1307,10 @@
       <input
         class="settings-input lang-code-input"
         bind:value={newLangCode}
-        placeholder="语言码，如 DE（2-6 位大写字母/数字）"
+        placeholder={$t('settings.langCodePlaceholder')}
       />
-      <input class="settings-input" bind:value={newLangName} placeholder="显示名，如 法语" />
-      <button class="button button-primary" onclick={addLang}>添加</button>
+      <input class="settings-input" bind:value={newLangName} placeholder={$t('settings.langNamePlaceholder')} />
+      <button class="button button-primary" onclick={addLang}>{$t('common.add')}</button>
     </div>
 
     {#if langMsg}
@@ -1308,7 +1318,7 @@
     {/if}
 
     {#if customLangs.length === 0}
-      <div class="lang-empty">暂无自定义语言</div>
+      <div class="lang-empty">{$t('settings.noCustomLang')}</div>
     {:else}
       <div class="manage-list">
         {#each customLangs as lang (lang.code)}
@@ -1317,7 +1327,7 @@
               <span class="manage-title">{lang.code}</span>
               <span class="manage-desc">
                 {#if editingCode === lang.code}
-                  <input class="settings-input" bind:value={editingName} placeholder="语言名称" />
+                  <input class="settings-input" bind:value={editingName} placeholder={$t('settings.langNameEditPlaceholder')} />
                 {:else}
                   {lang.name}
                 {/if}
@@ -1326,7 +1336,7 @@
             <div class="lang-actions">
               {#if editingCode === lang.code}
                 <button class="button button-ghost" onclick={() => saveRename(lang.code)}>
-                  保存
+                  {$t('common.save')}
                 </button>
                 <button
                   class="button button-ghost"
@@ -1334,14 +1344,14 @@
                     editingCode = ''
                   }}
                 >
-                  取消
+                  {$t('common.cancel')}
                 </button>
               {:else}
                 <button class="button button-ghost" onclick={() => startEdit(lang)}>
-                  重命名
+                  {$t('common.rename')}
                 </button>
                 <button class="button button-danger-outline" onclick={() => removeLang(lang.code)}>
-                  删除
+                  {$t('common.delete')}
                 </button>
               {/if}
             </div>
@@ -1353,13 +1363,13 @@
 
   <CommonModal
     open={showExportModal}
-    title="导出卡组"
-    subtitle="选择要导出的卡组与版本范围"
+    title={$t('settings.exportModalTitle')}
+    subtitle={$t('settings.exportModalSubtitle')}
     closable={!isExporting}
     onclose={() => (showExportModal = false)}
   >
     <div class="export-mode-row">
-      <span class="export-mode-label">版本范围</span>
+      <span class="export-mode-label">{$t('settings.versionRange')}</span>
       <div class="export-mode-group">
         <button
           class="button button-ghost"
@@ -1367,7 +1377,7 @@
           disabled={isExporting}
           onclick={() => (exportMode = 'all')}
         >
-          所有版本
+          {$t('settings.allVersions')}
         </button>
         <button
           class="button button-ghost"
@@ -1375,7 +1385,7 @@
           disabled={isExporting}
           onclick={() => (exportMode = 'latest')}
         >
-          仅最新版本
+          {$t('settings.latestOnly')}
         </button>
       </div>
     </div>
@@ -1387,7 +1397,7 @@
         onchange={toggleAllDecks}
         disabled={isExporting}
       />
-      <span>全选（{exportDeckList.length} 副卡组）</span>
+      <span>{$t('settings.selectAllDecks', { values: { count: exportDeckList.length } })}</span>
     </label>
 
     <div class="export-deck-list">
@@ -1402,13 +1412,13 @@
           <span class="export-deck-info">
             <span class="export-deck-name">{deck.name}</span>
             <span class="export-deck-meta">
-              {deck.versionCount} 个版本 · {deck.updatedAt}
+              {$t('settings.versionCountInfo', { values: { count: deck.versionCount, time: deck.updatedAt } })}
             </span>
           </span>
         </label>
       {/each}
       {#if exportDeckList.length === 0}
-        <div class="export-deck-empty">暂无卡组可导出</div>
+        <div class="export-deck-empty">{$t('settings.noDecksToExport')}</div>
       {/if}
     </div>
 
@@ -1418,27 +1428,29 @@
         disabled={isExporting}
         onclick={() => (showExportModal = false)}
       >
-        取消
+        {$t('common.cancel')}
       </button>
       <button
         class="button button-primary"
         disabled={isExporting || selectedDeckIds.length === 0}
         onclick={confirmExport}
       >
-        {isExporting ? '导出中...' : `导出 ${selectedDeckIds.length} 副卡组`}
+        {isExporting
+          ? $t('settings.exporting')
+          : $t('settings.exportCount', { values: { count: selectedDeckIds.length } })}
       </button>
     {/snippet}
   </CommonModal>
 
   <CommonModal
     open={showImportModal}
-    title="导入卡组"
-    subtitle={importFileName ? `文件：${importFileName}` : ''}
+    title={$t('settings.importModalTitle')}
+    subtitle={importFileName ? $t('settings.importModalFile', { values: { name: importFileName } }) : ''}
     closable={!isImporting}
     onclose={() => (showImportModal = false)}
   >
     <div class="export-mode-row">
-      <span class="export-mode-label">版本范围</span>
+      <span class="export-mode-label">{$t('settings.versionRange')}</span>
       <div class="export-mode-group">
         <button
           class="button button-ghost"
@@ -1446,7 +1458,7 @@
           disabled={isImporting}
           onclick={() => (importMode = 'all')}
         >
-          所有版本
+          {$t('settings.allVersions')}
         </button>
         <button
           class="button button-ghost"
@@ -1454,7 +1466,7 @@
           disabled={isImporting}
           onclick={() => (importMode = 'latest')}
         >
-          仅最新版本
+          {$t('settings.latestOnly')}
         </button>
       </div>
     </div>
@@ -1467,7 +1479,7 @@
         onchange={toggleAllImportDecks}
         disabled={isImporting}
       />
-      <span>全选（{importDeckList.length} 副卡组）</span>
+      <span>{$t('settings.selectAllDecks', { values: { count: importDeckList.length } })}</span>
     </label>
 
     <div class="export-deck-list">
@@ -1482,13 +1494,13 @@
           <span class="export-deck-info">
             <span class="export-deck-name">{deck.name}</span>
             <span class="export-deck-meta">
-              {deck.versionCount} 个版本 · {deck.updatedAt}
+              {$t('settings.versionCountInfo', { values: { count: deck.versionCount, time: deck.updatedAt } })}
             </span>
           </span>
         </label>
       {/each}
       {#if importDeckList.length === 0}
-        <div class="export-deck-empty">文件中没有可导入的卡组</div>
+        <div class="export-deck-empty">{$t('settings.noDecksToImport')}</div>
       {/if}
     </div>
 
@@ -1498,20 +1510,22 @@
         disabled={isImporting}
         onclick={() => (showImportModal = false)}
       >
-        取消
+        {$t('common.cancel')}
       </button>
       <button
         class="button button-primary"
         disabled={isImporting || selectedImportDeckIds.length === 0}
         onclick={confirmImport}
       >
-        {isImporting ? '导入中...' : `导入 ${selectedImportDeckIds.length} 副卡组`}
+        {isImporting
+          ? $t('settings.importing')
+          : $t('settings.importCount', { values: { count: selectedImportDeckIds.length } })}
       </button>
     {/snippet}
   </CommonModal>
 
   {#if busyText}
-    <LoadingModal status="syncing" text={busyText} subtext="请稍候，正在处理..." />
+    <LoadingModal status="syncing" text={busyText} subtext={$t('settings.pleaseWait')} />
   {/if}
 </div>
 
@@ -1570,6 +1584,12 @@
 
   .setting-input:focus {
     border-color: var(--accent-color);
+  }
+
+  .lang-select {
+    /*width: 140px;
+    height: 36px;*/
+    cursor: pointer;
   }
 
   @media (max-width: 479.99px) {
