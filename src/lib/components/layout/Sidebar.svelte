@@ -21,8 +21,9 @@
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import TTSStatusPanel from './TTSStatusPanel.svelte'
   import { t } from 'svelte-i18n'
+  import { isMobile } from '$lib/utils/os'
   let { isOpen = $bindable() } = $props()
-
+  let isMobile2 = $state(false)
   const navItems = [
     { icon: LayoutDashboard, key: 'home', href: '/' },
     { icon: Library, key: 'cards', href: '/cards' },
@@ -49,6 +50,8 @@
   }
 
   onMount(() => {
+    checkMobile()
+
     const handleResize = () => {
       // 3. 使用全局状态
       if (window.innerWidth < 767.99 && sidebarState.isMinimized) {
@@ -76,6 +79,10 @@
       .setAlwaysOnTop($windowAlwaysOnTop)
       .catch(() => {})
   })
+
+  async function checkMobile() {
+    isMobile2 = await isMobile()
+  }
 </script>
 
 <aside class="sidebar" class:open={isOpen} class:isMinimized={sidebarState.isMinimized}>
@@ -139,7 +146,7 @@
   </nav>
 
   <div class="sidebar-footer">
-    {#if isTauri}
+    {#if isTauri && !isMobile2}
       <button
         class="button button-text"
         class:active={$windowAlwaysOnTop}

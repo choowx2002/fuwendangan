@@ -340,7 +340,7 @@ pub fn run() {
         .plugin(saf_plugin())
         .setup(|_app| {
             #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_barcode_scanner::init());
+            _app.handle().plugin(tauri_plugin_barcode_scanner::init());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
