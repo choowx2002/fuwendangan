@@ -366,6 +366,8 @@
     "textNoMatches": "本地匹配不到任何卡牌名称：{codes}",
     "qrNoContent": "未识别到二维码内容",
     "qrScanFailed": "扫码失败，请尝试上传二维码图片。",
+    "qrPermissionDenied": "未获得相机权限，请在系统设置中允许后重试。",
+    "qrOpenSettings": "打开系统设置",
     "qrParseFailed": "解析二维码图片失败",
     "qrAllCardsMissing": "本地缺少全部卡牌：{codes}",
     "selectJsonTitle": "选择导出的 JSON 文件",

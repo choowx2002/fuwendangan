@@ -50,6 +50,7 @@
     Pin,
     QrCode,
     ScanLine,
+    Settings,
   } from '@lucide/svelte'
   import { ask, message, open } from '@tauri-apps/plugin-dialog'
   import { readText } from '@tauri-apps/plugin-clipboard-manager'
@@ -58,6 +59,7 @@
   import { onMount } from 'svelte'
   import { get } from 'svelte/store'
   import { t } from '$lib/i18n'
+  import { Format, scan, checkPermissions, requestPermissions, openAppSettings } from '@tauri-apps/plugin-barcode-scanner'
 
   let allDecks = $state<DeckListResult[]>([])
   let matchStatsMap = $state<Map<string, import('$lib/db/types').MatchSummary>>(new Map())
@@ -85,6 +87,7 @@
   let importingQr = $state(false)
   let importedQrResult = $state<DecodedDeckResult | null>(null)
   let qrScannedText = $state('')
+  let qrNeedSettings = $state(false)
 
   let sendingTtsDeckId = $state<string | null>(null)
 
@@ -306,7 +309,6 @@
 
   function validateImportText() {
     const parsed = parseGlobalOfficialText(importText)
-    console.log(parsed)
     const hasAny = Object.values(parsed.zones).flat().length > 0 && parsed.errors.length === 0
     importTextError = importErrText(parsed.errors)
     importTextValid = hasAny
@@ -355,8 +357,18 @@
   async function scanImportQr() {
     importingQr = true
     importQrError = ''
+    qrNeedSettings = false
     try {
-      const { scan, Format } = await import('@tauri-apps/plugin-barcode-scanner')
+      let permission = await checkPermissions()
+      if (permission !== 'granted') {
+        permission = await requestPermissions()
+      }
+      if (permission !== 'granted') {
+        qrNeedSettings = true
+        importQrError = get(t)('decks.qrPermissionDenied')
+        importQrValid = false
+        return
+      }
       const scanned = await scan({ formats: [Format.QRCode] })
       const content = scanned?.content
       if (!content) {
@@ -366,11 +378,21 @@
       }
       applyQrContent(content)
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/cancelled|cancel/i.test(message)) return
       console.error('[ImportQr] 扫码失败:', error)
       importQrError = get(t)('decks.qrScanFailed')
       importQrValid = false
     } finally {
       importingQr = false
+    }
+  }
+
+  async function openQrAppSettings() {
+    try {
+      await openAppSettings()
+    } catch (error) {
+      console.error('[ImportQr] 打开系统设置失败:', error)
     }
   }
 
@@ -1143,6 +1165,12 @@
           <CircleAlert size={16} />
           <span>{importQrError}</span>
         </div>
+        {#if qrNeedSettings}
+          <button type="button" class="button button-ghost import-qr-btn" onclick={openQrAppSettings}>
+            <Settings size={14} />
+            {$t('decks.qrOpenSettings')}
+          </button>
+        {/if}
       {/if}
 
       {#if importedQrResult}

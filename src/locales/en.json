@@ -366,6 +366,8 @@
     "textNoMatches": "No card names could be matched locally: {codes}",
     "qrNoContent": "No QR code content detected",
     "qrScanFailed": "Scan failed, please try uploading a QR code image.",
+    "qrPermissionDenied": "Camera permission denied. Please enable it in system settings.",
+    "qrOpenSettings": "Open system settings",
     "qrParseFailed": "Failed to parse QR code image",
     "qrAllCardsMissing": "All cards missing locally: {codes}",
     "selectJsonTitle": "Select exported JSON file",
