@@ -18,10 +18,7 @@ export interface OwnershipExportRow {
 }
 
 /** 生成持有检查文本（每行一个卡牌，按区域分组） */
-export function buildOwnershipText(
-  items: OwnershipExportRow[],
-  deckName: string
-): string {
+export function buildOwnershipText(items: OwnershipExportRow[], deckName: string): string {
   const lines: string[] = []
   const t = new Date()
   lines.push('符文战场 · 卡组持有检查')
@@ -52,7 +49,8 @@ function csvCell(value: string | number | null): string {
 }
 
 /** 生成持有检查 CSV（首行表头，便于导入表格） */
-export function buildOwnershipCsv(items: OwnershipExportRow[]): string {  const lines: string[] = ['区域,卡名,编号,持有数,需要数,状态']
+export function buildOwnershipCsv(items: OwnershipExportRow[]): string {
+  const lines: string[] = ['区域,卡名,编号,持有数,需要数,状态']
   for (const item of items) {
     lines.push(
       [

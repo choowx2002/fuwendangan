@@ -19,11 +19,6 @@ fn is_content_uri(path: &str) -> bool {
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 fn send_to_tts(message: String) -> Result<String, String> {
     use std::io::Write;
     use std::net::TcpStream;
@@ -156,7 +151,11 @@ async fn copy_file(app: tauri::AppHandle, source: String, dest: String) -> Resul
 /// 写入文本文件（用于导出数据）
 #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
-async fn write_text_file(app: tauri::AppHandle, path: String, content: String) -> Result<(), String> {
+async fn write_text_file(
+    app: tauri::AppHandle,
+    path: String,
+    content: String,
+) -> Result<(), String> {
     if is_content_uri(&path) {
         #[cfg(target_os = "android")]
         {
@@ -166,7 +165,8 @@ async fn write_text_file(app: tauri::AppHandle, path: String, content: String) -
         {
             // content:// URI 仅在 Android 出现；在桌面端按普通路径处理
             tauri::async_runtime::spawn_blocking(move || {
-                std::fs::write(&path, content).map_err(|e| format!("写入文件失败 ({}): {}", path, e))
+                std::fs::write(&path, content)
+                    .map_err(|e| format!("写入文件失败 ({}): {}", path, e))
             })
             .await
             .map_err(|e| format!("线程错误: {}", e))?
@@ -223,10 +223,7 @@ async fn read_image_file(app: tauri::AppHandle, path: String) -> Result<String, 
             tauri::async_runtime::spawn_blocking(move || {
                 std::fs::read(&path)
                     .map(|bytes| {
-                        base64::Engine::encode(
-                            &base64::engine::general_purpose::STANDARD,
-                            &bytes,
-                        )
+                        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
                     })
                     .map_err(|e| format!("读取图片失败 ({}): {}", path, e))
             })
@@ -292,8 +289,11 @@ fn saf_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .setup(|app, api| {
             #[cfg(target_os = "android")]
             {
-                let handle = api.register_android_plugin("com.tian_yue.fuwendangan", "SAFPlugin")?;
-                app.manage(SafState { handle: Some(handle) });
+                let handle =
+                    api.register_android_plugin("com.tian_yue.fuwendangan", "SAFPlugin")?;
+                app.manage(SafState {
+                    handle: Some(handle),
+                });
             }
             #[cfg(not(target_os = "android"))]
             {
@@ -325,6 +325,7 @@ pub fn run() {
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -335,9 +336,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_sharekit::init())
         .plugin(saf_plugin())
+        .setup(|_app| {
+            #[cfg(mobile)]
+            app.handle().plugin(tauri_plugin_barcode_scanner::init());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
-            greet,
             check_tts_connections,
             send_to_tts,
             start_tts_listener,

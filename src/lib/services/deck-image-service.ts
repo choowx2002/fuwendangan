@@ -497,7 +497,7 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
     ctx.globalAlpha = 1
   }
 
-  return canvas.toDataURL('image/png')
+  return canvas.toDataURL('image/jpeg', 0.92)
 }
 
 export function dataUrlToBytes(dataUrl: string): Uint8Array {
@@ -510,8 +510,28 @@ export function dataUrlToBytes(dataUrl: string): Uint8Array {
   return bytes
 }
 
+/**
+ * 把 JPEG dataURL 重新解码为 PNG 字节。
+ * 桌面端剪贴板（tauri image-png / arboard 需 RGBA）无法直接接受 JPEG 字节，复制前用此函数转换。
+ */
+export function jpegDataUrlToPngBytes(dataUrl: string): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      resolve(dataUrlToBytes(canvas.toDataURL('image/png')))
+    }
+    img.onerror = () => reject(new Error('JPEG dataURL 解码失败'))
+    img.src = dataUrl
+  })
+}
+
 export async function writeImageToPath(dataUrl: string, dest: string): Promise<void> {
-  await writeBytesFile(dataUrlToBytes(dataUrl), dest, `deck_image_${Date.now()}.png`)
+  await writeBytesFile(dataUrlToBytes(dataUrl), dest, `deck_image_${Date.now()}.jpg`)
 }
 
 export function downloadImageInWeb(dataUrl: string, name: string): void {

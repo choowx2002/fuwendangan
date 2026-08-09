@@ -5,11 +5,7 @@
 
 import type { CollectionLang, CollectionStatus } from '../types'
 
-export const COLLECTION_STATUSES: readonly CollectionStatus[] = [
-  'owned',
-  'wishlist',
-  'ordered',
-]
+export const COLLECTION_STATUSES: readonly CollectionStatus[] = ['owned', 'wishlist', 'ordered']
 
 /** 任一数量 > 0 时状态自动提升为 owned */
 export function resolveStatus(

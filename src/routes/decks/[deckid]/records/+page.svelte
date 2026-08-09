@@ -394,7 +394,7 @@
     align-items: center;
     gap: 4px;
     padding: 16px;
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: 12px;
   }
@@ -425,7 +425,7 @@
     flex-wrap: wrap;
     margin-bottom: 16px;
     padding: 12px 16px;
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: 12px;
   }
@@ -485,7 +485,7 @@
   }
 
   .record-item {
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     overflow: hidden;
@@ -688,13 +688,13 @@
     font-size: 11px;
     border-radius: 999px;
     color: #92400e;
-    background: #fef3c7;
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
     white-space: nowrap;
   }
 
   .game-special-badge.special {
     color: #7c3aed;
-    background: #ede9fe;
+    background: color-mix(in srgb, #a855f7 18%, transparent);
   }
 
   .game-reason {
@@ -725,7 +725,7 @@
     padding: 60px 24px;
     text-align: center;
     color: var(--text-secondary);
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: 12px;
   }

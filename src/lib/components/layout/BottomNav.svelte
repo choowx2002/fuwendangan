@@ -27,7 +27,7 @@
       class:active
       aria-current={active ? 'page' : undefined}
     >
-      <Icon size={22} strokeWidth={1.75} />
+      <Icon size={22} strokeWidth={1.75} fill={active ? 'currentColor' : 'none'} />
       <span class="bottom-nav-label">{item.label}</span>
     </a>
   {/each}
@@ -58,14 +58,23 @@
       align-items: center;
       justify-content: center;
       gap: 2px;
+      margin: 4px 2px;
+      padding: 3px 0;
+      border-radius: var(--radius-md);
       color: var(--text-secondary);
       text-decoration: none;
       font-size: var(--text-xs);
-      transition: color 0.15s;
+      transition:
+        color 0.15s,
+        background-color 0.15s;
     }
 
-    .bottom-nav-item:hover,
+    .bottom-nav-item:hover {
+      color: var(--accent-color);
+    }
+
     .bottom-nav-item.active {
+      background-color: color-mix(in oklab, var(--accent-color) 12%, transparent);
       color: var(--accent-color);
     }
   }

@@ -97,7 +97,11 @@
     padding: 16px 20px;
     border-radius: 14px;
     border: 1px solid var(--border-color);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--accent-color) 9%, var(--bg-secondary)), var(--bg-secondary));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-color) 9%, var(--bg-secondary)),
+      var(--bg-secondary)
+    );
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   }
 

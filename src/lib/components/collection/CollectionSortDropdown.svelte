@@ -51,7 +51,10 @@
           class="menu-item"
           class:active={sort.key === opt.key}
           onclick={() => {
-            onChange?.({ key: opt.key, isAsc: sort.key === opt.key ? !sort.isAsc : opt.key === 'card_no' })
+            onChange?.({
+              key: opt.key,
+              isAsc: sort.key === opt.key ? !sort.isAsc : opt.key === 'card_no',
+            })
             open = false
           }}
         >

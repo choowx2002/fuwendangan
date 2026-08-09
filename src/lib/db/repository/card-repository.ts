@@ -99,7 +99,7 @@ export async function getCardByPrintId(printId: string): Promise<CardBase | null
  */
 export async function getCardAndPrintByPrintCode(
   printCode: string
-): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+): Promise<((CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string }) | null> {
   const db = await getDatabase()
   const results = await db.select<any[]>(
     `SELECT cb.*, cp.id AS __print_id
@@ -121,6 +121,34 @@ export async function getCardAndPrintByPrintCode(
 }
 
 /**
+ * 根据基础卡牌编号（cards_base.card_no）反查卡牌，并带上全部卡图 + 匹配的卡图 id。
+ * 仅取 SC、非 promo/自建打印；找不到返回 null。
+ * 供「二维码」导入等按 card_no 定位卡牌的场景使用（QR payload 使用 card_no 而非 card_no_extend）。
+ */
+export async function getCardAndPrintByCardNo(
+  cardNo: string
+): Promise<((CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string }) | null> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT cb.*, cp.id AS __print_id
+     FROM ${TABLES.CARDS_BASE} cb
+     JOIN ${TABLES.CARD_PRINTS} cp ON cp.card_id = cb.id
+     WHERE upper(cb.card_no) = upper($1)
+       AND cp.language = 'SC'
+       AND COALESCE(cp.is_promo, 0) != 1
+       AND COALESCE(cp.is_custom, 0) != 1
+     ORDER BY cp.print_order ASC
+     LIMIT 1`,
+    [cardNo]
+  )
+  if (results.length === 0) return null
+
+  const card = mapRowToCard(results[0])
+  const prints = await getPrintsByCardId(card.id)
+  return { ...card, card_prints: prints, selectedPrints: results[0].__print_id ?? undefined }
+}
+
+/**
  * 根据英文卡牌名称（card_name_en，可选 subtitle）反查卡牌，并带上全部卡图 + 匹配的卡图 id。
  * 仅取 SC、非 promo/自建打印；找不到返回 null。
  * 匹配尽力宽容：先精确匹配 名称+副标题，再退化为只匹配名称。
@@ -129,7 +157,7 @@ export async function getCardAndPrintByPrintCode(
 export async function getCardAndPrintByEnglishName(
   displayName: string,
   opts?: { legendOnly?: boolean }
-): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+): Promise<((CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string }) | null> {
   const trimmed = displayName.trim()
   if (!trimmed) return null
 
@@ -199,7 +227,7 @@ function splitNameCombo(displayName: string): [string, string | null] {
  */
 async function resolveLegendByName(
   legendName: string
-): Promise<(CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string } | null> {
+): Promise<((CardBase & { card_prints: CardPrint[] }) & { selectedPrints?: string }) | null> {
   const base = legendName.trim().replace(/\s*-\s*.*$/, '')
   if (!base) return null
 

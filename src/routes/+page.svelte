@@ -409,7 +409,7 @@
   }
   .tool-chip:hover {
     background: var(--bg-secondary);
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
     transform: translateY(-1px);
   }
 

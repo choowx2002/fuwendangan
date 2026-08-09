@@ -176,9 +176,9 @@
     const existing = prints.filter((p) => p.card_no_extend === no && p.id !== editId)
     variantConflict =
       existing.length > 0
-        ? `该卡牌号已存在（已有语言：${[
-            ...new Set(existing.map((p) => p.language ?? '未知')),
-          ].join('、')}）`
+        ? `该卡牌号已存在（已有语言：${[...new Set(existing.map((p) => p.language ?? '未知'))].join(
+            '、'
+          )}）`
         : ''
   }
 

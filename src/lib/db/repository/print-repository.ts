@@ -164,7 +164,7 @@ export async function getRandomPackPrint(
     `COALESCE(p.is_promo, 0) != 1`,
     `COALESCE(p.is_custom, 0) != 1`,
     `substr(upper(p.card_no_extend), 1, 3) = ?`,
-    `cb.card_category NOT LIKE '%符文%'`
+    `cb.card_category NOT LIKE '%符文%'`,
   ]
   const params: (string | number)[] = [seriesCode.toUpperCase()]
 

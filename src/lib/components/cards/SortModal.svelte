@@ -338,7 +338,7 @@
   :global(.sort-row[style*='transform']) {
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
     z-index: 10;
-    background: #fafafa;
+    background: var(--surface);
   }
 
   .drag-handle {
@@ -437,7 +437,7 @@
     height: 16px;
   }
   .remove-btn:hover {
-    background: #fce8e8;
+    background: color-mix(in srgb, #e03e3e 10%, transparent);
     color: #e03e3e;
   }
 
@@ -459,11 +459,11 @@
     background: transparent;
   }
   .modal-body::-webkit-scrollbar-thumb {
-    background: #d3d1cb;
+    background: var(--border-color);
     border-radius: 4px;
   }
   .modal-body::-webkit-scrollbar-thumb:hover {
-    background: #aeaca6;
+    background: var(--text-tertiary);
   }
   .close-btn {
     background: none;

@@ -30,12 +30,15 @@
     if (sending) return
     if (!displayedCards.length) return
 
-    const accepted = await ask(`确定将当前列表中的 ${displayedCards.length} 张卡牌发送到 TTS 吗？`, {
-      title: '批量生成',
-      kind: 'warning',
-      okLabel: '确定',
-      cancelLabel: '取消',
-    })
+    const accepted = await ask(
+      `确定将当前列表中的 ${displayedCards.length} 张卡牌发送到 TTS 吗？`,
+      {
+        title: '批量生成',
+        kind: 'warning',
+        okLabel: '确定',
+        cancelLabel: '取消',
+      }
+    )
     if (!accepted) return
 
     sending = true
@@ -174,6 +177,10 @@
   @media (max-width: 767.99px) {
     .main-content {
       padding: 5px 16px 0;
+    }
+
+    .page-wrapper {
+        padding-bottom: 47px;
     }
   }
 </style>

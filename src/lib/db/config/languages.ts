@@ -64,10 +64,7 @@ export function normalizePresetCode(raw: string | null | undefined): string | nu
  * 语言展示名：预设 → 本地化名；自定义 → 自定义名；未知 → 原码。
  * customNames 为 custom_languages 表的 code → name 映射。
  */
-export function languageDisplayName(
-  code: string,
-  customNames?: Map<string, string>
-): string {
+export function languageDisplayName(code: string, customNames?: Map<string, string>): string {
   const preset = LANGUAGE_NAMES[code]
   if (preset) return `${code} — ${preset.zh}`
   const custom = customNames?.get(code)

@@ -115,8 +115,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     const knownCodes = seriesList.map((s) => s.code.toUpperCase())
     const code = params.seriesCode.trim().toUpperCase()
 
-    const knownIn =
-      knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
+    const knownIn = knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
     whereClauses.push(`(
       EXISTS (
         SELECT 1 FROM ${TABLES.CARD_PRINTS} cp
@@ -329,10 +328,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
  * - progress：按拥有进度（已拥有卡牌 / 全部非 promo 卡牌）
  * - recent：按最近录入时间（无记录排最后）
  */
-function buildCollectionOrderBy(
-  sort: { key: string; isAsc: boolean },
-  variantAgg: string
-): string {
+function buildCollectionOrderBy(sort: { key: string; isAsc: boolean }, variantAgg: string): string {
   const dir = sort.isAsc ? 'ASC' : 'DESC'
   const baseAlias = TABLES.CARDS_BASE
 
@@ -403,8 +399,7 @@ export async function searchCardVariants(
       `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) = ? THEN 1 ELSE 0 END) AS prefix_match`
     )
     innerParams.push(code)
-    const knownIn =
-      knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
+    const knownIn = knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
     innerSelects.push(
       `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) IN (${knownIn}) THEN 1 ELSE 0 END) AS has_known`
     )

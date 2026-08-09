@@ -24,6 +24,7 @@
 
 :root {
   /* Notion 经典配色 */
+  color-scheme: light;
   --bg-primary: #dfefeb;
   --bg-secondary: #f7f7f5;
   --bg-hover: rgba(55, 53, 47, 0.08);
@@ -34,8 +35,13 @@
   --text-tertiary: #9b9a97;
 
   --border-color: #cdcdcb;
+  --border-subtle: #e5e7eb;
   --accent-color: #128378;
   --secondary-accent-color: color-mix(in oklab, #127783 80%, white);
+
+  --surface: #ffffff;
+  --surface-muted: #f7f7f5;
+  --surface-subtle: #f0f0f0;
 
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -74,6 +80,24 @@
 @media (max-width: 767.99px) {
   :root {
     --sidebar-width: 200px;
+  }
+}
+
+/* 手机端字号：正文级加大提升可读性，大标题级降档适应窄屏 */
+@media (max-width: 479.99px) {
+  :root {
+    --text-xs: 0.7rem; /* 12px */
+    --text-sm: 0.8rem; /* 13px */
+    --text-base: 0.9rem; /* 15px */
+    --text-md: 0.95rem; /* 16px */
+    --text-lg: 1rem; /* 17px */
+    --text-xl: 1.125rem; /* 18px */
+
+    --text-2xl: 1.375rem; /* 22px */
+    --text-3xl: 1.5rem; /* 24px */
+
+    --text-display: 2rem; /* 32px */
+    --text-hero: 2.125rem; /* 34px */
   }
 }
 
@@ -173,10 +197,10 @@ BUTTON
   border-color: var(--accent-color);
 }
 .button-secondary:hover {
-  background-color: color-mix(in oklab, var(--accent-color) 10%, white);
+  background-color: color-mix(in oklab, var(--accent-color) 10%, var(--surface));
 }
 .button-secondary:active {
-  background-color: color-mix(in oklab, var(--accent-color) 20%, white);
+  background-color: color-mix(in oklab, var(--accent-color) 20%, var(--surface));
 }
 .button-secondary:disabled {
   opacity: 0.4;
@@ -241,6 +265,19 @@ BUTTON
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+/* ==== Button danger outline 暗色适配 ==== */
+[data-theme='dark'] .button-danger-outline:not(:disabled) {
+  background: #e03e3e;
+  border-color: #e03e3e;
+  color: #ffffff;
+}
+[data-theme='dark'] .button-danger-outline:not(:disabled):hover {
+  background: color-mix(in srgb, #e03e3e 85%, black);
+}
+[data-theme='dark'] .button-danger-outline:not(:disabled):active {
+  background: color-mix(in srgb, #e03e3e 70%, black);
 }
 
 /* 危险描边按钮 - 用于删除等操作的次要形态 */
@@ -427,4 +464,37 @@ NUMBER INPUT
 
 .number-input::-webkit-inner-spin-button {
   opacity: 0.5;
+}
+
+/* -------------------------------------------------------------------------------
+DARK MODE
+------------------------------------------------------------------------------- */
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-primary: #1a1d24;
+  --bg-secondary: #21252e;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+
+  --text-primary: #d6d8de;
+  --text-secondary: #a6adb8;
+  --text-tertiary: #7b848e;
+
+  --border-color: #333947;
+  --border-subtle: #2c313a;
+
+  --accent-color: #2fb7a0;
+  --secondary-accent-color: color-mix(in oklab, #2fb7a0 80%, var(--surface));
+
+  --surface: #22262e;
+  --surface-muted: #262b34;
+  --surface-subtle: #2c313a;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #3a4049;
+}
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #4a515c;
 }

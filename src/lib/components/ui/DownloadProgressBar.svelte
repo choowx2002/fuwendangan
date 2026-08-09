@@ -43,7 +43,9 @@
   }
 
   const percent = $derived(
-    downloadState.total > 0 ? Math.min((downloadState.completed / downloadState.total) * 100, 100) : 0
+    downloadState.total > 0
+      ? Math.min((downloadState.completed / downloadState.total) * 100, 100)
+      : 0
   )
 
   const speedText = $derived(
@@ -90,11 +92,7 @@
 </script>
 
 {#if downloadState.active}
-  <div
-    class="download-bar"
-    class:collapsed={!downloadState.expanded}
-    class:finish={isFinish}
-  >
+  <div class="download-bar" class:collapsed={!downloadState.expanded} class:finish={isFinish}>
     {#if isFinish}
       <div
         class="finish-card"
@@ -171,7 +169,11 @@
         </div>
       </div>
     {:else}
-      <button class="pill" aria-label="展开下载进度" onclick={() => (downloadState.expanded = true)}>
+      <button
+        class="pill"
+        aria-label="展开下载进度"
+        onclick={() => (downloadState.expanded = true)}
+      >
         <span class="pill-icon"><Download size={16} /></span>
         <span class="pill-percent">{Math.round(percent)}%</span>
         <span class="pill-count">{downloadState.completed} / {downloadState.total}</span>
@@ -317,14 +319,14 @@
     border: 1px solid color-mix(in oklab, var(--accent-color) 30%, transparent);
     border-radius: var(--radius-md);
     color: var(--accent-color);
-    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
     font-size: var(--text-sm);
     cursor: pointer;
     white-space: nowrap;
   }
 
   .cancel-btn:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--accent-color) 15%, white);
+    background: color-mix(in oklab, var(--accent-color) 15%, var(--surface));
   }
 
   .cancel-btn:disabled {

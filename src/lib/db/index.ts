@@ -95,6 +95,7 @@ export {
   getCardByPrintId,
   getCardAndPrintByPrintCode,
   getCardAndPrintByEnglishName,
+  getCardAndPrintByCardNo,
   getCardCount,
   deleteCard,
   clearAllCards,

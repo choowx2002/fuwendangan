@@ -125,9 +125,9 @@
     })
     variants = next
     selectedNo =
-      (initialVariant && next.some((v) => v.cardNoExtend === initialVariant)
+      initialVariant && next.some((v) => v.cardNoExtend === initialVariant)
         ? initialVariant
-        : next.find((v) => v.hasFoil)?.cardNoExtend ?? next[0]?.cardNoExtend ?? '')
+        : (next.find((v) => v.hasFoil)?.cardNoExtend ?? next[0]?.cardNoExtend ?? '')
   }
 
   $effect(() => {
@@ -176,10 +176,14 @@
     const custom = v.prints.find((p) => p.is_custom)
     if (!custom) return
     const confirmed = isTauri
-      ? await (await import('@tauri-apps/plugin-dialog')).ask(
-          `确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`,
-          { title: '删除自定打印', kind: 'warning', okLabel: '删除', cancelLabel: '取消' }
-        )
+      ? await (
+          await import('@tauri-apps/plugin-dialog')
+        ).ask(`确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`, {
+          title: '删除自定打印',
+          kind: 'warning',
+          okLabel: '删除',
+          cancelLabel: '取消',
+        })
       : window.confirm(`确定删除自定打印「${v.cardNoExtend}」吗？其收藏数量记录将一并删除。`)
     if (!confirmed) return
     try {
@@ -268,7 +272,9 @@
             <div class="variant-head">
               <span class="head-no">{v.cardNoExtend}</span>
               <span class="chip">{BUCKET_LABELS[v.bucket]}</span>
-              {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no.toUpperCase().slice(0, 3)}
+              {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no
+                    .toUpperCase()
+                    .slice(0, 3)}
                 <span class="chip proto">原型 {card.card_no}</span>
               {/if}
               {#if v.isCustom}
@@ -281,7 +287,11 @@
                   <button class="icon-btn" title="编辑自定打印" onclick={() => openEdit(v)}>
                     <Pencil size={14} />
                   </button>
-                  <button class="icon-btn danger" title="删除自定打印" onclick={() => removeCustom(v)}>
+                  <button
+                    class="icon-btn danger"
+                    title="删除自定打印"
+                    onclick={() => removeCustom(v)}
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -301,7 +311,9 @@
             {#if v.langs.length === 0}
               <div class="empty-langs">
                 <p class="empty-title">还没有收藏记录</p>
-                <p class="empty-sub">选择语言后点「添加卡牌」，自动记为 1 张普卡，可用 +/− 调整数量</p>
+                <p class="empty-sub">
+                  选择语言后点「添加卡牌」，自动记为 1 张普卡，可用 +/− 调整数量
+                </p>
                 <div class="add-row">{@render langAddControl()}</div>
               </div>
             {:else}
@@ -314,7 +326,9 @@
                 </div>
                 {#each v.langs as l (l.id)}
                   <div class="matrix-row" class:has-foil={(l.foil_qty ?? 0) > 0}>
-                    <span class="row-lang">{languageDisplayName(l.language_code, customLangNames)}</span>
+                    <span class="row-lang"
+                      >{languageDisplayName(l.language_code, customLangNames)}</span
+                    >
                     {@render stepper(v, l.language_code, 'normal', l.normal_qty ?? 0)}
                     {@render stepper(v, l.language_code, 'foil', l.foil_qty ?? 0)}
                     <span class="row-total">{(l.normal_qty ?? 0) + (l.foil_qty ?? 0)}</span>
@@ -336,12 +350,7 @@
     </div>
   </div>
 
-  {#snippet stepper(
-    v: VariantView,
-    lang: string,
-    kind: 'normal' | 'foil',
-    qty: number
-  )}
+  {#snippet stepper(v: VariantView, lang: string, kind: 'normal' | 'foil', qty: number)}
     <div class="stepper" class:foil={kind === 'foil'}>
       <button
         aria-label={`${languageDisplayName(lang, customLangNames)} ${

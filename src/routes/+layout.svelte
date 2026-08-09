@@ -5,10 +5,22 @@
   import Toast from '../lib/components/ui/Toast.svelte'
   import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
+  import { darkMode } from '../lib/stores/settings'
   import '../app.css'
   import { onMount } from 'svelte'
+  import { afterNavigate } from '$app/navigation'
+  import { tick } from 'svelte'
 
   let { children } = $props()
+
+  $effect(() => {
+    document.documentElement.dataset.theme = $darkMode ? 'dark' : 'light'
+  })
+
+  afterNavigate(async () => {
+    await tick()
+    document.querySelector<HTMLElement>('.content')?.scrollTo(0, 0)
+  })
 
   async function init() {
     let needInit = !(await getVersion())

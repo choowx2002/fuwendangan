@@ -388,7 +388,7 @@
   }
   .option-btn:hover {
     background: var(--bg-hover);
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
   }
 
   .option-btn.include {

@@ -199,14 +199,14 @@
             height="40"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#ccc"
+            stroke="var(--text-tertiary)"
             stroke-width="2"
           >
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
             <polyline points="21 15 16 10 5 21" />
           </svg>
-          <span style="color: #999; font-size: 14px;">图片加载失败</span>
+          <span style="color: var(--text-tertiary); font-size: 14px;">图片加载失败</span>
         </div>
       {/if}
     {:else if imageUrl}
@@ -258,7 +258,7 @@
   .loading-placeholder {
     width: 100%;
     height: 100%;
-    background: var(--bg-secondary, #f0f0f0);
+    background: var(--surface-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -273,7 +273,7 @@
   }
 
   .error-placeholder-empty {
-    background: var(--bg-secondary, #f5f5f5);
+    background: var(--surface-subtle);
     display: flex;
     align-items: center;
     justify-content: center;

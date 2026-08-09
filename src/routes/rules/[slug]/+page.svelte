@@ -3,23 +3,10 @@
   import { page } from '$app/state'
   import { getRulesByDocName } from '$lib/db'
   import type { Rule } from '$lib/db/types'
-  import {
-    getDisplayText,
-    renderContent,
-    scrollToRule,
-    highlightText,
-  } from '$lib/services/rules'
+  import { getDisplayText, renderContent, scrollToRule, highlightText } from '$lib/services/rules'
   import { rules, ruleMap, lang, type Lang } from '$lib/stores/rules'
   import { rulesTheme } from '$lib/stores/settings'
-  import {
-    ChevronLeft,
-    Palette,
-    Search,
-    X,
-    Copy,
-    Check,
-    CheckSquare,
-  } from '@lucide/svelte'
+  import { ChevronLeft, Palette, Search, X, Copy, Check, CheckSquare } from '@lucide/svelte'
   import { longpress } from '$lib/utils/longpress'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { goto } from '$app/navigation'

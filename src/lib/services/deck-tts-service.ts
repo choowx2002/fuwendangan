@@ -4,7 +4,14 @@ import type { ZoneKey } from '$lib/decks/zone'
 import type { CardWithPrint } from '$lib/db'
 import { sendToTTSTesting } from './tts-communication-service'
 
-const ZONE_ORDER: ZoneKey[] = ['legend', 'champion', 'mainDeck', 'battlefields', 'runes', 'sideboard']
+const ZONE_ORDER: ZoneKey[] = [
+  'legend',
+  'champion',
+  'mainDeck',
+  'battlefields',
+  'runes',
+  'sideboard',
+]
 
 const ZONE_ARRAY_MAP: Record<ZoneKey, keyof Omit<LoadedDeckForEdit, 'deck'>> = {
   legend: 'legendCards',

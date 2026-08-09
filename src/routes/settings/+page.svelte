@@ -31,7 +31,12 @@
     type ImportDeckPayload,
     type ImportMatchPayload,
   } from '$lib/db'
-  import { showForeignCardArt as showFCA, showTTSFeatures, playerName } from '$lib/stores/settings'
+  import {
+    showForeignCardArt as showFCA,
+    showTTSFeatures,
+    playerName,
+    darkMode,
+  } from '$lib/stores/settings'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
 
   import {
@@ -929,6 +934,17 @@
     <h2 class="card-title">通用设置</h2>
     <div class="setting-item">
       <div class="setting-info">
+        <span class="setting-label">暗色模式</span>
+        <span class="setting-desc">切换应用整体为暗色主题</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" bind:checked={$darkMode} />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
         <span class="setting-label">展示其他语言卡图</span>
         <span class="setting-desc">
           在卡组中显示非默认语言的卡牌原画。中国大陆地区受网络环境影响，图片可能无法正常加载。
@@ -943,9 +959,7 @@
     <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">玩家用户名</span>
-        <span class="setting-desc">
-          用于首页问候、卡组图案水印、对局记录与计分器默认名
-        </span>
+        <span class="setting-desc"> 用于首页问候、卡组图案水印、对局记录与计分器默认名 </span>
       </div>
       <input
         class="setting-input"
@@ -1613,7 +1627,7 @@
     margin: 2px 0 12px;
     padding: 8px 12px;
     border-radius: var(--radius-md);
-    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
     font-size: var(--text-sm);
     color: var(--text-secondary);
   }

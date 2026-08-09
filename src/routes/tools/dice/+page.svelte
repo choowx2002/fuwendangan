@@ -41,7 +41,9 @@
   </button>
 
   <div class="rng-card">
-    <div class="rng-icon">{#if rngMode === 'dice'}<Dice6 size={20} />{:else}<Coins size={20} />{/if}</div>
+    <div class="rng-icon">
+      {#if rngMode === 'dice'}<Dice6 size={20} />{:else}<Coins size={20} />{/if}
+    </div>
     <div class="toggle-button-group rng-toggle">
       <button
         class="toggle-btn"
@@ -125,7 +127,7 @@
   .dice-page {
     max-width: 480px;
     margin: 0 auto;
-    padding: 24px 32px;
+    padding: calc(24px + env(safe-area-inset-top)) 32px 24px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -134,7 +136,9 @@
 
   @media (max-width: 767.99px) {
     .dice-page {
-      padding: 24px 16px 80px;
+      padding: calc(24px + env(safe-area-inset-top)) 16px 80px;
+      height: 100dvh;
+      justify-content: center;
     }
   }
 

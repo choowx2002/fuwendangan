@@ -257,6 +257,7 @@ export interface DeckCardDetail extends DeckCard {
   return_energy: number
   power: number
   card_color_list: string
+  card_no: string | null
   print_code: string
   img_cdn: string
   rarity_name: string
@@ -437,10 +438,10 @@ export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail
        ORDER BY version_number DESC
        LIMIT 1
      )
-     SELECT
+SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
        cb.id as card_base_id, cp.id as print_id,
-       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list,
+       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list, cb.card_no,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name, cp.language
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id
@@ -589,7 +590,7 @@ export async function getDeckList(
     if (cardWhere.length > 0) {
       const existsSubquery = `
         EXISTS (
-          SELECT 1 
+          SELECT 1
           FROM deck_cards dc
           JOIN deck_versions dv ON dc.deck_version_id = dv.id AND dv.deck_id = d.id
           JOIN card_prints cp ON dc.card_id = cp.id
@@ -624,7 +625,7 @@ export async function getDeckList(
       FROM LatestVersions lv
       LEFT JOIN deck_cards dc ON lv.version_id = dc.deck_version_id
       GROUP BY lv.deck_id
-    ), 
+    ),
     LegendInfo AS (
       SELECT
         lv.deck_id,
@@ -651,15 +652,15 @@ export async function getDeckList(
 
       WHERE dc.zone = 'legend'
     )
-    SELECT 
-      d.id, 
-      d.name, 
-      d.description, 
-      d.format, 
-      d.cover_image, 
+    SELECT
+      d.id,
+      d.name,
+      d.description,
+      d.format,
+      d.cover_image,
       d.tags,
-      d.is_favorite, 
-      d.created_at, 
+      d.is_favorite,
+      d.created_at,
       d.updated_at,
       lv.version_number AS latest_version_number,
       COALESCE(vcc.card_count, 0) AS latest_version_card_count,
@@ -669,7 +670,7 @@ export async function getDeckList(
     LEFT JOIN VersionCardCounts vcc ON d.id = vcc.deck_id
     LEFT JOIN LegendInfo li ON d.id = li.deck_id
     ${whereClause}
-    ORDER BY d.updated_at DESC
+    ORDER BY d.is_favorite DESC, d.updated_at DESC
     LIMIT ? OFFSET ?
   `
 

@@ -31,7 +31,12 @@
     width: 100%;
     aspect-ratio: 744 / 1040;
     border-radius: 8px;
-    background: linear-gradient(100deg, var(--bg-secondary) 40%, var(--bg-hover) 50%, var(--bg-secondary) 60%);
+    background: linear-gradient(
+      100deg,
+      var(--bg-secondary) 40%,
+      var(--bg-hover) 50%,
+      var(--bg-secondary) 60%
+    );
     background-size: 200% 100%;
     animation: shimmer 1.4s infinite linear;
   }

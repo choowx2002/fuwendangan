@@ -46,10 +46,13 @@
   import { onMount } from 'svelte'
   import { formatDeckExport, formatOfficialDeckExport } from '$lib/decks/deck-export'
   import { buildDeckCode } from '$lib/decks/deck-code'
+  import { buildDeckQrDataUrl, serializeDeckPayload, QR_PAYLOAD_VERSION } from '$lib/decks/deck-qr'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import { parseColorList } from '$lib/cards/utils/cost-curve-utils'
   import { isTauri, isWeb } from '$lib/db'
+  import { isMobile } from '$lib/utils/os'
   import { writeText, writeImage } from '@tauri-apps/plugin-clipboard-manager'
+  import { shareFile } from '@choochmeque/tauri-plugin-sharekit-api'
   import { save, open, ask } from '@tauri-apps/plugin-dialog'
   import { writeTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
   import {
@@ -62,6 +65,7 @@
     downloadImageInWeb,
     writeImageToPath,
     dataUrlToBytes,
+    jpegDataUrlToPngBytes,
     DECK_IMAGE_SORT_FIELDS,
   } from '$lib/services/deck-image-service'
   import SortModal from '$lib/components/cards/SortModal.svelte'
@@ -74,7 +78,6 @@
     History,
     ChartPie,
     Dices,
-    Copy,
     Pencil,
     Download,
     Settings2,
@@ -90,7 +93,10 @@
     CircleCheck,
     LoaderCircle,
     Info,
+    CircleAlert,
     Upload,
+    QrCode,
+    FileText,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -149,8 +155,8 @@
   let cards = $state<DeckCardDetail[]>([])
   let versions = $state<DeckVersion[]>([])
   let versionCards = $state<DeckVersionCard[]>([])
-  let showShareModal = $state<'copy' | 'export' | null>(null)
-  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official'>('text')
+  let showShareModal = $state(false)
+  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'>('text')
   let textLang = $state<'en' | 'cn'>('en')
   let exporting = $state(false)
   let exportProgress = $state(0)
@@ -217,6 +223,9 @@
   let previewGenerated = false
   let previewRegenTimer: ReturnType<typeof setTimeout> | undefined
   let bgFileInput = $state<HTMLInputElement | null>(null)
+  let qrDataUrl = $state<string | null>(null)
+  let qrGenerating = $state(false)
+  let qrTimer: ReturnType<typeof setTimeout> | undefined
 
   async function pickBackgroundImage() {
     if (isTauri) {
@@ -414,9 +423,13 @@
       .sort(
         (a, b) =>
           (ZONE_ORDER[a.zone] ?? 9) - (ZONE_ORDER[b.zone] ?? 9) ||
-          (a.row.cardNoExtend || a.row.cardNo).localeCompare(b.row.cardNoExtend || b.row.cardNo, undefined, {
-            numeric: true,
-          })
+          (a.row.cardNoExtend || a.row.cardNo).localeCompare(
+            b.row.cardNoExtend || b.row.cardNo,
+            undefined,
+            {
+              numeric: true,
+            }
+          )
       )
   )
 
@@ -506,8 +519,11 @@
     if (isBackward) goto('/decks')
   })
 
+  let mobilePlatform = $state(false)
+
   onMount(() => {
     if (page.params.deckid) init(page.params.deckid)
+    isMobile().then((is) => (mobilePlatform = is))
   })
 
   const legendCards = $derived(cards.filter((c) => c.zone === 'legend'))
@@ -534,29 +550,18 @@
           label: '信息',
           disabled: !deck,
           onClick: openEditInfo,
-          priority: 5
+          priority: 5,
         },
         {
-          key: 'copy',
-          icon: Copy,
-          title: '复制卡组',
-          label: '复制',
-          onClick: () => {
-            shareFormat = 'text'
-            showShareModal = 'copy'
-          },
-          priority: 2
-        },
-        {
-          key: 'export',
+          key: 'share',
           icon: Upload,
-          title: '导出卡组',
+          title: '导出 / 复制卡组',
           label: '导出',
           onClick: () => {
             shareFormat = 'text'
-            showShareModal = 'export'
+            showShareModal = true
           },
-          priority: 3
+          priority: 2,
         },
         {
           key: 'ownership',
@@ -565,7 +570,7 @@
           label: '持有检查',
           disabled: !deck || cards.length === 0,
           onClick: runOwnershipCheck,
-          priority: 5
+          priority: 5,
         },
         {
           key: 'delete',
@@ -575,7 +580,7 @@
           variant: 'danger',
           disabled: !deck,
           onClick: confirmDeleteDeck,
-          priority: 6
+          priority: 6,
         },
         {
           key: 'edit',
@@ -781,20 +786,38 @@
       label: 'PROXY 打印 PDF',
       description: 'A4 竖版 3×3 代牌，含主牌堆、战场、符文与备牌，可打印裁剪。',
       support: ['export'],
+      media: true,
+      icon: FileText,
+      shortLabel: 'PDF',
     },
     {
       id: 'image',
       label: '卡组图案',
-      description: '生成卡组清单图片（英雄、符文与主/备牌），可导出 PNG 或复制到剪贴板。',
+      description: '生成卡组清单图片（英雄、符文与主/备牌），可导出 JPG、复制或分享。',
       support: ['export', 'copy'],
+      media: true,
+      icon: ImageIcon,
+      shortLabel: '图案',
+    },
+    {
+      id: 'qr',
+      label: '二维码',
+      description: '编码卡组代码与 main/side/champion 分区数量，供扫码工具识别。',
+      support: ['export', 'copy'],
+      media: true,
+      icon: QrCode,
+      shortLabel: '二维码',
     },
   ]
 
   function currentShareText(): string {
     if (shareFormat === 'code') return deckCodeResult.code ?? ''
     if (shareFormat === 'official') return officialText
+    if (shareFormat === 'qr') return qrPayloadText
     return exportText
   }
+
+  const qrPayloadText: string = $derived(serializeDeckPayload(zoneCards) ?? '')
 
   const selectedPdfZones = $derived(
     (Object.keys(ZONE_CONFIG) as ZoneKey[]).filter((zone) => pdfZones[zone])
@@ -809,6 +832,7 @@
     if (shareFormat === 'official') return officialText.length > 0
     if (shareFormat === 'pdf') return selectedPdfZoneCount > 0
     if (shareFormat === 'image') return cards.length > 0
+    if (shareFormat === 'qr') return qrPayloadText.length > 0
     return exportText.length > 0
   }
 
@@ -871,13 +895,69 @@
     schedulePreviewRegen()
   })
 
-  async function copyDeckImage(dataUrl: string): Promise<void> {
-    if (isTauri) {
-      await writeImage(dataUrlToBytes(dataUrl))
+  async function generateQrPreview() {
+    if (!qrPayloadText) {
+      qrDataUrl = null
       return
     }
-    const blob = await (await fetch(dataUrl)).blob()
+    qrGenerating = true
+    try {
+      qrDataUrl = await buildDeckQrDataUrl(qrPayloadText)
+    } catch (error) {
+      console.error('[DeckQr] 生成二维码失败:', error)
+      qrDataUrl = null
+    } finally {
+      qrGenerating = false
+    }
+  }
+
+  function scheduleQrRegen() {
+    if (qrTimer) clearTimeout(qrTimer)
+    qrTimer = setTimeout(() => {
+      qrTimer = undefined
+      generateQrPreview()
+    }, 200)
+  }
+
+  $effect(() => {
+    qrPayloadText
+    if (shareFormat === 'qr') scheduleQrRegen()
+  })
+
+  async function copyDeckImage(dataUrl: string, isPng = false): Promise<void> {
+    if (isTauri && mobilePlatform) {
+      await shareDeckImage(dataUrl, isPng)
+      return
+    }
+    if (isTauri) {
+      const pngBytes = isPng ? dataUrlToBytes(dataUrl) : await jpegDataUrlToPngBytes(dataUrl)
+      await writeImage(pngBytes)
+      return
+    }
+    const png = isPng ? dataUrlToBytes(dataUrl) : await jpegDataUrlToPngBytes(dataUrl)
+    const blob = new Blob([png], { type: 'image/png' })
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  }
+
+  async function shareDeckImage(dataUrl: string, isPng = false): Promise<void> {
+    const { appCacheDir, join } = await import('@tauri-apps/api/path')
+    const { writeFile, remove, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    const cacheDir = await appCacheDir()
+    const fileName = `${(deck?.name ?? 'deck').replace(/[\\/:*?"<>|]/g, '_')}.${isPng ? 'png' : 'jpg'}`
+    const relFile = await join('share', fileName)
+    const bytes = dataUrlToBytes(dataUrl)
+    const absFile = await join(cacheDir, relFile)
+    try {
+      await mkdir('share', { baseDir: BaseDirectory.AppCache, recursive: true }).catch(() => {})
+      await writeFile(relFile, bytes, { baseDir: BaseDirectory.AppCache })
+      await shareFile('file://' + absFile, {
+        mimeType: isPng ? 'image/png' : 'image/jpeg',
+        title: fileName,
+      })
+      showToast('已打开分享面板', 'success')
+    } finally {
+      await remove(relFile, { baseDir: BaseDirectory.AppCache }).catch(() => {})
+    }
   }
 
   async function confirmCopy() {
@@ -887,9 +967,23 @@
       try {
         const dataUrl = await buildDeckImageDataUrl()
         await copyDeckImage(dataUrl)
-        showShareModal = null
+        showShareModal = false
       } catch (error) {
         console.error('[DeckImage] 复制卡组图案失败:', error)
+      } finally {
+        exporting = false
+      }
+      return
+    }
+    if (shareFormat === 'qr') {
+      exporting = true
+      try {
+        if (!qrDataUrl) await generateQrPreview()
+        if (!qrDataUrl) return
+        await copyDeckImage(qrDataUrl, true)
+        showShareModal = false
+      } catch (error) {
+        console.error('[DeckQr] 复制二维码失败:', error)
       } finally {
         exporting = false
       }
@@ -902,7 +996,7 @@
     } else {
       await navigator.clipboard.writeText(text)
     }
-    showShareModal = null
+    showShareModal = false
   }
 
   async function confirmExport() {
@@ -917,7 +1011,7 @@
         })
         if (isWeb) {
           downloadPdfInWeb(bytes, `${deck?.name || 'deck'}-proxy.pdf`)
-          showShareModal = null
+          showShareModal = false
           return
         }
         const dest = await save({
@@ -927,7 +1021,7 @@
         })
         if (!dest) return
         await writePdfToPath(bytes, dest)
-        showShareModal = null
+        showShareModal = false
       } catch (error) {
         console.error('[ProxyExport] 导出 PDF 失败:', error)
       } finally {
@@ -942,20 +1036,47 @@
       try {
         const dataUrl = await buildDeckImageDataUrl()
         if (isWeb) {
-          downloadImageInWeb(dataUrl, `${deck?.name || 'deck'}.png`)
-          showShareModal = null
+          downloadImageInWeb(dataUrl, `${deck?.name || 'deck'}.jpg`)
+          showShareModal = false
           return
         }
         const dest = await save({
           title: '导出卡组图案',
-          defaultPath: `${deck?.name || 'deck'}.png`,
-          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+          defaultPath: `${deck?.name || 'deck'}.jpg`,
+          filters: [{ name: 'JPG 图片', extensions: ['jpg'] }],
         })
         if (!dest) return
         await writeImageToPath(dataUrl, dest)
-        showShareModal = null
+        showShareModal = false
       } catch (error) {
         console.error('[DeckImage] 导出卡组图案失败:', error)
+      } finally {
+        exporting = false
+      }
+      return
+    }
+
+    if (shareFormat === 'qr') {
+      exporting = true
+      try {
+        if (!qrDataUrl) await generateQrPreview()
+        if (!qrDataUrl) return
+        const fileName = `${deck?.name || 'deck'}-qr.png`
+        if (isWeb) {
+          downloadImageInWeb(qrDataUrl, fileName)
+          showShareModal = false
+          return
+        }
+        const dest = await save({
+          title: '导出二维码',
+          defaultPath: fileName,
+          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+        })
+        if (!dest) return
+        await writeImageToPath(qrDataUrl, dest)
+        showShareModal = false
+      } catch (error) {
+        console.error('[DeckQr] 导出二维码失败:', error)
       } finally {
         exporting = false
       }
@@ -966,7 +1087,7 @@
     if (!text) return
     if (isWeb) {
       if (navigator.clipboard) await navigator.clipboard.writeText(text)
-      showShareModal = null
+      showShareModal = false
       return
     }
 
@@ -980,7 +1101,7 @@
     })
     if (!dest) return
     await writeTextFile(dest, text)
-    showShareModal = null
+    showShareModal = false
   }
 </script>
 
@@ -1518,37 +1639,62 @@
   </div>
 </div>
 
-<CommonModal
-  open={showShareModal !== null}
-  title={showShareModal === 'export' ? '导出卡组' : '复制卡组'}
-  onclose={() => (showShareModal = null)}
->
+<CommonModal open={showShareModal} title="导出 / 复制卡组" onclose={() => (showShareModal = false)}>
   <div class="share-format-list">
-    {#each shareFormats as format (format.id)}
-      {#if format.support.includes(showShareModal!)}
-        <button
-          type="button"
-          class="share-format-option"
-          class:selected={shareFormat === format.id}
-          onclick={() => {
-            shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official'
-            if (format.id === 'pdf') {
-              pdfZones = {
-                legend: true,
-                champion: true,
-                mainDeck: true,
-                battlefields: true,
-                runes: true,
-                sideboard: true,
-              }
+    {#each shareFormats.filter((f) => !f.media) as format (format.id)}
+      <button
+        type="button"
+        class="share-format-option"
+        class:selected={shareFormat === format.id}
+        onclick={() => {
+          shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'
+          if (format.id === 'pdf') {
+            pdfZones = {
+              legend: true,
+              champion: true,
+              mainDeck: true,
+              battlefields: true,
+              runes: true,
+              sideboard: true,
             }
-          }}
-        >
-          <span class="share-format-label">{format.label}</span>
-          <span class="share-format-desc">{format.description}</span>
-        </button>
-      {/if}
+          }
+        }}
+      >
+        <span class="share-format-label">{format.label}</span>
+        <span class="share-format-desc">{format.description}</span>
+      </button>
     {/each}
+
+    {#if shareFormats.some((f) => f.media)}
+      <div class="share-format-cards">
+        {#each shareFormats.filter((f) => f.media) as format (format.id)}
+          {@const FormatIcon = format.icon}
+          <button
+            type="button"
+            class="share-format-card"
+            class:selected={shareFormat === format.id}
+            onclick={() => {
+              shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'
+              if (format.id === 'pdf') {
+                pdfZones = {
+                  legend: true,
+                  champion: true,
+                  mainDeck: true,
+                  battlefields: true,
+                  runes: true,
+                  sideboard: true,
+                }
+              }
+            }}
+          >
+            <span class="share-format-card-icon">
+              <FormatIcon size={22} />
+            </span>
+            <span class="share-format-card-label">{format.shortLabel}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   {#if shareFormat === 'text' || shareFormat === 'code' || shareFormat === 'official'}
@@ -1574,7 +1720,14 @@
           </button>
         </div>
       {/if}
-      <pre class="text-preview-box selectable">{currentShareText() || '（无可导出的内容）'}</pre>
+      {#if shareFormat === 'code' && deckCodeResult.error}
+        <div class="share-format-error">
+          <CircleAlert size={16} />
+          <span>卡组代码生成失败：{deckCodeResult.error}</span>
+        </div>
+      {:else}
+        <pre class="text-preview-box selectable">{currentShareText() || '（无可导出的内容）'}</pre>
+      {/if}
     </div>
   {/if}
 
@@ -1740,14 +1893,44 @@
     </div>
   {/if}
 
+  {#if shareFormat === 'qr'}
+    <div class="qr-section">
+      <div class="text-preview-title">预览</div>
+      {#if qrPayloadText}
+        <div class="qr-preview-box">
+          {#if qrDataUrl}
+            <img src={qrDataUrl} alt="卡组二维码" class="qr-preview-img" width={320} height={320} />
+          {:else}
+            <div class="image-preview-loading">正在生成二维码...</div>
+          {/if}
+        </div>
+        <pre class="text-preview-box selectable">{qrPayloadText}</pre>
+      {:else}
+        <p class="image-sort-desc">当前卡组无法生成二维码（需有有效卡组代码）。</p>
+      {/if}
+      <p class="qr-hint">
+        版本 {QR_PAYLOAD_VERSION}，编码卡组代码与 main/side/champion 分区数量（其余并入 main）。
+      </p>
+    </div>
+  {/if}
+
   {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showShareModal = null)}>取消</button>
+    <button class="button button-ghost" onclick={() => (showShareModal = false)}>取消</button>
+    {#if shareFormat !== 'pdf'}
+      <button
+        class="button button-primary"
+        disabled={!currentShareTextAvailable() || exporting}
+        onclick={confirmCopy}
+      >
+        {(shareFormat === 'image' || shareFormat === 'qr') && mobilePlatform ? '分享' : '复制'}
+      </button>
+    {/if}
     <button
       class="button button-primary"
       disabled={!currentShareTextAvailable() || exporting}
-      onclick={showShareModal === 'export' ? confirmExport : confirmCopy}
+      onclick={confirmExport}
     >
-      {showShareModal === 'export' ? '导出' : '复制'}
+      下载
     </button>
   {/snippet}
 </CommonModal>
@@ -1755,7 +1938,11 @@
 {#if exporting}
   <LoadingModal
     status="downloading"
-    text={shareFormat === 'image' ? '正在生成卡组图案...' : '正在生成 PROXY PDF...'}
+    text={shareFormat === 'image'
+      ? '正在生成卡组图案...'
+      : shareFormat === 'qr'
+        ? '正在生成二维码...'
+        : '正在生成 PROXY PDF...'}
     subtext="正在加载卡图并排版"
     progress={exportProgress}
   />
@@ -2024,7 +2211,7 @@
   }
 
   .deck-info-bar {
-    background: #ffffff;
+    background: var(--surface);
     padding: 16px 24px;
     border-radius: var(--radius-lg);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -2081,7 +2268,7 @@
   }
 
   .analysis-card {
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 20px;
@@ -2283,7 +2470,7 @@
   }
 
   .card-zone {
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 20px;
@@ -2330,7 +2517,7 @@
   }
 
   .hero-card-slot {
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 20px;
@@ -2480,7 +2667,7 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     overflow: hidden;
-    background: #ffffff;
+    background: var(--surface);
     cursor: pointer;
     transition:
       transform 0.15s,
@@ -2531,7 +2718,7 @@
   } */
 
   .version-sidebar {
-    background: #ffffff;
+    background: var(--surface);
     padding: 20px;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
@@ -2728,10 +2915,39 @@
   @media (max-width: 479.99px) {
     .deck-builder-container {
       padding: 16px;
-    }
-    .analysis-dashboard {
       display: flex;
       flex-direction: column;
+      gap: 24px;
+    }
+    .deck-info-bar {
+      order: 1;
+      margin-bottom: 0;
+    }
+    .analysis-dashboard {
+      display: contents;
+    }
+    .match-section {
+      order: 2;
+    }
+    .curve-card {
+      order: 5;
+      margin-bottom: 0;
+    }
+    .sim-card {
+      order: 6;
+    }
+    .hero-strip {
+      order: 3;
+      margin-bottom: 0;
+    }
+    .builder-layout {
+      display: contents;
+    }
+    .card-list-section {
+      order: 4;
+    }
+    .version-sidebar {
+      order: 7;
     }
     .landscape-grid {
       grid-template-columns: 1fr 1fr 1fr;
@@ -2769,6 +2985,19 @@
     gap: 10px;
   }
 
+  .share-format-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: var(--text-sm);
+    color: #e03e3e;
+    background: color-mix(in srgb, #e03e3e 10%, transparent);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
   .share-format-option {
     display: flex;
     flex-direction: column;
@@ -2794,7 +3023,7 @@
 
   .share-format-option.selected {
     border-color: var(--accent-color);
-    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 20%, transparent);
   }
 
@@ -2807,6 +3036,56 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
     line-height: 1.4;
+  }
+
+  .share-format-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+  }
+
+  .share-format-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 14px 10px;
+    text-align: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .share-format-card:hover {
+    border-color: var(--accent-color);
+  }
+
+  .share-format-card.selected {
+    border-color: var(--accent-color);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 20%, transparent);
+  }
+
+  .share-format-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--accent-color) 12%, transparent);
+    color: var(--accent-color);
+  }
+
+  .share-format-card-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   /* ===== PROXY PDF 区域选择 ===== */
@@ -2852,7 +3131,7 @@
 
   .pdf-zone-option.selected {
     border-color: var(--accent-color);
-    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 20%, transparent);
   }
 
@@ -2993,6 +3272,35 @@
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(2px);
+  }
+
+  /* ===== 二维码预览 ===== */
+  .qr-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .qr-preview-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .qr-preview-img {
+    width: 240px;
+    height: 240px;
+    image-rendering: pixelated;
+  }
+
+  .qr-hint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
   }
 
   /* ===== 卡组图案背景 ===== */
@@ -3243,7 +3551,7 @@
 
   .match-section {
     grid-column: 1 / -1;
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 20px 24px;
@@ -3529,13 +3837,13 @@
     font-size: 11px;
     border-radius: 999px;
     color: #92400e;
-    background: #fef3c7;
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
     white-space: nowrap;
   }
 
   .game-special-badge.special {
     color: #7c3aed;
-    background: #ede9fe;
+    background: color-mix(in srgb, #a855f7 18%, transparent);
   }
 
   .game-reason {

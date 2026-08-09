@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-always-on-top",
     "opener:default",
     "sql:default",
     "sql:allow-execute",
@@ -62,12 +63,14 @@
       ]
     },
     "clipboard-manager:default",
+    "sharekit:default",
     "store:default",
     "os:default",
     "dialog:default",
     "dialog:allow-message",
     "dialog:allow-open",
     "dialog:allow-save",
-    "notification:default"
+    "notification:default",
+    "deep-link:default"
   ]
 }

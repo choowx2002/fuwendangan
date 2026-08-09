@@ -343,7 +343,7 @@
           key: 'missing',
           label: '缺卡清单',
           icon: ScrollText,
-          variant: "primary",
+          variant: 'primary',
           priority: 0,
           title: '缺卡清单',
           onClick: () =>

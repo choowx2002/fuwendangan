@@ -285,10 +285,10 @@
                       <span class="rarity-badge" style={`color: ${card.color};`}>
                         {card.label}
                       </span>
-                    <!--   <span class="card-name" title={card.print.card_name_cn ?? ''}>
+                      <!--   <span class="card-name" title={card.print.card_name_cn ?? ''}>
                         {card.print.card_name_cn ?? '未知卡牌'}
                       </span>-->
-                    </div> 
+                    </div>
                   </div>
                 {/if}
               </div>

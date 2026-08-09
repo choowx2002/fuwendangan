@@ -7,9 +7,14 @@ import type {
   Card as RiftboundCard,
   DeckWithSideboard,
 } from '@piltoverarchive/riftbound-deck-codes'
-import { getCardAndPrintByPrintCode, getCardAndPrintByEnglishName } from '$lib/db'
+import {
+  getCardAndPrintByPrintCode,
+  getCardAndPrintByEnglishName,
+  getCardAndPrintByCardNo,
+} from '$lib/db'
 import type { cardAndPrint } from './types'
 import { ZONE_CONFIG, type ZoneKey } from './zone'
+import { QR_PAYLOAD_VERSION } from './deck-qr'
 
 export interface DecodedDeckResult {
   deck: {
@@ -51,6 +56,26 @@ export function parseDeckCodeText(code: string): DeckWithSideboard | null {
     return getDeckFromCode(trimmed)
   } catch {
     return null
+  }
+}
+
+/**
+ * 解码一个 Riftbound Deck Code，并保留失败原因。
+ * 返回 { deck, error }，成功时 error 为 null，失败时 deck 为 null。
+ */
+export function tryParseDeckCodeText(code: string): {
+  deck: DeckWithSideboard | null
+  error: string | null
+} {
+  const trimmed = code.trim()
+  if (!trimmed) return { deck: null, error: null }
+  try {
+    return { deck: getDeckFromCode(trimmed), error: null }
+  } catch (e) {
+    return {
+      deck: null,
+      error: e instanceof Error ? e.message : '解码失败，请检查卡组代码。',
+    }
   }
 }
 
@@ -268,6 +293,137 @@ export async function resolveGlobalOfficialText(
       for (let i = 0; i < entry.qty; i++) {
         target.push(resolved)
       }
+    }
+  }
+
+  return result
+}
+
+// ==================== 二维码（RA1 payload）导入 ====================
+
+export interface QrZoneEntry {
+  card_no: string
+  quantity: number
+}
+
+export interface ParsedQrPayload {
+  zones: {
+    main: QrZoneEntry[]
+    side: QrZoneEntry[]
+    champion: QrZoneEntry[]
+  }
+  errors: string[]
+}
+
+const QR_ZONE_LETTERS: Record<string, 'main' | 'side' | 'champion'> = {
+  m: 'main',
+  s: 'side',
+  c: 'champion',
+}
+
+/**
+ * 解析二维码 payload（本应用「二维码」导出生成的 RA1 格式）。
+ * 首行必须为版本标记（RA1），其后每行为一个分区：
+ *   `{m|s|c}{分区总数}:{card_no}:{qty}:{card_no}:{qty}...`
+ */
+export function parseQrPayload(raw: string): ParsedQrPayload {
+  const result: ParsedQrPayload = {
+    zones: { main: [], side: [], champion: [] },
+    errors: [],
+  }
+  const lines = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (lines.length === 0 || lines[0] !== QR_PAYLOAD_VERSION) {
+    result.errors.push(`不是有效的二维码数据（缺少版本标记 ${QR_PAYLOAD_VERSION}）。`)
+    return result
+  }
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    const m = /^([msc])(\d+)(?:(?::[^:]+:\d+)*)$/.exec(line)
+    if (!m) {
+      result.errors.push(`第 ${i + 1} 行格式错误：${line}`)
+      continue
+    }
+    const zone = QR_ZONE_LETTERS[m[1]]
+    const declaredTotal = parseInt(m[2], 10)
+    const pairs = line.slice(m[0].indexOf(':') + 1).split(':') as string[]
+    let actualTotal = 0
+    const entries: QrZoneEntry[] = []
+    for (let j = 0; j + 1 < pairs.length; j += 2) {
+      const cardNo = pairs[j]
+      const qty = parseInt(pairs[j + 1], 10)
+      if (!cardNo || Number.isNaN(qty) || qty <= 0) {
+        result.errors.push(`第 ${i + 1} 行存在无效卡牌条目：${cardNo || pairs[j]}`)
+        continue
+      }
+      actualTotal += qty
+      entries.push({ card_no: cardNo, quantity: qty })
+    }
+    if (declaredTotal !== actualTotal) {
+      result.errors.push(
+        `第 ${i + 1} 行分区总数 ${declaredTotal} 与卡牌数总和 ${actualTotal} 不一致。`
+      )
+      continue
+    }
+    result.zones[zone] = entries
+  }
+  return result
+}
+
+/** 将解析出的二维码卡牌按 card_no 解析为本地卡图；main 区按卡牌类别拆回传奇/战场/符文/主牌。 */
+export async function resolveQrPayload(parsed: ParsedQrPayload): Promise<DecodedDeckResult> {
+  const result: DecodedDeckResult = {
+    deck: {
+      legendCards: [],
+      championCards: [],
+      mainDeckCards: [],
+      battlefieldCards: [],
+      runeCards: [],
+      sideboardCards: [],
+    },
+    missingCount: 0,
+    missingCodes: [],
+  }
+
+  async function appendEntry(entry: QrZoneEntry, target: cardAndPrint[]) {
+    const resolved = await getCardAndPrintByCardNo(entry.card_no)
+    if (!resolved) {
+      result.missingCodes.push(entry.card_no)
+      result.missingCount++
+      return
+    }
+    for (let i = 0; i < entry.quantity; i++) {
+      target.push(resolved)
+    }
+  }
+
+  for (const entry of parsed.zones.side) {
+    await appendEntry(entry, result.deck.sideboardCards)
+  }
+  for (const entry of parsed.zones.champion) {
+    await appendEntry(entry, result.deck.championCards)
+  }
+  for (const entry of parsed.zones.main) {
+    const resolved = await getCardAndPrintByCardNo(entry.card_no)
+    if (!resolved) {
+      result.missingCodes.push(entry.card_no)
+      result.missingCount++
+      continue
+    }
+    const zone = classifyZone(resolved.card_category)
+    const target =
+      zone === 'legend'
+        ? result.deck.legendCards
+        : zone === 'rune'
+          ? result.deck.runeCards
+          : zone === 'battlefield'
+            ? result.deck.battlefieldCards
+            : result.deck.mainDeckCards
+    for (let i = 0; i < entry.quantity; i++) {
+      target.push(resolved)
     }
   }
 

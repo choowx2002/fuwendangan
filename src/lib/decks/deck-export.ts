@@ -82,7 +82,9 @@ export function formatOfficialDeckExport(zoneCards: Record<ZoneKey, DeckCardDeta
     const list = zoneCards[zone]
     if (list.length === 0) continue
 
-    const parts = sortForExport(list).map((c) => `${c.quantity} ${renderCardName(c, zone, championName, 'en')}`)
+    const parts = sortForExport(list).map(
+      (c) => `${c.quantity} ${renderCardName(c, zone, championName, 'en')}`
+    )
     blocks.push(`${OFFICIAL_SECTION_LABELS[zone]}: \n${parts.join('\n')}`)
   }
 

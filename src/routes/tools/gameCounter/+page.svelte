@@ -804,7 +804,7 @@
   .tools-page {
     max-width: 1000px;
     margin: 0 auto;
-    padding: 24px 32px;
+    padding: calc(24px + env(safe-area-inset-top)) 32px 24px;
     color: var(--text-primary);
   }
 
@@ -831,7 +831,7 @@
 
   @media (max-width: 767.99px) {
     .tools-page {
-      padding: 24px 16px 80px;
+      padding: calc(24px + env(safe-area-inset-top)) 16px 80px;
     }
   }
 
@@ -1173,7 +1173,7 @@
       flex-shrink: 0;
       justify-content: space-between;
       margin: 0;
-      padding: 10px 12px;
+      padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
       border-bottom: 1px solid var(--border-color);
       background: var(--bg-primary);
     }

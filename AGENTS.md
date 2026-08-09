@@ -8,17 +8,17 @@ Rune Archive（符文档案）是一款基于 **Tauri v2** 的桌面端（兼移
 
 ## 技术栈
 
-| 层次       | 技术                                            | 版本         | 说明                                                    |
-| ---------- | ----------------------------------------------- | ------------ | ------------------------------------------------------- |
-| 前端框架   | Svelte 5                                        | ^5.0.0       | 使用 runes 语法（`$state` / `$props` / `$derived`）     |
-| 元框架     | SvelteKit                                       | ^2.9.0       | SPA 模式（`adapter-static` + `fallback: 'index.html'`，`+layout.ts` 设 `ssr = false`） |
-| 构建工具   | Vite                                            | ^6.0.3       | 开发端口固定 `1420`，`strictPort: true`                 |
-| 语言       | TypeScript                                      | ~5.6.2       | `strict: true`                                          |
-| 桌面框架   | Tauri                                           | v2           | Rust 后端 + WebView 前端，lib.rs 含 8 个自定义 command  |
-| 包管理     | pnpm                                            | -            | `pnpm-lock.yaml` / `pnpm-workspace.yaml`（仅 allowBuilds） |
-| 远程数据   | Supabase                                        | ^2.108.2     | 凭证在本地 `.env.local`（gitignored，非仓库文件）        |
-| 本地数据库 | SQLite（`tauri-plugin-sql`）                    | v2           | 表结构在 `src/lib/db/config/schema.ts`                  |
-| 其他       | lucide-svelte / snowflake / svelte-dnd-action / @piltoverarchive/riftbound-deck-codes / jspdf | - | 图标 / 雪花ID / 拖拽 / Deck Code 编解码 / PDF 导出 |
+| 层次       | 技术                                                                                          | 版本     | 说明                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| 前端框架   | Svelte 5                                                                                      | ^5.0.0   | 使用 runes 语法（`$state` / `$props` / `$derived`）                                    |
+| 元框架     | SvelteKit                                                                                     | ^2.9.0   | SPA 模式（`adapter-static` + `fallback: 'index.html'`，`+layout.ts` 设 `ssr = false`） |
+| 构建工具   | Vite                                                                                          | ^6.0.3   | 开发端口固定 `1420`，`strictPort: true`                                                |
+| 语言       | TypeScript                                                                                    | ~5.6.2   | `strict: true`                                                                         |
+| 桌面框架   | Tauri                                                                                         | v2       | Rust 后端 + WebView 前端，lib.rs 含 8 个自定义 command                                 |
+| 包管理     | pnpm                                                                                          | -        | `pnpm-lock.yaml` / `pnpm-workspace.yaml`（仅 allowBuilds）                             |
+| 远程数据   | Supabase                                                                                      | ^2.108.2 | 凭证在本地 `.env.local`（gitignored，非仓库文件）                                      |
+| 本地数据库 | SQLite（`tauri-plugin-sql`）                                                                  | v2       | 表结构在 `src/lib/db/config/schema.ts`                                                 |
+| 其他       | lucide-svelte / snowflake / svelte-dnd-action / @piltoverarchive/riftbound-deck-codes / jspdf | -        | 图标 / 雪花ID / 拖拽 / Deck Code 编解码 / PDF 导出                                     |
 
 ## 目录结构说明
 

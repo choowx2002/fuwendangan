@@ -11,10 +11,14 @@
     Sparkles,
     ChevronLeft,
     Gamepad2,
+    Pin,
+    PinOff,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
-  import { showTTSFeatures } from '$lib/stores/settings'
+  import { showTTSFeatures, windowAlwaysOnTop } from '$lib/stores/settings'
+  import { isTauri } from '$lib/db'
+  import { getCurrentWindow } from '@tauri-apps/api/window'
   import TTSStatusPanel from './TTSStatusPanel.svelte'
   let { isOpen = $bindable() } = $props()
 
@@ -60,6 +64,17 @@
   function toggleMinimize() {
     sidebarState.isMinimized = !sidebarState.isMinimized
   }
+
+  function togglePin() {
+    windowAlwaysOnTop.set(!$windowAlwaysOnTop)
+  }
+
+  $effect(() => {
+    if (!isTauri) return
+    getCurrentWindow()
+      .setAlwaysOnTop($windowAlwaysOnTop)
+      .catch(() => {})
+  })
 </script>
 
 <aside class="sidebar" class:open={isOpen} class:isMinimized={sidebarState.isMinimized}>
@@ -122,11 +137,29 @@
     {/each}
   </nav>
 
-  {#if $showTTSFeatures}
-    <div class="sidebar-footer">
+  <div class="sidebar-footer">
+    {#if isTauri}
+      <button
+        class="button button-text"
+        class:active={$windowAlwaysOnTop}
+        onclick={togglePin}
+        aria-pressed={$windowAlwaysOnTop}
+      >
+        {#if $windowAlwaysOnTop}
+          <PinOff size={18} strokeWidth={1.75} />
+        {:else}
+          <Pin size={18} strokeWidth={1.75} />
+        {/if}
+        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
+          >置顶窗口</span
+        >
+      </button>
+    {/if}
+
+    {#if $showTTSFeatures}
       <TTSStatusPanel />
-    </div>
-  {/if}
+    {/if}
+  </div>
 </aside>
 
 <style>

@@ -21,11 +21,7 @@
   })
 
   const statusText = $derived(
-    $ttsState.checking
-      ? '正在检测 TTS 连接...'
-      : $ttsState.sendPort
-        ? 'TTS 已连接'
-        : 'TTS 未连接'
+    $ttsState.checking ? '正在检测 TTS 连接...' : $ttsState.sendPort ? 'TTS 已连接' : 'TTS 未连接'
   )
 
   const errorText = $derived(

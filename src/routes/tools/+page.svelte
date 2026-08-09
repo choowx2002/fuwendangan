@@ -75,7 +75,7 @@
     transition: all 0.15s;
   }
   .tool-card:hover {
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     transform: translateY(-2px);
   }

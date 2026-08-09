@@ -11,11 +11,4 @@
   let { isOpen, onClose, onSaved }: Props = $props()
 </script>
 
-<CustomPrintModal
-  cardId=""
-  cardNo=""
-  editPrint={null}
-  {isOpen}
-  {onClose}
-  {onSaved}
-/>
+<CustomPrintModal cardId="" cardNo="" editPrint={null} {isOpen} {onClose} {onSaved} />

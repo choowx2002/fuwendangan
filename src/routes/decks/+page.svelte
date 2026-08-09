@@ -8,6 +8,7 @@
     toggleFavorite,
     getMatchStatsForDecks,
     importDecksFromJson,
+    isTauri,
     type ImportDeckPayload,
     type DeckListResult,
   } from '$lib/db'
@@ -17,12 +18,15 @@
   import { ttsState } from '$lib/stores/tts'
   import { spawnDeckToTTS } from '$lib/services/deck-tts-service'
   import {
-    parseDeckCodeText,
+    tryParseDeckCodeText,
     resolveDeckCards,
     parseGlobalOfficialText,
     resolveGlobalOfficialText,
+    parseQrPayload,
+    resolveQrPayload,
     type DecodedDeckResult,
   } from '$lib/decks/deck-import'
+  import { decodeQrImageDataUrl, QR_PAYLOAD_VERSION } from '$lib/decks/deck-qr'
   import { setPendingDeckImport } from '$lib/stores/deck-import.svelte'
   import { pinnedDeckIds, togglePinDeck } from '$lib/stores/pinned-decks'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -44,14 +48,18 @@
     LoaderCircle,
     CopyPlus,
     Pin,
+    QrCode,
+    ScanLine,
   } from '@lucide/svelte'
   import { ask, message, open } from '@tauri-apps/plugin-dialog'
   import { readText } from '@tauri-apps/plugin-clipboard-manager'
-  import { readTextFile } from '$lib/services/db-file-service'
+  import { readTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
+  import { isMobile } from '$lib/utils/os'
   import { onMount } from 'svelte'
 
   let allDecks = $state<DeckListResult[]>([])
   let matchStatsMap = $state<Map<string, import('$lib/db/types').MatchSummary>>(new Map())
+  let mobilePlatform = $state(false)
 
   let searchQuery = $state('')
   let selectedFormat = $state('全部')
@@ -62,12 +70,19 @@
   let activeSuggestionIndex = $state(-1)
 
   let showImportModal = $state(false)
-  let importTab = $state<'code' | 'json' | 'text'>('code')
+  let importTab = $state<'code' | 'json' | 'text' | 'qr'>('code')
   let importCode = $state('')
   let importCodeError = $state('')
   let importCodeValid = $state(false)
   let importingCode = $state(false)
   let importedResult = $state<DecodedDeckResult | null>(null)
+
+  let importQr = $state('')
+  let importQrError = $state('')
+  let importQrValid = $state(false)
+  let importingQr = $state(false)
+  let importedQrResult = $state<DecodedDeckResult | null>(null)
+  let qrScannedText = $state('')
 
   let sendingTtsDeckId = $state<string | null>(null)
 
@@ -213,6 +228,11 @@
     importTextError = ''
     importTextValid = false
     importedTextResult = null
+    importQr = ''
+    importQrError = ''
+    importQrValid = false
+    importedQrResult = null
+    qrScannedText = ''
     jsonFileName = ''
     jsonDeckList = []
     selectedJsonDeckIds = []
@@ -234,15 +254,15 @@
   }
 
   function validateImportCode() {
-    const decoded = parseDeckCodeText(importCode)
-    importCodeError = decoded ? '' : '无法解析该卡组代码，请检查是否复制完整。'
-    importCodeValid = !!decoded
+    const { deck, error } = tryParseDeckCodeText(importCode)
+    importCodeError = error ?? ''
+    importCodeValid = !!deck
   }
 
   async function confirmCodeImport() {
-    const decoded = parseDeckCodeText(importCode)
+    const { deck: decoded, error } = tryParseDeckCodeText(importCode)
     if (!decoded) {
-      importCodeError = '无法解析该卡组代码，请检查是否复制完整。'
+      importCodeError = error ?? '无法解析该卡组代码，请检查是否复制完整。'
       importCodeValid = false
       return
     }
@@ -274,9 +294,8 @@
 
   function validateImportText() {
     const parsed = parseGlobalOfficialText(importText)
-    console.log(parsed);
-    const hasAny =
-      Object.values(parsed.zones).flat().length > 0 && parsed.errors.length === 0
+    console.log(parsed)
+    const hasAny = Object.values(parsed.zones).flat().length > 0 && parsed.errors.length === 0
     importTextError = parsed.errors[0] ?? ''
     importTextValid = hasAny
   }
@@ -310,6 +329,92 @@
       goto('/decks/builder?import=1')
     } finally {
       importingText = false
+    }
+  }
+
+  function validateImportQr() {
+    const parsed = parseQrPayload(importQr)
+    importQrError = parsed.errors[0] ?? ''
+    importQrValid = parsed.errors.length === 0
+  }
+
+  async function scanImportQr() {
+    importingQr = true
+    importQrError = ''
+    try {
+      const { scan, Format } = await import('@tauri-apps/plugin-barcode-scanner')
+      const scanned = await scan({ formats: [Format.QRCode] })
+      const content = scanned?.content
+      if (!content) {
+        importQrError = '未识别到二维码内容'
+        importQrValid = false
+        return
+      }
+      applyQrContent(content)
+    } catch (error) {
+      console.error('[ImportQr] 扫码失败:', error)
+      importQrError = '扫码失败，请尝试上传二维码图片。'
+      importQrValid = false
+    } finally {
+      importingQr = false
+    }
+  }
+
+  async function uploadImportQr() {
+    importingQr = true
+    importQrError = ''
+    try {
+      const src = await open({
+        title: '选择二维码图片',
+        multiple: false,
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+      })
+      if (!src || Array.isArray(src)) return
+      const dataUrl = await readImageFileAsDataUrl(src)
+      const content = await decodeQrImageDataUrl(dataUrl)
+      applyQrContent(content)
+    } catch (error) {
+      console.error('[ImportQr] 解析二维码图片失败:', error)
+      importQrError = error instanceof Error ? error.message : '解析二维码图片失败'
+      importQrValid = false
+    } finally {
+      importingQr = false
+    }
+  }
+
+  function applyQrContent(content: string) {
+    importQr = content
+    validateImportQr()
+  }
+
+  async function confirmQrImport() {
+    const parsed = parseQrPayload(importQr)
+    if (parsed.errors.length > 0) {
+      importQrError = parsed.errors[0]
+      importQrValid = false
+      return
+    }
+    importingQr = true
+    try {
+      const result = await resolveQrPayload(parsed)
+      const totalResolved =
+        result.deck.mainDeckCards.length +
+        result.deck.runeCards.length +
+        result.deck.battlefieldCards.length +
+        result.deck.sideboardCards.length +
+        result.deck.legendCards.length +
+        result.deck.championCards.length
+      if (totalResolved === 0) {
+        importQrError = `本地缺少全部卡牌：${result.missingCodes.slice(0, 5).join(', ')}`
+        importQrValid = false
+        return
+      }
+      importedQrResult = result
+      setPendingDeckImport(result)
+      showImportModal = false
+      goto('/decks/builder?import=1')
+    } finally {
+      importingQr = false
     }
   }
 
@@ -472,8 +577,9 @@
     matchStatsMap = await getMatchStatsForDecks(decks.map((d) => d.id))
   }
 
-  onMount(() => {
+  onMount(async () => {
     init()
+    mobilePlatform = await isMobile()
   })
 
   $effect(() => {
@@ -630,6 +736,7 @@
           <button
             class="pin-btn"
             class:active={$pinnedDeckIds.includes(deck.id)}
+            class:mobile-pin={mobilePlatform}
             title={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
             aria-label={$pinnedDeckIds.includes(deck.id) ? '取消置顶' : '置顶到首页'}
             onclick={(e) => {
@@ -729,7 +836,7 @@
 
             {#if $ttsState.sendPort}
               <button
-              style="margin-left: auto;"
+                style="margin-left: auto;"
                 class="button button-ghost"
                 class:tts-sending={sendingTtsDeckId === deck.id}
                 onclick={(e) => {
@@ -768,7 +875,9 @@
       onclick={() => (importTab = 'code')}
     >
       <span class="import-method-label">卡组代码</span>
-      <span class="import-method-desc">粘贴 Piltover / Riftbound 卡组代码，支持含备牌与选定英雄</span>
+      <span class="import-method-desc"
+        >粘贴 Piltover / Riftbound 卡组代码，支持含备牌与选定英雄</span
+      >
     </button>
     <button
       type="button"
@@ -786,7 +895,19 @@
       onclick={() => (importTab = 'text')}
     >
       <span class="import-method-label">国际官方文本</span>
-      <span class="import-method-desc">粘贴官方英文文本格式卡组清单（Legend/Champion/Main Deck/Battlefields/Rune Pool/Sideboard）</span>
+      <span class="import-method-desc"
+        >粘贴官方英文文本格式卡组清单（Legend/Champion/Main Deck/Battlefield/Rune Pool/Sideboard）</span
+      >
+    </button>
+    <button
+      type="button"
+      class="import-method-option"
+      class:selected={importTab === 'qr'}
+      onclick={() => (importTab = 'qr')}
+    >
+      <QrCode size={18} />
+      <span class="import-method-label">二维码</span>
+      <span class="import-method-desc">扫码或上传二维码图片，识别 Rune Archive RA1 格式卡组</span>
     </button>
   </div>
 
@@ -895,17 +1016,16 @@
         </div>
       {/if}
     </div>
-  {:else}
+  {:else if importTab === 'text'}
     <div class="import-text-block">
       <div class="import-textarea-row">
         <textarea
           class="import-code-input"
-          placeholder={'粘贴国际官方文本格式的卡组清单，例如：\nLegend: 1 Master Yi, Wuju Bladesman\nChampion: 1 Master Yi, Tempered\nMain Deck: 3 Charm 3 Defy 3 Discipline...\nBattlefields: 1 The Arena\'s Greatest...\nRune Pool: 7 Body Rune 5 Calm Rune\nSideboard: 3 Disarming Rake 2 Alpha Strike...'}
+          placeholder={"粘贴国际官方文本格式的卡组清单，例如：\nLegend: 1 Master Yi, Wuju Bladesman\nChampion: 1 Master Yi, Tempered\nMain Deck: 3 Charm 3 Defy 3 Discipline...\nBattlefields: 1 The Arena's Greatest...\nRune Pool: 7 Body Rune 5 Calm Rune\nSideboard: 3 Disarming Rake 2 Alpha Strike..."}
           rows={9}
           bind:value={importText}
           oninput={validateImportText}
-          disabled={importingText}
-        ></textarea>
+          disabled={importingText}></textarea>
       </div>
 
       {#if importText && importTextValid && !importTextError}
@@ -935,7 +1055,80 @@
             <p class="import-warn">
               本地匹配不到 {importedTextResult.missingCount} 张（{importedTextResult.missingCodes
                 .slice(0, 5)
-                .join(', ')}{importedTextResult.missingCount > 5 ? '...' : ''}），导入后请到编辑器手动补充。
+                .join(', ')}{importedTextResult.missingCount > 5
+                ? '...'
+                : ''}），导入后请到编辑器手动补充。
+            </p>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else if importTab === 'qr'}
+    <div class="import-qr-block">
+      <div class="import-qr-actions">
+        {#if isTauri && mobilePlatform}
+          <button
+            type="button"
+            class="button button-primary import-qr-btn"
+            onclick={scanImportQr}
+            disabled={importingQr}
+          >
+            <ScanLine size={18} />
+            扫码
+          </button>
+        {/if}
+        <button
+          type="button"
+          class="button button-ghost"
+          onclick={uploadImportQr}
+          disabled={importingQr}
+        >
+          上传二维码图片
+        </button>
+      </div>
+      {#if importingQr}
+        <div class="import-hint">
+          <span>正在识别二维码...</span>
+        </div>
+      {/if}
+      <textarea
+        class="import-code-input"
+        placeholder={'或直接粘贴二维码内容（RA1 格式）：\nm13:SC01-001:2:SC01-002:1\ns2:OGN-101:2'}
+        rows={5}
+        bind:value={importQr}
+        oninput={validateImportQr}
+        disabled={importingQr}></textarea>
+
+      {#if importQr && importQrValid && !importQrError}
+        <div class="import-hint import-hint-ok">
+          <CircleCheck size={16} />
+          <span>{QR_PAYLOAD_VERSION} 格式有效</span>
+        </div>
+      {:else if importQrError}
+        <div class="import-hint import-hint-error">
+          <CircleAlert size={16} />
+          <span>{importQrError}</span>
+        </div>
+      {/if}
+
+      {#if importedQrResult}
+        <div class="import-preview">
+          <p>解析成功：</p>
+          <ul>
+            <li>传奇 {importedQrResult.deck.legendCards.length} 张</li>
+            <li>选定英雄 {importedQrResult.deck.championCards.length} 张</li>
+            <li>主牌堆 {importedQrResult.deck.mainDeckCards.length} 张</li>
+            <li>战场 {importedQrResult.deck.battlefieldCards.length} 张</li>
+            <li>符文 {importedQrResult.deck.runeCards.length} 张</li>
+            <li>备牌 {importedQrResult.deck.sideboardCards.length} 张</li>
+          </ul>
+          {#if importedQrResult.missingCount > 0}
+            <p class="import-warn">
+              本地缺少 {importedQrResult.missingCount} 张卡牌（{importedQrResult.missingCodes
+                .slice(0, 5)
+                .join(', ')}{importedQrResult.missingCount > 5
+                ? '...'
+                : ''}），导入后请到编辑器手动补充。
             </p>
           {/if}
         </div>
@@ -960,6 +1153,14 @@
         onclick={confirmTextImport}
       >
         {importingText ? '解析中...' : '导入到编辑器'}
+      </button>
+    {:else if importTab === 'qr'}
+      <button
+        class="button button-primary"
+        disabled={!importQrValid || importingQr}
+        onclick={confirmQrImport}
+      >
+        {importingQr ? '解析中...' : '导入到编辑器'}
       </button>
     {:else if jsonDeckList.length > 0}
       <button
@@ -1133,7 +1334,7 @@
   }
 
   .deck-card:hover {
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     transform: translateY(-2px);
   }
@@ -1169,6 +1370,10 @@
 
   .deck-card:hover .pin-btn,
   .pin-btn.active {
+    opacity: 1;
+  }
+
+  .pin-btn.mobile-pin {
     opacity: 1;
   }
 
@@ -1296,13 +1501,13 @@
   }
 
   .action-btn:hover {
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
   }
 
   .action-btn-danger:hover {
-    background: #fee;
+    background: color-mix(in srgb, #e03e3e 10%, transparent);
     color: #e03e3e;
-    border-color: #fcc;
+    border-color: color-mix(in srgb, #e03e3e 30%, transparent);
   }
 
   .action-btn:disabled {
@@ -1490,7 +1695,7 @@
   }
 
   .clear-tags-btn:hover {
-    border-color: #d3d1cb;
+    border-color: var(--border-color);
     color: var(--text-primary);
   }
 
@@ -1548,7 +1753,7 @@
 
   .import-method-option.selected {
     border-color: var(--accent-color);
-    background: color-mix(in oklab, var(--accent-color) 8%, white);
+    background: color-mix(in oklab, var(--accent-color) 8%, var(--surface));
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-color) 20%, transparent);
   }
 

@@ -14,7 +14,9 @@
 
   const orderedActions = $derived(
     [...topbarState.actions].sort(
-      (a, b) => (a.priority === undefined ? -Infinity : -a.priority) - (b.priority === undefined ? -Infinity : -b.priority)
+      (a, b) =>
+        (a.priority === undefined ? -Infinity : -a.priority) -
+        (b.priority === undefined ? -Infinity : -b.priority)
     )
   )
 
@@ -38,8 +40,8 @@
     }
 
     const containerWidth = container.clientWidth
-    const widths = Array.from(measurer.children as HTMLCollectionOf<HTMLElement>).map((el) =>
-      el.getBoundingClientRect().width
+    const widths = Array.from(measurer.children as HTMLCollectionOf<HTMLElement>).map(
+      (el) => el.getBoundingClientRect().width
     )
     const gap = 8
     const sum = (arr: number[]) => arr.reduce((s, w) => s + w, 0)
@@ -68,7 +70,11 @@
 
     let regVisible = 0
     for (let r = 0; r <= regCount; r++) {
-      const used = sum(regWidths.slice(0, r)) + ellipsisWidth + sum(prioWidths.slice(-prioKept)) + gap * (r + prioKept)
+      const used =
+        sum(regWidths.slice(0, r)) +
+        ellipsisWidth +
+        sum(prioWidths.slice(-prioKept)) +
+        gap * (r + prioKept)
       if (used <= containerWidth) regVisible = r
     }
 
@@ -76,7 +82,9 @@
     const priority = actions.slice(actions.length - prioKept)
     visibleRegActions = regular
     visiblePrioActions = priority
-    overflowActions = actions.slice(regVisible, regCount).concat(actions.slice(regCount, actions.length - prioKept))
+    overflowActions = actions
+      .slice(regVisible, regCount)
+      .concat(actions.slice(regCount, actions.length - prioKept))
   }
 
   $effect(() => {

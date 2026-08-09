@@ -373,7 +373,7 @@
     top: 16px;
     right: 16px;
     z-index: 10;
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--bg-primary);
     border: none;
     width: 32px;
     height: 32px;

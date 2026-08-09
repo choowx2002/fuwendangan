@@ -79,7 +79,10 @@ export interface BestPrint {
  * 不依赖雪花 id，同步重建 id 后缓存不失效；缺字段时回退 print id / 'default'。
  */
 export function printCacheName(
-  p: { card_no_extend?: string | null; language?: string | null; id?: string | null } | null | undefined
+  p:
+    | { card_no_extend?: string | null; language?: string | null; id?: string | null }
+    | null
+    | undefined
 ): string {
   if (p?.card_no_extend && p?.language) {
     return `${p.card_no_extend}-${p.language.toUpperCase()}`
