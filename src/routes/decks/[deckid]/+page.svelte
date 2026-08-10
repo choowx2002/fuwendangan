@@ -1261,7 +1261,7 @@
                   <ul class="game-list">
                     {#each match.games as game (game.id)}
                       <li class="game-item">
-                        <span class="game-number-badge">{$t('match.gameNumber', { values: { n: game.game_number } })}</span>
+                        <span class="game-number-badge">{$t('match.gameNumber', { values: { number: game.game_number } })}</span>
                         {#if game.is_first !== null}
                           <span
                             class="game-turn-badge"

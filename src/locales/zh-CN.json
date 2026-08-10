@@ -8,6 +8,7 @@
     "rules": "游戏文档",
     "tools": "对战工具",
     "settings": "设置",
+    "scanner": "扫码",
     "sectionTools": "工具与设置"
   },
   "rules": {
@@ -1043,6 +1044,15 @@
   },
   "appShell": {
     "offline": "离线模式 · 使用本地数据"
+  },
+  "scanner": {
+    "exit": "退出",
+    "startScan": "开始扫码",
+    "recognizing": "识别中…",
+    "hint": "将二维码对准摄像头",
+    "noCamera": "无法访问摄像头，请检查权限后重试",
+    "permissionDenied": "相机权限被拒绝，请到系统设置开启",
+    "openSettings": "打开设置"
   },
   "tools": {
     "title": "对战工具",

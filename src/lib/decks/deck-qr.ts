@@ -92,3 +92,78 @@ export async function decodeQrImageDataUrl(dataUrl: string): Promise<string> {
   if (!result?.data) throw new Error(get(t)('decks.qrNoQrFound'))
   return result.data
 }
+
+/**
+ * 实时摄像头扫码（桌面/Web）。
+ * 打开相机并逐帧用 jsQR 解码，识别成功后回调 content。
+ * 返回 stop 函数：停止取帧并释放摄像头。
+ */
+export async function startCameraQrScan(
+  video: HTMLVideoElement,
+  onDecoded: (content: string) => void
+): Promise<() => void> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error(get(t)('scanner.noCamera'))
+  }
+
+  let stream: MediaStream | null = null
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    })
+  } catch {
+    throw new Error(get(t)('scanner.permissionDenied'))
+  }
+
+  video.srcObject = stream
+  await video.play().catch(() => {
+    stream?.getTracks().forEach((track) => track.stop())
+    throw new Error(get(t)('scanner.noCamera'))
+  })
+
+  const jsQR = (await import('jsqr')).default
+  const canvas = document.createElement('canvas')
+  const canvasCtx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!canvasCtx) {
+    stream.getTracks().forEach((track) => track.stop())
+    throw new Error(get(t)('decks.qrCanvasFailed'))
+  }
+  const ctx: CanvasRenderingContext2D = canvasCtx
+
+  let rafId = 0
+  let lastDecode = 0
+  let stopped = false
+  const decodedSet = new Set<string>()
+
+  function tick(now: number) {
+    if (stopped) return
+    if (now - lastDecode >= 120) {
+      lastDecode = now
+      const { videoWidth, videoHeight } = video
+      if (videoWidth > 0 && videoHeight > 0) {
+        canvas.width = videoWidth
+        canvas.height = videoHeight
+        ctx.drawImage(video, 0, 0, videoWidth, videoHeight)
+        const { data, width, height } = ctx.getImageData(0, 0, videoWidth, videoHeight)
+        const result = jsQR(data, width, height, { inversionAttempts: 'dontInvert' })
+        if (result?.data && !decodedSet.has(result.data)) {
+          decodedSet.add(result.data)
+          onDecoded(result.data)
+        }
+      }
+    }
+    rafId = requestAnimationFrame(tick)
+  }
+  rafId = requestAnimationFrame(tick)
+
+  return () => {
+    stopped = true
+    cancelAnimationFrame(rafId)
+    stream?.getTracks().forEach((track) => track.stop())
+  }
+}

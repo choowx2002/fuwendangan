@@ -1,13 +1,14 @@
 {
   "nav": {
     "home": "Home",
-    "cards": "Card Library",
-    "decks": "My Decks",
-    "collection": "Collection & Foils",
+    "cards": "Library",
+    "decks": "Decks",
+    "collection": "Collection",
     "simulator": "Simulator",
-    "rules": "Game Docs",
+    "rules": "Docs",
     "tools": "Match Tools",
     "settings": "Settings",
+    "scanner": "Scan",
     "sectionTools": "Tools & Settings"
   },
   "rules": {
@@ -1043,6 +1044,15 @@
   },
   "appShell": {
     "offline": "Offline mode · using local data"
+  },
+  "scanner": {
+    "exit": "Exit",
+    "startScan": "Start Scan",
+    "recognizing": "Recognizing...",
+    "hint": "Point the camera at the QR code",
+    "noCamera": "Camera unavailable, please check permissions and try again",
+    "permissionDenied": "Camera permission denied, please enable it in system settings",
+    "openSettings": "Open Settings"
   },
   "tools": {
     "title": "Battle Tools",

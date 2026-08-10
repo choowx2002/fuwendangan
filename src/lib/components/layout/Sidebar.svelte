@@ -13,6 +13,7 @@
     Gamepad2,
     Pin,
     PinOff,
+    ScanLine,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
@@ -146,6 +147,13 @@
   </nav>
 
   <div class="sidebar-footer">
+    <button class="button button-text" onclick={() => navigateTo('/scanner')}>
+      <ScanLine size={18} strokeWidth={1.75} />
+      <!-- <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
+        >{$t('nav.scanner')}</span
+      > -->
+    </button>
+
     {#if isTauri && !isMobile2}
       <button
         class="button button-text"
@@ -158,9 +166,6 @@
         {:else}
           <Pin size={18} strokeWidth={1.75} />
         {/if}
-        <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
-          >{$t('common.pinWindow')}</span
-        >
       </button>
     {/if}
 
@@ -353,6 +358,12 @@
     margin-top: auto;
     padding: 12px;
     border-top: 1px solid var(--border-color);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .sidebar-footer > .button {
+      padding: 0;
   }
 
   @media (min-width: 767.99px) {
