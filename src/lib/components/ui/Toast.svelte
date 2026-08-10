@@ -46,7 +46,14 @@
   }
 
   .toast.above-download {
-    bottom: 84px;
+    bottom: 112px;
+  }
+
+  /* 下载条在移动端上移到底部导航之上，toast 同步跟随 */
+  @media (max-width: 767.99px) {
+    .toast.above-download {
+      bottom: calc(56px + env(safe-area-inset-bottom) + 112px);
+    }
   }
 
   .toast-icon {

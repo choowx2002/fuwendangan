@@ -1,20 +1,8 @@
 <script lang="ts">
   import { downloadState, dismissDownload } from '$lib/stores/ui-store.svelte'
   import { cancelCardImageDownload } from '$lib/services/card-image-download-service'
-  import { formatBytes } from '$lib/db'
   import { t } from 'svelte-i18n'
-  import {
-    Download,
-    X,
-    Gauge,
-    Timer,
-    HardDrive,
-    Image,
-    CircleCheck,
-    CircleAlert,
-    Ban,
-    ChevronDown,
-  } from '@lucide/svelte'
+  import { Download, X, CircleCheck, CircleAlert, Ban } from '@lucide/svelte'
 
   let cancelling = $state(false)
 
@@ -49,19 +37,6 @@
       : 0
   )
 
-  const speedText = $derived(
-    downloadState.speedBps > 0 ? `${formatBytes(downloadState.speedBps, 1)}/s` : $t('common.calculating')
-  )
-
-  const downloadedText = $derived(formatBytes(downloadState.bytesDownloaded, 1))
-
-  function formatEta(seconds: number): string {
-    if (!seconds || seconds <= 0 || !isFinite(seconds)) return $t('common.calculating')
-    if (seconds < 60) return $t('download.etaSeconds', { values: { count: Math.ceil(seconds) } })
-    if (seconds < 3600) return $t('download.etaMinutes', { values: { count: Math.ceil(seconds / 60) } })
-    return $t('download.etaHours', { values: { count: (seconds / 3600).toFixed(1) } })
-  }
-
   const isFinish = $derived(downloadState.status !== 'downloading')
 
   const finishTitle = $derived.by(() => {
@@ -93,7 +68,7 @@
 </script>
 
 {#if downloadState.active}
-  <div class="download-bar" class:collapsed={!downloadState.expanded} class:finish={isFinish}>
+  <div class="download-bar" class:finish={isFinish}>
     {#if isFinish}
       <div
         class="finish-card"
@@ -119,67 +94,25 @@
           <X size={16} />
         </button>
       </div>
-    {:else if downloadState.expanded}
+    {:else}
       <div class="progress-card">
         <div class="bar-header">
           <span class="bar-icon"><Download size={16} /></span>
           <span class="bar-title">{$t('download.title')}</span>
           <span class="bar-percent">{Math.round(percent)}%</span>
-          <button
-            class="bar-collapse"
-            aria-label={$t('download.collapse')}
-            onclick={() => (downloadState.expanded = false)}
-          >
-            <ChevronDown size={16} />
-          </button>
         </div>
 
         <div class="progress-track">
           <div class="progress-fill" style={`width: ${percent}%`}></div>
         </div>
 
-        <div class="stats-grid">
-          <div class="stat">
-            <span class="stat-icon"><Gauge size={14} /></span>
-            <span>{speedText}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-icon"><Timer size={14} /></span>
-            <span>{formatEta(downloadState.etaSeconds)}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-icon"><HardDrive size={14} /></span>
-            <span>{downloadedText}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-icon"><Image size={14} /></span>
-            <span>
-              {downloadState.completed} / {downloadState.total}{#if downloadState.failed > 0}
-                · {$t('download.failedCount', { values: { count: downloadState.failed } })}
-              {/if}
-            </span>
-          </div>
-        </div>
-
         <div class="bar-footer">
-          <span class="bar-sub">{$t('download.hint')}</span>
           <button class="cancel-btn" disabled={cancelling} onclick={handleCancel}>
             <X size={14} />
             {cancelling ? $t('download.cancelling') : $t('download.cancel')}
           </button>
         </div>
       </div>
-    {:else}
-      <button
-        class="pill"
-        aria-label={$t('download.expand')}
-        onclick={() => (downloadState.expanded = true)}
-      >
-        <span class="pill-icon"><Download size={16} /></span>
-        <span class="pill-percent">{Math.round(percent)}%</span>
-        <span class="pill-count">{downloadState.completed} / {downloadState.total}</span>
-        <span class="pill-speed">{speedText}</span>
-      </button>
     {/if}
   </div>
 {/if}
@@ -194,6 +127,13 @@
     animation: slideUp 0.25s ease;
   }
 
+  /* 移动端上移到底部导航之上（BottomNav 高 56px + safe-area） */
+  @media (max-width: 767.99px) {
+    .download-bar {
+      bottom: calc(56px + env(safe-area-inset-bottom) + 12px);
+    }
+  }
+
   @keyframes slideUp {
     from {
       opacity: 0;
@@ -206,8 +146,8 @@
   }
 
   .progress-card {
-    width: min(380px, calc(100vw - 32px));
-    padding: 14px 16px;
+    width: min(320px, calc(100vw - 32px));
+    padding: 12px 14px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -238,26 +178,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .bar-collapse {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    color: var(--text-tertiary);
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .bar-collapse:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-  }
-
   .progress-track {
     height: 8px;
-    margin: 12px 0 14px;
+    margin: 10px 0 12px;
     overflow: hidden;
     border-radius: 999px;
     background: var(--bg-hover);
@@ -270,46 +193,10 @@
     transition: width 0.25s ease;
   }
 
-  .stats-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 16px;
-    margin-bottom: 12px;
-  }
-
-  .stat {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-icon {
-    flex: 0 0 auto;
-    color: var(--text-tertiary);
-  }
-
-  .stat span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .bar-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 10px;
-  }
-
-  .bar-sub {
-    color: var(--text-tertiary);
-    font-size: 11px;
+    justify-content: flex-end;
   }
 
   .cancel-btn {
@@ -333,45 +220,6 @@
   .cancel-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-  }
-
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    background: var(--bg-secondary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-  }
-
-  .pill-icon {
-    display: inline-flex;
-    align-items: center;
-    color: var(--accent-color);
-  }
-
-  .pill-percent {
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .pill-count {
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .pill-speed {
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--bg-hover);
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
   }
 
   .finish-card {
