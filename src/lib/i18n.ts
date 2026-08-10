@@ -26,5 +26,5 @@ export function systemLocale(): SupportedLocale {
 
 init({
   fallbackLocale: DEFAULT_LOCALE,
-  initialLocale: systemLocale(),
+  initialLocale: DEFAULT_LOCALE,
 })

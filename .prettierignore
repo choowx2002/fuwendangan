@@ -5,3 +5,4 @@ dist
 .tauri
 target
 pnpm-lock.yaml
+.env.example

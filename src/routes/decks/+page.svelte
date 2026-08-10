@@ -955,7 +955,7 @@
       class:selected={importTab === 'qr'}
       onclick={() => (importTab = 'qr')}
     >
-      <QrCode size={18} />
+      <!-- <QrCode size={18} /> -->
       <span class="import-method-label">{$t('decks.importQrLabel')}</span>
       <span class="import-method-desc">{$t('decks.importQrDesc')}</span>
     </button>
@@ -1880,7 +1880,7 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-sm);
-    padding: 8px 10px;
+    padding: 3px 10px;
     border-radius: var(--radius-sm);
   }
 
@@ -2009,5 +2009,16 @@
   .import-json-row-meta {
     font-size: var(--text-sm);
     color: var(--text-tertiary);
+  }
+
+  .import-qr-actions{
+      display: flex;
+      gap: 5px;
+  }
+
+  .import-qr-block {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
   }
 </style>
