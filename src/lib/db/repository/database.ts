@@ -7,18 +7,57 @@ import Database from '@tauri-apps/plugin-sql'
 import { DB_NAME, TABLES } from '../config/constants'
 import { TABLE_DEFINITIONS } from '../config/schema'
 
-let dbInstance: Database | null = null
+let dbPromise: Promise<Database> | null = null
+
+/**
+ * 数据库操作串行队列：
+ * tauri-plugin-sql 底层是 sqlx 连接池（默认最多 10 个连接，插件未暴露池配置），
+ * 跨多次 db.execute 的事务（BEGIN/COMMIT）若落在不同连接上，会因写锁互斥报「database is locked」。
+ * 通过全局 promise 队列保证任何时刻只有一个 db 操作在跑 → 池子实际只开 1 个连接，
+ * 事务、PRAGMA defer_foreign_keys 等依赖同一连接的语义才能可靠生效。
+ */
+let dbQueue: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(fn: () => Promise<T>): Promise<T> {
+  const run = dbQueue.then(fn)
+  dbQueue = run.catch(() => {})
+  return run
+}
+
+function serializeDatabase(db: Database): void {
+  const rawSelect = db.select.bind(db)
+  const rawExecute = db.execute.bind(db)
+  const rawClose = db.close.bind(db)
+  ;(db as any).select = ((query: string, bindValues?: unknown[]) =>
+    serialized(() => rawSelect(query, bindValues))) as typeof db.select
+  ;(db as any).execute = ((query: string, bindValues?: unknown[]) =>
+    serialized(() => rawExecute(query, bindValues))) as typeof db.execute
+  ;(db as any).close = ((name?: string) => serialized(() => rawClose(name))) as typeof db.close
+}
 
 /**
  * 获取或创建数据库实例
+ * 使用共享 Promise 缓存：并发调用方（布局层 init 与页面组件挂载时的查询）
+ * 共享同一次 load + initializeTables，避免在刷新/首屏时重复打开连接池、
+ * 对同一 SQLite 文件并发执行写语句导致「database is locked」。
  * @returns 数据库实例
  */
 export async function getDatabase(): Promise<Database> {
-  if (!dbInstance) {
-    dbInstance = await Database.load(DB_NAME)
-    await initializeTables(dbInstance)
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const db = await Database.load(DB_NAME)
+      // 瞬时锁冲突改为短重试（默认 busy_timeout=0 会直接报错）
+      await db.execute('PRAGMA busy_timeout = 5000')
+      await initializeTables(db)
+      serializeDatabase(db)
+      return db
+    })().catch((err) => {
+      // 初始化失败不污染后续调用：清空缓存，下次 getDatabase() 自动重试
+      dbPromise = null
+      throw err
+    })
   }
-  return dbInstance
+  return dbPromise
 }
 
 /**
@@ -55,6 +94,61 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.idx_collection_stats_snapshots_created)
 
   await ensureColumn(db, TABLES.MATCH_RECORDS, 'player_name', 'TEXT')
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'card_no', 'TEXT')
+
+  // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
+  // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。
+  const placeholders = SYNC_TABLE_NAMES.map(() => '?').join(', ')
+  const legacyRows = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.VERSION} WHERE name IS NULL OR name NOT IN (${placeholders})`,
+    SYNC_TABLE_NAMES
+  )
+  if ((legacyRows[0]?.n ?? 0) > 0) {
+    await migrateVersionSemantics(db)
+  }
+
+  // name 唯一索引在语义迁移之后创建，避免老库遗留重复 name 导致建索引失败
+  await db.execute(TABLE_DEFINITIONS.idx_version_name)
+
+  // 老库回填 card_prints.card_no 快照：仅当存在缺卡号快照的打印时才写库
+  const nullCardNo = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.CARD_PRINTS} WHERE card_no IS NULL`
+  )
+  if ((nullCardNo[0]?.n ?? 0) > 0) {
+    await backfillPrintCardNo(db)
+  }
+}
+
+/**
+ * 回填 card_prints.card_no（cards_base.card_no 的稳定快照）：
+ * 老库升级时补齐全部存量的 card_no；新库为空表无影响。
+ * 由 initializeTables 在读保护（存在 card_no 为 NULL 的行）下调用。
+ */
+async function backfillPrintCardNo(db: Database): Promise<void> {
+  await db.execute(
+    `UPDATE ${TABLES.CARD_PRINTS}
+     SET card_no = (SELECT card_no FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)
+     WHERE card_no IS NULL`
+  )
+}
+
+/**
+ * 同步表标识：与云端 version 表的 name 列保持一致。
+ */
+const SYNC_TABLE_NAMES = ['cards', 'prints', 'icons', 'rules', 'series']
+
+/**
+ * 迁移：旧版 version 表的 name 存的是版本号名（如 "v1.0"），
+ * 新语义下 name = 同步表标识（每张同步表一行）。
+ * 删除不属于同步表标识的遗留行，避免旧行干扰按表同步；空库无影响。
+ * 由 initializeTables 在读保护（存在遗留行）下调用。
+ */
+async function migrateVersionSemantics(db: Database): Promise<void> {
+  const placeholders = SYNC_TABLE_NAMES.map(() => '?').join(', ')
+  await db.execute(
+    `DELETE FROM ${TABLES.VERSION} WHERE name IS NULL OR name NOT IN (${placeholders})`,
+    SYNC_TABLE_NAMES
+  )
 }
 
 /**
@@ -75,9 +169,10 @@ async function ensureColumn(
  * 关闭数据库连接（用于应用退出时清理）
  */
 export async function closeDatabase(): Promise<void> {
-  if (dbInstance) {
-    await dbInstance.close()
-    dbInstance = null
+  if (dbPromise) {
+    const db = await dbPromise
+    await db.close()
+    dbPromise = null
   }
 }
 
@@ -85,7 +180,7 @@ export async function closeDatabase(): Promise<void> {
  * 重置数据库实例（主要用于测试）
  */
 export function resetDatabaseInstance(): void {
-  dbInstance = null
+  dbPromise = null
 }
 
 export async function resetDatabase() {

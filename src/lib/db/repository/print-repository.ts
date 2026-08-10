@@ -18,13 +18,14 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
 
   await db.execute(
     `INSERT OR REPLACE INTO ${TABLES.CARD_PRINTS}
-     (id, card_id, card_no_extend, rarity_name, extend_rarity_name, back_image,
+     (id, card_id, card_no, card_no_extend, rarity_name, extend_rarity_name, back_image,
       language, img_cdn, tts_cdn, artist, print_order, is_default, is_promo, is_custom,
       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       print.id,
       print.card_id,
+      print.card_no,
       print.card_no_extend,
       print.rarity_name,
       print.extend_rarity_name,
@@ -116,17 +117,6 @@ export async function deletePrintsByCardId(cardId: string): Promise<void> {
 export async function clearAllPrints(): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS} WHERE is_custom IS NOT 1`)
-}
-
-/*
- * 用来获取最新的updatedat的时间
- */
-export async function getLatestUpdatePrintTime(): Promise<string> {
-  const db = await getDatabase()
-  const results = await db.select<{ updated_at: string }[]>(
-    `SELECT updated_at FROM ${TABLES.CARD_PRINTS} ORDER BY updated_at DESC LIMIT 1`
-  )
-  return results[0]?.updated_at ?? ''
 }
 
 // ==================== 开包彩蛋 ====================

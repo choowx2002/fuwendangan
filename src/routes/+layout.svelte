@@ -26,16 +26,17 @@
   })
 
   async function init() {
-    let needInit = !(await getVersion())
-    if (!needInit) return
-    setLoadStatus('loading')
-
     try {
-      setTimeout(() => {
-        if (uiState.status === 'loading') setLoadStatus('syncing')
-      }, 500)
+      const needInit = !(await getVersion())
 
-      await initializeDatabase()
+      if (needInit) {
+        setLoadStatus('loading')
+        setTimeout(() => {
+          if (uiState.status === 'loading') setLoadStatus('syncing')
+        }, 500)
+
+        await initializeDatabase()
+      }
 
       setLoadStatus('success')
     } catch (error) {

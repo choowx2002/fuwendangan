@@ -25,6 +25,7 @@ export const TABLE_DEFINITIONS = {
     CREATE TABLE IF NOT EXISTS card_prints (
       id TEXT PRIMARY KEY,
       card_id TEXT,
+      card_no TEXT,
       card_no_extend TEXT NOT NULL,
       rarity_name TEXT,
       extend_rarity_name TEXT,
@@ -136,6 +137,10 @@ export const TABLE_DEFINITIONS = {
       name TEXT,
       updated_at TEXT
     )
+  `,
+
+  idx_version_name: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_version_name ON version(name)
   `,
 
   icons: `

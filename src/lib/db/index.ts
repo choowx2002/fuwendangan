@@ -99,7 +99,6 @@ export {
   getCardCount,
   deleteCard,
   clearAllCards,
-  getLatestUpdateCardTime,
 } from './repository/card-repository'
 export {
   saveCardPrint,
@@ -136,7 +135,12 @@ export {
   getFilterOptions,
   clearFilterOptions,
 } from './repository/filter-repository'
-export { getVersion, saveVersion, clearVersion } from './repository/version-repository'
+export {
+  getVersion,
+  getVersions,
+  upsertTableVersion,
+  clearVersion,
+} from './repository/version-repository'
 export { getDbStats } from './repository/stats'
 export { clearCardData } from './repository/maintenance'
 export {
@@ -210,7 +214,7 @@ export {
   type CompletionMode,
 } from './service/completion-modes'
 export {
-  fetchLatestVersion,
+  fetchAllVersions,
   fetchAllCards,
   fetchAllPrints,
   fetchAllSeries,

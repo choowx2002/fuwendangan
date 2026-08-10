@@ -176,9 +176,9 @@
       dbFilePath = await join(configDir, dbFileName)
       dbPath = dbFilePath
 
-      // 4. 最后同步时间
+      // 4. 最后同步时间（各同步表中最新的 updated_at）
       lastSyncText = dbVersion?.updated_at
-        ? `${dbVersion.name ?? _t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
+        ? `${_t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
         : _t('settings.neverSynced')
 
       // 5. 各表统计
@@ -282,7 +282,11 @@
         })
         await message(_t('settings.resetImageCacheSuccess'))
       } catch (e) {
-        setLoadStatus('error', _t('settings.resetImageCacheFailed'), e instanceof Error ? e.message : _t('common.unknownError'))
+        setLoadStatus(
+          'error',
+          _t('settings.resetImageCacheFailed'),
+          e instanceof Error ? e.message : _t('common.unknownError')
+        )
       }
     }
   }
@@ -304,12 +308,15 @@
         return
       }
 
-      const accepted = await ask(_t('settings.downloadConfirm', { values: { count: missing.length } }), {
-        title: _t('settings.cardResourceDownloadTitle'),
-        kind: 'warning',
-        okLabel: _t('common.confirm'),
-        cancelLabel: _t('common.cancel'),
-      })
+      const accepted = await ask(
+        _t('settings.downloadConfirm', { values: { count: missing.length } }),
+        {
+          title: _t('settings.cardResourceDownloadTitle'),
+          kind: 'warning',
+          okLabel: _t('common.confirm'),
+          cancelLabel: _t('common.cancel'),
+        }
+      )
 
       if (!accepted) {
         return
@@ -349,7 +356,10 @@
       })
       await message(_t('settings.backupSuccess'), { title: _t('settings.backup'), kind: 'info' })
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.backupFailed'), { title: _t('settings.backup'), kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.backupFailed'), {
+        title: _t('settings.backup'),
+        kind: 'error',
+      })
     }
   }
 
@@ -383,7 +393,10 @@
       })
       await message(_t('settings.restoreSuccess'), { title: _t('settings.restore'), kind: 'info' })
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.restoreFailed'), { title: _t('settings.restore'), kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.restoreFailed'), {
+        title: _t('settings.restore'),
+        kind: 'error',
+      })
     }
   }
 
@@ -518,10 +531,16 @@
         }
         await writeTextFile(dest, JSON.stringify(data, null, 2))
       })
-      await message(_t('settings.exportSuccess', { values: { count: data.decks.length } }), { title: _t('settings.export'), kind: 'info' })
+      await message(_t('settings.exportSuccess', { values: { count: data.decks.length } }), {
+        title: _t('settings.export'),
+        kind: 'info',
+      })
       showExportModal = false
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.exportFailed'), { title: _t('settings.export'), kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.exportFailed'), {
+        title: _t('settings.export'),
+        kind: 'error',
+      })
     } finally {
       isExporting = false
     }
@@ -722,7 +741,9 @@
         })
       )
       const missingText =
-        missingCards > 0 ? _t('settings.importSkippedMissing', { values: { count: missingCards } }) : ''
+        missingCards > 0
+          ? _t('settings.importSkippedMissing', { values: { count: missingCards } })
+          : ''
       await message(
         _t('settings.importSuccess', { values: { count: imported, extra: missingText } }),
         { title: _t('settings.import'), kind: 'info' }
@@ -730,7 +751,10 @@
       showImportModal = false
       await loadDbInfo()
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.importFailed'), { title: _t('settings.import'), kind: 'error' })
+      await message(e instanceof Error ? e.message : _t('settings.importFailed'), {
+        title: _t('settings.import'),
+        kind: 'error',
+      })
     } finally {
       isImporting = false
     }
@@ -754,10 +778,13 @@
     try {
       await withBusy(_t('settings.confirmAndRunBusy', { values: { action: title } }), action)
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.actionFailed', { values: { action: title } }), {
-        title,
-        kind: 'error',
-      })
+      await message(
+        e instanceof Error ? e.message : _t('settings.actionFailed', { values: { action: title } }),
+        {
+          title,
+          kind: 'error',
+        }
+      )
       return
     }
     if (successMsg) await message(successMsg, { kind: 'info' })
@@ -775,7 +802,10 @@
 
   async function manualSnapshot() {
     await captureCollectionSnapshot('manual')
-    await message(_t('settings.snapshotRecorded'), { title: _t('settings.snapshotTitle'), kind: 'info' })
+    await message(_t('settings.snapshotRecorded'), {
+      title: _t('settings.snapshotTitle'),
+      kind: 'info',
+    })
   }
 
   function clearHistoryAsk() {
@@ -798,7 +828,9 @@
     if (!confirmed) return
 
     const deleted = await withBusy(_t('settings.cleanupVersionsBusy'), () => cleanupDeckVersions())
-    await message(_t('settings.cleanupVersionsSuccess', { values: { count: deleted } }), { kind: 'info' })
+    await message(_t('settings.cleanupVersionsSuccess', { values: { count: deleted } }), {
+      kind: 'info',
+    })
     await loadDbInfo()
   }
 
@@ -1002,14 +1034,18 @@
         <span class="setting-label">{$t('settings.manualSnapshot')}</span>
         <span class="setting-desc">{$t('settings.manualSnapshotDesc')}</span>
       </div>
-      <button class="button button-secondary" onclick={manualSnapshot}>{$t('settings.recordSnapshot')}</button>
+      <button class="button button-secondary" onclick={manualSnapshot}
+        >{$t('settings.recordSnapshot')}</button
+      >
     </div>
     <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.clearHistory')}</span>
         <span class="setting-desc">{$t('settings.clearHistoryDesc')}</span>
       </div>
-      <button class="button button-ghost" onclick={clearHistoryAsk}>{$t('settings.clear30d')}</button>
+      <button class="button button-ghost" onclick={clearHistoryAsk}
+        >{$t('settings.clear30d')}</button
+      >
     </div>
   </section>
 
@@ -1054,7 +1090,9 @@
         <span class="setting-label">{$t('settings.feedbackDoc')}</span>
         <span class="setting-desc">{$t('settings.feedbackDocDesc')}</span>
       </div>
-      <button class="button button-ghost" onclick={openHelpDoc}> {$t('settings.visitLink')} </button>
+      <button class="button button-ghost" onclick={openHelpDoc}>
+        {$t('settings.visitLink')}
+      </button>
     </div>
   </section>
 
@@ -1095,7 +1133,9 @@
       {#each statRows as row}
         <div class="stat-row">
           <span class="stat-label">{row.label}</span>
-          <span class="stat-value">{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span>
+          <span class="stat-value"
+            >{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span
+          >
         </div>
       {/each}
     </div>
@@ -1156,7 +1196,9 @@
           <span class="manage-title">{$t('settings.cleanupVersions')}</span>
           <span class="manage-desc">{$t('settings.cleanupVersionsDesc')}</span>
         </div>
-        <button class="button button-ghost" onclick={cleanupVersionsAsk}>{$t('common.cleanup')}</button>
+        <button class="button button-ghost" onclick={cleanupVersionsAsk}
+          >{$t('common.cleanup')}</button
+        >
       </div>
 
       <div class="manage-row">
@@ -1164,7 +1206,9 @@
           <span class="manage-title">{$t('settings.clearCardData')}</span>
           <span class="manage-desc">{$t('settings.clearCardDataDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearCardDataAsk}>{$t('common.clear')}</button>
+        <button class="button button-danger-outline" onclick={clearCardDataAsk}
+          >{$t('common.clear')}</button
+        >
       </div>
 
       <div class="manage-row">
@@ -1172,7 +1216,9 @@
           <span class="manage-title">{$t('settings.clearRules')}</span>
           <span class="manage-desc">{$t('settings.clearRulesDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearRulesAsk}>{$t('common.clear')}</button>
+        <button class="button button-danger-outline" onclick={clearRulesAsk}
+          >{$t('common.clear')}</button
+        >
       </div>
 
       <div class="manage-row">
@@ -1180,7 +1226,9 @@
           <span class="manage-title">{$t('settings.clearIcons')}</span>
           <span class="manage-desc">{$t('settings.clearIconsDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearIconsAsk}>{$t('common.clear')}</button>
+        <button class="button button-danger-outline" onclick={clearIconsAsk}
+          >{$t('common.clear')}</button
+        >
       </div>
 
       <div class="manage-row">
@@ -1188,7 +1236,9 @@
           <span class="manage-title">{$t('settings.clearFilter')}</span>
           <span class="manage-desc">{$t('settings.clearFilterDesc')}</span>
         </div>
-        <button class="button button-danger-outline" onclick={clearFilterAsk}>{$t('common.clear')}</button>
+        <button class="button button-danger-outline" onclick={clearFilterAsk}
+          >{$t('common.clear')}</button
+        >
       </div>
 
       <div class="manage-row">
@@ -1210,7 +1260,10 @@
         <span class="setting-label">{$t('settings.cacheCoverage')}</span>
         <span class="setting-desc">
           {$t('settings.cachedImages', {
-            values: { existing: imageCoverage?.existingCount ?? '-', total: imageCoverage?.totalCount ?? '-' },
+            values: {
+              existing: imageCoverage?.existingCount ?? '-',
+              total: imageCoverage?.totalCount ?? '-',
+            },
           })}
           {#if imageCoverage && imageCoverage.totalCount > 0}
             （{Math.round((imageCoverage.existingCount / imageCoverage.totalCount) * 100)}%）
@@ -1309,7 +1362,11 @@
         bind:value={newLangCode}
         placeholder={$t('settings.langCodePlaceholder')}
       />
-      <input class="settings-input" bind:value={newLangName} placeholder={$t('settings.langNamePlaceholder')} />
+      <input
+        class="settings-input"
+        bind:value={newLangName}
+        placeholder={$t('settings.langNamePlaceholder')}
+      />
       <button class="button button-primary" onclick={addLang}>{$t('common.add')}</button>
     </div>
 
@@ -1327,7 +1384,11 @@
               <span class="manage-title">{lang.code}</span>
               <span class="manage-desc">
                 {#if editingCode === lang.code}
-                  <input class="settings-input" bind:value={editingName} placeholder={$t('settings.langNameEditPlaceholder')} />
+                  <input
+                    class="settings-input"
+                    bind:value={editingName}
+                    placeholder={$t('settings.langNameEditPlaceholder')}
+                  />
                 {:else}
                   {lang.name}
                 {/if}
@@ -1412,7 +1473,9 @@
           <span class="export-deck-info">
             <span class="export-deck-name">{deck.name}</span>
             <span class="export-deck-meta">
-              {$t('settings.versionCountInfo', { values: { count: deck.versionCount, time: deck.updatedAt } })}
+              {$t('settings.versionCountInfo', {
+                values: { count: deck.versionCount, time: deck.updatedAt },
+              })}
             </span>
           </span>
         </label>
@@ -1445,7 +1508,9 @@
   <CommonModal
     open={showImportModal}
     title={$t('settings.importModalTitle')}
-    subtitle={importFileName ? $t('settings.importModalFile', { values: { name: importFileName } }) : ''}
+    subtitle={importFileName
+      ? $t('settings.importModalFile', { values: { name: importFileName } })
+      : ''}
     closable={!isImporting}
     onclose={() => (showImportModal = false)}
   >
@@ -1494,7 +1559,9 @@
           <span class="export-deck-info">
             <span class="export-deck-name">{deck.name}</span>
             <span class="export-deck-meta">
-              {$t('settings.versionCountInfo', { values: { count: deck.versionCount, time: deck.updatedAt } })}
+              {$t('settings.versionCountInfo', {
+                values: { count: deck.versionCount, time: deck.updatedAt },
+              })}
             </span>
           </span>
         </label>

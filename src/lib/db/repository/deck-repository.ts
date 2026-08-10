@@ -1103,7 +1103,12 @@ export async function repointDeckCardReferences(): Promise<number> {
     let targetId = row.card_id
     if (!currentIds.has(row.card_id)) {
       const byCode = row.print_code ? codeToId.get(row.print_code) : undefined
-      if (!byCode) continue
+      if (!byCode) {
+        // 引用已不存在的卡图且无有效 print_code 映射（卡牌已被下架）：
+        // 删除该行，避免后续删除过期卡图时外键失败
+        await db.execute(`DELETE FROM ${TABLES.DECK_CARDS} WHERE id = ?`, [row.id])
+        continue
+      }
       targetId = byCode
       repointed++
     }

@@ -1,6 +1,13 @@
 /**
  * 数据同步服务层
- * 负责远程数据与本地数据库的同步
+ * 负责远程数据与本地数据库的同步。
+ *
+ * 同步模型：按表 timestamp 同步。
+ * - 云端 version 表每张同步表一行（name = 表标识，updated_at = 该表数据最后发布时间）。
+ * - 本地按表对比 updated_at，只重下更新的表（整表全量替换，不做逐行 diff）。
+ * - 写入阶段临时 `PRAGMA foreign_keys = OFF`（先清后插，结束时恢复），不用跨语句事务
+ *   （插件底层是 sqlx 多连接池，BEGIN/COMMIT 跨语句不可靠且会锁库）。本地 version 行最后更新，
+ *   崩溃中断则下次启动自动重试。
  */
 
 import { isTauri } from '../env'
@@ -18,8 +25,14 @@ import { uiState, showToast } from '$lib/stores/ui-store.svelte'
 import { whenOnline, isMetered } from '$lib/stores/network.svelte'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { getDatabase } from '../repository/database'
+import { TABLES } from '../config/constants'
 import { get } from 'svelte/store'
 import { t } from '$lib/i18n'
+import type { CardBase, CardPrint, IconDB, Rule, Series } from '../types'
+
+/** 同步表标识，与云端 version 表的 name 保持一致 */
+export const SYNC_TABLE_NAMES = ['cards', 'prints', 'icons', 'rules', 'series'] as const
+type SyncTableName = (typeof SYNC_TABLE_NAMES)[number]
 
 /**
  * 初始化数据库（在 Tauri 环境中执行数据同步）
@@ -40,100 +53,137 @@ export async function initializeDatabase(opts?: { skipMetered?: boolean }): Prom
   }
 
   try {
-    const remoteVersion = await remoteApi.fetchLatestVersion()
-    if (!remoteVersion) {
-      console.warn('[DB] 未获取到远端版本信息，跳过同步')
-      return
-    }
     await getDatabase()
     // 启动时兜底修复卡组引用（清空数据 / 远端换 id 后的残留）
     await repointDeckCardReferences()
-    const localVersion = await versionRepo.getVersion()
 
-    let needsSync = true
-    if (localVersion !== null) {
-      const remoteTime = new Date(remoteVersion.updated_at).getTime()
-      const localTime = localVersion ? new Date(localVersion.updated_at).getTime() : 0
-      needsSync = remoteTime > localTime
-    }
+    const remoteVersions = await remoteApi.fetchAllVersions()
+    const remoteMap = new Map(remoteVersions.map((v) => [v.name, v.updated_at]))
+    const localVersions = await versionRepo.getVersions()
+    const localMap = new Map(localVersions.map((v) => [v.name, v.updated_at]))
 
-    if (needsSync) {
-      if (opts?.skipMetered !== false && isMetered()) {
-        console.warn('[DB] 当前为流量网络，跳过自动同步')
-        showToast(get(t)('common.skipMeteredSync'), 'info')
-        return
-      }
-      const accepted = await ask(get(t)('common.syncDataPrompt'))
-      console.log(`[DB] 发现新版本 (远端：${remoteVersion.updated_at})，开始同步数据...`)
-      if (accepted) {
-        uiState.status = 'syncing'
-        await performSync(remoteVersion)
-      }
-    } else {
+    const tablesToSync = SYNC_TABLE_NAMES.filter((name) => {
+      const remoteTime = remoteMap.get(name)
+      if (!remoteTime) return false
+      const localTime = localMap.get(name)
+      return !localTime || new Date(remoteTime).getTime() > new Date(localTime).getTime()
+    })
+
+    if (tablesToSync.length === 0) {
       console.log('[DB] 本地数据已是最新，无需同步')
+      return
     }
+
+    if (opts?.skipMetered !== false && isMetered()) {
+      console.warn('[DB] 当前为流量网络，跳过自动同步')
+      showToast(get(t)('common.skipMeteredSync'), 'info')
+      return
+    }
+
+    // 首次安装（无本地 version 行）静默同步，升级才询问
+    const isFreshInstall = localVersions.length === 0
+    if (!isFreshInstall) {
+      const accepted = await ask(get(t)('common.syncDataPrompt'))
+      if (!accepted) return
+    }
+
+    console.log(`[DB] 发现更新，开始同步：${tablesToSync.join(', ')}`)
+    uiState.status = 'syncing'
+    await performSync(tablesToSync, remoteMap)
   } catch (error) {
     console.error('[DB] 数据库初始化/同步失败:', error)
+    showToast(get(t)('common.syncFailed'), 'error')
+  } finally {
+    if (uiState.status === 'syncing') uiState.status = 'success'
   }
 }
 
 /**
  * 执行数据同步
+ * @param tablesToSync 需要同步的表（均为远端 updated_at 更新的表）
+ * @param remoteMap 远端版本行映射（name → updated_at）
  */
-async function performSync(remoteVersion: any): Promise<void> {
-  console.log('[DB] 开始获取 cards')
-  const cards = await remoteApi.fetchAllCards()
-  console.log('[DB] 结束获取 cards')
+async function performSync(
+  tablesToSync: SyncTableName[],
+  remoteMap: Map<string, string>
+): Promise<void> {
+  const hasCards = tablesToSync.includes('cards')
+  const hasPrints = tablesToSync.includes('prints')
+  const hasIcons = tablesToSync.includes('icons')
+  const hasRules = tablesToSync.includes('rules')
+  const hasSeries = tablesToSync.includes('series')
 
-  console.log('[DB] 开始获取 prints')
-  const prints = await remoteApi.fetchAllPrints(true)
-  console.log('[DB] 结束获取 prints')
+  // 1. 下载阶段：全部拉取到内存后再写库，下载失败不产生任何本地写入
+  const cards = hasCards ? await remoteApi.fetchAllCards() : undefined
+  const prints = hasPrints ? await remoteApi.fetchAllPrints() : undefined
+  const icons = hasIcons ? await remoteApi.fetchAllIcons() : undefined
+  const rules = hasRules ? await remoteApi.fetchAllRules() : undefined
+  const series = hasSeries ? await remoteApi.fetchAllSeries() : undefined
 
-  console.log('[DB] 开始获取 icons')
-  const icons = await remoteApi.fetchAllIcons()
-  console.log('[DB] 结束获取 icons')
+  const db = await getDatabase()
 
-  console.log('[DB] 开始获取 rules')
-  const rules = await remoteApi.fetchAllRules()
-  console.log('[DB] 结束获取 rules')
+  // 填充云端打印的 card_no 快照（cards_base.card_no，唯一；用于 card_id 失效后重链）
+  if (prints) {
+    const cardNoById = new Map<string, string | null>()
+    if (cards) {
+      for (const c of cards) cardNoById.set(c.id, c.card_no)
+    } else {
+      const rows = await db.select<{ id: string; card_no: string | null }[]>(
+        `SELECT id, card_no FROM ${TABLES.CARDS_BASE}`
+      )
+      for (const r of rows) cardNoById.set(r.id, r.card_no)
+    }
+    for (const p of prints) p.card_no = p.card_no ?? cardNoById.get(p.card_id ?? '') ?? null
+  }
 
-  console.log('[DB] 开始获取 series')
-  const series = await remoteApi.fetchAllSeries()
-  console.log('[DB] 结束获取 series')
+  // 2. 写入阶段：临时关闭外键检查（先清后插期间外键瞬时可能不成立：
+  //    清理旧数据、同 card_no 换 id 的 REPLACE 级联、卡组引用旧打印等）。
+  //    不用 BEGIN/COMMIT 跨语句事务：插件底层是 sqlx 多连接池，跨语句事务不可靠且会锁库。
+  //    结束时 repoint 已把卡组引用重链到当前存在的打印，随后恢复外键即一致。
+  await db.execute('PRAGMA foreign_keys = OFF')
+  try {
+    // 保留顺序：先清卡片再清卡图，确保 clearAllCards 能看到全部自定义打印（is_custom=1）并保留其引用的基础卡
+    if (hasCards) await cardRepo.clearAllCards()
+    if (hasPrints) await printRepo.clearAllPrints()
+    if (hasCards) await cardRepo.saveCards(cards as CardBase[])
+    if (hasPrints) await printRepo.saveCardPrints(prints as CardPrint[])
 
-  console.log('[DB] 开始同步 cards（全量替换，保留用户自建打印及其基础卡）')
-  await cardRepo.clearAllCards()
-  await printRepo.clearAllPrints()
-  await cardRepo.saveCards(cards)
-  await printRepo.saveCardPrints(prints)
-  console.log('[DB] 结束同步 cards')
+    if (hasIcons) {
+      await iconRepo.clearIcons()
+      await iconRepo.saveIcons(icons as IconDB[])
+    }
+    if (hasRules) {
+      await ruleRepo.clearRules()
+      await ruleRepo.saveRules(rules as Rule[])
+    }
+    if (hasSeries) {
+      await seriesRepo.clearAllSeries()
+      await seriesRepo.saveSeries(series as Series[])
+    }
 
-  console.log('[DB] 开始同步 icons')
-  await iconRepo.saveIcons(icons)
-  console.log('[DB] 结束同步 icons')
+    // 3. 重链卡组引用：卡牌/卡图变化后把 deck_cards 指向当前存在的打印，无法映射的行删除
+    if (hasCards || hasPrints) {
+      await repointDeckCardReferences()
+    }
 
-  console.log('[DB] 开始同步 rules')
-  await ruleRepo.saveRules(rules)
-  console.log('[DB] 结束同步 rules')
+    // 4. 条件后处理：卡牌/卡图变化影响收藏有效性；仅 cards 变化时重建筛选
+    if (hasCards || hasPrints) {
+      await collectionRepo.cleanupOrphans()
+    }
+    if (hasCards) {
+      await updateFilterOptions()
+    }
 
-  console.log('[DB] 开始修复卡组中的卡牌引用')
-  const repointed = await repointDeckCardReferences()
-  console.log(`[DB] 修复卡组引用 ${repointed} 行`)
-
-  await updateFilterOptions()
-
-  console.log('[DB] 开始同步 series')
-  await seriesRepo.clearAllSeries()
-  await seriesRepo.saveSeries(series)
-  console.log('[DB] 结束同步 series')
-
-  console.log('[DB] 清理孤儿收藏数据')
-  await collectionRepo.cleanupOrphans()
-  console.log('[DB] 孤儿收藏清理完成')
-
-  await versionRepo.saveVersion(remoteVersion)
+    // 5. 最后按表更新本地 version 行（崩溃中断则本地 version 不动 → 下次启动自动重试）
+    for (const name of tablesToSync) {
+      const remoteTime = remoteMap.get(name)
+      if (remoteTime) await versionRepo.upsertTableVersion(name, remoteTime)
+    }
+  } finally {
+    await db.execute('PRAGMA foreign_keys = ON')
+  }
 
   console.log(
-    `[DB] 同步完成！共更新 ${cards.length} 张卡牌，${prints.length} 个卡图，${icons.length}个图标。`
+    `[DB] 同步完成！${cards ? `更新 ${cards.length} 张卡牌，` : ''}${prints ? `${prints.length} 个卡图，` : ''}${icons ? `${icons.length} 个图标，` : ''}${rules ? `${rules.length} 条规则，` : ''}${series ? `${series.length} 个系列` : ''}。`
   )
 }

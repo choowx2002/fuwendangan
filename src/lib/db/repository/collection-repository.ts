@@ -533,13 +533,14 @@ export async function createCustomPrint(input: CustomPrintInput): Promise<string
 
   await db.execute(
     `INSERT INTO ${TABLES.CARD_PRINTS}
-     (id, card_id, card_no_extend, rarity_name, extend_rarity_name, back_image,
+     (id, card_id, card_no, card_no_extend, rarity_name, extend_rarity_name, back_image,
       language, img_cdn, tts_cdn, artist, print_order, is_default, is_promo, is_custom,
       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       printId,
       input.cardId,
+      card.card_no,
       input.cardNoExtend,
       card.rarity_name ?? null,
       input.extendRarityName,

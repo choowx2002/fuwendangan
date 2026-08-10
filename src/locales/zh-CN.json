@@ -79,7 +79,8 @@
     "networkRestored": "网络已恢复",
     "networkOfflineLocal": "网络已离线，当前使用本地数据",
     "skipMeteredSync": "当前为移动数据网络，已跳过自动同步",
-    "syncDataPrompt": "你想要同步数据吗？"
+    "syncDataPrompt": "你想要同步数据吗？",
+    "syncFailed": "数据同步失败，请稍后重试"
   },
   "loading": {
     "init": "正在初始化数据库...",

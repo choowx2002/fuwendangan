@@ -68,11 +68,23 @@ pnpm tauri:build:linux   # Linux 专用构建：NO_STRIP=true tauri build
 其他脚本：`pnpm check`（`svelte-kit sync` + svelte-check）、`pnpm format` / `format:check`（prettier）。
 **无测试框架/脚本**；改动后验证方式 = `pnpm check` +（Rust 侧）`cargo check`。
 
-数据初始化：`+layout.svelte` onMount 中，本地库无版本记录时静默触发 `initializeDatabase()`（不弹询问框）；settings 页也可手动重新同步。同步失败时 UI 停留在 LoadingModal。
+数据初始化：`+layout.svelte` onMount 中，本地库无版本记录时静默触发 `initializeDatabase()`（不弹询问框）；settings 页也可手动重新同步。同步失败时显示错误 toast，`uiState.status` 不会停留在 loading。
 
 ## 数据库 schema 演进（重要）
 
 - 新装库启动时由 `src/lib/db/repository/database.ts` 的 `initializeTables()` 按 `config/schema.ts` 建全表 + 索引，无存量迁移逻辑。改表结构直接改 `config/schema.ts`（注意新库与老库走同一建表路径，`CREATE TABLE IF NOT EXISTS` 不会为已存在的库补列）。
+- `version` 表有一次性语义迁移：`migrateVersionSemantics()` 会删除 name 不属于同步表标识（cards/prints/icons/rules/series）的旧行，仅当行内容与云端不符时。
+
+## 数据同步契约（Sync DB）
+
+- **同步范围**：仅云端 `version` 表登记的 5 张同步表 —— `cards_base` / `card_prints` / `icons` / `rules` / `series`。Collection、Deck、Match Record、玩家资料等本地数据**不参与同步**。
+- **同步模型**：按表 timestamp 同步。云端 `version` 表每张同步表一行（`name` = 表标识，唯一；`updated_at` = 该表数据最后发布时间），发布数据更新时对对应行做 upsert。客户端本地 `version` 表镜像同样结构，按 `name` upsert。
+- **同步流程**：比较每张表 local/remote 的 `updated_at`，只重下更新的表（整表全量替换，不做逐行 diff）。写入阶段先 `PRAGMA foreign_keys = OFF`，按「先清后插」顺序执行（clearAllCards → clearAllPrints → saveCards → saveCardPrints → 各附属表），`repointDeckCardReferences()` 重链卡组引用、`cleanupOrphans()` / `updateFilterOptions()` 条件后处理，最后按表写本地 version 行，并在 `finally` 恢复 `PRAGMA foreign_keys = ON`；崩溃中断则本地 version 不动，下次启动自动重试。
+- **外键已开启**：`@tauri-apps/plugin-sql` 经 sqlx 默认执行 `PRAGMA foreign_keys = ON`（`maintenance.ts` 里"未开启外键"的旧注释已修正）。同步**不用**跨语句事务/BEGIN/COMMIT（插件底层是 sqlx 多连接池，跨语句事务不可靠且会锁库），改为写阶段临时关闭外键、结束时恢复；恢复前 repoint 保证卡组引用全部合法。
+- **发布纪律**：任何同步表有增/改/删，必须刷新该表对应的云端 version 行（`UPDATE version SET updated_at = now() WHERE name = 'xxx'`）；**新增卡牌必须同时刷新 `cards` 与 `prints` 两行**。漏刷会导致该表不更新。
+- **自定义打印保留**：`deleteCardsExcept()` / `deletePrintsExcept()` 都会保留 `is_custom=1` 自定义打印及其引用的基础卡；用户自建打印及其引用卡永不丢失。
+- **card_no 快照**：`card_prints.card_no` 存 `cards_base.card_no`（唯一）的稳定快照。云端打印同步时用 cards 填充，自定义打印创建时写入；老库启动时由 `backfillPrintCardNo()` 回填。
+- **条件后处理**：仅当 `cards` 或 `prints` 变化时才执行 `repointDeckCardReferences()` 与 `cleanupOrphans()`；仅当 `cards` 变化时才重建 `filter_options`。`repointDeckCardReferences()` 按同步后存活打印重链卡组引用，并删除已下架且无法按 print_code 映射的 `deck_cards` 行（保证恢复外键后有效）。
 
 ## 代码规范
 
@@ -158,8 +170,9 @@ async fn async_command() -> Result<serde_json::Value, String> {
 5. **`.env.local` 是本地文件**（已被 gitignore，clone 后不存在）：需按 README 自行创建 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`（publishable key 公开可接受），URL 变更需同步所有开发者。
 6. **`prevent-default` 插件版本为 5.x**（`Cargo.toml`），与多数 Tauri v2 插件版本号不同，属特例；若行为异常优先核对插件文档，不要盲目升/降版本。
 7. **TTS TCP 通信**：端口 39999（发送）/ 39998（接收）是外部 Tabletop Simulator 约定，别改动；连接失败是正常现象（TTS 未运行时），前端需优雅降级。
-8. **首次同步依赖网络**：本地库无版本时启动会触发全量同步；离线/弱网时可能表现为启动卡在加载态（LoadingModal）。仓库无 CI、无测试脚本，不要找跑测试的命令。
-9. **Linux 开发**：`lib.rs` 已设 `WEBKIT_DISABLE_DMABUF_RENDERER=1`（规避 WebKitGTK 渲染问题）；Linux 打包脚本为 `pnpm tauri:build:linux`（`NO_STRIP=true`，规避 strip 问题）。
+8. **首次同步依赖网络**：本地库无版本时启动会触发全量同步（5 张表全部重下）；离线/弱网时跳过同步、使用本地数据，失败时提示错误 toast 而非卡在加载态。仓库无 CI、无测试脚本，不要找跑测试的命令。
+9. **事务必须依赖 `database.ts` 的串行化**：`@tauri-apps/plugin-sql` 底层是 sqlx 连接池（默认最多 10 连接，插件未暴露池配置），跨多次 `db.execute` 的 `BEGIN`/`COMMIT`/`PRAGMA defer_foreign_keys` 可能落在不同连接而报「database is locked」或失效。`database.ts` 已对 `select`/`execute` 做全局串行（单连接）；不要绕过它自行开事务，也不要在串行队列之外并发访问 db。
+10. **Linux 开发**：`lib.rs` 已设 `WEBKIT_DISABLE_DMABUF_RENDERER=1`（规避 WebKitGTK 渲染问题）；Linux 打包脚本为 `pnpm tauri:build:linux`（`NO_STRIP=true`，规避 strip 问题）。
 
 ## 提交代码前检查清单
 

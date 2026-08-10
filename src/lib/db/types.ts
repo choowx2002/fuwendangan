@@ -33,6 +33,8 @@ export interface CardBase {
 export interface CardPrint {
   id: string
   card_id: string | null
+  // cards_base.card_no 的稳定快照（云端打印同步时填充，自定义打印创建时写入；用于 card_id 失效后重链）
+  card_no: string | null
   card_no_extend: string
   rarity_name: string | null
   extend_rarity_name: string | null
@@ -95,10 +97,11 @@ export interface VariantWithOwned {
   lastEdited: string | null
 }
 
-// 版本控制模型
+// 版本控制模型（按表同步）：name = 同步表标识（cards/prints/icons/rules/series），
+// updated_at = 该表数据最后发布时间（ISO 8601）
 export interface AppVersion {
   id: number
-  name: string | null
+  name: string
   updated_at: string // ISO 8601 时间字符串
 }
 

@@ -79,7 +79,8 @@
     "networkRestored": "Network restored",
     "networkOfflineLocal": "Network offline, using local data",
     "skipMeteredSync": "Metered network detected, auto sync skipped",
-    "syncDataPrompt": "Do you want to sync data?"
+    "syncDataPrompt": "Do you want to sync data?",
+    "syncFailed": "Data sync failed, please try again later"
   },
   "loading": {
     "init": "Initializing database...",
