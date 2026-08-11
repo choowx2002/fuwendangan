@@ -128,10 +128,21 @@
 </div>
 
 <style>
+  /* windowed 模式：插件把 WebView 设为透明、相机画面在 WebView 底层。
+     中和祖先容器的实色背景，让相机透出（本页挂载期间生效，离开后自动移除）。 */
+  :global(html),
+  :global(body),
+  :global(.layout-root),
+  :global(.app-shell),
+  :global(.main-area),
+  :global(.content) {
+    background-color: transparent !important;
+  }
+
   .scanner-page {
     position: fixed;
     inset: 0;
-    background: #000;
+    background: transparent;
     display: flex;
     flex-direction: column;
     z-index: 100;
@@ -208,7 +219,7 @@
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    background: #000;
+    background: rgba(0, 0, 0, 0.55);
     color: #fff;
     min-height: 120px;
   }
