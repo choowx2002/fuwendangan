@@ -84,6 +84,12 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.collection_history)
   await db.execute(TABLE_DEFINITIONS.collection_history_items)
   await db.execute(TABLE_DEFINITIONS.collection_stats_snapshots)
+  await db.execute(TABLE_DEFINITIONS.lockers)
+  await db.execute(TABLE_DEFINITIONS.locker_sections)
+  await db.execute(TABLE_DEFINITIONS.locker_cards)
+  await db.execute(TABLE_DEFINITIONS.idx_locker_sections_locker)
+  await db.execute(TABLE_DEFINITIONS.idx_locker_cards_section)
+  await db.execute(TABLE_DEFINITIONS.idx_locker_cards_card)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
@@ -97,6 +103,9 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CARD_PRINTS, 'card_no', 'TEXT')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
   await ensureColumn(db, TABLES.SERIES, 'cover_image', 'TEXT')
+  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'pos_x', 'REAL')
+  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'pos_y', 'REAL')
+  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'color', 'TEXT')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。

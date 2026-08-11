@@ -14,6 +14,7 @@
     PinOff,
     ScanLine,
     WalletCards,
+    Boxes,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
@@ -30,6 +31,7 @@
     { icon: Library, key: 'cards', href: '/cards' },
     { icon: WalletCards, key: 'decks', href: '/decks' },
     { icon: Sparkles, key: 'collection', href: '/collection' },
+    { icon: Boxes, key: 'locker', href: '/locker' },
     { icon: Gamepad2, key: 'simulator', href: '/simulator' },
   ]
 

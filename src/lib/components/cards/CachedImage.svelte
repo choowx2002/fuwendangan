@@ -156,7 +156,7 @@
   {style}
 >
   <!-- ★ 旋转 wrapper：仅在 isLandscape 时生效 -->
-  <div class="rotate-wrapper" class:active={isLandscape}>
+  <div class="rotate-wrapper" class:isActive={isLandscape}>
     {#if loading}
       {#if placeholder}
         <img
@@ -243,9 +243,14 @@
   .rotate-wrapper {
     width: 100%;
     height: 100%;
+    position: relative;
+    top: unset;
+    left: unset;
+    transform: unset;
+    transform-origin: unset;
   }
 
-  .rotate-wrapper.active {
+  .rotate-wrapper.isActive {
     position: absolute;
     top: 50%;
     left: 50%;

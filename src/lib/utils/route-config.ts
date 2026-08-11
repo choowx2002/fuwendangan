@@ -11,6 +11,7 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/cards': { backTo: '/', description: '单卡库 → 首页' },
   '/decks': { backTo: '/', description: '我的卡组 → 首页' },
   '/collection': { backTo: '/', description: '收藏与闪卡 → 首页' },
+  '/locker': { backTo: '/', description: '储物柜 → 首页' },
   '/simulator': { backTo: '/', description: '模拟器 → 首页' },
 
   // 工具与设置
@@ -26,4 +27,6 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/decks/:deckid/records/:matchid/logs': { backTo: '/decks', description: '对局日志 → 对局记录' },
   '/collection/:seriesCode': { backTo: '/collection', description: '系列收藏 → 收藏总览' },
   '/collection/history': { backTo: '/collection', description: '收藏历史 → 收藏总览' },
+  '/locker/:lockerId': { backTo: '/locker', description: '储物柜详情 → 储物柜列表' },
+  '/locker/:lockerId/:sectionId': { backTo: '/locker', description: '抽屉卡片 → 储物柜详情' },
 }

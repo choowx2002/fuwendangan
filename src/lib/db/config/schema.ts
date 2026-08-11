@@ -311,6 +311,58 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_collection_stats_snapshots_created ON collection_stats_snapshots(created_at)
   `,
 
+  lockers: `
+    CREATE TABLE IF NOT EXISTS lockers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      is_favorite INTEGER DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  locker_sections: `
+    CREATE TABLE IF NOT EXISTS locker_sections (
+      id TEXT PRIMARY KEY,
+      locker_id TEXT NOT NULL REFERENCES lockers(id) ON DELETE CASCADE,
+      name TEXT,
+      description TEXT,
+      color TEXT,
+      pos_x REAL,
+      pos_y REAL,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  locker_cards: `
+    CREATE TABLE IF NOT EXISTS locker_cards (
+      id TEXT PRIMARY KEY,
+      section_id TEXT NOT NULL REFERENCES locker_sections(id) ON DELETE CASCADE,
+      card_no TEXT NOT NULL,
+      card_no_extend TEXT,
+      language TEXT,
+      quantity INTEGER DEFAULT 1,
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  idx_locker_sections_locker: `
+    CREATE INDEX IF NOT EXISTS idx_locker_sections_locker ON locker_sections(locker_id, sort_order)
+  `,
+
+  idx_locker_cards_section: `
+    CREATE INDEX IF NOT EXISTS idx_locker_cards_section ON locker_cards(section_id)
+  `,
+
+  idx_locker_cards_card: `
+    CREATE INDEX IF NOT EXISTS idx_locker_cards_card ON locker_cards(card_no)
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS match_games;
@@ -328,5 +380,8 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS collection_stats_snapshots;
     DROP TABLE IF EXISTS collection_history_items;
     DROP TABLE IF EXISTS collection_history;
+    DROP TABLE IF EXISTS locker_cards;
+    DROP TABLE IF EXISTS locker_sections;
+    DROP TABLE IF EXISTS lockers;
   `,
 } as const

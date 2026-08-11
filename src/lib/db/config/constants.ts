@@ -23,6 +23,9 @@ export const TABLES = {
   COLLECTION_HISTORY: 'collection_history',
   COLLECTION_HISTORY_ITEMS: 'collection_history_items',
   COLLECTION_STATS_SNAPSHOTS: 'collection_stats_snapshots',
+  LOCKERS: 'lockers',
+  LOCKER_SECTIONS: 'locker_sections',
+  LOCKER_CARDS: 'locker_cards',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]

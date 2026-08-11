@@ -3,7 +3,7 @@
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import { getCollectionStats, getRecentCollectionCards, importOwnedCounts } from '$lib/db'
-  import { Save, Plus, Upload, ScrollText, Download, History } from '@lucide/svelte'
+  import { Save, Plus, Upload, ScrollText, Download, History, Boxes } from '@lucide/svelte'
   import { isTauri } from '$lib/db/env'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { parseMissingListCsv } from '$lib/collection/collection-csv'
@@ -148,6 +148,14 @@
     setTopbar({
       title: $t('collection.title'),
       actions: [
+        {
+          key: 'locker',
+          label: $t('nav.locker'),
+          icon: Boxes,
+          title: $t('nav.locker'),
+          onClick: () => void goto('/locker'),
+          priority: 1,
+        },
         {
           key: 'history',
           label: $t('collection.history'),
