@@ -205,8 +205,6 @@ export {
   createSection,
   updateSection,
   deleteSection,
-  updateSectionPosition,
-  clearSectionPosition,
   getSectionCards,
   addSectionCard,
   addSectionCardsBatch,
@@ -216,12 +214,17 @@ export {
   getGlobalSectionCardQtys,
   getLockerDetail,
   findCardLocations,
+  getLockerByName,
+  getSectionByName,
+  upsertSectionCard,
+  getLockerExportVariants,
   type Locker,
   type LockerSummary,
   type LockerSection,
   type LockerCard,
   type CardLocation,
   type LockerDetail,
+  type LockerExportVariant,
 } from './repository/locker-repository'
 export * from './repository/deck-repository'
 export {

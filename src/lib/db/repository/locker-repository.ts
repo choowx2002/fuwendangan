@@ -1,13 +1,14 @@
 /**
  * 储物柜数据仓储层
- * 储物柜（lockers）→ 抽屉/隔间（locker_sections，无限容器，不设行列）。
- * 抽屉是画布节点：pos_x/pos_y 为柜详情页画布坐标（可空 = 未放置，进托盘），color 为自定义颜色（hex，可空）。
+ * 储物柜（lockers）→ 抽屉/隔间（locker_sections，无限容器，按 sort_order 排序）。
+ * color 为抽屉自定义颜色（hex，可空），icon 为抽屉图标静态路径（可空，空则显示默认 favicon）。
  * 卡牌变体级引用 card_no + card_no_extend + language（与收藏同构），挂在抽屉下。
  * 全部为本地用户数据，snowflake id，不参与内容同步。
  */
 
 import { Snowflake } from '@theinternetfolks/snowflake'
 import type { CardPrint } from '../types'
+import { parseTags, serializeTags } from '../helper'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
 
@@ -18,6 +19,8 @@ export interface Locker {
   name: string
   description: string | null
   is_favorite: number
+  icon: string | null
+  tags: string[]
   created_at: string | null
   updated_at: string | null
 }
@@ -33,8 +36,8 @@ export interface LockerSection {
   name: string | null
   description: string | null
   color: string | null
-  pos_x: number | null
-  pos_y: number | null
+  icon: string | null
+  tags: string[]
   sort_order: number
   created_at: string | null
   updated_at: string | null
@@ -71,6 +74,19 @@ export interface LockerDetail {
   sections: LockerSection[]
 }
 
+/** 储物柜清单导出行：一个卡牌变体，放置信息可回填（一个变体可能在多个抽屉，每抽屉一行） */
+export interface LockerExportVariant {
+  card_no: string
+  card_no_extend: string
+  card_name_cn: string | null
+  language: string
+  owned_total: number
+  locker_name: string | null
+  section_name: string | null
+  quantity: number | null
+  note: string | null
+}
+
 // ==================== 储物柜 ====================
 
 export async function getLockers(): Promise<LockerSummary[]> {
@@ -89,6 +105,8 @@ export async function getLockers(): Promise<LockerSummary[]> {
     name: r.name,
     description: r.description ?? null,
     is_favorite: r.is_favorite ?? 0,
+    icon: r.icon ?? null,
+    tags: parseTags(r.tags),
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
     sectionCount: r.section_count ?? 0,
@@ -106,6 +124,8 @@ export async function getLocker(id: string): Promise<Locker | null> {
     name: r.name,
     description: r.description ?? null,
     is_favorite: r.is_favorite ?? 0,
+    icon: r.icon ?? null,
+    tags: parseTags(r.tags),
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
   }
@@ -114,21 +134,37 @@ export async function getLocker(id: string): Promise<Locker | null> {
 export async function createLocker(input: {
   name: string
   description?: string | null
+  icon?: string | null
+  tags?: string[]
 }): Promise<string> {
   const db = await getDatabase()
   const id = Snowflake.generate()
   const t = now()
   await db.execute(
-    `INSERT INTO ${TABLES.LOCKERS} (id, name, description, is_favorite, created_at, updated_at)
-     VALUES (?, ?, ?, 0, ?, ?)`,
-    [id, input.name.trim(), input.description?.trim() || null, t, t]
+    `INSERT INTO ${TABLES.LOCKERS} (id, name, description, is_favorite, icon, tags, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?, ?, ?)`,
+    [
+      id,
+      input.name.trim(),
+      input.description?.trim() || null,
+      input.icon?.trim() || null,
+      serializeTags(input.tags),
+      t,
+      t,
+    ]
   )
   return id
 }
 
 export async function updateLocker(
   id: string,
-  patch: { name?: string; description?: string | null; is_favorite?: number }
+  patch: {
+    name?: string
+    description?: string | null
+    is_favorite?: number
+    icon?: string | null
+    tags?: string[]
+  }
 ): Promise<void> {
   const db = await getDatabase()
   const sets: string[] = ['updated_at = ?']
@@ -136,7 +172,13 @@ export async function updateLocker(
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue
     sets.push(`${key} = ?`)
-    params.push(key === 'name' ? String(value).trim() : value)
+    params.push(
+      key === 'name' || key === 'icon'
+        ? String(value).trim()
+        : key === 'tags'
+          ? serializeTags(value as string[])
+          : value
+    )
   }
   params.push(id)
   await db.execute(`UPDATE ${TABLES.LOCKERS} SET ${sets.join(', ')} WHERE id = ?`, params)
@@ -171,8 +213,8 @@ export async function getSections(lockerId: string): Promise<LockerSection[]> {
       name: r.name ?? null,
       description: r.description ?? null,
       color: r.color ?? null,
-      pos_x: r.pos_x != null ? Number(r.pos_x) : null,
-      pos_y: r.pos_y != null ? Number(r.pos_y) : null,
+      icon: r.icon ?? null,
+      tags: parseTags(r.tags),
       sort_order: r.sort_order ?? 0,
       created_at: r.created_at ?? null,
       updated_at: r.updated_at ?? null,
@@ -219,8 +261,8 @@ export async function getSection(sectionId: string): Promise<LockerSection | nul
     name: r.name ?? null,
     description: r.description ?? null,
     color: r.color ?? null,
-    pos_x: r.pos_x != null ? Number(r.pos_x) : null,
-    pos_y: r.pos_y != null ? Number(r.pos_y) : null,
+    icon: r.icon ?? null,
+    tags: parseTags(r.tags),
     sort_order: r.sort_order ?? 0,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
@@ -232,7 +274,13 @@ export async function getSection(sectionId: string): Promise<LockerSection | nul
 
 export async function createSection(
   lockerId: string,
-  input: { name?: string; description?: string; color?: string | null }
+  input: {
+    name?: string
+    description?: string
+    color?: string | null
+    icon?: string | null
+    tags?: string[]
+  }
 ): Promise<string> {
   const db = await getDatabase()
   const id = Snowflake.generate()
@@ -243,14 +291,16 @@ export async function createSection(
   )
   await db.execute(
     `INSERT INTO ${TABLES.LOCKER_SECTIONS}
-     (id, locker_id, name, description, color, pos_x, pos_y, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+     (id, locker_id, name, description, color, icon, tags, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       lockerId,
       input.name?.trim() || null,
       input.description?.trim() || null,
       input.color || null,
+      input.icon?.trim() || null,
+      serializeTags(input.tags),
       orderRows[0]?.n ?? 0,
       t,
       t,
@@ -261,7 +311,13 @@ export async function createSection(
 
 export async function updateSection(
   id: string,
-  patch: { name?: string | null; description?: string | null; color?: string | null }
+  patch: {
+    name?: string | null
+    description?: string | null
+    color?: string | null
+    icon?: string | null
+    tags?: string[]
+  }
 ): Promise<void> {
   const db = await getDatabase()
   const sets: string[] = ['updated_at = ?']
@@ -269,7 +325,9 @@ export async function updateSection(
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue
     sets.push(`${key} = ?`)
-    params.push(typeof value === 'string' ? value.trim() || null : value)
+    params.push(
+      typeof value === 'string' ? value.trim() || null : key === 'tags' ? serializeTags(value) : value
+    )
   }
   params.push(id)
   await db.execute(`UPDATE ${TABLES.LOCKER_SECTIONS} SET ${sets.join(', ')} WHERE id = ?`, params)
@@ -278,24 +336,6 @@ export async function updateSection(
 export async function deleteSection(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.LOCKER_SECTIONS} WHERE id = ?`, [id])
-}
-
-/** 画布：持久化抽屉节点位置（调用方传入已吸附坐标） */
-export async function updateSectionPosition(id: string, x: number, y: number): Promise<void> {
-  const db = await getDatabase()
-  await db.execute(
-    `UPDATE ${TABLES.LOCKER_SECTIONS} SET pos_x = ?, pos_y = ?, updated_at = ? WHERE id = ?`,
-    [x, y, now(), id]
-  )
-}
-
-/** 画布：清除抽屉节点位置（拖回托盘） */
-export async function clearSectionPosition(id: string): Promise<void> {
-  const db = await getDatabase()
-  await db.execute(
-    `UPDATE ${TABLES.LOCKER_SECTIONS} SET pos_x = NULL, pos_y = NULL, updated_at = ? WHERE id = ?`,
-    [now(), id]
-  )
 }
 
 // ==================== 格内卡牌 ====================
@@ -550,4 +590,234 @@ export async function findCardLocations(
     sectionName: r.section_name ?? null,
     quantity: r.quantity ?? 1,
   }))
+}
+
+// ==================== 清单导入导出 ====================
+
+/** 按名称精确查找储物柜（trim 后匹配） */
+export async function getLockerByName(name: string): Promise<Locker | null> {
+  const db = await getDatabase()
+  const rows = await db.select<any[]>(
+    `SELECT * FROM ${TABLES.LOCKERS} WHERE name = ? LIMIT 1`,
+    [name.trim()]
+  )
+  const r = rows[0]
+  if (!r) return null
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? null,
+    is_favorite: r.is_favorite ?? 0,
+    icon: r.icon ?? null,
+    tags: parseTags(r.tags),
+    created_at: r.created_at ?? null,
+    updated_at: r.updated_at ?? null,
+  }
+}
+
+/** 按名称精确查找柜内抽屉（trim 后匹配） */
+export async function getSectionByName(
+  lockerId: string,
+  name: string
+): Promise<LockerSection | null> {
+  const db = await getDatabase()
+  const rows = await db.select<any[]>(
+    `SELECT s.*,
+       (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS card_count,
+       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty
+     FROM ${TABLES.LOCKER_SECTIONS} s
+     WHERE s.locker_id = ? AND s.name = ? LIMIT 1`,
+    [lockerId, name.trim()]
+  )
+  const r = rows[0]
+  if (!r) return null
+  return {
+    id: r.id,
+    locker_id: r.locker_id,
+    name: r.name ?? null,
+    description: r.description ?? null,
+    color: r.color ?? null,
+    icon: r.icon ?? null,
+    tags: parseTags(r.tags),
+    sort_order: r.sort_order ?? 0,
+    created_at: r.created_at ?? null,
+    updated_at: r.updated_at ?? null,
+    cardCount: r.card_count ?? 0,
+    totalQty: r.total_qty ?? 0,
+    thumbs: [],
+  }
+}
+
+/**
+ * 覆盖写入抽屉内卡牌：存在相同 (card_no, card_no_extend, language) 记录时覆盖数量与备注，
+ * 不存在则插入。区别于 addSectionCard 的累加语义（清单导入用）。
+ */
+export async function upsertSectionCard(
+  sectionId: string,
+  input: {
+    card_no: string
+    card_no_extend?: string | null
+    language?: string | null
+    quantity: number
+    note?: string | null
+  }
+): Promise<string> {
+  const db = await getDatabase()
+  const t = now()
+  const qty = Math.max(1, Math.floor(Number(input.quantity) || 1))
+
+  const existing = await db.select<any[]>(
+    `SELECT id FROM ${TABLES.LOCKER_CARDS}
+     WHERE section_id = ? AND card_no = ? AND card_no_extend IS ? AND language IS ?
+     LIMIT 1`,
+    [sectionId, input.card_no, input.card_no_extend || null, input.language || null]
+  )
+  if (existing[0]) {
+    const sets: string[] = ['quantity = ?', 'updated_at = ?']
+    const params: any[] = [qty, t]
+    if (input.note !== undefined) {
+      sets.push('note = ?')
+      params.push(input.note?.trim() || null)
+    }
+    params.push(existing[0].id)
+    await db.execute(
+      `UPDATE ${TABLES.LOCKER_CARDS} SET ${sets.join(', ')} WHERE id = ?`,
+      params
+    )
+    return existing[0].id
+  }
+
+  const id = Snowflake.generate()
+  await db.execute(
+    `INSERT INTO ${TABLES.LOCKER_CARDS}
+     (id, section_id, card_no, card_no_extend, language, quantity, note, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      sectionId,
+      input.card_no,
+      input.card_no_extend || null,
+      input.language || null,
+      qty,
+      input.note?.trim() || null,
+      t,
+      t,
+    ]
+  )
+  return id
+}
+
+/**
+ * 储物柜清单导出数据：以收藏（已拥有变体）为数据源。
+ * - 已收录变体：按实际抽屉记录导出一行（语言/数量/备注回填，多抽屉则每抽屉一行）；
+ * - 未收录变体：导出一行（语言为代表印刷语言，放置列为空）。
+ * @param opts.onlyUnplaced 仅导出未收录进任何抽屉的变体
+ */
+export async function getLockerExportVariants(opts?: {
+  onlyUnplaced?: boolean
+}): Promise<LockerExportVariant[]> {
+  const db = await getDatabase()
+
+  // 1. 已拥有变体（收藏行 × 拥有数量），排除非自建 promo（与抽屉卡池口径一致）。
+  // 用 EXISTS 过滤 promo，避免 card_prints 多语言印刷行与 collection_langs 交叉造成求和翻倍。
+  const ownedRows = await db.select<any[]>(
+    `SELECT col.card_no AS card_no, col.card_no_extend AS card_no_extend,
+       cb.card_name_cn AS card_name_cn,
+       SUM(COALESCE(cl.normal_qty, 0) + COALESCE(cl.foil_qty, 0)) AS owned_total
+     FROM ${TABLES.COLLECTION} col
+     JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = col.card_no
+     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+     WHERE cl.status = 'owned'
+       AND EXISTS (
+         SELECT 1 FROM ${TABLES.CARD_PRINTS} p
+         WHERE p.card_id = cb.id AND p.card_no_extend = col.card_no_extend
+           AND (COALESCE(p.is_promo, 0) != 1 OR p.is_custom = 1)
+       )
+     GROUP BY col.card_no, col.card_no_extend`,
+    []
+  )
+
+  // 2. 抽屉内已收录记录（含柜名/抽屉名）
+  const placementRows = await db.select<any[]>(
+    `SELECT cc.card_no AS card_no, cc.card_no_extend AS card_no_extend,
+       cc.language AS language, cc.quantity AS quantity, cc.note AS note,
+       l.name AS locker_name, s.name AS section_name
+     FROM ${TABLES.LOCKER_CARDS} cc
+     JOIN ${TABLES.LOCKER_SECTIONS} s ON s.id = cc.section_id
+     JOIN ${TABLES.LOCKERS} l ON l.id = s.locker_id`
+  )
+  const placementMap = new Map<string, typeof placementRows>()
+  for (const r of placementRows) {
+    const key = `${r.card_no}|${r.card_no_extend}`
+    if (!placementMap.has(key)) placementMap.set(key, [])
+    placementMap.get(key)!.push(r)
+  }
+
+  // 3. 未收录变体的代表印刷语言（SC 优先 → is_default → 首张，与 VariantPool 口径一致）
+  const unplacedKeys = ownedRows.filter((r) => !placementMap.has(`${r.card_no}|${r.card_no_extend}`))
+  const repLangMap = new Map<string, string | null>()
+  if (unplacedKeys.length > 0) {
+    const conds = unplacedKeys.map(() => '(p.card_no = ? AND p.card_no_extend = ?)').join(' OR ')
+    const params: any[] = []
+    for (const r of unplacedKeys) params.push(r.card_no, r.card_no_extend)
+    const printRows = await db.select<any[]>(
+      `SELECT p.card_no AS card_no, p.card_no_extend AS card_no_extend,
+         p.language AS language, p.is_default AS is_default
+       FROM ${TABLES.CARD_PRINTS} p
+       WHERE ${conds}
+       ORDER BY p.card_no ASC, p.card_no_extend ASC, p.print_order ASC`,
+      params
+    )
+    const byKey = new Map<string, any[]>()
+    for (const pr of printRows) {
+      const key = `${pr.card_no}|${pr.card_no_extend}`
+      if (!byKey.has(key)) byKey.set(key, [])
+      byKey.get(key)!.push(pr)
+    }
+    for (const r of unplacedKeys) {
+      const key = `${r.card_no}|${r.card_no_extend}`
+      const pool = byKey.get(key) ?? []
+      const rep =
+        pool.find((p) => (p.language ?? '').toLowerCase() === 'sc') ??
+        pool.find((p) => p.is_default) ??
+        pool[0]
+      repLangMap.set(key, rep?.language ?? null)
+    }
+  }
+
+  // 4. 组装导出数据
+  const variants: LockerExportVariant[] = []
+  for (const r of ownedRows) {
+    const key = `${r.card_no}|${r.card_no_extend}`
+    const placements = placementMap.get(key) ?? []
+    if (opts?.onlyUnplaced && placements.length > 0) continue
+    if (placements.length > 0) {
+      for (const p of placements) {
+        variants.push({
+          card_no: r.card_no,
+          card_no_extend: r.card_no_extend,
+          card_name_cn: r.card_name_cn ?? null,
+          language: p.language ?? '',
+          owned_total: r.owned_total ?? 0,
+          locker_name: p.locker_name ?? null,
+          section_name: p.section_name ?? null,
+          quantity: p.quantity ?? 1,
+          note: p.note ?? null,
+        })
+      }
+    } else {
+      variants.push({
+        card_no: r.card_no,
+        card_no_extend: r.card_no_extend,
+        card_name_cn: r.card_name_cn ?? null,
+        language: repLangMap.get(key) ?? '',
+        owned_total: r.owned_total ?? 0,
+        locker_name: null,
+        section_name: null,
+        quantity: null,
+        note: null,
+      })
+    }
+  }
+  return variants
 }

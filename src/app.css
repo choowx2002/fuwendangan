@@ -308,12 +308,12 @@ BUTTON
 /* 按钮尺寸卡牌 */
 .button-sm {
   padding: 4px 12px;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   min-height: 28px;
 }
 .button-md {
   padding: 8px 16px;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   min-height: 36px;
 }
 .button-lg {

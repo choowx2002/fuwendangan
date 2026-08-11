@@ -16,7 +16,12 @@
   import { t } from '$lib/i18n'
 
   let {
-    filters = $bindable({ seriesCode: '', bucket: '', searchText: '', sort: { key: 'card_no', isAsc: true } } as VariantPoolFilters),
+    filters = $bindable({
+      seriesCode: '',
+      bucket: '',
+      searchText: '',
+      sort: { key: 'card_no', isAsc: true },
+    } as VariantPoolFilters),
     existingQty = new Map<string, number>() as Map<string, number>,
     globalQty = new Map<string, number>() as Map<string, number>,
     selectable = false,
@@ -47,7 +52,8 @@
   let listEl = $state<HTMLDivElement | null>(null)
   let searchDebounce: ReturnType<typeof setTimeout> | null = null
 
-  const variantKey = (v: VariantWithOwned) => `${v.cardNo}:${v.cardNoExtend}:${v.printLanguage ?? ''}`
+  const variantKey = (v: VariantWithOwned) =>
+    `${v.cardNo}:${v.cardNoExtend}:${v.printLanguage ?? ''}`
 
   async function loadSeries() {
     seriesOptions = await getAllSeries()
@@ -134,6 +140,7 @@
     variants.filter((v) => !(isGlobalAtLimit(v) && (existingQty.get(variantKey(v)) ?? 0) === 0))
   )
 </script>
+
 <div class="pool">
   <div class="pool-toolbar">
     <select class="filter-select" bind:value={filters.seriesCode} onchange={onFilterChange}>
@@ -221,47 +228,31 @@
                 {selected ? '✓' : ''}
               </span>
             {/if}
-            {#if inDrawer > 0}
-              <span class="in-drawer-badge">{$t('locker.addedBadge', { values: { count: inDrawer } })}</span>
-            {/if}
 
             {#if quickEdit && !selectable}
               <div class="quick-stepper">
-                {#if inDrawer > 0}
-                  <button
-                    class="step-btn dec"
-                    title={$t('locker.quickRemove')}
-                    onclick={(e) => {
-                      e.stopPropagation()
-                      onQuickDec?.(v)
-                    }}
-                  >
-                    <Minus size={12} />
-                  </button>
-                  <span class="step-qty">{inDrawer}</span>
-                  <button
-                    class="step-btn inc"
-                    title={$t('locker.quickAdd')}
-                    disabled={isGlobalAtLimit(v)}
-                    onclick={(e) => {
-                      e.stopPropagation()
-                      onQuickInc?.(v)
-                    }}
-                  >
-                    <Plus size={12} />
-                  </button>
-                {:else}
-                  <button
-                    class="step-btn inc wide"
-                    title={$t('locker.quickAdd')}
-                    onclick={(e) => {
-                      e.stopPropagation()
-                      onQuickInc?.(v)
-                    }}
-                  >
-                    <Plus size={12} strokeWidth={'5'} />
-                  </button>
-                {/if}
+                <button
+                  class="step-btn dec"
+                  title={$t('locker.quickRemove')}
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    onQuickDec?.(v)
+                  }}
+                >
+                  <Minus size={12} />
+                </button>
+                <span class="step-qty">{inDrawer}</span>
+                <button
+                  class="step-btn inc"
+                  title={$t('locker.quickAdd')}
+                  disabled={isGlobalAtLimit(v)}
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    onQuickInc?.(v)
+                  }}
+                >
+                  <Plus size={12} />
+                </button>
               </div>
             {/if}
           </div>
@@ -270,7 +261,9 @@
             <span class="tile-no">
               {v.cardNo}{v.cardNoExtend ? ` · ${v.cardNoExtend}` : ''}
             </span>
-            <span class="tile-owned">{$t('locker.ownedBadge', { values: { count: v.ownedTotal } })}</span>
+            <span class="tile-owned"
+              >{$t('locker.ownedBadge', { values: { count: v.ownedTotal } })}</span
+            >
           </div>
         </div>
       {/each}
@@ -384,10 +377,10 @@
   }
 
   /* 已达收藏上限：置灰表示不可再加（仍可查看与移除） */
-  .variant-tile.at-limit {
+  /* .variant-tile.at-limit {
     opacity: 0.55;
     filter: saturate(0.6);
-  }
+  } */
 
   .tile-img {
     position: relative;
@@ -418,18 +411,6 @@
     border-color: var(--accent-color);
   }
 
-  .in-drawer-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    padding: 1px 6px;
-    border-radius: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    color: #fff;
-    background: rgba(0, 0, 0, 0.65);
-  }
-
   .quick-stepper {
     position: absolute;
     bottom: 8px;
@@ -441,23 +422,8 @@
     padding: 3px;
     border-radius: 99px;
     background: rgba(0, 0, 0, 0.72);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
     z-index: 5;
     white-space: nowrap;
-  }
-
-  .variant-tile:hover .quick-stepper {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  @media (hover: none) {
-    .quick-stepper {
-      opacity: 1;
-      pointer-events: auto;
-    }
   }
 
   .step-btn {
@@ -492,13 +458,6 @@
 
   .step-btn.dec:hover {
     background: color-mix(in srgb, #e03e3e 80%, #000);
-  }
-
-  .step-btn.wide {
-    width: auto;
-    padding: 0 10px;
-    font-size: var(--text-xs);
-    font-weight: 600;
   }
 
   .step-btn:disabled {
@@ -546,12 +505,6 @@
   @media (max-width: 600.99px) {
     .pool-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    /* 手机无 hover，快捷 ± 必须常驻显示 */
-    .quick-stepper {
-      opacity: 1;
-      pointer-events: auto;
     }
   }
 </style>

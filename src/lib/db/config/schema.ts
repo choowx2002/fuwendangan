@@ -317,6 +317,8 @@ export const TABLE_DEFINITIONS = {
       name TEXT NOT NULL,
       description TEXT,
       is_favorite INTEGER DEFAULT 0,
+      icon TEXT,
+      tags TEXT,
       created_at TEXT,
       updated_at TEXT
     )
@@ -329,8 +331,8 @@ export const TABLE_DEFINITIONS = {
       name TEXT,
       description TEXT,
       color TEXT,
-      pos_x REAL,
-      pos_y REAL,
+      icon TEXT,
+      tags TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT

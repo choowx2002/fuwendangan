@@ -103,9 +103,11 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CARD_PRINTS, 'card_no', 'TEXT')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
   await ensureColumn(db, TABLES.SERIES, 'cover_image', 'TEXT')
-  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'pos_x', 'REAL')
-  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'pos_y', 'REAL')
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'color', 'TEXT')
+  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'icon', 'TEXT')
+  await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'tags', 'TEXT')
+  await ensureColumn(db, TABLES.LOCKERS, 'icon', 'TEXT')
+  await ensureColumn(db, TABLES.LOCKERS, 'tags', 'TEXT')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。

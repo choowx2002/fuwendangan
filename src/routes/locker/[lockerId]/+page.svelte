@@ -3,19 +3,14 @@
   import { page } from '$app/state'
   import { onMount } from 'svelte'
   import type { LockerDetail } from '$lib/db'
-  import {
-    getLockerDetail,
-    createSection,
-    updateSectionPosition,
-    clearSectionPosition,
-  } from '$lib/db'
-  import { Plus, ChevronLeft } from '@lucide/svelte'
+  import { getLockerDetail, createSection } from '$lib/db'
+  import { Plus } from '@lucide/svelte'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
-  import CanvasView from '$lib/components/locker/CanvasView.svelte'
-  import type { CanvasNode } from '$lib/components/locker/canvas-types'
+  import TagInput from '$lib/components/ui/TagInput.svelte'
+  import LockerListView from '$lib/components/locker/LockerListView.svelte'
+  import LockerIconPicker from '$lib/components/locker/LockerIconPicker.svelte'
   import { t } from '$lib/i18n'
-  import { get } from 'svelte/store'
 
   const lockerId = page.params.lockerId ?? ''
 
@@ -39,19 +34,8 @@
   let sectionName = $state('')
   let sectionDesc = $state('')
   let sectionColor = $state<string | null>(null)
-
-  const nodes = $derived<CanvasNode[]>(
-    (detail?.sections ?? []).map((s) => ({
-      id: s.id,
-      title: s.name ?? $t('locker.newSection'),
-      subtitle: s.description,
-      color: s.color,
-      countText: $t('locker.cards', { values: { count: s.totalQty } }),
-      images: s.thumbs,
-      pos_x: s.pos_x,
-      pos_y: s.pos_y,
-    }))
-  )
+  let sectionIcon = $state<string | null>(null)
+  let sectionTags = $state<string[]>([])
 
   async function load() {
     loading = true
@@ -66,6 +50,8 @@
     sectionName = ''
     sectionDesc = ''
     sectionColor = null
+    sectionIcon = null
+    sectionTags = []
     sectionModalOpen = true
   }
 
@@ -75,6 +61,8 @@
       name: sectionName.trim(),
       description: sectionDesc.trim() || undefined,
       color: sectionColor,
+      icon: sectionIcon,
+      tags: sectionTags,
     })
     sectionModalOpen = false
     void load()
@@ -82,21 +70,6 @@
 
   function openNode(id: string) {
     void goto(`/locker/${lockerId}/${id}`)
-  }
-
-  async function onPersistMove(id: string, x: number, y: number) {
-    await updateSectionPosition(id, x, y)
-    void load()
-  }
-
-  async function onPersistPlace(id: string, x: number, y: number) {
-    await updateSectionPosition(id, x, y)
-    void load()
-  }
-
-  async function onPersistUnplace(id: string) {
-    await clearSectionPosition(id)
-    void load()
   }
 
   onMount(() => {
@@ -120,7 +93,7 @@
   })
 </script>
 
-<div class="canvas-page">
+<div class="detail-page">
   {#if loading && !detail}
     <div class="tip">{$t('common.loading')}</div>
   {:else if !detail}
@@ -133,13 +106,7 @@
       </button>
     </div>
   {:else}
-    <CanvasView
-      {nodes}
-      onPersistMove={onPersistMove}
-      onPersistPlace={onPersistPlace}
-      onPersistUnplace={onPersistUnplace}
-      onNodeClick={openNode}
-    />
+    <LockerListView sections={detail.sections} onSectionClick={openNode} />
   {/if}
 </div>
 
@@ -180,6 +147,14 @@
         {/each}
       </div>
     </div>
+    <div class="field">
+      <span class="field-label">{$t('locker.icon')}</span>
+      <LockerIconPicker value={sectionIcon} onChange={(v) => (sectionIcon = v)} />
+    </div>
+    <label class="field">
+      <span class="field-label">{$t('locker.tags')}</span>
+      <TagInput value={sectionTags} placeholder={$t('locker.tagPlaceholder')} onChange={(v) => (sectionTags = v)} />
+    </label>
   </div>
 
   {#snippet footer()}
@@ -193,7 +168,7 @@
 </CommonModal>
 
 <style>
-  .canvas-page {
+  .detail-page {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -290,7 +265,7 @@
   }
 
   @media (max-width: 600.99px) {
-    .canvas-page {
+    .detail-page {
       padding: 10px 12px 16px;
     }
   }
