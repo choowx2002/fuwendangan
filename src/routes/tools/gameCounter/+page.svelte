@@ -8,7 +8,7 @@
     printCacheName,
     type DeckListResult,
   } from '$lib/db'
-  import { scoreCounterState, type GameRecord, type ActionEntry } from '$lib/stores/tools'
+  import { scoreCounterState, matchTimerMinutes, type GameRecord, type ActionEntry } from '$lib/stores/tools'
   import { playerName } from '$lib/stores/settings'
   import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
@@ -28,7 +28,7 @@
     ChevronLeft,
     Dice6,
   } from '@lucide/svelte'
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -101,6 +101,69 @@
       )
       .slice(0, 50)
   })
+
+  // ===== 对局倒计时 =====
+  let timerNow = $state(Date.now())
+  let timerInterval: ReturnType<typeof setInterval> | null = null
+
+  const timerRemainingMs = $derived.by(() => {
+    const s = $scoreCounterState
+    if (s.timerEndsAt != null) return Math.max(0, s.timerEndsAt - timerNow)
+    return s.timerRemaining
+  })
+
+  const timerActive = $derived(timerRemainingMs != null)
+  const timerRunning = $derived($scoreCounterState.timerEndsAt != null)
+  const timerExpired = $derived(timerActive && timerRemainingMs! <= 0)
+  const timerLow = $derived(timerActive && !timerExpired && timerRemainingMs! <= 60_000)
+  const timerDisplayMs = $derived(timerRemainingMs ?? (Number($matchTimerMinutes) || 60) * 60_000)
+  const timerProgress = $derived.by(() => {
+    const total = $scoreCounterState.timerTotalMs ?? (Number($matchTimerMinutes) || 60) * 60_000
+    if (!timerActive || total <= 0) return 100
+    return Math.max(0, Math.min(100, (timerRemainingMs! / total) * 100))
+  })
+
+  function formatTimer(ms: number): string {
+    const totalSec = Math.max(0, Math.ceil(ms / 1000))
+    const h = Math.floor(totalSec / 3600)
+    const m = Math.floor((totalSec % 3600) / 60)
+    const s = totalSec % 60
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+  }
+
+  function startTimer() {
+    const durationMs = (Math.max(1, Number($matchTimerMinutes) || 60)) * 60_000
+    scoreCounterState.update((s) => ({
+      ...s,
+      timerEndsAt: Date.now() + durationMs,
+      timerRemaining: null,
+      timerTotalMs: durationMs,
+    }))
+  }
+
+  function pauseTimer() {
+    scoreCounterState.update((s) => {
+      if (s.timerEndsAt == null) return s
+      return { ...s, timerEndsAt: null, timerRemaining: Math.max(0, s.timerEndsAt - Date.now()) }
+    })
+  }
+
+  function resumeTimer() {
+    scoreCounterState.update((s) => {
+      if (s.timerRemaining == null) return s
+      return { ...s, timerEndsAt: Date.now() + s.timerRemaining, timerRemaining: null }
+    })
+  }
+
+  function resetTimer() {
+    scoreCounterState.update((s) => ({
+      ...s,
+      timerEndsAt: null,
+      timerRemaining: null,
+      timerTotalMs: null,
+    }))
+  }
 
   function coinLabel(value: string): string {
     return get(t)(value === '正面' ? 'tools.coinHeads' : 'tools.coinTails')
@@ -266,6 +329,9 @@
       oppPoints: 0,
       games: [],
       currentActions: [],
+      timerEndsAt: null,
+      timerRemaining: null,
+      timerTotalMs: null,
     }))
   }
 
@@ -362,6 +428,12 @@
   onMount(() => {
     loadDecks()
     loadLegends()
+    timerNow = Date.now()
+    timerInterval = setInterval(() => (timerNow = Date.now()), 1000)
+  })
+
+  onDestroy(() => {
+    if (timerInterval) clearInterval(timerInterval)
   })
 
   $effect(() => {
@@ -479,6 +551,40 @@
         <button class="score-zone add" onclick={() => adjustPoints('me', 1)}>
           <span class="zone-text">+</span>
         </button>
+      </div>
+
+      <div class="timer-bar" class:low={timerLow} class:expired={timerExpired}>
+        <div class="timer-track" style={`--pct: ${timerProgress}`}>
+          <div class="timer-fill"></div>
+        </div>
+        <div class="timer-meta">
+          <Timer size={14} />
+          <span class="timer-display">{formatTimer(timerDisplayMs)}</span>
+          {#if timerExpired}
+            <span class="timer-expired-label">{$t('tools.timerExpired')}</span>
+          {/if}
+        </div>
+        <div class="timer-actions">
+          {#if !timerActive}
+            <button class="button button-ghost button-sm" onclick={startTimer}>
+              {$t('tools.timerStart')}
+            </button>
+          {:else if timerRunning}
+            <button class="button button-ghost button-sm" onclick={pauseTimer}>
+              {$t('tools.timerPause')}
+            </button>
+            <button class="button button-ghost button-sm" onclick={resetTimer}>
+              {$t('tools.timerReset')}
+            </button>
+          {:else}
+            <button class="button button-ghost button-sm" onclick={resumeTimer}>
+              {$t('tools.timerResume')}
+            </button>
+            <button class="button button-ghost button-sm" onclick={resetTimer}>
+              {$t('tools.timerReset')}
+            </button>
+          {/if}
+        </div>
       </div>
 
       <div class="opp-wrap">
@@ -637,6 +743,10 @@
       <label class="field">
         <span class="field-label">{$t('tools.targetScore')}</span>
         <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
+      </label>
+      <label class="field">
+        <span class="field-label">{$t('tools.timerDurationLabel')}</span>
+        <input class="input" type="number" min="1" max="180" bind:value={$matchTimerMinutes} />
       </label>
     </div>
 
@@ -1138,6 +1248,71 @@
     color: var(--text-tertiary);
   }
 
+  .timer-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+  }
+
+  .timer-track {
+    flex: 1;
+    min-width: 0;
+    height: 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+    overflow: hidden;
+  }
+
+  .timer-fill {
+    height: 100%;
+    width: calc(var(--pct) * 1%);
+    background: var(--accent-color);
+    border-radius: 999px;
+    transition: width 0.3s linear;
+  }
+
+  .timer-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .timer-display {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .timer-expired-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e03e3e;
+  }
+
+  .timer-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .timer-bar.low .timer-meta {
+    color: #d9730d;
+  }
+
+  .timer-bar.expired .timer-meta {
+    color: #e03e3e;
+  }
+
   .scoreboards {
     display: flex;
     flex-direction: column-reverse;
@@ -1229,6 +1404,13 @@
       flex-shrink: 0;
       margin: 0;
       padding: 10px 12px;
+      border-left: none;
+      border-right: none;
+      border-radius: 0;
+    }
+
+    .timer-bar {
+      width: 100%;
       border-left: none;
       border-right: none;
       border-radius: 0;
@@ -1430,6 +1612,36 @@
 
     .opp-wrap .scoreboard {
       flex: 1;
+    }
+
+    .timer-bar {
+      flex-direction: column;
+      width: 64px;
+      align-self: stretch;
+      padding: 12px 8px;
+    }
+
+    .timer-track {
+      flex: 1;
+      min-height: 64px;
+      height: auto;
+      width: 12px;
+    }
+
+    .timer-fill {
+      width: 100%;
+      height: calc(var(--pct) * 1%);
+      transition: height 0.3s linear;
+    }
+
+    .timer-meta {
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .timer-actions {
+      flex-direction: column;
+      gap: 4px;
     }
 
     .zone-text {

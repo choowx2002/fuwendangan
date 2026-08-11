@@ -16,11 +16,11 @@ export function isSupportedLocale(value: string | undefined | null): value is Su
 }
 
 export function systemLocale(): SupportedLocale {
-  if (typeof navigator === 'undefined') return DEFAULT_LOCALE
-  const lang = navigator.language
-  if (!lang) return DEFAULT_LOCALE
-  const normalized = lang.toLowerCase()
-  if (normalized.startsWith('en')) return 'en'
+  // if (typeof navigator === 'undefined') return DEFAULT_LOCALE
+  // const lang = navigator.language
+  // if (!lang) return DEFAULT_LOCALE
+  // const normalized = lang.toLowerCase()
+  // if (normalized.startsWith('en')) return 'en'
   return DEFAULT_LOCALE
 }
 

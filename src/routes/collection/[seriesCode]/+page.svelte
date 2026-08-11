@@ -361,6 +361,7 @@
       : ''
     setTopbar({
       title: seriesTitle,
+      image: seriesStats?.coverImage ?? '',
       badges: progressText ? [{ key: 'progress', text: progressText }] : [],
       onBack: () => goto('/collection'),
       actions: [

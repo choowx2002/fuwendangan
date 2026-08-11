@@ -142,6 +142,7 @@ export type TopbarBadge = {
 export const topbarState = $state({
   title: '',
   description: '',
+  image: '',
   badges: [] as TopbarBadge[],
   actions: [] as TopbarAction[],
   onBack: null as (() => void) | null,
@@ -150,12 +151,14 @@ export const topbarState = $state({
 export function setTopbar(config: {
   title?: string
   description?: string
+  image?: string
   badges?: TopbarBadge[]
   actions?: TopbarAction[]
   onBack?: (() => void) | null
 }) {
   topbarState.title = config.title ?? ''
   topbarState.description = config.description ?? ''
+  topbarState.image = config.image ?? ''
   topbarState.badges = config.badges ?? []
   topbarState.actions = config.actions ?? []
   topbarState.onBack = config.onBack ?? null

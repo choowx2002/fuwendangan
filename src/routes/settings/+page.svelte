@@ -1722,7 +1722,7 @@
     </label>
 
     <div class="export-deck-list">
-      {#each importDeckList as deck (deck.id)}
+      {#each importDeckList as deck, index (`${deck.id}-${index}`)}
         <label class="export-deck-row">
           <input
             type="checkbox"

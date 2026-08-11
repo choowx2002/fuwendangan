@@ -292,6 +292,8 @@
     height: 100%;
     padding: 20px 24px 0;
     gap: 14px;
+    max-width: 1200px;
+    margin: 0 auto;
   }
 
   .search-row {

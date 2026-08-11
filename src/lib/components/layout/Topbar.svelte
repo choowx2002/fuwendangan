@@ -2,6 +2,7 @@
 <script lang="ts">
   import { Menu, ChevronLeft, Ellipsis } from '@lucide/svelte'
   import { topbarState, type TopbarAction } from '../../stores/ui-store.svelte'
+  import CachedImage from '../cards/CachedImage.svelte'
   import { t } from 'svelte-i18n'
 
   let { isSidebarOpen = $bindable() } = $props()
@@ -110,6 +111,17 @@
       </button>
     {/if}
     <div class="title-wrap">
+      {#if topbarState.image}
+        <CachedImage
+          src={topbarState.image}
+          name="topbar-series-cover"
+          width="30px"
+          height="30px"
+          borderRadius="6px"
+          fit="cover"
+          isLandscape={false}
+        />
+      {/if}
       <span class="title">{topbarState.title || 'Rune Archive'}</span>
       {#each topbarState.badges as badge (badge.key)}
         <span class="topbar-badge">{badge.text}</span>

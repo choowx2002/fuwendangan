@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { SeriesStats } from '$lib/db'
-  // import { Check } from '@lucide/svelte'
-  // import CachedImage from '../cards/CachedImage.svelte'
+  import CachedImage from '../cards/CachedImage.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import { t } from '$lib/i18n'
 
@@ -32,22 +31,19 @@
     {@const missing = Math.max(0, s.totalCount - s.totalOwned)}
     {@const done = s.totalCount > 0 && missing === 0}
     <button class="series-card" class:done onclick={() => onSelect?.(s.code)}>
-      <!-- <div class="series-cover">
-        {#if s.coverImage}
+      {#if s.coverImage}
+        <div class="series-cover">
           <CachedImage
             src={s.coverImage}
             name={`series-${s.code}`}
-            borderRadius="10px"
+            borderRadius="0"
             fit="cover"
             isLandscape={false}
           />
-        {:else}
-          <div class="cover-fallback">{s.code}</div>
-        {/if}
-        {#if done}
-          <span class="done-badge"><Check size={13} /></span>
-        {/if}
-      </div> -->
+        </div>
+      {:else}
+        <div class="series-cover cover-placeholder">{s.code}</div>
+      {/if}
 
       <div class="series-info">
         <div class="series-name-row">
@@ -93,14 +89,17 @@
 <style>
   .series-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 14px;
     padding: 4px 2px 24px;
   }
 
   .series-card {
     display: flex;
-    gap: 12px;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 14px;
     padding: 14px 16px;
     border-radius: 14px;
     border: 1px solid var(--border-color);
@@ -126,43 +125,33 @@
     );
   }
 
-  /*.series-cover {
+  .series-cover {
     position: relative;
-    width: 108px;
+    width: 96px;
+    height: 96px;
     flex-shrink: 0;
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    /* background: var(--bg-hover); */
   }
 
-  .cover-fallback {
-    width: 100%;
-    height: 100%;
-    aspect-ratio: 744 / 1040;
+  .cover-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: var(--text-xl);
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: #fff;
-    background: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 40%, #0b4f47));
+    font-weight: 800;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent-color) 65%, #fff);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-color) 22%, var(--bg-secondary)),
+      var(--bg-secondary)
+    );
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   }
-
-  .done-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 22px;
-    height: 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: #eab308;
-    color: #422006;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  }*/
 
   .series-info {
     flex: 1;
@@ -272,7 +261,7 @@
 
   @media (max-width: 600.99px) {
     .series-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 10px;
     }
   }

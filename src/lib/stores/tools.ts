@@ -96,6 +96,9 @@ export interface ScoreCounterState {
   oppLegendImage: string | null
   bestOf: string
   currentActions: ActionEntry[]
+  timerEndsAt: number | null
+  timerRemaining: number | null
+  timerTotalMs: number | null
 }
 
 const DEFAULT_SCORE_STATE: ScoreCounterState = {
@@ -114,7 +117,13 @@ const DEFAULT_SCORE_STATE: ScoreCounterState = {
   oppLegendImage: null,
   bestOf: '3',
   currentActions: [],
+  timerEndsAt: null,
+  timerRemaining: null,
+  timerTotalMs: null,
 }
+
+/** 对战计分器默认倒计时时长（分钟） */
+export const matchTimerMinutes = persistentWritable('matchTimerMinutes', 60)
 
 function isValidState(v: unknown): v is ScoreCounterState {
   if (!isObject(v)) return false
@@ -144,6 +153,9 @@ getStore().then(async (store) => {
       oppLegendPrintId: value.oppLegendPrintId ?? null,
       oppLegendName: value.oppLegendName ?? null,
       oppLegendImage: value.oppLegendImage ?? null,
+      timerEndsAt: value.timerEndsAt ?? null,
+      timerRemaining: value.timerRemaining ?? null,
+      timerTotalMs: value.timerTotalMs ?? null,
     }
     scoreCounterState.set(normalized)
   }
