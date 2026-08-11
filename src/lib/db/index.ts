@@ -97,6 +97,7 @@ export {
   getCardAndPrintByEnglishName,
   getCardAndPrintByCardNo,
   getCardCount,
+  getTokenCards,
   deleteCard,
   clearAllCards,
 } from './repository/card-repository'

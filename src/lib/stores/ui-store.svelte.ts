@@ -86,6 +86,10 @@ export function finishDownload(status: Exclude<DownloadStatus, 'downloading'>) {
   downloadState.endTime = Date.now()
 }
 
+export function toggleDownloadExpanded() {
+  downloadState.expanded = !downloadState.expanded
+}
+
 export function dismissDownload() {
   downloadState.active = false
   downloadState.status = 'downloading'

@@ -108,6 +108,13 @@ body {
   user-select: none; /* 桌面 App 体验：默认禁用文本选中 */
 }
 
+/* 移动端（触摸设备）：允许文本选中以便长按复制，桌面保持禁用 */
+@media (hover: none) {
+  body {
+    user-select: text;
+  }
+}
+
 * {
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   box-sizing: border-box;

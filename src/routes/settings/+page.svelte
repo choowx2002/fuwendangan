@@ -37,8 +37,15 @@
     playerName,
     darkMode,
     locale,
+    revertLayout,
+    builderShowAllZones,
+    builderZoneDisplayModes,
+    builderGraphicColumns,
+    builderMainDeckDisplayMode,
+    builderSideboardDisplayMode,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
+  import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
 
   import {
@@ -80,6 +87,30 @@
   } | null>(null)
   let inMobile = $state<boolean>(false)
   let onloadInfo = $state<boolean>(false)
+
+  let showBuilderZoneModes = $state(false)
+  const builderZoneKeys: ZoneKey[] = [
+    'legend',
+    'champion',
+    'mainDeck',
+    'battlefields',
+    'runes',
+    'sideboard',
+  ]
+  const builderGlobalMode = $derived.by(() => {
+    const modes = Object.values($builderZoneDisplayModes)
+    return modes.every((m) => m === modes[0]) ? modes[0] : 'text'
+  })
+
+  function setBuilderGlobalMode(mode: 'text' | 'graphic') {
+    const next: Record<ZoneKey, 'text' | 'graphic'> = { ...$builderZoneDisplayModes }
+    for (const zone of builderZoneKeys) next[zone] = mode
+    builderZoneDisplayModes.set(next)
+  }
+
+  function setBuilderZoneMode(zone: ZoneKey, mode: 'text' | 'graphic') {
+    builderZoneDisplayModes.update((prev) => ({ ...prev, [zone]: mode }))
+  }
 
   let lastSyncText = $state<string>(get(t)('common.loading'))
   let deckCount = $state<number>(0)
@@ -1024,6 +1055,149 @@
         </label>
       </div>
     {/if}
+  </section>
+
+  <!-- 卡组构建 -->
+  <section class="settings-card">
+    <h2 class="card-title">{$t('settings.cardBuilder')}</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.revertLayout')}</span>
+        <span class="setting-desc">{$t('settings.revertLayoutDesc')}</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" bind:checked={$revertLayout} />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderShowAllZones')}</span>
+        <span class="setting-desc">{$t('settings.builderShowAllZonesDesc')}</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" bind:checked={$builderShowAllZones} />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderDisplayMode')}</span>
+        <span class="setting-desc">{$t('settings.builderDisplayModeDesc')}</span>
+      </div>
+      <div class="toggle-button-group">
+        <button
+          class="toggle-btn {builderGlobalMode === 'text' ? 'active' : ''}"
+          onclick={() => setBuilderGlobalMode('text')}
+        >
+          {$t('builder.textMode')}
+        </button>
+        <button
+          class="toggle-btn {builderGlobalMode === 'graphic' ? 'active' : ''}"
+          onclick={() => setBuilderGlobalMode('graphic')}
+        >
+          {$t('builder.graphicMode')}
+        </button>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderZoneModes')}</span>
+        <span class="setting-desc">{$t('settings.builderZoneModesDesc')}</span>
+      </div>
+      <button
+        class="button button-ghost"
+        onclick={() => (showBuilderZoneModes = !showBuilderZoneModes)}
+      >
+        {showBuilderZoneModes ? $t('builder.collapse') : $t('download.expand')}
+      </button>
+    </div>
+    {#if showBuilderZoneModes}
+      <div class="builder-zone-modes">
+        {#each builderZoneKeys as zone (zone)}
+          <div class="builder-zone-row">
+            <span class="zone-label">{$t(ZONE_CONFIG[zone].labelKey)}</span>
+            <div class="toggle-button-group">
+              <button
+                class="toggle-btn {$builderZoneDisplayModes[zone] === 'text' ? 'active' : ''}"
+                onclick={() => setBuilderZoneMode(zone, 'text')}
+              >
+                {$t('builder.textMode')}
+              </button>
+              <button
+                class="toggle-btn {$builderZoneDisplayModes[zone] === 'graphic' ? 'active' : ''}"
+                onclick={() => setBuilderZoneMode(zone, 'graphic')}
+              >
+                {$t('builder.graphicMode')}
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderGraphicColumns')}</span>
+        <span class="setting-desc">{$t('settings.builderGraphicColumnsDesc')}</span>
+      </div>
+      <input
+        class="setting-input builder-columns-input"
+        type="number"
+        min="2"
+        value={$builderGraphicColumns}
+        oninput={(e) => {
+          const target = e.target as HTMLInputElement
+          $builderGraphicColumns = parseInt(target.value || '4')
+        }}
+      />
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderMainDeckDisplay')}</span>
+        <span class="setting-desc">{$t('settings.builderMainDeckDisplayDesc')}</span>
+      </div>
+      <div class="toggle-button-group">
+        <button
+          class="toggle-btn {$builderMainDeckDisplayMode === 'grouped' ? 'active' : ''}"
+          onclick={() => ($builderMainDeckDisplayMode = 'grouped')}
+        >
+          {$t('builder.grouped')}
+        </button>
+        <button
+          class="toggle-btn {$builderMainDeckDisplayMode === 'single' ? 'active' : ''}"
+          onclick={() => ($builderMainDeckDisplayMode = 'single')}
+        >
+          {$t('builder.single')}
+        </button>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.builderSideboardDisplay')}</span>
+        <span class="setting-desc">{$t('settings.builderSideboardDisplayDesc')}</span>
+      </div>
+      <div class="toggle-button-group">
+        <button
+          class="toggle-btn {$builderSideboardDisplayMode === 'grouped' ? 'active' : ''}"
+          onclick={() => ($builderSideboardDisplayMode = 'grouped')}
+        >
+          {$t('builder.grouped')}
+        </button>
+        <button
+          class="toggle-btn {$builderSideboardDisplayMode === 'single' ? 'active' : ''}"
+          onclick={() => ($builderSideboardDisplayMode = 'single')}
+        >
+          {$t('builder.single')}
+        </button>
+      </div>
+    </div>
   </section>
 
   <!-- 收藏历史 -->
@@ -2029,5 +2203,67 @@
     .settings-container {
       padding: 24px 16px 80px;
     }
+  }
+
+  .toggle-button-group {
+    display: flex;
+    gap: 2px;
+    background-color: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+
+  .toggle-btn {
+    padding: 4px 14px;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .toggle-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .toggle-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+  }
+
+  .toggle-btn.active:hover {
+    background-color: color-mix(in oklab, var(--accent-color) 85%, black);
+  }
+
+  .builder-columns-input {
+    width: 80px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .builder-zone-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0 14px;
+  }
+
+  .builder-zone-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+  }
+
+  .builder-zone-row .zone-label {
+    font-size: var(--text-base);
+    color: var(--text-primary);
   }
 </style>

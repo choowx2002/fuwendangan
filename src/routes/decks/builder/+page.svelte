@@ -5,11 +5,11 @@
   import { onMount, tick } from 'svelte'
   import {
     ArrowUpDownIcon,
+    ChartColumn,
     ChevronLeftIcon,
     ChevronRightIcon,
     ChevronUpIcon,
     CircleAlert,
-    CircleCheck,
     EllipsisVerticalIcon,
     GripHorizontal,
     GripVertical,
@@ -24,6 +24,7 @@
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { printCacheName } from '$lib/db/helper'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
+  import { COLOR_ORDER, COLOR_VARS, computeColorTotals } from '$lib/cards/utils/cost-curve-utils'
   import { validateDeck, checkZoneCapacity } from '$lib/decks/deck-validator'
   import { convertDeckCardInput, compressDeckCards, flattenDeckCards } from '$lib/decks/deck-input'
   import { groupCards } from '$lib/decks/group-cards'
@@ -40,9 +41,25 @@
   import { loadDeckForEdit } from '$lib/decks/deck-loader'
   import { consumePendingDeckImport } from '$lib/stores/deck-import.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
-  import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
+  import {
+    ZONE_CONFIG,
+    DEFAULT_FORMAT,
+    getZoneConfig,
+    resolveFormat,
+    type ZoneKey,
+  } from '$lib/decks/zone'
+  import { DECK_FORMATS, FORMAT_LABEL_KEYS } from '$lib/decks/format'
   import type { cardAndPrint } from '$lib/decks/types'
   import { get } from 'svelte/store'
+  import {
+    revertLayout,
+    settingsStoreReady,
+    builderShowAllZones,
+    builderZoneDisplayModes,
+    builderGraphicColumns,
+    builderMainDeckDisplayMode,
+    builderSideboardDisplayMode,
+  } from '$lib/stores/settings'
   import { t } from '$lib/i18n'
 
   let legendCards = $state<cardAndPrint[]>([])
@@ -54,6 +71,7 @@
 
   let deckName = $state(get(t)('builder.unnamedDeck'))
   let selectedZone = $state<ZoneKey>('mainDeck')
+  let deckFormat = $state(DEFAULT_FORMAT)
 
   let showSaveModal = $state(false)
   let saveDeckName = $state(get(t)('builder.unnamedDeck'))
@@ -84,6 +102,17 @@
   let showDisplayModeAdvanced = $state(false)
 
   let showAllZoneMode = $state(true)
+  let prefsHydrated = $state(false)
+
+  $effect(() => {
+    if (!prefsHydrated) return
+    builderShowAllZones.set(showAllZoneMode)
+    builderZoneDisplayModes.set({ ...zoneDisplayModes })
+    builderGraphicColumns.set(singleColumnCount)
+    builderMainDeckDisplayMode.set(mainDeckDisplayMode)
+    builderSideboardDisplayMode.set(sideboardDisplayMode)
+  })
+
   let printModalPrintIndex = $state(0)
   let printModalTarget = $state<{
     card: cardAndPrint
@@ -97,7 +126,6 @@
   let confirmBack = $state(false)
 
   let isMobile1 = $state(false)
-  let revertLayout = $state(false)
   let rightPanelWidth = $state(50)
   let rightPanelHeight = $state(50)
 
@@ -126,14 +154,17 @@
   )
 
   let deckIssues = $derived(
-    validateDeck({
-      legendCards,
-      championCards,
-      mainDeckCards,
-      battlefieldCards,
-      runeCards,
-      sideboardCards,
-    })
+    validateDeck(
+      {
+        legendCards,
+        championCards,
+        mainDeckCards,
+        battlefieldCards,
+        runeCards,
+        sideboardCards,
+      },
+      deckFormat
+    )
   )
 
   let isTouchDevice = $state(false)
@@ -224,6 +255,16 @@
       applyImportedDeck(pending)
     }
 
+    settingsStoreReady.then(() => {
+      showAllZoneMode = get(builderShowAllZones)
+      zoneDisplayModes = { ...get(builderZoneDisplayModes) }
+      singleColumnCount = get(builderGraphicColumns)
+      mainDeckDisplayMode = get(builderMainDeckDisplayMode)
+      sideboardDisplayMode = get(builderSideboardDisplayMode)
+      updateGlobalDisplayMode()
+      prefsHydrated = true
+    })
+
     return () => {
       window.removeEventListener('resize', updateLayoutMode)
     }
@@ -242,6 +283,7 @@
       deckName = loaded.deck.name || get(t)('builder.unnamedDeck')
       saveDeckName = loaded.deck.name || get(t)('builder.unnamedDeck')
       saveDeckDescription = loaded.deck.description || ''
+      deckFormat = resolveFormat(loaded.deck.format)
       legendCards = loaded.legendCards
       championCards = loaded.championCards
       mainDeckCards = loaded.mainDeckCards
@@ -260,6 +302,7 @@
     deckName = get(t)('builder.importedDeck')
     saveDeckName = get(t)('builder.importedDeck')
     saveDeckDescription = ''
+    deckFormat = DEFAULT_FORMAT
     legendCards = result.deck.legendCards
     championCards = result.deck.championCards
     mainDeckCards = result.deck.mainDeckCards
@@ -281,7 +324,11 @@
       return
     }
 
-    const capacityError = checkZoneCapacity(selectedZone, getZoneCards(selectedZone).length)
+    const capacityError = checkZoneCapacity(
+      selectedZone,
+      getZoneCards(selectedZone).length,
+      deckFormat
+    )
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
     if (capacityError && !isReplacable) {
       message(
@@ -438,10 +485,13 @@
   function addCardQuantity(card: cardAndPrint, zone: ZoneKey) {
     const cards = getZoneCards(zone)
 
-    if (cards.length >= ZONE_CONFIG[zone].maxCount) {
+    if (cards.length >= getZoneConfig(deckFormat, zone).maxCount) {
       message(
         get(t)('builder.zoneCapacity', {
-          values: { zoneName: ZONE_CONFIG[zone].name, maxCount: ZONE_CONFIG[zone].maxCount },
+          values: {
+            zoneName: ZONE_CONFIG[zone].name,
+            maxCount: getZoneConfig(deckFormat, zone).maxCount,
+          },
         })
       )
       return
@@ -518,7 +568,7 @@
     const deckInfo: DeckInput = {
       name,
       description: saveDeckDescription.trim() || null,
-      format: '1v1（比赛）',
+      format: deckFormat,
     }
 
     const convertedCards = convertDeckCardInput(allDeckCards)
@@ -585,7 +635,7 @@
 
   function handlePointerDown(e: PointerEvent) {
     if (!layoutElement) return
-    if (useVerticalResize && revertLayout && rightPanelHeight === 100) {
+    if (useVerticalResize && get(revertLayout) && rightPanelHeight === 100) {
       rightPanelHeight = 50
       return
     }
@@ -643,7 +693,7 @@
       if (useVerticalResize) {
         const deltaY = event.clientY - startY
         let deltaPercent: number
-        if (revertLayout) {
+        if (get(revertLayout)) {
           deltaPercent = (deltaY / containerHeight) * 100
         } else {
           deltaPercent = (-deltaY / containerHeight) * 100
@@ -865,6 +915,25 @@
     })
     return Object.entries(totals).sort((a, b) => b[1] - a[1])
   })
+
+  const colorTotals = $derived.by(() => {
+    const totals = computeColorTotals(mainDeckStatCards)
+    return COLOR_ORDER.map((color) => ({ color, count: totals[color] || 0 })).filter(
+      (item) => item.count > 0
+    )
+  })
+
+  const maxColorCount = $derived(Math.max(...colorTotals.map((item) => item.count), 1))
+
+  const regionTotals = $derived.by(() => {
+    const totals: Record<string, number> = {}
+    mainDeckCards.forEach((card) => {
+      card.region?.forEach((region) => {
+        totals[region] = (totals[region] || 0) + 1
+      })
+    })
+    return Object.entries(totals).sort((a, b) => b[1] - a[1])
+  })
 </script>
 
 {#snippet cardItem(group: { card: cardAndPrint; count: number }, zone: ZoneKey, grouped: boolean)}
@@ -914,7 +983,7 @@
 <div
   bind:this={layoutElement}
   class="deck-builder-layout"
-  class:revert-layout={revertLayout && useVerticalResize}
+  class:revert-layout={$revertLayout && useVerticalResize}
 >
   <main class="card-pool-panel">
     <CardPool
@@ -933,7 +1002,7 @@
     onpointerdown={handlePointerDown}
   >
     {#if isMobile1}
-      {#if revertLayout && rightPanelHeight === 100}
+      {#if $revertLayout && rightPanelHeight === 100}
         <ChevronUpIcon size={24} />
       {:else}
         <GripHorizontal size={24} />
@@ -968,32 +1037,35 @@
         </div>
       {/if}
 
+      <div class="stats-trigger-wrap">
+        <button
+          class="button-icon"
+          class:active={showDeckStats}
+          onclick={() => (showDeckStats = !showDeckStats)}
+          title={$t('builder.deckStats')}
+        >
+          <ChartColumn size={16} />
+        </button>
+      </div>
+
       <button
         class="button {hasErrors ? 'button-danger' : 'button-primary'}"
         onclick={handleSave}
         disabled={isSaving || !isDirty || hasErrors}
-        style="min-width: 80px;"
       >
         {#if isSaving}
           <LoaderCircle class="animate-spin" size={16} />
         {:else}
           <Save size={16} />
         {/if}
-        <span>{$t('common.save')}</span>
+        <!-- <span>{$t('common.save')}</span> -->
       </button>
 
       <button
-        class="button button-ghost"
-        onclick={runOwnershipCheck}
-        disabled={allDeckCards.length === 0}
-        style="min-width: auto;"
-        title={$t('builder.checkOwnership')}
+        class="button-icon"
+        onclick={() => (showMoreMenu = !showMoreMenu)}
+        title={$t('common.moreActions')}
       >
-        <CircleCheck size={16} />
-        <span>{$t('builder.ownershipCheck')}</span>
-      </button>
-
-      <button class="button-icon" onclick={() => (showMoreMenu = !showMoreMenu)} title={$t('common.moreActions')}>
         <EllipsisVerticalIcon size={16} />
       </button>
     </div>
@@ -1078,7 +1150,11 @@
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'mainDeck')}>
               {$t('builder.zoneCount', {
-                values: { name: $t('builder.mainDeck'), count: mainDeckCards.length, max: ZONE_CONFIG.mainDeck.maxCount },
+                values: {
+                  name: $t('builder.mainDeck'),
+                  count: mainDeckCards.length,
+                  max: getZoneConfig(deckFormat, 'mainDeck').maxCount,
+                },
               })}
             </span>
 
@@ -1156,7 +1232,7 @@
                 values: {
                   name: $t('builder.battlefields'),
                   count: battlefieldCards.length,
-                  max: ZONE_CONFIG.battlefields.maxCount,
+                  max: getZoneConfig(deckFormat, 'battlefields').maxCount,
                 },
               })}
             </span>
@@ -1202,7 +1278,11 @@
           <div class="zone-header">
             <span class="zone-name" role="presentation" onclick={() => (selectedZone = 'runes')}
               >{$t('builder.zoneCount', {
-                values: { name: $t('builder.runes'), count: runeCards.length, max: ZONE_CONFIG.runes.maxCount },
+                values: {
+                  name: $t('builder.runes'),
+                  count: runeCards.length,
+                  max: getZoneConfig(deckFormat, 'runes').maxCount,
+                },
               })}</span
             >
 
@@ -1251,7 +1331,11 @@
               onclick={() => (selectedZone = 'sideboard')}
             >
               {$t('builder.zoneCount', {
-                values: { name: $t('builder.sideboard'), count: sideboardCards.length, max: ZONE_CONFIG.sideboard.maxCount },
+                values: {
+                  name: $t('builder.sideboard'),
+                  count: sideboardCards.length,
+                  max: getZoneConfig(deckFormat, 'sideboard').maxCount,
+                },
               })}
             </span>
 
@@ -1607,6 +1691,103 @@
   </CommonModal>
 
   <CommonModal
+    open={showDeckStats}
+    onclose={() => (showDeckStats = false)}
+    title={$t('builder.deckStats')}
+    subtitle={$t('builder.deckStatsSubtitle')}
+    width="min(560px, 100%)"
+  >
+    <div class="deck-stats-content">
+      <div class="stats-section-title">{$t('builder.totalCards')}</div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.legend')}</span>
+        <span class="stat-value">{legendCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.champion')}</span>
+        <span class="stat-value">{championCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.mainDeck')}</span>
+        <span class="stat-value">{mainDeckCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.battlefields')}</span>
+        <span class="stat-value">{battlefieldCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.runes')}</span>
+        <span class="stat-value">{runeCards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">{$t('builder.sideboard')}</span>
+        <span class="stat-value">{sideboardCards.length}</span>
+      </div>
+
+      <div class="stat-divider"></div>
+      <div class="stats-section-title">{$t('builder.costColor')}</div>
+      <CostCurveChart cards={mainDeckStatCards} />
+
+      <div class="stat-divider"></div>
+      <div class="stats-section-title">{$t('builder.colorDist')}</div>
+      {#if colorTotals.length === 0}
+        <div class="stats-empty">{$t('builder.mainDeckEmpty')}</div>
+      {:else}
+        {#each colorTotals as item (item.color)}
+          <div class="color-bar-row">
+            <span class="color-bar-label">
+              {item.color === 'neutral'
+                ? $t('cards.colorColorless')
+                : $t('cards.color' + item.color.charAt(0).toUpperCase() + item.color.slice(1))}
+            </span>
+            <div class="color-bar-track">
+              <div
+                class="color-bar-fill"
+                style="width: {(item.count / maxColorCount) * 100}%; background: {COLOR_VARS[
+                  item.color
+                ]}"
+              ></div>
+            </div>
+            <span class="color-bar-value">{item.count}</span>
+          </div>
+        {/each}
+      {/if}
+
+      <div class="stat-divider"></div>
+      <div class="stats-section-title">{$t('builder.typeStats')}</div>
+      {#if typeTotals.length === 0}
+        <div class="stats-empty">{$t('builder.mainDeckEmpty')}</div>
+      {:else}
+        {#each typeTotals as [cat, count]}
+          <div class="stat-row">
+            <span class="stat-label">{cat}</span>
+            <span class="stat-value">{count}</span>
+          </div>
+        {/each}
+      {/if}
+
+      <div class="stat-divider"></div>
+      <div class="stats-section-title">{$t('builder.regionDist')}</div>
+      {#if regionTotals.length === 0}
+        <div class="stats-empty">{$t('builder.mainDeckEmpty')}</div>
+      {:else}
+        {#each regionTotals as [region, count]}
+          <div class="stat-row">
+            <span class="stat-label">{region}</span>
+            <span class="stat-value">{count}</span>
+          </div>
+        {/each}
+      {/if}
+
+      <div class="stat-divider"></div>
+      <div class="stat-row stat-total">
+        <span class="stat-label">{$t('builder.total')}</span>
+        <span class="stat-value">{allDeckCards.length}</span>
+      </div>
+    </div>
+  </CommonModal>
+
+  <CommonModal
     open={showMoreMenu}
     onclose={() => {
       showMoreMenu = false
@@ -1617,9 +1798,63 @@
     closable={true}
   >
     <div class="more-menu-content">
+      <div style="justify-content: right;display: flex;gap: 10px;">
+        {#if useVerticalResize}
+          <button
+            class="button button-md button-secondary"
+            onclick={() => {
+              $revertLayout = !$revertLayout
+              showMoreMenu = false
+            }}
+          >
+            <ArrowUpDownIcon size={18} />
+            <span>{$revertLayout ? $t('builder.restoreLayout') : $t('builder.toggleLayout')}</span>
+          </button>
+        {/if}
+
+        <button
+          class="button button-md button-secondary"
+          onclick={() => {
+            arrangeDecks()
+            showMoreMenu = false
+          }}
+        >
+          <span>{$t('builder.arrangeDeck')}</span>
+        </button>
+        <button
+          class="button button-md button-secondary"
+          onclick={() => {
+            showMoreMenu = false
+            runOwnershipCheck()
+          }}
+        >
+          <span>{$t('builder.ownershipCheck')}</span>
+        </button>
+      </div>
+
       <div class="more-menu-item more-menu-toggle">
         <span class="toggle-label">
-          <span>{showAllZoneMode ? $t('builder.showAllZones') : $t('builder.showSelectedZones')}</span>
+          <span>{$t('builder.format')}</span>
+        </span>
+        <select
+          class="format-select"
+          bind:value={deckFormat}
+          aria-label={$t('builder.format')}
+          title={$t('builder.format')}
+        >
+          {#each DECK_FORMATS as format (format)}
+            <option value={format}>
+              {FORMAT_LABEL_KEYS[format] ? $t(FORMAT_LABEL_KEYS[format]) : format}
+            </option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="more-menu-item more-menu-toggle">
+        <span class="toggle-label">
+          <span
+            >{showAllZoneMode ? $t('builder.showAllZones') : $t('builder.showSelectedZones')}</span
+          >
         </span>
         <div class="toggle-button-group">
           <button
@@ -1736,40 +1971,6 @@
           style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); text-align: center;"
         />
       </div>
-
-      {#if useVerticalResize}
-        <button
-          class="button button-text more-menu-item"
-          onclick={() => {
-            revertLayout = !revertLayout
-            showMoreMenu = false
-          }}
-        >
-          <ArrowUpDownIcon size={18} />
-          <span>{revertLayout ? $t('builder.restoreLayout') : $t('builder.toggleLayout')}</span>
-        </button>
-      {/if}
-
-      <div style="justify-content: right;display: flex;gap: 10px;">
-        <button
-          class="button button-md button-secondary"
-          onclick={() => {
-            arrangeDecks()
-            showMoreMenu = false
-          }}
-        >
-          <span>{$t('builder.arrangeDeck')}</span>
-        </button>
-        <button
-          class="button button-md button-secondary"
-          onclick={() => {
-            showDeckStats = !showDeckStats
-            showMoreMenu = false
-          }}
-        >
-          <span>{$t('builder.deckStats')}</span>
-        </button>
-      </div>
     </div>
 
     {#snippet footer()}
@@ -1781,70 +1982,6 @@
         }}
       >
         <span>{$t('common.close')}</span>
-      </button>
-    {/snippet}
-  </CommonModal>
-
-  <CommonModal
-    open={showDeckStats}
-    onclose={() => (showDeckStats = false)}
-    title={$t('builder.deckStats')}
-    subtitle={$t('builder.deckStatsSubtitle')}
-  >
-    <div class="deck-stats-content">
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.totalCards')}</span>
-        <span class="stat-value">{allDeckCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.legend')}</span>
-        <span class="stat-value">{legendCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.champion')}</span>
-        <span class="stat-value">{championCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.mainDeck')}</span>
-        <span class="stat-value">{mainDeckCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.battlefields')}</span>
-        <span class="stat-value">{battlefieldCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.runes')}</span>
-        <span class="stat-value">{runeCards.length}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">{$t('builder.sideboard')}</span>
-        <span class="stat-value">{sideboardCards.length}</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stats-section-title">{$t('builder.costColor')}</div>
-      <CostCurveChart cards={mainDeckStatCards} />
-      <div class="stat-divider"></div>
-      <div class="stats-section-title">{$t('builder.typeStats')}</div>
-      {#if typeTotals.length === 0}
-        <div class="stats-empty">{$t('builder.mainDeckEmpty')}</div>
-      {:else}
-        {#each typeTotals as [cat, count]}
-          <div class="stat-row">
-            <span class="stat-label">{cat}</span>
-            <span class="stat-value">{count}</span>
-          </div>
-        {/each}
-      {/if}
-      <div class="stat-divider"></div>
-      <div class="stat-row stat-total">
-        <span class="stat-label">{$t('builder.total')}</span>
-        <span class="stat-value">{allDeckCards.length}</span>
-      </div>
-    </div>
-
-    {#snippet footer()}
-      <button class="button button-primary" onclick={() => (showDeckStats = false)}>
-        <span>{$t('builder.gotIt')}</span>
       </button>
     {/snippet}
   </CommonModal>
@@ -1904,6 +2041,15 @@
     gap: 8px;
     align-items: center;
     justify-content: flex-end;
+  }
+
+  .stats-trigger-wrap {
+    position: relative;
+  }
+
+  .button-icon.active {
+    background: var(--bg-active, #e5e7eb);
+    color: var(--accent-color);
   }
 
   .zones-container {
@@ -2791,6 +2937,16 @@
     border-color: var(--accent-color);
   }
 
+  .format-select {
+    max-width: 160px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 6px;
+    background: var(--bg-secondary, #fff);
+    color: var(--text-color, #111827);
+    font-size: 12px;
+  }
+
   .number-input::-webkit-inner-spin-button {
     opacity: 0.5;
   }
@@ -2815,6 +2971,45 @@
     font-style: italic;
     text-align: center;
     padding: 8px 12px;
+  }
+
+  .color-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+  }
+
+  .color-bar-label {
+    flex-shrink: 0;
+    width: 56px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    text-align: right;
+  }
+
+  .color-bar-track {
+    flex: 1;
+    height: 14px;
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .color-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    min-width: 4px;
+  }
+
+  .color-bar-value {
+    flex-shrink: 0;
+    width: 32px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
   }
 
   .stat-row {

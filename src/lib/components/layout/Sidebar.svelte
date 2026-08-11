@@ -4,7 +4,6 @@
   import {
     LayoutDashboard,
     Library,
-    Swords,
     Wrench,
     Settings,
     ChevronRight,
@@ -14,6 +13,7 @@
     Pin,
     PinOff,
     ScanLine,
+    WalletCards,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
@@ -28,7 +28,7 @@
   const navItems = [
     { icon: LayoutDashboard, key: 'home', href: '/' },
     { icon: Library, key: 'cards', href: '/cards' },
-    { icon: Swords, key: 'decks', href: '/decks' },
+    { icon: WalletCards, key: 'decks', href: '/decks' },
     { icon: Sparkles, key: 'collection', href: '/collection' },
     { icon: Gamepad2, key: 'simulator', href: '/simulator' },
   ]
@@ -147,12 +147,11 @@
   </nav>
 
   <div class="sidebar-footer">
-    <button class="button button-text" onclick={() => navigateTo('/scanner')}>
-      <ScanLine size={18} strokeWidth={1.75} />
-      <!-- <span class="willHidden" class:isHidden={isOpen && sidebarState.isMinimized}
-        >{$t('nav.scanner')}</span
-      > -->
-    </button>
+    {#if isMobile2}
+      <button class="button button-text" onclick={() => navigateTo('/scanner')}>
+        <ScanLine size={18} strokeWidth={1.75} />
+      </button>
+    {/if}
 
     {#if isTauri && !isMobile2}
       <button
@@ -363,7 +362,7 @@
   }
 
   .sidebar-footer > .button {
-      padding: 0;
+    padding: 0;
   }
 
   @media (min-width: 767.99px) {

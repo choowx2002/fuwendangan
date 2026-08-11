@@ -17,6 +17,7 @@ export const TABLE_DEFINITIONS = {
       rarity_name TEXT, series_name TEXT,
       flavor_text_cn TEXT, flavor_text_en TEXT,
       is_banned INTEGER DEFAULT 0,
+      deck_limit INTEGER,
       created_at TEXT, updated_at TEXT
     )
   `,

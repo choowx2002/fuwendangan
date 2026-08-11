@@ -6,7 +6,6 @@
   import { get } from 'svelte/store'
   import { isTauri } from '$lib/db'
   import { isMobile } from '$lib/utils/os'
-  import { startCameraQrScan } from '$lib/decks/deck-qr'
   import { setQrScanContent } from '$lib/stores/qr-scan.svelte'
   import {
     Format,
@@ -17,28 +16,13 @@
     openAppSettings,
   } from '@tauri-apps/plugin-barcode-scanner'
 
-  let videoEl = $state<HTMLVideoElement | null>(null)
-  let mobile = $state(false)
-  let platformChecked = $state(false)
-  let scanning = $state(false)
   let nativeActive = $state(false)
   let errorMsg = $state('')
-  let stopCamera: (() => void) | null = null
   let exitRequested = $state(false)
-
-  const webcamActive = $derived(stopCamera !== null && !errorMsg)
-
-  function stopWebcam() {
-    if (stopCamera) {
-      stopCamera()
-      stopCamera = null
-    }
-  }
 
   async function exitScanner() {
     if (exitRequested) return
     exitRequested = true
-    stopWebcam()
     if (nativeActive) {
       try {
         await cancel()
@@ -53,19 +37,6 @@
   async function handleDecoded(content: string) {
     setQrScanContent(content)
     await exitScanner()
-  }
-
-  async function startWebcam() {
-    if (!videoEl || scanning || exitRequested) return
-    errorMsg = ''
-    scanning = true
-    try {
-      stopCamera = await startCameraQrScan(videoEl, handleDecoded)
-    } catch (error) {
-      errorMsg = error instanceof Error ? error.message : String(error)
-    } finally {
-      scanning = false
-    }
   }
 
   async function startNative() {
@@ -100,25 +71,20 @@
     openAppSettings().catch(() => {})
   }
 
+  async function init() {
+    if (!isTauri || !(await isMobile())) {
+      await goto('/decks')
+      return
+    }
+    startNative()
+  }
+
   onMount(() => {
     init()
     return () => {
-      stopWebcam()
       if (nativeActive) cancel().catch(() => {})
     }
   })
-
-  async function init() {
-    if (isTauri) {
-      mobile = await isMobile()
-    }
-    platformChecked = true
-    if (mobile) {
-      startNative()
-    } else {
-      startWebcam()
-    }
-  }
 </script>
 
 <div class="scanner-page">
@@ -127,9 +93,6 @@
   </button>
 
   <div class="viewport">
-    {#if !mobile}
-      <video class="camera" bind:this={videoEl} muted playsinline></video>
-    {/if}
     <div class="scan-frame"></div>
   </div>
 
@@ -138,13 +101,11 @@
       <div class="status-error">
         <p class="status-text">{errorMsg}</p>
         <div class="status-actions">
-          {#if isTauri && mobile}
-            <button class="button button-ghost" onclick={openSettings}>
-              <Settings size={16} />
-              {$t('scanner.openSettings')}
-            </button>
-          {/if}
-          <button class="button button-ghost" onclick={mobile ? startNative : startWebcam}>
+          <button class="button button-ghost" onclick={openSettings}>
+            <Settings size={16} />
+            {$t('scanner.openSettings')}
+          </button>
+          <button class="button button-ghost" onclick={startNative}>
             <RefreshCw size={16} />
             {$t('common.retry')}
           </button>
@@ -153,25 +114,11 @@
           </button>
         </div>
       </div>
-    {:else if !platformChecked}
-      <span class="status-text"><span class="spin"><LoaderCircle size={16} /></span>{$t('common.loading')}</span>
-    {:else if mobile}
-      {#if nativeActive}
-        <span class="status-text"><span class="spin"><LoaderCircle size={16} /></span>{$t('scanner.recognizing')}</span>
-      {:else}
-        <div class="status-actions">
-          <button class="button button-primary" onclick={startNative}>
-            <ScanLine size={16} />
-            {$t('scanner.startScan')}
-          </button>
-        </div>
-      {/if}
-    {:else if scanning || webcamActive}
+    {:else if nativeActive}
       <span class="status-text"><span class="spin"><LoaderCircle size={16} /></span>{$t('scanner.recognizing')}</span>
-      <span class="status-sub">{$t('scanner.hint')}</span>
     {:else}
       <div class="status-actions">
-        <button class="button button-primary" onclick={startWebcam}>
+        <button class="button button-primary" onclick={startNative}>
           <ScanLine size={16} />
           {$t('scanner.startScan')}
         </button>
@@ -218,12 +165,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .camera {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
   }
 
   .scan-frame {
@@ -277,11 +218,6 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-base);
-  }
-
-  .status-sub {
-    font-size: var(--text-sm);
-    color: rgba(255, 255, 255, 0.6);
   }
 
   .status-error {

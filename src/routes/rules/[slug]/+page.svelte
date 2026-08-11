@@ -35,6 +35,8 @@
 
   const selectedCount = $derived(selectedRules.size)
 
+  let suppressClickUntil = 0
+
   // 搜索结果（防抖后的查询词）
   const searchResults = $derived.by(() => {
     if (!effectiveQuery.trim()) return []
@@ -114,6 +116,12 @@
     selectedRules = next
   }
 
+  function longpressSelect(ruleNumber: string) {
+    suppressClickUntil = Date.now() + 600
+    if (!copyMode) copyMode = true
+    toggleSelect(ruleNumber)
+  }
+
   function buildCopyText(list: Rule[]): string {
     return list
       .map((r) => {
@@ -139,10 +147,6 @@
       console.error('复制失败', error)
       showToast(get(t)('rules.copyFailed'), 'error')
     }
-  }
-
-  function copyRule(rule: Rule) {
-    copyRulesText([rule])
   }
 
   function copySelected() {
@@ -261,7 +265,7 @@
                   class="chapter rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                 >
                   <div class="chapter-num">{$t('rules.chapterLabel', { values: { number: rule.rule_number } })}</div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
@@ -275,7 +279,7 @@
                   class="section rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                 >
                   <h3 class="section-title">
                     <div class="section-num">{rule.rule_number}</div>
@@ -293,8 +297,9 @@
                   class:selected={copyMode && selectedRules.has(rule.rule_number)}
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => !copyMode && copyRule(rule) }}
+                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                   onclick={() => {
+                    if (Date.now() < suppressClickUntil) return
                     if (copyMode) toggleSelect(rule.rule_number)
                   }}
                 >
@@ -309,19 +314,6 @@
                   <div class="rule-body selectable">
                     {@html renderContent(rule, $lang)}
                   </div>
-                  {#if !copyMode}
-                    <button
-                      class="row-copy"
-                      title={$t('rules.copyRule')}
-                      aria-label={$t('rules.copyRule')}
-                      onclick={(e) => {
-                        e.stopPropagation()
-                        copyRule(rule)
-                      }}
-                    >
-                      <Copy size={14} />
-                    </button>
-                  {/if}
                 </div>
               {/if}
             {/each}
@@ -334,10 +326,10 @@
   </main>
 
   <!-- 多选复制浮动条 -->
-  {#if copyMode}
+  {#if copyMode && selectedCount > 0}
     <div class="multi-bar">
       <span class="multi-count">{$t('rules.selectedCount', { values: { count: selectedCount } })}</span>
-      <button class="multi-copy" onclick={copySelected} disabled={selectedCount === 0}>
+      <button class="multi-copy" onclick={copySelected}>
         <Copy size={14} /> {$t('rules.copyAll')}
       </button>
       <button class="multi-cancel" onclick={toggleCopyMode}>{$t('common.cancel')}</button>
@@ -621,6 +613,7 @@
   /* ===================== 主内容 ===================== */
   .main {
     height: calc(100vh - var(--rules-toolbar-h));
+    margin-top: var(--rules-toolbar-h);
     overflow-y: auto;
     background: var(--rules-bg);
   }
@@ -800,7 +793,6 @@
     line-height: 1.9;
     text-align: justify;
     font-weight: 600;
-    padding-right: 28px;
   }
 
   .rule-body :global(.bilingual-en) {
@@ -863,38 +855,7 @@
     }
   }
 
-  /* ===================== 复制按钮 ===================== */
-  .row-copy {
-    position: absolute;
-    right: 8px;
-    top: 8px;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--rules-accent) 16%, transparent);
-    color: var(--rules-accent);
-    cursor: pointer;
-    opacity: 0;
-    transition:
-      opacity 0.15s,
-      transform 0.15s;
-  }
-  .rule-row:hover .row-copy {
-    opacity: 1;
-  }
-  .row-copy:hover {
-    transform: scale(1.1);
-  }
-  @media (hover: none) {
-    .row-copy {
-      opacity: 1;
-    }
-  }
-
+  /* ===================== 多选勾选 ===================== */
   .row-check {
     flex-shrink: 0;
     width: 18px;
@@ -946,10 +907,6 @@
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-  }
-  .multi-copy:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
   .multi-cancel {
     border: none;

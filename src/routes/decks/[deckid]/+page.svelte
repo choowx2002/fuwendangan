@@ -25,6 +25,7 @@
     gameResult,
     type MatchSummary,
     type MatchWithGames,
+    printCacheName,
   } from '$lib/db/index.js'
   import { DECK_FORMATS, FORMAT_LABEL_KEYS } from '$lib/decks/format'
   import {
@@ -35,7 +36,7 @@
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { playerName } from '$lib/stores/settings'
-  import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
+  import { ZONE_CONFIG, getZoneConfig, resolveFormat, type ZoneKey } from '$lib/decks/zone'
   import {
     buildOwnershipText,
     buildOwnershipCsv,
@@ -43,6 +44,7 @@
     type OwnershipExportFormat,
     type OwnershipExportRow,
   } from '$lib/decks/ownership-export'
+  import { getDeckTokenSuggestions, type TokenSuggestion } from '$lib/decks/token-suggestion'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { onMount } from 'svelte'
   import { formatDeckExport, formatOfficialDeckExport } from '$lib/decks/deck-export'
@@ -100,6 +102,7 @@
     Upload,
     QrCode,
     FileText,
+    Shapes,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -131,7 +134,7 @@
   function diffBadgeLabel(item: VersionDiffItem): string {
     if (item.kind === 'increased') return `+${item.delta}`
     if (item.kind === 'decreased') return `-${item.delta}`
-    return `×${item.qty}`
+    return `+${item.qty}`
   }
 
   const versionRows = $derived.by(() => {
@@ -158,6 +161,8 @@
   let cards = $state<DeckCardDetail[]>([])
   let versions = $state<DeckVersion[]>([])
   let versionCards = $state<DeckVersionCard[]>([])
+  let tokenSuggestions = $state<TokenSuggestion[]>([])
+  let loadingTokens = $state(false)
   let showShareModal = $state(false)
   let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'>('text')
   let textLang = $state<'en' | 'cn'>('en')
@@ -236,7 +241,12 @@
       const src = await open({
         title: get(t)('deckDetail.pickBgImage'),
         multiple: false,
-        filters: [{ name: get(t)('decks.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+        filters: [
+          {
+            name: get(t)('decks.imageFilter'),
+            extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+          },
+        ],
       })
       if (!src || Array.isArray(src)) return
       try {
@@ -275,6 +285,18 @@
     const prints = await getPrintsByCardId(base.id)
     const full = { ...base, card_prints: prints }
     cardModalCache.set(card.card_id, full)
+    selectedCard = full
+  }
+
+  async function openCardModalForBase(card: CardBase) {
+    const cached = cardModalCache.get(card.id)
+    if (cached) {
+      selectedCard = cached
+      return
+    }
+    const prints = await getPrintsByCardId(card.id)
+    const full = { ...card, card_prints: prints }
+    cardModalCache.set(card.id, full)
     selectedCard = full
   }
 
@@ -371,6 +393,16 @@
     versions = await getDeckVersions(deckId)
     versionCards = await getDeckVersionCards(deckId)
     await loadMatches(deckId)
+    await Promise.all([loadTokenSuggestions(deckId)])
+  }
+
+  const loadTokenSuggestions = async (deckId: string) => {
+    loadingTokens = true
+    try {
+      tokenSuggestions = await getDeckTokenSuggestions(deckId)
+    } finally {
+      loadingTokens = false
+    }
   }
 
   const loadMatches = async (deckId: string) => {
@@ -461,10 +493,7 @@
       const content =
         ownershipExportFormat === 'csv'
           ? buildOwnershipCsv(ownershipExportRows)
-          : buildOwnershipText(
-              ownershipExportRows,
-              deck?.name ?? get(t)('builder.unnamedDeck')
-            )
+          : buildOwnershipText(ownershipExportRows, deck?.name ?? get(t)('builder.unnamedDeck'))
       const stamp = new Date().toISOString().slice(0, 10)
       const ok = await saveOwnershipExport(
         content,
@@ -472,7 +501,10 @@
         ownershipExportFormat
       )
       if (ok) {
-        showToast(get(t)('deckDetail.ownershipSaved', { values: { count: ownershipExportRows.length } }), 'success')
+        showToast(
+          get(t)('deckDetail.ownershipSaved', { values: { count: ownershipExportRows.length } }),
+          'success'
+        )
       } else {
         showToast(get(t)('deckDetail.saveCancelled'), 'info')
       }
@@ -623,6 +655,8 @@
     runes: runeCards.reduce((s, c) => s + c.quantity, 0),
     sideboard: sideboardCards.reduce((s, c) => s + c.quantity, 0),
   })
+
+  const deckFormat = $derived(resolveFormat(deck?.format))
 
   function displayName(card: DeckCardDetail): string {
     return card.sub_title_cn ? `${card.card_name_cn} - ${card.sub_title_cn}` : card.card_name_cn
@@ -1133,7 +1167,8 @@
       <span>{$t('deckDetail.totalCardsLabel')} <strong>{totalCardCount}</strong></span>
       <span class="divider">•</span>
       <span
-        >{$t('deckDetail.createdAt')} {deck?.created_at
+        >{$t('deckDetail.createdAt')}
+        {deck?.created_at
           ? new Date(deck.created_at).toLocaleDateString()
           : $t('common.unknown')}</span
       >
@@ -1152,7 +1187,14 @@
           <h2>{$t('records.title')}</h2>
           {#if matchStats}
             <span class="match-winrate-badge">
-              {$t('deckDetail.winRate', { values: { value: matchStats.games > 0 ? Math.round((matchStats.wins / matchStats.games) * 100) : 0 } })}
+              {$t('deckDetail.winRate', {
+                values: {
+                  value:
+                    matchStats.games > 0
+                      ? Math.round((matchStats.wins / matchStats.games) * 100)
+                      : 0,
+                },
+              })}
             </span>
           {/if}
         </div>
@@ -1161,10 +1203,12 @@
             class="button button-ghost button-sm"
             onclick={() => goto(`/decks/${page.params.deckid}/records`)}
           >
-            {$t('deckDetail.viewAll')} <ChevronRight size={14} />
+            {$t('deckDetail.viewAll')}
+            <ChevronRight size={14} />
           </button>
           <button class="button button-primary button-sm" onclick={openCreateMatch}>
-            <Plus size={14} /> {$t('match.recordTitle')}
+            <Plus size={14} />
+            {$t('match.recordTitle')}
           </button>
         </div>
       </div>
@@ -1223,10 +1267,13 @@
                 onclick={() => toggleMatchExpand(match.id)}
               >
                 <span class="match-item-date">
-                  {match.played_at ? new Date(match.played_at).toLocaleDateString() : $t('records.noDate')}
+                  {match.played_at
+                    ? new Date(match.played_at).toLocaleDateString()
+                    : $t('records.noDate')}
                 </span>
                 <span class="match-item-opponent">
-                  {match.player_name || $t('records.me')} vs {match.opponent_name || $t('records.unknownOpponent')}
+                  {match.player_name || $t('records.me')} vs {match.opponent_name ||
+                    $t('records.unknownOpponent')}
                 </span>
                 {#if match.group_name}
                   <span class="match-group-badge">{match.group_name}</span>
@@ -1261,7 +1308,9 @@
                   <ul class="game-list">
                     {#each match.games as game (game.id)}
                       <li class="game-item">
-                        <span class="game-number-badge">{$t('match.gameNumber', { values: { number: game.game_number } })}</span>
+                        <span class="game-number-badge"
+                          >{$t('match.gameNumber', { values: { number: game.game_number } })}</span
+                        >
                         {#if game.is_first !== null}
                           <span
                             class="game-turn-badge"
@@ -1309,13 +1358,15 @@
                       class="button button-text button-sm"
                       onclick={() => openEditMatch(match)}
                     >
-                      <PencilLine size={13} /> {$t('common.edit')}
+                      <PencilLine size={13} />
+                      {$t('common.edit')}
                     </button>
                     <button
                       class="button button-text button-sm"
                       onclick={() => confirmDeleteMatch(match)}
                     >
-                      <Trash2 size={13} /> {$t('common.delete')}
+                      <Trash2 size={13} />
+                      {$t('common.delete')}
                     </button>
                   </div>
                 </div>
@@ -1332,6 +1383,41 @@
 
     <div class="analysis-card curve-card">
       <CostCurveChart cards={mainCards} />
+    </div>
+
+    <div class="analysis-card token-card">
+      <div class="analysis-card-header">
+        <Shapes size={18} />
+        <h3>{$t('deckDetail.tokenSectionTitle')}</h3>
+      </div>
+
+      {#if loadingTokens}
+        <p class="token-empty">{$t('deckDetail.tokenLoading')}</p>
+      {:else if tokenSuggestions.length > 0}
+        <p class="token-hint">{$t('deckDetail.tokenSectionHint')}</p>
+        <ul class="token-grid">
+          {#each tokenSuggestions as item (item.card.card_name_cn || item.card.card_name_en)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <li class="token-item" onclick={() => openCardModalForBase(item.card)}>
+              <div class="token-item-img">
+                <CardSimpleImage
+                  url={item.bestPrint?.url}
+                  name={item.bestPrint ? printCacheName(item.bestPrint) : item.card.id}
+                  isLandscape={false}
+                />
+              </div>
+              <span class="token-item-name">{item.card.card_name_cn || item.card.card_name_en}</span
+              >
+              <span class="token-item-count">
+                {$t('deckDetail.tokenMentions', { values: { count: item.mentions } })}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="token-empty">{$t('deckDetail.tokenEmpty')}</p>
+      {/if}
     </div>
 
     <!-- <div class="analysis-card">
@@ -1408,7 +1494,9 @@
           disabled={simPhase !== 'initial'}
           onclick={confirmMulligan}
         >
-          {$t('deckDetail.mulligan2')}{mulliganSelection.size > 0 ? ` · ${mulliganSelection.size}` : ''}
+          {$t('deckDetail.mulligan2')}{mulliganSelection.size > 0
+            ? ` · ${mulliganSelection.size}`
+            : ''}
         </button>
         <button
           class="button button-secondary"
@@ -1527,7 +1615,7 @@
           <h3>
             {$t('builder.mainDeck')}
             <span class="count-badge">
-              {zoneCounts.mainDeck} / {ZONE_CONFIG.mainDeck.maxCount}
+              {zoneCounts.mainDeck} / {getZoneConfig(deckFormat, 'mainDeck').maxCount}
             </span>
           </h3>
           <ul class="card-grid maindeck-grid">
@@ -1560,7 +1648,7 @@
           <h3>
             {$t('builder.sideboard')}
             <span class="count-badge">
-              {zoneCounts.sideboard} / {ZONE_CONFIG.sideboard.maxCount}
+              {zoneCounts.sideboard} / {getZoneConfig(deckFormat, 'sideboard').maxCount}
             </span>
           </h3>
           <ul class="card-grid maindeck-grid">
@@ -1613,7 +1701,9 @@
                 <Pencil size={13} />
               </button>
             </div>
-            <div class="version-stats">{$t('deckDetail.totalCardsShort')} <strong>{row.totalCards}</strong></div>
+            <div class="version-stats">
+              {$t('deckDetail.totalCardsShort')} <strong>{row.totalCards}</strong>
+            </div>
             {#if row.isInitial}
               <div class="version-diff version-diff-initial">{$t('deckDetail.initialVersion')}</div>
             {:else if row.diff.length === 0}
@@ -1645,7 +1735,9 @@
                   type="button"
                   onclick={() => toggleVersionExpand(row.version.id)}
                 >
-                  {expanded ? $t('deckDetail.collapse') : $t('deckDetail.diffChanges', { values: { count: row.diff.length } })}
+                  {expanded
+                    ? $t('deckDetail.collapse')
+                    : $t('deckDetail.diffChanges', { values: { count: row.diff.length } })}
                 </button>
               {/if}
             {/if}
@@ -1658,7 +1750,11 @@
   </div>
 </div>
 
-<CommonModal open={showShareModal} title={$t('deckDetail.shareDeck')} onclose={() => (showShareModal = false)}>
+<CommonModal
+  open={showShareModal}
+  title={$t('deckDetail.shareDeck')}
+  onclose={() => (showShareModal = false)}
+>
   <div class="share-format-list">
     {#each shareFormats.filter((f) => !f.media) as format (format.id)}
       <button
@@ -1745,14 +1841,17 @@
           <span>{$t('deckDetail.codeGenFailed', { values: { error: deckCodeResult.error } })}</span>
         </div>
       {:else}
-        <pre class="text-preview-box selectable">{currentShareText() || $t('deckDetail.noExportContent')}</pre>
+        <pre class="text-preview-box selectable">{currentShareText() ||
+            $t('deckDetail.noExportContent')}</pre>
       {/if}
     </div>
   {/if}
 
   {#if shareFormat === 'pdf'}
     <div class="pdf-zone-select">
-      <div class="pdf-zone-title">{$t('deckDetail.selectZones', { values: { count: selectedPdfZoneCount } })}</div>
+      <div class="pdf-zone-title">
+        {$t('deckDetail.selectZones', { values: { count: selectedPdfZoneCount } })}
+      </div>
       <div class="pdf-zone-grid">
         {#each Object.keys(ZONE_CONFIG) as zone (zone)}
           {@const zoneKey = zone as ZoneKey}
@@ -1770,7 +1869,9 @@
               {/if}
             </span>
             <span class="pdf-zone-label">{$t('builder.' + zoneKey)}</span>
-            <span class="pdf-zone-count">{$t('deckDetail.cardsCount', { values: { count: zoneCounts[zoneKey] } })}</span>
+            <span class="pdf-zone-count"
+              >{$t('deckDetail.cardsCount', { values: { count: zoneCounts[zoneKey] } })}</span
+            >
           </button>
         {/each}
       </div>
@@ -1782,7 +1883,11 @@
       <div class="image-sort-title">{$t('deckDetail.preview')}</div>
       {#if imagePreviewUrl}
         <div class="image-preview-box">
-          <img class="image-preview-img" src={imagePreviewUrl} alt={$t('deckDetail.imagePreviewAlt')} />
+          <img
+            class="image-preview-img"
+            src={imagePreviewUrl}
+            alt={$t('deckDetail.imagePreviewAlt')}
+          />
           {#if imagePreviewing}
             <div class="image-preview-loading">{$t('deckDetail.updatingPreview')}</div>
           {/if}
@@ -1892,7 +1997,9 @@
           />
         </div>
         <div class="image-bg-overlay-row">
-          <span class="overlay-label">{$t('deckDetail.maskStrength', { values: { value: imageBgOverlay } })}</span>
+          <span class="overlay-label"
+            >{$t('deckDetail.maskStrength', { values: { value: imageBgOverlay } })}</span
+          >
           <input type="range" min="0" max="100" step="5" bind:value={imageBgOverlay} />
         </div>
       {/if}
@@ -1918,7 +2025,13 @@
       {#if qrPayloadText}
         <div class="qr-preview-box">
           {#if qrDataUrl}
-            <img src={qrDataUrl} alt={$t('deckDetail.qrPreviewAlt')} class="qr-preview-img" width={320} height={320} />
+            <img
+              src={qrDataUrl}
+              alt={$t('deckDetail.qrPreviewAlt')}
+              class="qr-preview-img"
+              width={320}
+              height={320}
+            />
           {:else}
             <div class="image-preview-loading">{$t('deckDetail.generatingQr')}</div>
           {/if}
@@ -1934,14 +2047,18 @@
   {/if}
 
   {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showShareModal = false)}>{$t('common.cancel')}</button>
+    <button class="button button-ghost" onclick={() => (showShareModal = false)}
+      >{$t('common.cancel')}</button
+    >
     {#if shareFormat !== 'pdf'}
       <button
         class="button button-primary"
         disabled={!currentShareTextAvailable() || exporting}
         onclick={confirmCopy}
       >
-        {(shareFormat === 'image' || shareFormat === 'qr') && mobilePlatform ? $t('deckDetail.share') : $t('common.copy')}
+        {(shareFormat === 'image' || shareFormat === 'qr') && mobilePlatform
+          ? $t('deckDetail.share')
+          : $t('common.copy')}
       </button>
     {/if}
     <button
@@ -2010,7 +2127,9 @@
     <select class="edit-info-select" bind:value={editFormat} disabled={savingInfo}>
       <option value="">{$t('deckDetail.unknownFormat')}</option>
       {#each editFormatOptions() as format (format)}
-        <option value={format}>{FORMAT_LABEL_KEYS[format] ? $t(FORMAT_LABEL_KEYS[format]) : format}</option>
+        <option value={format}
+          >{FORMAT_LABEL_KEYS[format] ? $t(FORMAT_LABEL_KEYS[format]) : format}</option
+        >
       {/each}
     </select>
   </label>
@@ -2312,6 +2431,78 @@
   /* ===== 曲线卡片 ===== */
   .curve-card {
     grid-column: span 2;
+  }
+
+  /* ===== 指示物建议 ===== */
+  .token-card {
+    grid-column: 1 / -1;
+  }
+
+  .token-hint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    margin: 0 0 14px 0;
+    line-height: 1.5;
+  }
+
+  .token-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 14px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .token-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+
+  .token-item:hover {
+    border-color: var(--accent-color);
+  }
+
+  .token-item-img {
+    width: 100%;
+    aspect-ratio: 0.71;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(.token-item-img > img) {
+    width: 100%;
+  }
+
+  .token-item-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .token-item-count {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .token-empty {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    margin: 0;
   }
 
   /* ===== 起手模拟 ===== */
@@ -2952,8 +3143,12 @@
       order: 5;
       margin-bottom: 0;
     }
-    .sim-card {
+    .token-card {
       order: 6;
+      margin-bottom: 0;
+    }
+    .sim-card {
+      order: 7;
     }
     .hero-strip {
       order: 3;
@@ -2966,7 +3161,7 @@
       order: 4;
     }
     .version-sidebar {
-      order: 7;
+      order: 8;
     }
     .landscape-grid {
       grid-template-columns: 1fr 1fr 1fr;

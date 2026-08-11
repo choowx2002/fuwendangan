@@ -25,6 +25,8 @@ export interface CardBase {
   flavor_text_cn: string | null
   flavor_text_en: string | null
   is_banned: boolean | null
+  // 卡组中的同名数量上限：NULL=默认3，0=不限，N=最多N张（作用域：英雄+主牌+备牌）
+  deck_limit: number | null
   created_at: string | null
   updated_at: string | null
 }

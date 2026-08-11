@@ -1,12 +1,12 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { LayoutDashboard, Library, Swords, Sparkles, BookOpen } from '@lucide/svelte'
+  import { LayoutDashboard, Library, Sparkles, BookOpen, WalletCards } from '@lucide/svelte'
   import { t } from 'svelte-i18n'
 
   const navItems = [
     { icon: LayoutDashboard, key: 'home', href: '/' },
     { icon: Library, key: 'cards', href: '/cards' },
-    { icon: Swords, key: 'decks', href: '/decks' },
+    { icon: WalletCards, key: 'decks', href: '/decks' },
     { icon: Sparkles, key: 'collection', href: '/collection' },
     { icon: BookOpen, key: 'rules', href: '/rules' },
   ]

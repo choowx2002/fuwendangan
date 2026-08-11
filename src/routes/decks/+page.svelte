@@ -1090,14 +1090,16 @@
   {:else if importTab === 'qr'}
     <div class="import-qr-block">
       <div class="import-qr-actions">
-        <button
-          type="button"
-          class="button button-primary import-qr-btn"
-          onclick={openScannerPage}
-        >
-          <ScanLine size={18} />
-          {$t('decks.scan')}
-        </button>
+        {#if mobilePlatform}
+          <button
+            type="button"
+            class="button button-primary import-qr-btn"
+            onclick={openScannerPage}
+          >
+            <ScanLine size={18} />
+            {$t('decks.scan')}
+          </button>
+        {/if}
         <button
           type="button"
           class="button button-ghost"

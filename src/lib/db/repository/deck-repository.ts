@@ -456,7 +456,53 @@ SELECT
   return results ?? []
 }
 
+export interface DeckCardEffect {
+  print_id: string
+  quantity: number
+  effect_cn: string | null
+  effect_en: string | null
+}
+
+/**
+ * 获取卡组最新版本所有卡牌的效果文本（按数量展开，覆盖全部区域）。
+ * 供「需要准备的指示物」分析扫描卡牌效果中提及的指示物名。
+ */
+export async function getLatestDeckCardEffects(deckId: string): Promise<DeckCardEffect[]> {
+  const db = await getDatabase()
+
+  const sql = `
+     WITH LatestVersion AS (
+       SELECT id FROM deck_versions
+       WHERE deck_id = ?
+       ORDER BY version_number DESC
+       LIMIT 1
+     )
+     SELECT
+       dc.card_id as print_id, dc.quantity,
+       cb.effect_cn, cb.effect_en
+     FROM deck_cards dc
+     JOIN card_prints cp ON dc.card_id = cp.id
+     JOIN cards_base cb ON cp.card_id = cb.id
+     JOIN LatestVersion lv ON dc.deck_version_id = lv.id
+   `
+
+  const rows = await db.select<DeckCardEffect[]>(sql, [deckId])
+  const effects: DeckCardEffect[] = []
+  for (const row of rows ?? []) {
+    for (let i = 0; i < row.quantity; i++) {
+      effects.push({
+        print_id: row.print_id,
+        quantity: 1,
+        effect_cn: row.effect_cn,
+        effect_en: row.effect_en,
+      })
+    }
+  }
+  return effects
+}
+
 export async function getDeckVersions(deckId: string): Promise<DeckVersion[]> {
+
   const db = await getDatabase()
   const sql = `
       SELECT id, deck_id, version_number, note, created_at

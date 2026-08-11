@@ -46,7 +46,10 @@
     sending = true
     try {
       await multiSpawn([...displayedCards])
-      showToast(get(t)('cards.ttsBatchSent', { values: { count: displayedCards.length } }), 'success')
+      showToast(
+        get(t)('cards.ttsBatchSent', { values: { count: displayedCards.length } }),
+        'success'
+      )
     } catch (error) {
       console.error('[Cards] 批量生成失败:', error)
       showToast(get(t)('cards.ttsBatchFailed'), 'error')
@@ -162,7 +165,7 @@
 
   .page-wrapper {
     display: flex;
-    height: calc(100vh - var(--topbar-height) - env(safe-area-inset-top));
+    height: 100%;
     overflow: hidden;
   }
 
@@ -181,8 +184,8 @@
       padding: 5px 16px 0;
     }
 
-    .page-wrapper {
-        padding-bottom: 47px;
-    }
+    /* .page-wrapper {
+      padding-bottom: 47px;
+    } */
   }
 </style>

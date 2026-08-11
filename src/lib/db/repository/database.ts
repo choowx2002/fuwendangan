@@ -95,6 +95,7 @@ async function initializeTables(db: Database): Promise<void> {
 
   await ensureColumn(db, TABLES.MATCH_RECORDS, 'player_name', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'card_no', 'TEXT')
+  await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。

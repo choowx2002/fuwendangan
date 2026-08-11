@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { downloadState, dismissDownload } from '$lib/stores/ui-store.svelte'
+  import { downloadState, dismissDownload, toggleDownloadExpanded } from '$lib/stores/ui-store.svelte'
   import { cancelCardImageDownload } from '$lib/services/card-image-download-service'
   import { t } from 'svelte-i18n'
-  import { Download, X, CircleCheck, CircleAlert, Ban } from '@lucide/svelte'
+  import { Download, Minus, X, CircleCheck, CircleAlert, Ban } from '@lucide/svelte'
 
   let cancelling = $state(false)
 
@@ -68,8 +68,8 @@
 </script>
 
 {#if downloadState.active}
-  <div class="download-bar" class:finish={isFinish}>
-    {#if isFinish}
+  {#if isFinish}
+    <div class="download-bar" class:finish={isFinish}>
       <div
         class="finish-card"
         class:success={downloadState.status === 'success'}
@@ -94,12 +94,22 @@
           <X size={16} />
         </button>
       </div>
-    {:else}
+    </div>
+  {:else if downloadState.expanded}
+    <div class="download-bar">
       <div class="progress-card">
         <div class="bar-header">
           <span class="bar-icon"><Download size={16} /></span>
           <span class="bar-title">{$t('download.title')}</span>
           <span class="bar-percent">{Math.round(percent)}%</span>
+          <button
+            class="minimize-btn"
+            aria-label={$t('download.minimize')}
+            title={$t('download.minimize')}
+            onclick={toggleDownloadExpanded}
+          >
+            <Minus size={14} />
+          </button>
         </div>
 
         <div class="progress-track">
@@ -113,8 +123,17 @@
           </button>
         </div>
       </div>
-    {/if}
-  </div>
+    </div>
+  {:else}
+    <button
+      class="min-circle"
+      title={$t('download.expand')}
+      aria-label={$t('download.expand')}
+      onclick={toggleDownloadExpanded}
+    >
+      {Math.round(percent)}%
+    </button>
+  {/if}
 {/if}
 
 <style>
@@ -176,6 +195,68 @@
     margin-left: auto;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+
+  .minimize-btn {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    color: var(--text-tertiary);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background 0.15s;
+  }
+
+  .minimize-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+
+  .min-circle {
+    position: fixed;
+    right: 16px;
+    bottom: 20px;
+    z-index: 9000;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent-color);
+    color: white;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    animation: popIn 0.25s ease;
+  }
+
+  @media (max-width: 767.99px) {
+    .min-circle {
+      bottom: calc(56px + env(safe-area-inset-bottom) + 12px);
+    }
+  }
+
+  @keyframes popIn {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 
   .progress-track {

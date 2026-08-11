@@ -9,6 +9,8 @@ export const DECK_FORMATS = [
   '2v2（熔岩大厅）',
 ] as const
 
+export type FormatKey = (typeof DECK_FORMATS)[number]
+
 export const FORMAT_LABEL_KEYS: Record<string, string> = {
   '1v1（决斗）': 'decks.formatDuel1v1',
   '1v1（比赛）': 'decks.formatMatch1v1',

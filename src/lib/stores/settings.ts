@@ -2,6 +2,7 @@ import { writable } from 'svelte/store'
 import { Store } from '@tauri-apps/plugin-store'
 import { locale as i18nLocale } from 'svelte-i18n'
 import { isSupportedLocale, systemLocale } from '$lib/i18n'
+import type { ZoneKey } from '$lib/decks/zone'
 
 let storePromise: Promise<Store> | null = null
 
@@ -48,6 +49,45 @@ export const playerName = persistentWritable('playerName', '')
 
 /** 界面语言（zh-CN / en），默认跟随系统语言 */
 export const locale = persistentWritable('locale', systemLocale())
+
+/** 卡组构建页（竖屏/触屏设备）是否反转上下布局 */
+export const revertLayout = persistentWritable('revertLayout', false)
+
+type BuilderCardDisplayMode = 'text' | 'graphic'
+type BuilderGroupMode = 'grouped' | 'single'
+
+const DEFAULT_ZONE_DISPLAY_MODES: Record<ZoneKey, BuilderCardDisplayMode> = {
+  legend: 'text',
+  champion: 'text',
+  mainDeck: 'text',
+  battlefields: 'text',
+  runes: 'text',
+  sideboard: 'text',
+}
+
+/** 卡组构建页：是否显示所有区域 */
+export const builderShowAllZones = persistentWritable('builderShowAllZones', true)
+
+/** 卡组构建页：各区域的 文字/卡图 显示模式 */
+export const builderZoneDisplayModes = persistentWritable<Record<ZoneKey, BuilderCardDisplayMode>>(
+  'builderZoneDisplayModes',
+  DEFAULT_ZONE_DISPLAY_MODES
+)
+
+/** 卡组构建页：卡图模式下每行列数 */
+export const builderGraphicColumns = persistentWritable('builderGraphicColumns', 4)
+
+/** 卡组构建页：主牌区 合并/单张 显示模式 */
+export const builderMainDeckDisplayMode = persistentWritable<BuilderGroupMode>(
+  'builderMainDeckDisplayMode',
+  'grouped'
+)
+
+/** 卡组构建页：备牌区 合并/单张 显示模式 */
+export const builderSideboardDisplayMode = persistentWritable<BuilderGroupMode>(
+  'builderSideboardDisplayMode',
+  'grouped'
+)
 
 locale.subscribe((value) => {
   const next = isSupportedLocale(value) ? value : systemLocale()

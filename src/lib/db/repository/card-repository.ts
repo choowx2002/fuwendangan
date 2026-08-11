@@ -20,8 +20,8 @@ export async function saveCard(card: CardBase): Promise<void> {
      (id, card_no, card_name_cn, card_name_en, sub_title_cn, sub_title_en, card_category,
       card_color_list, region, tag, keyword, advanced_tag, champion_tag, effect_cn, effect_en,
       energy, return_energy, power, rarity_name, series_name, flavor_text_cn, flavor_text_en,
-      is_banned, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+      is_banned, deck_limit, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
     [
       sqliteCard.id,
       sqliteCard.card_no,
@@ -46,6 +46,7 @@ export async function saveCard(card: CardBase): Promise<void> {
       sqliteCard.flavor_text_cn,
       sqliteCard.flavor_text_en,
       sqliteCard.is_banned,
+      sqliteCard.deck_limit,
       sqliteCard.created_at,
       sqliteCard.updated_at,
     ]
@@ -250,6 +251,18 @@ async function resolveLegendByName(
   const card = mapRowToCard(rows[0])
   const prints = await getPrintsByCardId(card.id)
   return { ...card, card_prints: prints, selectedPrints: rows[0].__print_id ?? undefined }
+}
+
+/**
+ * 获取全部指示物卡牌（card_category 含「指示物」）。
+ * 供卡组详情「需要准备的指示物」分析使用。
+ */
+export async function getTokenCards(): Promise<CardBase[]> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT * FROM ${TABLES.CARDS_BASE} WHERE card_category LIKE '%指示物%'`
+  )
+  return results.map(mapRowToCard)
 }
 
 /**

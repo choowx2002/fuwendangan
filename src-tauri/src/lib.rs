@@ -316,7 +316,11 @@ fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[cfg(not(debug_assertions))]
 fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
-    tauri_plugin_prevent_default::init()
+    use tauri_plugin_prevent_default::Flags;
+
+    tauri_plugin_prevent_default::Builder::new()
+        .with_flags(Flags::all().difference(Flags::CONTEXT_MENU))
+        .build()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
