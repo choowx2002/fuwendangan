@@ -309,32 +309,31 @@
 </script>
 
 <div class="page-wrapper">
-  <div class="find-card">
-    <div class="find-row">
-      <Search size={15} class="find-icon" />
-      <input
-        class="find-input"
-        bind:value={findQuery}
-        placeholder={$t('locker.findCardPlaceholder')}
-        oninput={onFindInput}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') void runFind()
+  <div class="find-card search-bar search-bar--sm">
+    <Search size={15} class="search-bar-icon" />
+    <input
+      class="search-bar-input"
+      bind:value={findQuery}
+      placeholder={$t('locker.findCardPlaceholder')}
+      oninput={onFindInput}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') void runFind()
+      }}
+    />
+    {#if findQuery}
+      <button
+        class="search-bar-clear"
+        title={$t('common.clear')}
+        onclick={() => {
+          findQuery = ''
+          findResults = []
+          locations = null
         }}
-      />
-      {#if findQuery}
-        <button
-          class="find-clear"
-          title={$t('common.clear')}
-          onclick={() => {
-            findQuery = ''
-            findResults = []
-            locations = null
-          }}
-        >
-          <X size={14} />
-        </button>
-      {/if}
-    </div>
+      >
+        <X size={14} />
+      </button>
+    {/if}
+  </div>
 
     {#if findResults.length > 0}
       <div class="find-results">
@@ -377,7 +376,6 @@
         {/if}
       </div>
     {/if}
-  </div>
 
   <div class="locker-list">
     {#if loading}
@@ -603,45 +601,6 @@
   }
 
   .find-card {
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    padding: 0 12px;
-  }
-
-  .find-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  :global(.find-icon) {
-    color: var(--text-tertiary);
-    flex-shrink: 0;
-  }
-
-  .find-input {
-    flex: 1;
-    min-width: 0;
-    padding: 8px 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    outline: none;
-  }
-
-  .find-clear {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    border: none;
-    border-radius: 50%;
-    background: var(--bg-hover);
-    color: var(--text-secondary);
-    cursor: pointer;
     flex-shrink: 0;
   }
 
@@ -650,8 +609,10 @@
     flex-direction: column;
     gap: 4px;
     margin-top: 8px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    padding: 6px;
   }
 
   .find-item {

@@ -26,6 +26,11 @@ export const TABLES = {
   LOCKERS: 'lockers',
   LOCKER_SECTIONS: 'locker_sections',
   LOCKER_CARDS: 'locker_cards',
+  WISHLIST_ITEMS: 'wishlist_items',
+  CONTACTS: 'contacts',
+  CARD_LOANS: 'card_loans',
+  PURCHASE_LISTS: 'purchase_lists',
+  PURCHASE_LIST_ITEMS: 'purchase_list_items',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]

@@ -175,12 +175,14 @@
       {/each}
     </div>
 
-    <input
-      class="search-input"
-      bind:value={filters.searchText}
-      placeholder={$t('locker.searchVariantPlaceholder')}
-      oninput={onFilterChange}
-    />
+    <div class="search-input search-bar search-bar--sm">
+      <input
+        class="search-bar-input"
+        bind:value={filters.searchText}
+        placeholder={$t('locker.searchVariantPlaceholder')}
+        oninput={onFilterChange}
+      />
+    </div>
 
     <CollectionSortDropdown
       sort={filters.sort}
@@ -326,17 +328,6 @@
   .search-input {
     flex: 1;
     min-width: 160px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    outline: none;
-  }
-
-  .search-input:focus {
-    border-color: var(--accent-color);
   }
 
   .pool-tip {

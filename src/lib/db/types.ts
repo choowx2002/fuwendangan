@@ -281,6 +281,120 @@ export interface OwnershipCheckRow {
   cardNoExtend: string
   needed: number
   owned: number
+  // 借出中（我借给别人）数量（status active/overdue 生效中）
+  loanedOut: number
+  // 借入中（别人借给我）数量
+  borrowedIn: number
+  // 当前实际可用 = owned - loanedOut + borrowedIn
+  available: number
+  // 缺卡数量 = max(0, needed - available)
+  qtyToBuy: number
+}
+
+// ==================== 心愿单 ====================
+
+/** 普卡/闪卡偏好：any 不限版本（不用 NULL，避免 UNIQUE 语义问题） */
+export type WishlistFinish = 'any' | 'normal' | 'foil'
+
+/** 心愿单条目状态 */
+export type WishlistStatus = 'active' | 'acquired' | 'archived'
+
+export interface WishlistItem {
+  id: string
+  card_no: string
+  card_no_extend: string
+  language_code: string
+  finish: WishlistFinish
+  qty_wanted: number
+  priority: number
+  status: WishlistStatus
+  note: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+// ==================== 借出 / 借入 ====================
+
+/** 借还方向：out 我借出，in 我借入 */
+export type LoanDirection = 'out' | 'in'
+
+/** 借还状态：active/overdue 视为生效中，参与可用数量计算 */
+export type LoanStatus = 'active' | 'overdue' | 'returned' | 'lost' | 'cancelled'
+
+/** 借还对象 */
+export interface Contact {
+  id: string
+  name: string
+  note: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 一笔借出或借入记录 */
+export interface CardLoan {
+  id: string
+  direction: LoanDirection
+  contact_id: string | null
+  card_no: string
+  card_no_extend: string
+  language_code: string
+  finish: WishlistFinish
+  qty: number
+  loaned_at: string
+  due_at: string | null
+  returned_at: string | null
+  status: LoanStatus
+  note: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+// ==================== 购买清单 ====================
+
+export type PurchaseListStatus = 'open' | 'completed' | 'archived'
+
+/** 购买清单条目状态 */
+export type PurchaseListItemStatus = 'pending' | 'ordered' | 'bought' | 'skipped'
+
+/** 购买清单头：deck_version_id 冻结生成时的卡组快照；match_mode 记录检查模式 */
+export interface PurchaseList {
+  id: string
+  name: string
+  deck_id: string | null
+  deck_version_id: string | null
+  match_mode: OwnershipMatchMode
+  status: PurchaseListStatus
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 购买清单条目：card_no / card_no_extend 快照，卡未入库也可加入 */
+export interface PurchaseListItem {
+  id: string
+  list_id: string
+  card_no: string
+  card_no_extend: string
+  collection_id: string | null
+  language_pref: string
+  finish_pref: WishlistFinish
+  qty_required: number
+  qty_owned: number
+  qty_to_buy: number
+  status: PurchaseListItemStatus
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 卡组缺卡检查结果（购买清单生成的数据源） */
+export interface DeckCheckRow {
+  card_no: string
+  card_no_extend: string
+  required_qty: number
+  owned_qty: number
+  loaned_out_qty: number
+  borrowed_in_qty: number
+  available_qty: number
+  qty_to_buy: number
 }
 
 // 收藏批量操作项（卡牌维度）

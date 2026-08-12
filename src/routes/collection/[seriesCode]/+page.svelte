@@ -426,14 +426,16 @@
       {/each}
     </div>
 
-    <input
-      class="search-input"
-      placeholder={$t('collection.seriesSearchPlaceholder')}
-      bind:value={searchText}
-      onkeydown={(e) => {
-        if (e.key === 'Enter') void runSearch(true)
-      }}
-    />
+    <div class="search-input search-bar search-bar--sm">
+      <input
+        class="search-bar-input"
+        placeholder={$t('collection.seriesSearchPlaceholder')}
+        bind:value={searchText}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') void runSearch(true)
+        }}
+      />
+    </div>
 
     <CollectionSortDropdown
       {sort}
@@ -572,12 +574,6 @@
     flex: 1;
     min-width: 180px;
     max-width: 320px;
-    padding: 7px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
   }
 
   .view-toggle {

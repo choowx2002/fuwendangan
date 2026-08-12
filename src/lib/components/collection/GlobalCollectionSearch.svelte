@@ -49,9 +49,10 @@
 </script>
 
 <div class="global-search">
-  <div class="search-box">
-    <Search size={15} class="search-icon" />
+  <div class="search-bar search-bar--sm">
+    <Search size={15} class="search-bar-icon" />
     <input
+      class="search-bar-input"
       bind:value={text}
       {placeholder}
       oninput={scheduleSearch}
@@ -108,34 +109,6 @@
     position: relative;
     width: 100%;
     max-width: 340px;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-  }
-
-  .search-box:focus-within {
-    border-color: var(--accent-color);
-  }
-
-  .search-box input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .search-box input::placeholder {
-    color: var(--text-tertiary);
   }
 
   .results {

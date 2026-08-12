@@ -340,13 +340,13 @@
   <CommonModal open={searchOpen} onclose={closeSearch} width="min(560px, 100%)">
     {#snippet header()}
       <div class="search-modal-header">
-        <Search size={16} />
+        <Search size={16} class="search-bar-icon" />
         <input
           bind:this={searchInput}
           bind:value={searchQuery}
           oninput={scheduleSearch}
           placeholder={$t('rules.searchPlaceholder')}
-          class="search-modal-input"
+          class="search-bar-input"
         />
         {#if searchQuery}
           <button class="search-modal-clear" onclick={clearSearch} aria-label={$t('rules.clearSearch')}>
@@ -931,20 +931,10 @@
     width: 100%;
     padding: 16px 20px;
     border-bottom: 1px solid var(--rules-border);
-    color: var(--rules-muted);
-  }
-  .search-modal-input {
-    flex: 1;
-    min-width: 0;
-    background: transparent;
-    border: none;
-    outline: none;
     font-size: var(--text-base);
-    color: var(--rules-text);
-  }
-  .search-modal-input::placeholder {
-    color: var(--rules-muted);
-    opacity: 0.6;
+    --text-primary: var(--rules-text);
+    --text-tertiary: var(--rules-muted);
+    --accent-color: var(--rules-accent);
   }
   .search-modal-clear {
     width: 24px;

@@ -372,13 +372,16 @@
           {#if showCardSearch}
             <div class="card-search-panel">
               <div class="card-search-row">
-                <input
-                  bind:value={cardSearchText}
-                  placeholder={$t('collection.searchByNoOrName')}
-                  onkeydown={(e) => {
-                    if (e.key === 'Enter') void searchBaseCards()
-                  }}
-                />
+                <div class="search-bar search-bar--sm">
+                  <input
+                    class="search-bar-input"
+                    bind:value={cardSearchText}
+                    placeholder={$t('collection.searchByNoOrName')}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') void searchBaseCards()
+                    }}
+                  />
+                </div>
                 <button class="btn-ghost" type="button" onclick={() => void searchBaseCards()}>
                   <Search size={14} /> {$t('common.search')}
                 </button>
@@ -622,9 +625,8 @@
     gap: 8px;
   }
 
-  .card-search-row input {
+  .card-search-row .search-bar {
     flex: 1;
-    min-width: 0;
   }
 
   .card-search-results {

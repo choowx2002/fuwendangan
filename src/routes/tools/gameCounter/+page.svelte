@@ -682,10 +682,10 @@
       </label>
       <div class="field legend-field">
         <span class="field-label">{$t('tools.oppLegend')}</span>
-        <div class="legend-search">
-          <Search size={14} class="legend-search-icon" />
+        <div class="legend-search search-bar search-bar--sm">
+          <Search size={14} class="search-bar-icon" />
           <input
-            class="input"
+            class="search-bar-input"
             type="text"
             placeholder={$t('tools.searchLegendPlaceholder')}
             maxlength="50"
@@ -693,7 +693,7 @@
           />
           {#if $scoreCounterState.oppLegendName}
             <button
-              class="icon-btn legend-clear-btn"
+              class="search-bar-clear"
               type="button"
               title={$t('tools.clearSelection')}
               onclick={clearOppLegend}
@@ -1041,48 +1041,7 @@
   }
 
   .legend-search {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  :global(.legend-search-icon) {
-    position: absolute;
-    left: 10px;
-    color: var(--text-secondary);
-    pointer-events: none;
-  }
-
-  .legend-search .input {
-    padding-left: 32px;
-  }
-
-  .legend-search .input:has(+ .legend-clear-btn) {
-    padding-right: 36px;
-  }
-
-  .legend-clear-btn {
-    position: absolute;
-    right: 6px;
-  }
-
-  .icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: var(--bg-hover);
-    color: var(--danger-color, #dc2626);
+    width: 100%;
   }
 
   .legend-hint {

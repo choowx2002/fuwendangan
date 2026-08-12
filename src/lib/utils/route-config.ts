@@ -27,6 +27,14 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/decks/:deckid/records/:matchid/logs': { backTo: '/decks', description: '对局日志 → 对局记录' },
   '/collection/:seriesCode': { backTo: '/collection', description: '系列收藏 → 收藏总览' },
   '/collection/history': { backTo: '/collection', description: '收藏历史 → 收藏总览' },
+  '/collection/missing': { backTo: '/collection', description: '缺卡清单 → 收藏总览' },
+  '/collection/wishlist': { backTo: '/collection', description: '心愿单 → 收藏总览' },
+  '/collection/loans': { backTo: '/collection', description: '借出借入 → 收藏总览' },
+  '/collection/purchase-lists': { backTo: '/collection', description: '购买清单 → 收藏总览' },
+  '/collection/purchase-lists/:listId': {
+    backTo: '/collection/purchase-lists',
+    description: '购买清单详情 → 购买清单',
+  },
   '/locker/:lockerId': { backTo: '/locker', description: '储物柜详情 → 储物柜列表' },
   '/locker/:lockerId/:sectionId': { backTo: '/locker', description: '抽屉卡片 → 储物柜详情' },
 }

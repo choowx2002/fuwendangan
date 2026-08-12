@@ -60,6 +60,18 @@ export type {
   CollectionHistoryQuery,
   SnapshotTrigger,
   CollectionStatsSnapshot,
+  WishlistFinish,
+  WishlistStatus,
+  WishlistItem,
+  LoanDirection,
+  LoanStatus,
+  CardLoan,
+  Contact,
+  PurchaseListStatus,
+  PurchaseListItemStatus,
+  PurchaseList,
+  PurchaseListItem,
+  DeckCheckRow,
 } from './types'
 
 // ==================== 配置 ====================
@@ -227,6 +239,51 @@ export {
   type LockerExportVariant,
 } from './repository/locker-repository'
 export * from './repository/deck-repository'
+export {
+  getContacts,
+  getContact,
+  createContact,
+  updateContact,
+  deleteContact,
+} from './repository/contact-repository'
+export {
+  getLoans,
+  getLoan,
+  createLoan,
+  updateLoan,
+  deleteLoan,
+  getActiveLoanQty,
+  markOverdueLoans,
+  type LoanInput,
+  type LoanFilter,
+  type CardLoanWithName,
+} from './repository/loan-repository'
+export {
+  getWishlistItems,
+  countActiveWishlist,
+  upsertWishlistItem,
+  updateWishlistStatus,
+  deleteWishlistItem,
+  type WishlistItemInput,
+  type WishlistFilter,
+} from './repository/wishlist-repository'
+export {
+  createPurchaseList,
+  getPurchaseLists,
+  getPurchaseList,
+  updatePurchaseListStatus,
+  deletePurchaseList,
+  getPurchaseListItems,
+  upsertPurchaseListItem,
+  updatePurchaseListItemStatus,
+  removePurchaseListItem,
+  generatePurchaseListFromDeck,
+  refreshPurchaseListFromDeck,
+  updatePurchaseListMatchMode,
+  getPurchaseListItemCounts,
+  type CreatePurchaseListInput,
+  type PurchaseListItemInput,
+} from './repository/purchase-list-repository'
 export {
   createMatch,
   updateMatch,

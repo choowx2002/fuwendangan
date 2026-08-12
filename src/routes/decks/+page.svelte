@@ -630,21 +630,19 @@
 <div class="decks-page">
   <section class="filter-bar">
     <div
-      class="search-box"
+      class="search-box search-bar"
       onfocusout={(e) => {
         const next = e.relatedTarget as Node | null
         if (next && (e.currentTarget as HTMLElement).contains(next)) return
         showTagSuggestions = false
       }}
     >
-      <div class="search-icon">
-        <Search size={18} />
-      </div>
+      <Search size={18} class="search-bar-icon" />
       <input
         type="text"
         placeholder={$t('decks.searchPlaceholder')}
         bind:value={searchQuery}
-        class="search-input"
+        class="search-bar-input"
         onfocus={() => (showTagSuggestions = true)}
         oninput={() => {
           showTagSuggestions = true
@@ -1227,36 +1225,6 @@
     flex: 1;
     min-width: 200px;
     max-width: 400px;
-  }
-
-  .search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-tertiary);
-    pointer-events: none;
-  }
-
-  .search-input {
-    width: 100%;
-    padding: 10px 12px 10px 40px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  .search-input:focus {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-color) 15%, transparent);
-  }
-
-  .search-input::placeholder {
-    color: var(--text-tertiary);
   }
 
   .filter-controls {

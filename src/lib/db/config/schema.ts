@@ -365,6 +365,127 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_locker_cards_card ON locker_cards(card_no)
   `,
 
+  // 心愿单：language_code='*' 表示任意语言，finish='any' 表示不限普卡/闪卡版本
+  wishlist_items: `
+    CREATE TABLE IF NOT EXISTS wishlist_items (
+      id TEXT PRIMARY KEY,
+      card_no TEXT NOT NULL,
+      card_no_extend TEXT NOT NULL,
+      language_code TEXT NOT NULL DEFAULT '*',
+      finish TEXT NOT NULL DEFAULT 'any',
+      qty_wanted INTEGER NOT NULL DEFAULT 1,
+      priority INTEGER NOT NULL DEFAULT 3,
+      status TEXT NOT NULL DEFAULT 'active',
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      UNIQUE(card_no, card_no_extend, language_code, finish)
+    )
+  `,
+
+  idx_wishlist_status: `
+    CREATE INDEX IF NOT EXISTS idx_wishlist_status ON wishlist_items(status)
+  `,
+
+  idx_wishlist_card: `
+    CREATE INDEX IF NOT EXISTS idx_wishlist_card ON wishlist_items(card_no, card_no_extend)
+  `,
+
+  contacts: `
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  idx_contacts_name: `
+    CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)
+  `,
+
+  // 借出/借入：direction='out' 我借出，direction='in' 我借入；
+  // 计数时 status IN ('active','overdue') 视为生效中
+  card_loans: `
+    CREATE TABLE IF NOT EXISTS card_loans (
+      id TEXT PRIMARY KEY,
+      direction TEXT NOT NULL CHECK (direction IN ('out','in')),
+      contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
+      card_no TEXT NOT NULL,
+      card_no_extend TEXT NOT NULL,
+      language_code TEXT NOT NULL DEFAULT '*',
+      finish TEXT NOT NULL DEFAULT 'any',
+      qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+      loaned_at TEXT NOT NULL,
+      due_at TEXT,
+      returned_at TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  idx_card_loans_active: `
+    CREATE INDEX IF NOT EXISTS idx_card_loans_active ON card_loans(direction, status)
+  `,
+
+  idx_card_loans_card: `
+    CREATE INDEX IF NOT EXISTS idx_card_loans_card ON card_loans(card_no, card_no_extend, direction, status)
+  `,
+
+  idx_card_loans_contact: `
+    CREATE INDEX IF NOT EXISTS idx_card_loans_contact ON card_loans(contact_id)
+  `,
+
+  // 购买清单头：deck_version_id 冻结生成时的卡组快照；
+  // match_mode 记录生成/刷新时的检查模式：'print' 按印刷号、'card' 按卡牌合并（同 card_no 的不同印刷视为同卡）
+  purchase_lists: `
+    CREATE TABLE IF NOT EXISTS purchase_lists (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
+      deck_version_id TEXT REFERENCES deck_versions(id) ON DELETE SET NULL,
+      match_mode TEXT NOT NULL DEFAULT 'print',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `,
+
+  idx_purchase_lists_status: `
+    CREATE INDEX IF NOT EXISTS idx_purchase_lists_status ON purchase_lists(status)
+  `,
+
+  // 购买清单明细：card_no/card_no_extend 快照，卡未入库也可加入
+  purchase_list_items: `
+    CREATE TABLE IF NOT EXISTS purchase_list_items (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES purchase_lists(id) ON DELETE CASCADE,
+      card_no TEXT NOT NULL,
+      card_no_extend TEXT NOT NULL,
+      collection_id TEXT,
+      language_pref TEXT NOT NULL DEFAULT '*',
+      finish_pref TEXT NOT NULL DEFAULT 'any',
+      qty_required INTEGER NOT NULL DEFAULT 0,
+      qty_owned INTEGER NOT NULL DEFAULT 0,
+      qty_to_buy INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT,
+      updated_at TEXT,
+      UNIQUE(list_id, card_no, card_no_extend, language_pref, finish_pref)
+    )
+  `,
+
+  idx_pli_list: `
+    CREATE INDEX IF NOT EXISTS idx_pli_list ON purchase_list_items(list_id, status)
+  `,
+
+  idx_pli_card: `
+    CREATE INDEX IF NOT EXISTS idx_pli_card ON purchase_list_items(card_no, card_no_extend)
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS match_games;
@@ -385,5 +506,10 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS locker_cards;
     DROP TABLE IF EXISTS locker_sections;
     DROP TABLE IF EXISTS lockers;
+    DROP TABLE IF EXISTS wishlist_items;
+    DROP TABLE IF EXISTS card_loans;
+    DROP TABLE IF EXISTS contacts;
+    DROP TABLE IF EXISTS purchase_list_items;
+    DROP TABLE IF EXISTS purchase_lists;
   `,
 } as const

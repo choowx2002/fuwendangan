@@ -136,11 +136,12 @@
 </script>
 
 <div class="search-wrapper" class:focused={isFocused}>
-  <div class="search-input-container">
-    <Search size={16} class="search-icon" />
+  <div class="search-bar">
+    <Search size={16} class="search-bar-icon" />
     <input
       id="searchBar"
       bind:this={inputEl}
+      class="search-bar-input"
       type="text"
       bind:value={searchText}
       placeholder={currentValue ? $t('cards.searching', { values: { q: currentValue } }) : $t('cards.searchPlaceholder')}
@@ -150,7 +151,7 @@
       autocomplete="off"
     />
     {#if currentValue}
-      <button class="clear-btn" onclick={clearSearch} aria-label={$t('cards.clear')}>
+      <button class="search-bar-clear" onclick={clearSearch} aria-label={$t('cards.clear')}>
         <X size={14} />
       </button>
     {/if}
@@ -180,54 +181,6 @@
     position: relative;
     width: 100%;
     max-width: 600px;
-  }
-
-  .search-input-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--bg-secondary);
-    transition: all 0.15s;
-    box-shadow: 0 4px 8px 0px rgba(0, 0, 0, 0.1);
-  }
-
-  .search-wrapper.focused .search-input-container {
-    border-color: var(--accent-color);
-    box-shadow: 0 4px 8px rgba(19, 205, 171, 0.4);
-  }
-
-  :global(.search-icon) {
-    color: var(--text-tertiary);
-    flex-shrink: 0;
-  }
-
-  input {
-    flex: 1;
-    border: none;
-    outline: none;
-    font-size: var(--text-base);
-    background: transparent;
-    color: var(--text-primary);
-  }
-  input::placeholder {
-    color: var(--text-tertiary);
-  }
-
-  .clear-btn {
-    background: none;
-    border: none;
-    padding: 4px;
-    border-radius: 50%;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    display: flex;
-  }
-  .clear-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
   }
 
   .popdown {

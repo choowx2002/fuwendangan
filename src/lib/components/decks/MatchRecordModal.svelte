@@ -416,10 +416,10 @@
 
       <div class="field legend-field">
         <span class="field-label">{$t('match.oppLegend')}</span>
-        <div class="legend-search">
-          <Search size={14} class="legend-search-icon" />
+        <div class="legend-search search-bar search-bar--sm">
+          <Search size={14} class="search-bar-icon" />
           <input
-            class="input"
+            class="search-bar-input"
             type="text"
             placeholder={$t('match.legendSearch')}
             maxlength="50"
@@ -428,7 +428,7 @@
           />
           {#if oppLegend}
             <button
-              class="icon-btn legend-clear-btn"
+              class="search-bar-clear"
               type="button"
               title={$t('match.clearSelect')}
               onclick={clearLegend}
@@ -963,29 +963,7 @@
   }
 
   .legend-search {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  :global(.legend-search-icon) {
-    position: absolute;
-    left: 10px;
-    color: var(--text-secondary);
-    pointer-events: none;
-  }
-
-  .legend-search .input {
-    padding-left: 32px;
-  }
-
-  .legend-search .input:has(+ .legend-clear-btn) {
-    padding-right: 36px;
-  }
-
-  .legend-clear-btn {
-    position: absolute;
-    right: 6px;
+    width: 100%;
   }
 
   .legend-hint {

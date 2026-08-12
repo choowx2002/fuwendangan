@@ -408,9 +408,13 @@ export async function searchCardVariants(
   if (hasSearch) {
     innerSelects.push(
       `MAX(CASE WHEN (card_no_extend LIKE ? OR extend_rarity_name LIKE ?
-             OR rarity_name LIKE ? OR artist LIKE ?) THEN 1 ELSE 0 END) AS text_match`
+             OR rarity_name LIKE ? OR artist LIKE ?
+             OR EXISTS (SELECT 1 FROM ${TABLES.CARDS_BASE} cb
+                WHERE cb.id = card_id AND (cb.card_name_cn LIKE ? OR cb.card_name_en LIKE ?
+                  OR cb.sub_title_cn LIKE ? OR cb.sub_title_en LIKE ?))
+             ) THEN 1 ELSE 0 END) AS text_match`
     )
-    innerParams.push(safeText, safeText, safeText, safeText)
+    innerParams.push(safeText, safeText, safeText, safeText, safeText, safeText, safeText, safeText)
   }
 
   const outerWheres: string[] = []

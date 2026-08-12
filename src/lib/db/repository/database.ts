@@ -4,6 +4,7 @@
  */
 
 import Database from '@tauri-apps/plugin-sql'
+import { Snowflake } from '@theinternetfolks/snowflake'
 import { DB_NAME, TABLES } from '../config/constants'
 import { TABLE_DEFINITIONS } from '../config/schema'
 
@@ -90,6 +91,20 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.idx_locker_sections_locker)
   await db.execute(TABLE_DEFINITIONS.idx_locker_cards_section)
   await db.execute(TABLE_DEFINITIONS.idx_locker_cards_card)
+  await db.execute(TABLE_DEFINITIONS.wishlist_items)
+  await db.execute(TABLE_DEFINITIONS.idx_wishlist_status)
+  await db.execute(TABLE_DEFINITIONS.idx_wishlist_card)
+  await db.execute(TABLE_DEFINITIONS.contacts)
+  await db.execute(TABLE_DEFINITIONS.idx_contacts_name)
+  await db.execute(TABLE_DEFINITIONS.card_loans)
+  await db.execute(TABLE_DEFINITIONS.idx_card_loans_active)
+  await db.execute(TABLE_DEFINITIONS.idx_card_loans_card)
+  await db.execute(TABLE_DEFINITIONS.idx_card_loans_contact)
+  await db.execute(TABLE_DEFINITIONS.purchase_lists)
+  await db.execute(TABLE_DEFINITIONS.idx_purchase_lists_status)
+  await db.execute(TABLE_DEFINITIONS.purchase_list_items)
+  await db.execute(TABLE_DEFINITIONS.idx_pli_list)
+  await db.execute(TABLE_DEFINITIONS.idx_pli_card)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
@@ -108,6 +123,7 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'tags', 'TEXT')
   await ensureColumn(db, TABLES.LOCKERS, 'icon', 'TEXT')
   await ensureColumn(db, TABLES.LOCKERS, 'tags', 'TEXT')
+  await ensureColumn(db, TABLES.PURCHASE_LISTS, 'match_mode', 'TEXT')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。
@@ -130,6 +146,15 @@ async function initializeTables(db: Database): Promise<void> {
   if ((nullCardNo[0]?.n ?? 0) > 0) {
     await backfillPrintCardNo(db)
   }
+
+  // 一次性迁移：旧版 collection_langs.status 的 wishlist/ordered 语义迁移到 wishlist_items，
+  // 迁移后 status 列仅保留 owned（心愿单与库存解耦）。仅当存在遗留行时才写库。
+  const legacyLangRows = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.COLLECTION_LANGS} WHERE status IN ('wishlist','ordered')`
+  )
+  if ((legacyLangRows[0]?.n ?? 0) > 0) {
+    await migrateLegacyWishlistRows(db)
+  }
 }
 
 /**
@@ -142,6 +167,48 @@ async function backfillPrintCardNo(db: Database): Promise<void> {
     `UPDATE ${TABLES.CARD_PRINTS}
      SET card_no = (SELECT card_no FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)
      WHERE card_no IS NULL`
+  )
+}
+
+/**
+ * 一次性迁移：旧版 collection_langs.status 的 wishlist/ordered 语义迁移到 wishlist_items
+ * （保留原有语言偏好，数量按 1、优先级默认 3），随后 status 统一置为 owned，
+ * 使 status 列回归「仅 owned 库存」语义。由 initializeTables 在读保护（存在遗留行）下调用。
+ */
+async function migrateLegacyWishlistRows(db: Database): Promise<void> {
+  const rows = await db.select<
+    {
+      card_no: string
+      card_no_extend: string
+      language_code: string
+      created_at: string | null
+      updated_at: string | null
+    }[]
+  >(
+    `SELECT col.card_no AS card_no, col.card_no_extend AS card_no_extend,
+       cl.language_code AS language_code, cl.created_at AS created_at, cl.updated_at AS updated_at
+     FROM ${TABLES.COLLECTION_LANGS} cl
+     JOIN ${TABLES.COLLECTION} col ON col.id = cl.collection_id
+     WHERE cl.status IN ('wishlist','ordered')`
+  )
+  for (const r of rows) {
+    await db.execute(
+      `INSERT OR IGNORE INTO ${TABLES.WISHLIST_ITEMS}
+       (id, card_no, card_no_extend, language_code, finish, qty_wanted, priority, status, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'any', 1, 3, 'active', NULL, ?, ?)`,
+      [
+        Snowflake.generate(),
+        r.card_no,
+        r.card_no_extend,
+        r.language_code,
+        r.created_at,
+        r.updated_at,
+      ]
+    )
+  }
+  await db.execute(
+    `UPDATE ${TABLES.COLLECTION_LANGS}
+     SET status = 'owned' WHERE status IN ('wishlist','ordered')`
   )
 }
 

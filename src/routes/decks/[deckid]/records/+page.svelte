@@ -226,12 +226,14 @@
       </button>
     </div>
 
-    <input
-      class="search-input"
-      type="text"
-      placeholder={$t('records.searchPlaceholder')}
-      bind:value={searchText}
-    />
+    <div class="search-input search-bar search-bar--sm">
+      <input
+        class="search-bar-input"
+        type="text"
+        placeholder={$t('records.searchPlaceholder')}
+        bind:value={searchText}
+      />
+    </div>
   </div>
 
   {#if filteredMatches.length > 0}
@@ -375,17 +377,6 @@
   .search-input {
     flex: 1;
     min-width: 200px;
-    padding: 7px 12px;
-    font-size: 13px;
-    color: var(--text-primary);
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    outline: none;
-  }
-
-  .search-input:focus {
-    border-color: var(--accent-color, #4f46e5);
   }
 
   .records-list {

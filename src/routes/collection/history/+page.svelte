@@ -211,9 +211,9 @@
         <option value={key}>{$t(labelKey)}</option>
       {/each}
     </select>
-    <div class="search-box">
-      <span class="search-icon"><Search size={15} /></span>
-      <input bind:value={q} oninput={debouncedSearch} placeholder={$t('collection.historySearchPlaceholder')} />
+    <div class="search-box search-bar search-bar--sm">
+      <Search size={15} class="search-bar-icon" />
+      <input class="search-bar-input" bind:value={q} oninput={debouncedSearch} placeholder={$t('collection.historySearchPlaceholder')} />
     </div>
   </div>
 
@@ -367,27 +367,6 @@
 
   .search-box {
     flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-  }
-
-  .search-box input {
-    flex: 1;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .search-icon {
-    color: var(--text-tertiary);
-    flex-shrink: 0;
   }
 
   .chart-card {

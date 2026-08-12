@@ -31,6 +31,7 @@ import { normalizePresetCode } from '../config/languages'
 import { isLanguageCodeValid } from './language-repository'
 import { resolveStatus, shouldKeepLangRow, shouldDeleteVariant } from '../config/collection-rules'
 import { getCompletionMode } from '../service/completion-modes'
+import { getActiveLoanQty } from './loan-repository'
 import {
   logCollectionHistory,
   logCollectionHistoryNote,
@@ -826,6 +827,8 @@ export async function deleteCustomPrint(printId: string): Promise<string | null>
 
 /**
  * 卡组持有检查：按卡牌聚合收集（含 promo/自定义打印）与卡组需求比较。
+ * 可用数量 = owned - 生效借出（active/overdue 的 out）+ 生效借入（active/overdue 的 in），
+ * 缺卡数量 = max(0, 需求 - 可用)。
  *
  * @param items 卡组需求（cardPrintId：deck_cards 引用的 card_prints.id；quantity：需求数量）
  * @param opts.matchMode 匹配模式：
@@ -896,19 +899,31 @@ export async function checkDeckOwnership(
     }
   }
 
+  // 生效中借出/借入聚合（status active/overdue）：available = owned - loan_out + loan_in
+  const loanByKey = await getActiveLoanQty(keys, matchMode)
+
   const result: OwnershipCheckRow[] = []
   for (const key of keys) {
     const sample = printToCard.get(
       [...printToCard.keys()].find((k) => keyOf(printToCard.get(k)!) === key)!
     )!
     const [cardNo, cardNoExtend] = key.split('|')
+    const owned = ownedByKey.get(key) ?? 0
+    const loanedOut = loanByKey.get(key)?.loanedOut ?? 0
+    const borrowedIn = loanByKey.get(key)?.borrowedIn ?? 0
+    const available = owned - loanedOut + borrowedIn
+    const needed = needByKey.get(key)!
     result.push({
       cardId: sample.card_id,
       cardName: sample.card_name ?? '',
       cardNo: cardNo,
       cardNoExtend: matchMode === 'print' ? (cardNoExtend ?? '') : '',
-      needed: needByKey.get(key)!,
-      owned: ownedByKey.get(key) ?? 0,
+      needed,
+      owned,
+      loanedOut,
+      borrowedIn,
+      available,
+      qtyToBuy: Math.max(0, needed - available),
     })
   }
   result.sort(

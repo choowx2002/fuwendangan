@@ -19,6 +19,7 @@
     checkDeckOwnership,
     type OwnershipCheckRow,
     type OwnershipMatchMode,
+    generatePurchaseListFromDeck,
     getDeckMatchStats,
     getMatchesByDeck,
     deleteMatch,
@@ -103,6 +104,7 @@
     QrCode,
     FileText,
     Shapes,
+    ShoppingCart,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -472,6 +474,31 @@
   let ownershipExportFormat = $state<OwnershipExportFormat>('txt')
   let exportingOwnership = $state(false)
   let ownershipIncludeComplete = $state(false)
+  let generatingPurchaseList = $state(false)
+
+  async function generatePurchaseList() {
+    if (!deck) return
+    generatingPurchaseList = true
+    try {
+      const listId = await generatePurchaseListFromDeck(
+        deck.id,
+        deck.name || get(t)('builder.unnamedDeck'),
+        { matchMode: ownershipMatchMode }
+      )
+      showOwnershipModal = false
+      showToast(get(t)('purchase.created'), 'success')
+      goto(`/collection/purchase-lists/${listId}`)
+    } catch (err) {
+      showToast(
+        get(t)('deckDetail.exportFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
+    } finally {
+      generatingPurchaseList = false
+    }
+  }
 
   const ownershipExportRows = $derived(
     ownershipZones
@@ -2246,7 +2273,7 @@
   open={showOwnershipModal}
   title={$t('builder.ownershipCheck')}
   subtitle={$t('deckDetail.ownershipSubtitle')}
-  closable={!loadingOwnership}
+  closable={!loadingOwnership && !generatingPurchaseList}
   onclose={() => (showOwnershipModal = false)}
 >
   <div class="ownership-panel">
@@ -2323,15 +2350,23 @@
     {/if}
     <button
       class="button button-ghost"
-      disabled={exportingOwnership}
+      disabled={exportingOwnership || generatingPurchaseList}
       onclick={() => (showOwnershipModal = false)}
     >
       {$t('common.close')}
     </button>
+        <button
+      class="button button-primary"
+      disabled={!deck || loadingOwnership || generatingPurchaseList}
+      onclick={generatePurchaseList}
+    >
+      <ShoppingCart size={15} />
+      {generatingPurchaseList ? $t('purchase.generating') : ''}
+    </button>
     {#if ownershipZones.length > 0}
       <button
         class="button button-primary"
-        disabled={exportingOwnership || ownershipExportRows.length === 0}
+        disabled={exportingOwnership || generatingPurchaseList || ownershipExportRows.length === 0}
         onclick={exportOwnership}
       >
         {exportingOwnership ? $t('deckDetail.exporting') : $t('common.export')}

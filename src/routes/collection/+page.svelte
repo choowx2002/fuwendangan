@@ -3,7 +3,18 @@
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
   import { getCollectionStats, getRecentCollectionCards, importOwnedCounts } from '$lib/db'
-  import { Save, Plus, Upload, ScrollText, Download, History, Boxes } from '@lucide/svelte'
+  import {
+    Save,
+    Plus,
+    Upload,
+    ScrollText,
+    Download,
+    History,
+    Boxes,
+    Heart,
+    ArrowLeftRight,
+    ShoppingCart,
+  } from '@lucide/svelte'
   import { isTauri } from '$lib/db/env'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { parseMissingListCsv } from '$lib/collection/collection-csv'
@@ -199,6 +210,21 @@
     <GlobalCollectionSearch onSelect={handleGlobalSelect} />
   </div>
 
+  <div class="tools-row">
+    <button class="tool-link" onclick={() => void goto('/collection/wishlist')}>
+      <Heart size={15} />
+      {$t('wishlist.title')}
+    </button>
+    <button class="tool-link" onclick={() => void goto('/collection/loans')}>
+      <ArrowLeftRight size={15} />
+      {$t('loans.title')}
+    </button>
+    <button class="tool-link" onclick={() => void goto('/collection/purchase-lists')}>
+      <ShoppingCart size={15} />
+      {$t('purchase.title')}
+    </button>
+  </div>
+
   <div class="hero-area">
     <CollectionHero stats={stats ?? undefined} {recent} onRecentClick={handleRecentClick} />
   </div>
@@ -306,6 +332,34 @@
 
   .search-row {
     flex-shrink: 0;
+  }
+
+  .tools-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  .tool-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+
+  .tool-link:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .hero-area {
