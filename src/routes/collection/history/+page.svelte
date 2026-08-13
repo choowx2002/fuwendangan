@@ -6,6 +6,7 @@
     CollectionHistoryItem,
     CollectionHistoryOpType,
     CollectionStatsSnapshot,
+    RecentCollectionCard,
   } from '$lib/db'
   import {
     getHistory,
@@ -13,10 +14,12 @@
     undoHistory,
     getCollectionSnapshots,
     captureCollectionSnapshot,
+    getRecentCollectionCards,
     languageDisplayName,
   } from '$lib/db'
   import { History, Undo2, ChevronDown, Search, Camera } from '@lucide/svelte'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import RecentCollectionList from '$lib/components/collection/RecentCollectionList.svelte'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
   import { locale } from '$lib/stores/settings'
@@ -46,6 +49,11 @@
   let undoingId = $state<string | null>(null)
   let snapshots = $state<CollectionStatsSnapshot[]>([])
   let chartLoading = $state(true)
+  let recent = $state<RecentCollectionCard[]>([])
+
+  function handleRecentSelect(c: RecentCollectionCard) {
+    if (c.seriesCode) void goto(`/collection/${c.seriesCode}`)
+  }
 
   async function load(reset = true) {
     loading = true
@@ -200,6 +208,7 @@
   onMount(() => {
     void load(true)
     void loadSnapshots()
+    void getRecentCollectionCards(6).then((r) => (recent = r)).catch(() => {})
   })
 </script>
 
@@ -215,6 +224,10 @@
       <Search size={15} class="search-bar-icon" />
       <input class="search-bar-input" bind:value={q} oninput={debouncedSearch} placeholder={$t('collection.historySearchPlaceholder')} />
     </div>
+  </div>
+
+  <div class="recent-card">
+    <RecentCollectionList {recent} onSelect={handleRecentSelect} />
   </div>
 
   <div class="chart-card">
@@ -343,7 +356,7 @@
 <style>
   .page-wrapper {
     padding: 16px;
-    max-width: 860px;
+    max-width: 1200px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -367,6 +380,13 @@
 
   .search-box {
     flex: 1;
+  }
+
+  .recent-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
   }
 
   .chart-card {

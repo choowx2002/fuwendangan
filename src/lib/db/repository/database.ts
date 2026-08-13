@@ -152,6 +152,7 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
   await db.execute(TABLE_DEFINITIONS.idx_card_prints_variant)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_collection)
+  await db.execute(TABLE_DEFINITIONS.idx_collection_card)
   await db.execute(TABLE_DEFINITIONS.idx_collection_history_created)
   await db.execute(TABLE_DEFINITIONS.idx_collection_history_items_history)
   await db.execute(TABLE_DEFINITIONS.idx_collection_stats_snapshots_created)
@@ -170,6 +171,12 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.PURCHASE_LIST_ITEMS, 'qty_bought', 'INTEGER NOT NULL DEFAULT 0')
   // 借入对账归属：card_loans 可选关联购买清单条目，使对账按条目隔离（多清单互不干扰）
   await ensureColumn(db, TABLES.CARD_LOANS, 'purchase_item_id', 'TEXT')
+
+  // 联系人联系信息拓展（微信/QQ/电话/邮箱）
+  await ensureColumn(db, TABLES.CONTACTS, 'wechat', 'TEXT')
+  await ensureColumn(db, TABLES.CONTACTS, 'qq', 'TEXT')
+  await ensureColumn(db, TABLES.CONTACTS, 'phone', 'TEXT')
+  await ensureColumn(db, TABLES.CONTACTS, 'email', 'TEXT')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。

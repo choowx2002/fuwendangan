@@ -6,6 +6,7 @@
   import { getVersion, initializeDatabase } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
+  import { initLogService } from '$lib/services/log-service'
   import '$lib/i18n'
   import '../app.css'
   import { onMount } from 'svelte'
@@ -50,6 +51,7 @@
   }
 
   onMount(() => {
+    initLogService()
     init()
   })
 </script>

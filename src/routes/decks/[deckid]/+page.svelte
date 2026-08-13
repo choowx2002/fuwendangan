@@ -105,6 +105,7 @@
     FileText,
     Shapes,
     ShoppingCart,
+    Star,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -606,12 +607,8 @@
   const totalCardCount = $derived(cards.reduce((sum, c) => sum + c.quantity, 0))
 
   $effect(() => {
-    const badges: { key: string; text: string }[] = []
-    if (deck?.format) badges.push({ key: 'format', text: deck.format })
-    if (deck?.is_favorite) badges.push({ key: 'favorite', text: $t('deckDetail.favorite') })
     setTopbar({
       title: deck?.name || $t('deckDetail.loading'),
-      badges,
       actions: [
         {
           key: 'edit-info',
@@ -1179,15 +1176,24 @@
 
 <div class="deck-builder-container">
   <div class="deck-info-bar">
-    {#if deck?.description}
-      <p class="deck-description selectable">{deck.description}</p>
-    {/if}
-    {#if deck?.tags && deck.tags.length > 0}
+    {#if deck?.is_favorite || deck?.format || (deck?.tags && deck.tags.length > 0)}
       <div class="deck-tags">
+        {#if deck?.is_favorite}
+          <span class="deck-tag-chip deck-fav-chip">
+            <Star size={13} />
+            {$t('deckDetail.favorite')}
+          </span>
+        {/if}
+        {#if deck?.format}
+          <span class="deck-tag-chip deck-type-chip">{deck.format}</span>
+        {/if}
         {#each deck.tags as tag (tag)}
           <span class="deck-tag-chip">{tag}</span>
         {/each}
       </div>
+    {/if}
+    {#if deck?.description}
+      <p class="deck-description selectable">{deck.description}</p>
     {/if}
     <div class="deck-meta">
       <span>{$t('deckDetail.totalCardsLabel')} <strong>{totalCardCount}</strong></span>
@@ -2376,7 +2382,7 @@
 
 <style>
   .deck-builder-container {
-    max-width: 1280px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 24px;
     color: var(--text-primary);
@@ -2413,6 +2419,20 @@
     background: color-mix(in srgb, var(--accent-color) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent-color) 40%, transparent);
     color: var(--text-primary);
+  }
+
+  .deck-type-chip {
+    background: color-mix(in srgb, var(--secondary-accent-color) 12%, transparent);
+    border-color: color-mix(in srgb, var(--secondary-accent-color) 40%, transparent);
+  }
+
+  .deck-fav-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(234, 179, 8, 0.14);
+    border-color: rgba(234, 179, 8, 0.45);
+    color: #b45309;
   }
 
   .deck-meta {

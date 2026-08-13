@@ -30,14 +30,24 @@
     return `button-${variant ?? 'ghost'}`
   }
 
+  function sameActions(a: TopbarAction[], b: TopbarAction[]): boolean {
+    if (a.length !== b.length) return false
+    return a.every((x, i) => x.key === b[i].key)
+  }
+
+  function applyLayout(reg: TopbarAction[], prio: TopbarAction[], over: TopbarAction[]) {
+    // 幂等：结果未变则跳过，避免无意义的 DOM 增删喂养 ResizeObserver 环
+    if (!sameActions(visibleRegActions, reg)) visibleRegActions = reg
+    if (!sameActions(visiblePrioActions, prio)) visiblePrioActions = prio
+    if (!sameActions(overflowActions, over)) overflowActions = over
+  }
+
   function updateLayout() {
     const container = actionsEl
     const measurer = measurerEl
     const actions = orderedActions
     if (!container || !measurer || actions.length === 0) {
-      visibleRegActions = actions
-      visiblePrioActions = []
-      overflowActions = []
+      applyLayout(actions, [], [])
       return
     }
 
@@ -50,9 +60,11 @@
 
     const total = sum(widths) + gap * (widths.length - 1)
     if (total <= containerWidth) {
-      visibleRegActions = actions.filter((a) => a.priority === undefined)
-      visiblePrioActions = actions.filter((a) => a.priority !== undefined)
-      overflowActions = []
+      applyLayout(
+        actions.filter((a) => a.priority === undefined),
+        actions.filter((a) => a.priority !== undefined),
+        []
+      )
       return
     }
 
@@ -82,21 +94,32 @@
 
     const regular = actions.slice(0, regVisible)
     const priority = actions.slice(actions.length - prioKept)
-    visibleRegActions = regular
-    visiblePrioActions = priority
-    overflowActions = actions
-      .slice(regVisible, regCount)
-      .concat(actions.slice(regCount, actions.length - prioKept))
+    applyLayout(
+      regular,
+      priority,
+      actions
+        .slice(regVisible, regCount)
+        .concat(actions.slice(regCount, actions.length - prioKept))
+    )
   }
+
+  let layoutRaf = 0
 
   $effect(() => {
     orderedActions
     const container = actionsEl
     if (!container) return
     updateLayout()
-    const ro = new ResizeObserver(() => updateLayout())
+    const ro = new ResizeObserver(() => {
+      // 延迟到下一帧执行，避免回调内同步改 DOM 再次触发观测 → ResizeObserver loop
+      cancelAnimationFrame(layoutRaf)
+      layoutRaf = requestAnimationFrame(() => updateLayout())
+    })
     ro.observe(container)
-    return () => ro.disconnect()
+    return () => {
+      cancelAnimationFrame(layoutRaf)
+      ro.disconnect()
+    }
   })
 </script>
 
@@ -293,7 +316,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex-shrink: 0;
-    max-width: 60%;
+    /* max-width: 60%; */
   }
 
   .topbar-badge {

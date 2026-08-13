@@ -68,7 +68,7 @@
     { key: 'foil', labelKey: 'collection.ownershipFoil' },
   ]
 
-  const PREFS_KEY = `collection:prefs:${seriesCode}`
+  const PREFS_KEY = 'collection:prefs'
 
   const seriesStats = $derived<SeriesStats | undefined>(
     stats?.series.find((s) => s.code.toUpperCase() === seriesCode)
@@ -83,12 +83,10 @@
         ownership?: OwnershipType
         sortKey?: CollectionSort['key']
         isAsc?: boolean
-        bucket?: VariantBucket | null
         view?: 'grid' | 'table'
       }
       if (p.ownership) ownership = p.ownership
       if (p.sortKey) sort = { key: p.sortKey, isAsc: p.isAsc ?? true }
-      if (p.bucket) activeBucket = p.bucket
       if (p.view) view = p.view
     } catch {
       // 忽略损坏的偏好
@@ -103,7 +101,6 @@
           ownership,
           sortKey: sort.key,
           isAsc: sort.isAsc,
-          bucket: activeBucket,
           view,
         })
       )

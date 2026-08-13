@@ -1,10 +1,22 @@
 <script lang="ts">
-  import { getDeckList, getMatchStatsForDecks } from '$lib/db'
+  import { getDeckList, getMatchStatsForDecks, getLoanDueSummary } from '$lib/db'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { isDeckPinned } from '$lib/stores/pinned-decks'
   import { playerName, settingsStoreReady } from '$lib/stores/settings'
-  import { Swords, Dice6, Pin, ChevronRight, UserRound } from '@lucide/svelte'
+  import {
+    Swords,
+    Dice6,
+    Pin,
+    ChevronRight,
+    UserRound,
+    CalendarClock,
+    Boxes,
+    Gamepad2,
+    Settings,
+    Heart,
+    ArrowLeftRight,
+  } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import { get } from 'svelte/store'
@@ -24,6 +36,7 @@
   let recentDecks = $state<HomeDeck[]>([])
   let homeName = $state('')
   let settingsReady = $state(false)
+  let loanSummary = $state<{ overdue: number; dueToday: number; dueSoon: number } | null>(null)
 
   const quickTools = [
     {
@@ -38,6 +51,14 @@
       color: '#d9730d',
       href: '/tools/dice',
     },
+  ]
+
+  const moreEntries = [
+    { icon: Boxes, labelKey: 'nav.locker', href: '/locker', color: '#d97706' },
+    { icon: Gamepad2, labelKey: 'nav.simulator', href: '/simulator', color: '#7c3aed' },
+    { icon: Settings, labelKey: 'nav.settings', href: '/settings', color: '#64748b' },
+    { icon: Heart, labelKey: 'wishlist.title', href: '/collection/wishlist', color: '#ec4899' },
+    { icon: ArrowLeftRight, labelKey: 'loans.title', href: '/collection/loans', color: '#0ea5e9' },
   ]
 
   const orderedDecks = $derived(
@@ -75,6 +96,10 @@
           pinned: isDeckPinned(d.id),
         }
       })
+    } catch (error) {}
+    try {
+      const s = await getLoanDueSummary(3)
+      loanSummary = { overdue: s.overdue, dueToday: s.dueToday, dueSoon: s.dueSoon }
     } catch (error) {}
   })
 
@@ -167,6 +192,36 @@
     </div>
   </section>
 
+  <!-- 借还提醒 -->
+  {#if loanSummary && (loanSummary.overdue > 0 || loanSummary.dueToday > 0 || loanSummary.dueSoon > 0)}
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">{$t('home.loanReminder')}</h2>
+        <a href="/collection/loans" class="see-all">{$t('home.openLoans')} <ChevronRight size={14} /></a>
+      </div>
+      <div class="loan-reminder">
+        {#if loanSummary.overdue > 0}
+          <span class="reminder-item reminder-overdue">
+            <CalendarClock size={15} />
+            {$t('home.overdueCount', { values: { count: loanSummary.overdue } })}
+          </span>
+        {/if}
+        {#if loanSummary.dueToday > 0}
+          <span class="reminder-item reminder-due">
+            <CalendarClock size={15} />
+            {$t('home.dueTodayCount', { values: { count: loanSummary.dueToday } })}
+          </span>
+        {/if}
+        {#if loanSummary.dueSoon > 0}
+          <span class="reminder-item">
+            <CalendarClock size={15} />
+            {$t('home.dueSoonCount', { values: { count: loanSummary.dueSoon, days: 3 } })}
+          </span>
+        {/if}
+      </div>
+    </section>
+  {/if}
+
   <!-- 最近使用的卡组 -->
   <section class="section">
     <div class="section-header">
@@ -197,6 +252,23 @@
         </a>
       {:else}
         <p class="deck-empty">{$t('home.noDecks')}</p>
+      {/each}
+    </div>
+  </section>
+
+  <!-- 更多功能 -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">{$t('home.moreFeatures')}</h2>
+    </div>
+    <div class="more-grid">
+      {#each moreEntries as entry (entry.href)}
+        <a href={entry.href} class="more-tile">
+          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+            <entry.icon size={18} />
+          </span>
+          <span class="more-tile-label">{$t(entry.labelKey)}</span>
+        </a>
       {/each}
     </div>
   </section>
@@ -442,6 +514,35 @@
     flex-shrink: 0;
   }
 
+  /* 借还提醒 */
+  .loan-reminder {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .reminder-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .reminder-overdue {
+    color: #d97706;
+    border-color: rgba(217, 119, 6, 0.4);
+  }
+
+  .reminder-due {
+    color: #e5484d;
+    border-color: rgba(229, 72, 77, 0.4);
+  }
+
   /* 卡组列表 */
   .deck-list {
     border: 1px solid var(--border-color);
@@ -536,6 +637,57 @@
     .deck-stats {
       width: 100%;
       justify-content: flex-start;
+    }
+  }
+
+  /* 更多功能 - 入口格子 */
+  .more-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .more-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition:
+      background 0.15s,
+      transform 0.15s;
+  }
+
+  .more-tile:hover {
+    background: var(--bg-secondary);
+    transform: translateY(-1px);
+  }
+
+  .more-tile-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .more-tile-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767.99px) {
+    .more-grid {
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 </style>

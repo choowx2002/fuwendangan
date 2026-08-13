@@ -16,8 +16,10 @@ import type {
 } from '../types'
 import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
-import { checkDeckOwnership } from './collection-repository'
+import { checkDeckOwnership, getCardOwnedQty } from './collection-repository'
 import { getLatestDeckCards } from './deck-repository'
+import { getWishlistItems } from './wishlist-repository'
+import { getActiveLoanQty } from './loan-repository'
 import { get } from 'svelte/store'
 import { defaultLanguage } from '$lib/stores/settings'
 
@@ -536,6 +538,156 @@ export async function savePurchaseListBatch(
   })
 }
 
+// ==================== 清单组成编辑器 ====================
+
+export interface PurchaseListEditorRow {
+  /** 已有条目 id；新行（未保存）为空 */
+  itemId?: string | null
+  cardNo: string
+  cardNoExtend: string
+  languagePref: string
+  finishPref: WishlistFinish
+  qtyRequired: number
+}
+
+export interface PurchaseListEditorSaveResult {
+  added: number
+  updated: number
+  removed: number
+}
+
+/** 编辑器内新增/整行重写的落库：算实时已有与待购买，按唯一键 upsert */
+async function upsertEditorItem(db: Db, listId: string, row: PurchaseListEditorRow): Promise<void> {
+  const owned = await liveOwnedQty(db, row.cardNo, row.cardNoExtend)
+  const qtyToBuy = Math.max(0, row.qtyRequired - owned)
+  await upsertPurchaseListItem(listId, {
+    cardNo: row.cardNo,
+    cardNoExtend: row.cardNoExtend,
+    languagePref: row.languagePref,
+    finishPref: row.finishPref,
+    qtyRequired: row.qtyRequired,
+    qtyOwned: owned,
+    qtyToBuy,
+  })
+}
+
+/**
+ * 保存清单组成编辑（编辑页表格保存调用）：
+ * 逐行 diff 当前条目：
+ * - 仅 qty_required 变化：原地 UPDATE，保留 qty_ordered/borrowed/bought，重算 qty_to_buy；
+ * - variant/语言/工艺变化：先移除旧条目（顺带取消其名下生效借入），再按新键 upsert；
+ * - 新增行：upsert；编辑器中已删除的行：移除（取消借入）。
+ * 整个批次在 withTransaction 内保证原子性。
+ */
+export async function savePurchaseListEditor(
+  listId: string,
+  rows: PurchaseListEditorRow[],
+  name?: string
+): Promise<PurchaseListEditorSaveResult> {
+  return withTransaction(async () => {
+    const db = await getDatabase()
+    const current = await getPurchaseListItems(listId)
+    const byId = new Map(current.map((i) => [i.id, i]))
+    const seen = new Set<string>()
+    let added = 0
+    let updated = 0
+    let removed = 0
+
+    for (const row of rows) {
+      if (row.itemId && byId.has(row.itemId)) {
+        const cur = byId.get(row.itemId)!
+        seen.add(row.itemId)
+        const sameComposition =
+          cur.card_no_extend === row.cardNoExtend &&
+          cur.language_pref === row.languagePref &&
+          cur.finish_pref === row.finishPref
+        if (sameComposition) {
+          if (cur.qty_required !== row.qtyRequired) {
+            const owned = await liveOwnedQty(db, row.cardNo, row.cardNoExtend)
+            const qtyToBuy = Math.max(
+              0,
+              row.qtyRequired - owned - cur.qty_ordered - cur.qty_borrowed - cur.qty_bought
+            )
+            const status: PurchaseListItemStatus =
+              cur.status === 'skipped' ? 'skipped' : qtyToBuy > 0 ? 'pending' : 'met'
+            await db.execute(
+              `UPDATE ${TABLES.PURCHASE_LIST_ITEMS}
+               SET qty_required = ?, qty_to_buy = ?, status = ?, updated_at = ?
+               WHERE id = ?`,
+              [row.qtyRequired, qtyToBuy, status, now(), row.itemId]
+            )
+            updated += 1
+          }
+        } else {
+          await removePurchaseListItem(row.itemId)
+          removed += 1
+          await upsertEditorItem(db, listId, row)
+          added += 1
+        }
+      } else {
+        await upsertEditorItem(db, listId, row)
+        added += 1
+      }
+    }
+
+    for (const [id] of byId) {
+      if (!seen.has(id)) {
+        await removePurchaseListItem(id)
+        removed += 1
+      }
+    }
+
+    if (name !== undefined) {
+      await db.execute(`UPDATE ${TABLES.PURCHASE_LISTS} SET name = ? WHERE id = ?`, [
+        name.trim() || '未命名清单',
+        listId,
+      ])
+    }
+
+    await db.execute(`UPDATE ${TABLES.PURCHASE_LISTS} SET updated_at = ? WHERE id = ?`, [
+      now(),
+      listId,
+    ])
+    return { added, updated, removed }
+  })
+}
+
+/** 新建清单并写入全部组成（新建页保存调用），返回新清单 id */
+export async function createPurchaseListEditor(input: {
+  name: string
+  rows: PurchaseListEditorRow[]
+}): Promise<string> {
+  return withTransaction(async () => {
+    const db = await getDatabase()
+    const listId = await createPurchaseList({
+      name: input.name.trim() || '未命名清单',
+      deckId: null,
+      deckVersionId: null,
+    })
+    for (const row of input.rows) {
+      await upsertEditorItem(db, listId, row)
+    }
+    return listId
+  })
+}
+
+/**
+ * 卡组缺卡预览（新建页「从卡组生成」用）：复用卡组缺卡检查，返回缺卡行，不落库。
+ */
+export async function getDeckPurchasePreview(
+  deckId: string
+): Promise<{ cardNo: string; cardNoExtend: string; cardName: string | null; needed: number }[]> {
+  const { checkRows } = await loadDeckCheck(deckId)
+  return checkRows
+    .filter((r) => r.qtyToBuy > 0)
+    .map((r) => ({
+      cardNo: r.cardNo,
+      cardNoExtend: r.cardNoExtend,
+      cardName: r.cardName ?? null,
+      needed: r.needed,
+    }))
+}
+
 // ==================== 从卡组生成 ====================
 
 /** 取卡组最新版本的缺卡检查结果（按印刷号，含借出/借入后的可用数量） */
@@ -585,6 +737,52 @@ export async function generatePurchaseListFromDeck(deckId: string, name: string)
     })
   }
   return listId
+}
+
+/**
+ * 根据心愿单生成购买清单：
+ * 1. 取 status='active' 的心愿单条目（语言/版本偏好透传，不丢失）；
+ * 2. 实时计算每张卡已拥有数（owned）与可用数（owned − 借出 + 借入）；
+ * 3. 建清单头（不关联卡组），缺卡条目逐行 upsert（同一清单同键去重）。
+ * 心愿单 qty_wanted → qty_required，语言/版本偏好原样保留。
+ * @returns 新清单 id
+ */
+export async function generatePurchaseListFromWishlist(input: {
+  name: string
+  /** 是否包含已满足（to_buy=0）的条目；默认 false 仅生成缺卡 */
+  includeZeroToBuy?: boolean
+}): Promise<string> {
+  return withTransaction(async () => {
+    const items = await getWishlistItems({ status: 'active' })
+    const listId = await createPurchaseList({
+      name: input.name.trim() || '心愿单缺卡',
+      deckId: null,
+      deckVersionId: null,
+    })
+
+    if (items.length === 0) return listId
+
+    const keys = items.map((i) => `${i.card_no}|${i.card_no_extend}`)
+    const loanQty = await getActiveLoanQty(keys, 'print')
+
+    for (const item of items) {
+      const owned = await getCardOwnedQty(item.card_no, item.card_no_extend)
+      const loans = loanQty.get(`${item.card_no}|${item.card_no_extend}`)
+      const available = owned - (loans?.loanedOut ?? 0) + (loans?.borrowedIn ?? 0)
+      const qtyToBuy = Math.max(0, item.qty_wanted - available)
+      if (qtyToBuy <= 0 && !input.includeZeroToBuy) continue
+      await upsertPurchaseListItem(listId, {
+        cardNo: item.card_no,
+        cardNoExtend: item.card_no_extend,
+        languagePref: item.language_code,
+        finishPref: item.finish,
+        qtyRequired: item.qty_wanted,
+        qtyOwned: owned,
+        qtyToBuy,
+      })
+    }
+    return listId
+  })
 }
 
 /**

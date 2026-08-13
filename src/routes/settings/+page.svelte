@@ -49,6 +49,7 @@
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
+  import { getLogText, clearLogs } from '$lib/services/log-service'
 
   import {
     prepareCardImageDownload,
@@ -66,7 +67,7 @@
   import { isMobile } from '$lib/utils/os'
   import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
-  import { Download, Upload, FileText, FileUp, ChevronRight } from '@lucide/svelte'
+  import { Download, Upload, FileText, FileUp, ChevronRight, RefreshCw } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import { get } from 'svelte/store'
@@ -100,6 +101,10 @@
     rows: Record<string, unknown>[]
     total: number
   } | null>(null)
+
+  let showLogModal = $state(false)
+  let logLoading = $state(false)
+  let logText = $state('')
 
   let showBuilderZoneModes = $state(false)
   const builderZoneKeys: ZoneKey[] = [
@@ -291,6 +296,37 @@
     } finally {
       tableLoading = false
     }
+  }
+
+  async function openLogModal() {
+    showLogModal = true
+    logLoading = true
+    try {
+      logText = await getLogText()
+    } finally {
+      logLoading = false
+    }
+  }
+
+  async function refreshLogs() {
+    logLoading = true
+    try {
+      logText = await getLogText()
+    } finally {
+      logLoading = false
+    }
+  }
+
+  async function handleClearLogs() {
+    const confirmed = await ask(_t('settings.clearLogsConfirm'), {
+      title: _t('settings.viewLogs'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
+    if (!confirmed) return
+    await clearLogs()
+    logText = ''
   }
 
   function getStatusText(status: string): string {
@@ -1675,6 +1711,16 @@
         {$t('settings.visitLink')}
       </button>
     </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.viewLogs')}</span>
+        <span class="setting-desc">{$t('settings.viewLogsDesc')}</span>
+      </div>
+      <button class="button button-ghost" onclick={openLogModal}>
+        {$t('settings.viewLogs')}
+      </button>
+    </div>
   </section>
 
   <CommonModal
@@ -1881,6 +1927,30 @@
           </tbody>
         </table>
       </div>
+    {/if}
+  </CommonModal>
+
+  <CommonModal
+    open={showLogModal}
+    title={$t('settings.viewLogs')}
+    width="min(760px, 92vw)"
+    onclose={() => (showLogModal = false)}
+  >
+    <div class="log-toolbar">
+      <button class="button button-ghost" disabled={logLoading} onclick={refreshLogs}>
+        <RefreshCw size={14} />
+        {$t('settings.refreshLogs')}
+      </button>
+      <button class="button button-danger-outline" disabled={logLoading} onclick={handleClearLogs}>
+        {$t('settings.clearLogs')}
+      </button>
+    </div>
+    {#if logLoading}
+      <div class="table-loading">{$t('common.loading')}</div>
+    {:else if !logText}
+      <div class="table-loading">{$t('settings.logsEmpty')}</div>
+    {:else}
+      <pre class="log-view">{logText}</pre>
     {/if}
   </CommonModal>
 
@@ -2121,6 +2191,29 @@
     text-align: center;
     color: var(--text-tertiary);
     font-size: var(--text-sm);
+  }
+
+  /* 日志查看 */
+  .log-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .log-view {
+    margin: 0;
+    max-height: 60vh;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 
   .table-scroll {

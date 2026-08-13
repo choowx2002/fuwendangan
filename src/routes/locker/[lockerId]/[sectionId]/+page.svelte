@@ -218,7 +218,7 @@
 
 <style>
   .page-wrapper {
-    max-width: 1000px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: calc(16px + env(safe-area-inset-top)) 24px 24px;
     display: flex;

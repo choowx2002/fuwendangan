@@ -282,3 +282,59 @@ export async function markOverdueLoans(): Promise<void> {
     [now(), now()]
   )
 }
+
+/** 借还汇总（首页提醒 / 借还页汇总条用） */
+export interface LoanDueSummary {
+  /** 进行中（status='active'，未逾期）笔数 */
+  active: number
+  /** 已逾期（status='overdue'）笔数 */
+  overdue: number
+  /** 今天应还（due_at 落在今天，含 active/overdue）笔数 */
+  dueToday: number
+  /** 近 N 天应还（due_at 落在 [明天, 今天+daysAhead)）笔数 */
+  dueSoon: number
+}
+
+/**
+ * 计算借还汇总。
+ * due_at 由表单以 `new Date('YYYY-MM-DD').toISOString()` 存储（所选日期的 UTC 零点），
+ * 因此「今天」边界必须在 JS 侧按本地日期构造 ISO 后比较，勿用 SQL 本地日判断。
+ * 调用前先落库 overdue，保证 overdue 计数准确。
+ * @param daysAhead 「即将到期」窗口天数（不含今天），默认 3
+ */
+export async function getLoanDueSummary(daysAhead = 3): Promise<LoanDueSummary> {
+  const db = await getDatabase()
+  await markOverdueLoans()
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const d = new Date()
+  const todayISO = new Date(
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  ).toISOString()
+  const tomorrow = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+  const tomorrowISO = new Date(
+    `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
+  ).toISOString()
+  const soon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1 + daysAhead)
+  const soonISO = new Date(
+    `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}`
+  ).toISOString()
+
+  const rows = await db.select<any[]>(
+    `SELECT
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+       SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) AS overdue,
+       SUM(CASE WHEN due_at >= ? AND due_at < ? THEN 1 ELSE 0 END) AS due_today,
+       SUM(CASE WHEN due_at >= ? AND due_at < ? THEN 1 ELSE 0 END) AS due_soon
+     FROM ${TABLES.CARD_LOANS}
+     WHERE status IN ('active','overdue')`,
+    [todayISO, tomorrowISO, tomorrowISO, soonISO]
+  )
+  const r = rows[0] ?? {}
+  return {
+    active: r.active ?? 0,
+    overdue: r.overdue ?? 0,
+    dueToday: r.due_today ?? 0,
+    dueSoon: r.due_soon ?? 0,
+  }
+}

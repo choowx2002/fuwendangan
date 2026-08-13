@@ -1,10 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
-  import type { CollectionStats, RecentCollectionCard } from '$lib/db'
+  import type { CollectionStats } from '$lib/db'
   import {
     getCollectionStats,
-    getRecentCollectionCards,
     importOwnedCounts,
     getCollectionFullRows,
     importFullCollection,
@@ -42,7 +41,6 @@
   import { get } from 'svelte/store'
 
   let stats = $state<CollectionStats | null>(null)
-  let recent = $state<RecentCollectionCard[]>([])
   let loading = $state(true)
   let showCustomCreate = $state(false)
 
@@ -66,12 +64,7 @@
   async function loadAll() {
     loading = true
     try {
-      const [statsRes, recentRes] = await Promise.all([
-        getCollectionStats(),
-        getRecentCollectionCards(6),
-      ])
-      stats = statsRes
-      recent = recentRes
+      stats = await getCollectionStats()
     } finally {
       loading = false
     }
@@ -256,10 +249,6 @@
     }
   }
 
-  function handleRecentClick(c: RecentCollectionCard) {
-    if (c.seriesCode) void goto(`/collection/${c.seriesCode}`)
-  }
-
   onMount(() => {
     void loadAll()
   })
@@ -328,27 +317,29 @@
 </script>
 
 <div class="page-wrapper">
-  <div class="search-row">
-    <GlobalCollectionSearch onSelect={handleGlobalSelect} />
-  </div>
+  <div class="header-row">
+    <div class="search-row">
+      <GlobalCollectionSearch onSelect={handleGlobalSelect} />
+    </div>
 
-  <div class="tools-row">
-    <button class="tool-link" onclick={() => void goto('/collection/wishlist')}>
-      <Heart size={15} />
-      {$t('wishlist.title')}
-    </button>
-    <button class="tool-link" onclick={() => void goto('/collection/loans')}>
-      <ArrowLeftRight size={15} />
-      {$t('loans.title')}
-    </button>
-    <button class="tool-link" onclick={() => void goto('/collection/purchase-lists')}>
-      <ShoppingCart size={15} />
-      {$t('purchase.title')}
-    </button>
+    <div class="tools-row">
+      <button class="tool-link" onclick={() => void goto('/collection/wishlist')}>
+        <Heart size={15} />
+        {$t('wishlist.title')}
+      </button>
+      <button class="tool-link" onclick={() => void goto('/collection/loans')}>
+        <ArrowLeftRight size={15} />
+        {$t('loans.title')}
+      </button>
+      <button class="tool-link" onclick={() => void goto('/collection/purchase-lists')}>
+        <ShoppingCart size={15} />
+        {$t('purchase.title')}
+      </button>
+    </div>
   </div>
 
   <div class="hero-area">
-    <CollectionHero stats={stats ?? undefined} {recent} onRecentClick={handleRecentClick} />
+    <CollectionHero stats={stats ?? undefined} />
   </div>
 
   <div class="series-area">
@@ -411,7 +402,11 @@
       </button>
     </div>
 
-    <button class="import-template-btn" disabled={importing} onclick={() => void downloadImportTemplate()}>
+    <button
+      class="import-template-btn"
+      disabled={importing}
+      onclick={() => void downloadImportTemplate()}
+    >
       <Download size={14} />
       {$t('collection.downloadTemplate')}
     </button>
@@ -482,6 +477,14 @@
     gap: 14px;
     max-width: 1200px;
     margin: 0 auto;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    width: 100%;
   }
 
   .search-row {

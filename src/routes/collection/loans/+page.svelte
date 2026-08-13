@@ -1,7 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Users, Check, Undo2, TriangleAlert, Pencil } from '@lucide/svelte'
+  import {
+    Plus,
+    Trash2,
+    Users,
+    Check,
+    Undo2,
+    TriangleAlert,
+    Pencil,
+    MessageCircle,
+    MessageSquare,
+    Phone,
+    Mail,
+    UserRoundPen,
+  } from '@lucide/svelte'
   import {
     getLoans,
     createLoan,
@@ -9,18 +22,23 @@
     deleteLoan,
     getContacts,
     createContact,
+    updateContact,
     deleteContact,
     getCustomLanguages,
     PRESET_LANGUAGE_CODES,
     printCacheName,
+    isTauri,
     type CardLoanWithName,
     type Contact,
+    type ContactInput,
     type LoanDirection,
     type LoanStatus,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { defaultLanguage } from '$lib/stores/settings'
   import { confirmAction } from '$lib/utils/confirm'
+  import { longpress } from '$lib/utils/longpress'
+  import { openUrl } from '@tauri-apps/plugin-opener'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import VariantPicker from '$lib/components/collection/VariantPicker.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -42,6 +60,7 @@
   let showContacts = $state(false)
   let newContactInput = $state('')
   let saving = $state(false)
+  let contactFilter = $state('')
 
   let form = $state({
     contactId: '',
@@ -99,6 +118,46 @@
       loading = false
     }
   }
+
+  const DUE_SOON_DAYS = 3
+
+  const filteredLoans = $derived(
+    contactFilter === ''
+      ? loans
+      : loans.filter((l) =>
+          contactFilter === 'none' ? !l.contact_id : l.contact_id === contactFilter
+        )
+  )
+
+  const summary = $derived.by(() => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const d = new Date()
+    const todayISO = new Date(
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    ).toISOString()
+    const tomorrow = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+    const tomorrowISO = new Date(
+      `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
+    ).toISOString()
+    const soon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1 + DUE_SOON_DAYS)
+    const soonISO = new Date(
+      `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}`
+    ).toISOString()
+
+    let active = 0
+    let overdue = 0
+    let dueToday = 0
+    let dueSoon = 0
+    for (const l of filteredLoans) {
+      if (l.status === 'active') active++
+      else if (l.status === 'overdue') overdue++
+      if ((l.status === 'active' || l.status === 'overdue') && l.due_at) {
+        if (l.due_at >= todayISO && l.due_at < tomorrowISO) dueToday++
+        else if (l.due_at >= tomorrowISO && l.due_at < soonISO) dueSoon++
+      }
+    }
+    return { active, overdue, dueToday, dueSoon }
+  })
 
   function openAdd() {
     editingId = null
@@ -237,6 +296,127 @@
     void load()
   }
 
+  // ---------- 联系人信息拓展（微信/QQ/电话/邮箱） ----------
+  type ContactField = 'wechat' | 'qq' | 'phone' | 'email'
+
+  const CONTACT_FIELDS: { key: ContactField; labelKey: string; icon: typeof MessageCircle }[] = [
+    { key: 'wechat', labelKey: 'loans.contactField.wechat', icon: MessageCircle },
+    { key: 'qq', labelKey: 'loans.contactField.qq', icon: MessageSquare },
+    { key: 'phone', labelKey: 'loans.contactField.phone', icon: Phone },
+    { key: 'email', labelKey: 'loans.contactField.email', icon: Mail },
+  ]
+
+  function contactValue(c: Contact, f: ContactField): string | null {
+    return c[f]
+  }
+
+  let longPressedAt = 0
+
+  async function copyContactInfo(value: string) {
+    try {
+      if (isTauri) {
+        const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
+        await writeText(value)
+      } else {
+        await navigator.clipboard.writeText(value)
+      }
+      showToast(get(t)('loans.copyCopied'), 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    }
+  }
+
+  function contactDeepLink(c: Contact, f: ContactField): string {
+    const v = contactValue(c, f)
+    if (!v) return ''
+    if (f === 'wechat') return `weixin://dl/chat?${encodeURIComponent(v)}`
+    if (f === 'qq') return `mqqwpa://im/chat?chat_type=wpa&uin=${encodeURIComponent(v)}&version=1&src_type=web`
+    if (f === 'phone') return `tel:${encodeURIComponent(v)}`
+    return `mailto:${encodeURIComponent(v)}`
+  }
+
+  async function openContactLink(c: Contact, f: ContactField) {
+    const url = contactDeepLink(c, f)
+    if (!url) return
+    longPressedAt = Date.now()
+    try {
+      if (isTauri) {
+        await openUrl(url)
+      } else {
+        window.open(url, '_blank')
+      }
+    } catch {
+      showToast(get(t)('loans.contactLinkFailed'), 'error')
+    }
+  }
+
+  async function handleChipClick(c: Contact, f: ContactField) {
+    // 长按刚触发过打开链接，忽略随后的 click，避免复制
+    if (Date.now() - longPressedAt < 700) return
+    const v = contactValue(c, f)
+    if (v) await copyContactInfo(v)
+  }
+
+  // ---------- 联系人新增/编辑表单 ----------
+  let showContactForm = $state(false)
+  let editingContact = $state<Contact | null>(null)
+  let contactForm = $state({ name: '', note: '', wechat: '', qq: '', phone: '', email: '' })
+  let savingContact = $state(false)
+
+  function openAddContact() {
+    editingContact = null
+    contactForm = {
+      name: newContactInput.trim(),
+      note: '',
+      wechat: '',
+      qq: '',
+      phone: '',
+      email: '',
+    }
+    showContactForm = true
+  }
+
+  function openEditContact(c: Contact) {
+    editingContact = c
+    contactForm = {
+      name: c.name,
+      note: c.note ?? '',
+      wechat: c.wechat ?? '',
+      qq: c.qq ?? '',
+      phone: c.phone ?? '',
+      email: c.email ?? '',
+    }
+    showContactForm = true
+  }
+
+  async function submitContactForm() {
+    if (savingContact || !contactForm.name.trim()) return
+    savingContact = true
+    try {
+      const patch: ContactInput = {
+        note: contactForm.note,
+        wechat: contactForm.wechat,
+        qq: contactForm.qq,
+        phone: contactForm.phone,
+        email: contactForm.email,
+      }
+      if (editingContact) {
+        await updateContact(editingContact.id, { name: contactForm.name, ...patch })
+        showToast(get(t)('loans.contactUpdated'), 'success')
+      } else {
+        await createContact(contactForm.name, patch)
+        showToast(get(t)('loans.contactAdded'), 'success')
+      }
+      showContactForm = false
+      contacts = await getContacts()
+      void load()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    } finally {
+      savingContact = false
+    }
+  }
+
   onMount(() => {
     void load()
   })
@@ -275,6 +455,33 @@
     </button>
   </div>
 
+  {#if loans.length > 0}
+    <div class="filter-summary-row">
+      <div class="summary-bar">
+        <span class="summary-item"
+          ><b>{summary.active}</b> {$t('loans.sumActive')}</span
+        >
+        <span class="summary-item" class:summary-overdue={summary.overdue > 0}
+          ><b>{summary.overdue}</b> {$t('loans.sumOverdue')}</span
+        >
+        <span class="summary-item" class:summary-due={summary.dueToday > 0}
+          ><b>{summary.dueToday}</b> {$t('loans.sumDueToday')}</span
+        >
+        <span class="summary-item"
+          ><b>{summary.dueSoon}</b>
+          {$t('loans.sumDueSoon', { values: { days: DUE_SOON_DAYS } })}</span
+        >
+      </div>
+      <select class="contact-filter" bind:value={contactFilter}>
+        <option value="">{$t('loans.contactAll')}</option>
+        <option value="none">{$t('loans.contactUnspecified')}</option>
+        {#each contacts as c (c.id)}
+          <option value={c.id}>{c.name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+
   {#if loading && loans.length === 0}
     <div class="loading-tip">{$t('common.loading')}</div>
   {:else if loans.length === 0}
@@ -284,9 +491,11 @@
       actionLabel={$t('loans.add')}
       onAction={openAdd}
     />
+  {:else if filteredLoans.length === 0}
+    <div class="loading-tip">{$t('loans.noFilterMatch')}</div>
   {:else}
     <div class="list">
-      {#each loans as loan (loan.id)}
+      {#each filteredLoans as loan (loan.id)}
         <div class="row">
           <CardSimpleImage
             url={loan.img_cdn}
@@ -327,13 +536,6 @@
             </div>
           </div>
           <div class="row-actions">
-            <button
-              class="icon-btn"
-              title={$t('loans.edit')}
-              onclick={() => openEdit(loan)}
-            >
-              <Pencil size={16} />
-            </button>
             {#if loan.status === 'active' || loan.status === 'overdue'}
               <button
                 class="icon-btn"
@@ -365,12 +567,19 @@
                 <Undo2 size={16} />
               </button>
             {/if}
+                        <button
+              class="icon-btn"
+              title={$t('loans.edit')}
+              onclick={() => openEdit(loan)}
+            >
+              <Pencil size={16} />
+            </button>
             <button
               class="icon-btn danger"
               title={$t('common.delete')}
               onclick={() => remove(loan)}
             >
-              <Trash2 size={16} />
+              <Trash2 size={16} color={'red'}/>
             </button>
           </div>
         </div>
@@ -490,17 +699,45 @@
     {:else}
       {#each contacts as c (c.id)}
         <div class="contact-row">
-          <span class="contact-name">{c.name}</span>
-          {#if c.note}
-            <span class="contact-note">{c.note}</span>
-          {/if}
-          <button
-            class="icon-btn danger"
-            title={$t('common.delete')}
-            onclick={() => removeContact(c)}
-          >
-            <Trash2 size={15} />
-          </button>
+          <div class="contact-main">
+            <span class="contact-name">{c.name}</span>
+            {#if c.note}
+              <span class="contact-note">{c.note}</span>
+            {/if}
+            <div class="contact-info">
+              {#each CONTACT_FIELDS as f (f.key)}
+                {@const v = contactValue(c, f.key)}
+                {#if v}
+                  <button
+                    type="button"
+                    class="contact-chip"
+                    use:longpress={{ duration: 500, onLongPress: () => void openContactLink(c, f.key) }}
+                    onclick={() => handleChipClick(c, f.key)}
+                    oncontextmenu={(e) => {
+                      e.preventDefault()
+                      void openContactLink(c, f.key)
+                    }}
+                    title={$t('loans.contactChipTitle')}
+                  >
+                    <f.icon size={12} />
+                    {v}
+                  </button>
+                {/if}
+              {/each}
+            </div>
+          </div>
+          <div class="contact-actions">
+            <button class="icon-btn" title={$t('common.edit')} onclick={() => openEditContact(c)}>
+              <Pencil size={15} />
+            </button>
+            <button
+              class="icon-btn danger"
+              title={$t('common.delete')}
+              onclick={() => removeContact(c)}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
         </div>
       {/each}
     {/if}
@@ -515,10 +752,62 @@
       />
       <button class="button button-primary" onclick={addContact}>
         <Plus size={15} />
-        {$t('loans.addContact')}
+        {$t('loans.quickAdd')}
+      </button>
+      <button class="button button-ghost" onclick={openAddContact} title={$t('loans.addContactFull')}>
+        <UserRoundPen size={14} />
       </button>
     </div>
   </div>
+</CommonModal>
+
+<CommonModal
+  open={showContactForm}
+  title={editingContact ? $t('loans.editContact') : $t('loans.addContactFull')}
+  subtitle={editingContact ? editingContact.name : ''}
+  onclose={() => (showContactForm = false)}
+>
+  <div class="form">
+    <div class="field">
+      <label class="label" for="cf-name">{$t('loans.contactName')}</label>
+      <input class="input" id="cf-name" bind:value={contactForm.name} placeholder={get(t)('loans.contactName')} />
+    </div>
+    <div class="field">
+      <label class="label" for="cf-note">{$t('common.note')}</label>
+      <input class="input" id="cf-note" bind:value={contactForm.note} placeholder={get(t)('common.optional')} />
+    </div>
+    <div class="field">
+      <label class="label" for="cf-wechat">{$t('loans.contactField.wechat')}</label>
+      <input class="input" id="cf-wechat" bind:value={contactForm.wechat} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+    </div>
+    <div class="field">
+      <label class="label" for="cf-qq">{$t('loans.contactField.qq')}</label>
+      <input class="input" id="cf-qq" bind:value={contactForm.qq} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label class="label" for="cf-phone">{$t('loans.contactField.phone')}</label>
+        <input class="input" id="cf-phone" bind:value={contactForm.phone} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+      </div>
+      <div class="field">
+        <label class="label" for="cf-email">{$t('loans.contactField.email')}</label>
+        <input class="input" id="cf-email" bind:value={contactForm.email} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+      </div>
+    </div>
+  </div>
+
+  {#snippet footer()}
+    <button class="button button-ghost" onclick={() => (showContactForm = false)}>
+      {$t('common.cancel')}
+    </button>
+    <button
+      class="button button-primary"
+      disabled={savingContact || !contactForm.name.trim()}
+      onclick={submitContactForm}
+    >
+      {savingContact ? $t('common.saving') : $t('common.save')}
+    </button>
+  {/snippet}
 </CommonModal>
 
 <style>
@@ -553,6 +842,62 @@
     background: var(--bg-active);
     color: var(--text-primary);
     font-weight: 500;
+  }
+
+  .summary-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .filter-summary-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px 0;
+    flex-wrap: wrap;
+  }
+
+  .contact-filter {
+    /* margin-top: 10px;
+    margin-right: 16px; */
+    margin-left: auto;
+    padding: 5px 8px;
+    font-size: var(--text-xs);
+    font-family: inherit;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    max-width: 160px;
+  }
+
+  .summary-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+  }
+
+  .summary-item b {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary-overdue b,
+  .summary-overdue {
+    color: #d97706;
+  }
+
+  .summary-due b,
+  .summary-due {
+    color: #e5484d;
   }
 
   .list {
@@ -755,11 +1100,19 @@
 
   .contact-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     padding: 9px 12px;
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
+  }
+
+  .contact-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .contact-name {
@@ -769,9 +1122,41 @@
   }
 
   .contact-note {
-    flex: 1;
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+  }
+
+  .contact-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .contact-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+    border-radius: 999px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.15s;
+  }
+
+  .contact-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .contact-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
   }
 
   .contact-row .icon-btn {

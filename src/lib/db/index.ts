@@ -256,6 +256,7 @@ export {
   createContact,
   updateContact,
   deleteContact,
+  type ContactInput,
 } from './repository/contact-repository'
 export {
   getLoans,
@@ -265,9 +266,11 @@ export {
   deleteLoan,
   getActiveLoanQty,
   markOverdueLoans,
+  getLoanDueSummary,
   type LoanInput,
   type LoanFilter,
   type CardLoanWithName,
+  type LoanDueSummary,
 } from './repository/loan-repository'
 export {
   getWishlistItems,
@@ -295,13 +298,19 @@ export {
   removePurchaseListItem,
   savePurchaseListBatch,
   generatePurchaseListFromDeck,
+  generatePurchaseListFromWishlist,
   refreshPurchaseListFromDeck,
   getPurchaseListItemCounts,
+  getDeckPurchasePreview,
+  savePurchaseListEditor,
+  createPurchaseListEditor,
   getCardOtherVariantOwned,
   type CreatePurchaseListInput,
   type PurchaseListItemInput,
   type PurchaseListChange,
   type PurchaseListSaveResult,
+  type PurchaseListEditorRow,
+  type PurchaseListEditorSaveResult,
 } from './repository/purchase-list-repository'
 export {
   createMatch,

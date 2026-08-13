@@ -326,6 +326,11 @@ export interface Contact {
   id: string
   name: string
   note: string | null
+  /** 联系信息（均可空；UI 点击复制，长按/右键打开链接） */
+  wechat: string | null
+  qq: string | null
+  phone: string | null
+  email: string | null
   created_at: string | null
   updated_at: string | null
 }

@@ -108,7 +108,7 @@
   .global-search {
     position: relative;
     width: 100%;
-    max-width: 340px;
+    /* max-width: 340px; */
   }
 
   .results {

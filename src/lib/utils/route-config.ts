@@ -31,9 +31,17 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/collection/wishlist': { backTo: '/collection', description: '心愿单 → 收藏总览' },
   '/collection/loans': { backTo: '/collection', description: '借出借入 → 收藏总览' },
   '/collection/purchase-lists': { backTo: '/collection', description: '购买清单 → 收藏总览' },
+  '/collection/purchase-lists/new': {
+    backTo: '/collection/purchase-lists',
+    description: '新建购买清单 → 购买清单',
+  },
   '/collection/purchase-lists/:listId': {
     backTo: '/collection/purchase-lists',
     description: '购买清单详情 → 购买清单',
+  },
+  '/collection/purchase-lists/:listId/edit': {
+    backTo: '/collection/purchase-lists',
+    description: '编辑购买清单 → 购买清单',
   },
   '/locker/:lockerId': { backTo: '/locker', description: '储物柜详情 → 储物柜列表' },
   '/locker/:lockerId/:sectionId': { backTo: '/locker', description: '抽屉卡片 → 储物柜详情' },

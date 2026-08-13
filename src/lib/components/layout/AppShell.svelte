@@ -5,11 +5,30 @@
   import BottomNav from './BottomNav.svelte'
   import DownloadProgressBar from '../ui/DownloadProgressBar.svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
-  import { networkState } from '../../stores/network.svelte'
+  import { networkState, reconnectNow } from '../../stores/network.svelte'
+  import { showToast } from '../../stores/ui-store.svelte'
   import { page } from '$app/state'
-  import { t } from 'svelte-i18n'
+  import { RefreshCw } from '@lucide/svelte'
+  import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
   let { children } = $props()
   let isSidebarOpen = $state(false)
+  let reconnecting = $state(false)
+
+  async function handleReconnect() {
+    if (reconnecting) return
+    reconnecting = true
+    try {
+      const ok = await reconnectNow()
+      if (ok) {
+        showToast(get(t)('common.networkRestored'), 'success')
+      } else {
+        showToast(get(t)('appShell.offlineRetryFailed'), 'error')
+      }
+    } finally {
+      reconnecting = false
+    }
+  }
 
   // 监听窗口大小变化，桌面端自动展开侧边栏
   function handleResize() {
@@ -65,7 +84,16 @@
   <DownloadProgressBar />
 
   {#if !networkState.online && networkState.checked}
-    <div class="offline-banner" role="status">{$t('appShell.offline')}</div>
+    <button
+      class="offline-banner"
+      type="button"
+      title={$t('appShell.offlineRetry')}
+      disabled={reconnecting}
+      onclick={handleReconnect}
+    >
+      {reconnecting ? $t('appShell.offlineConnecting') : $t('appShell.offline')}
+      <RefreshCw size={12} class={reconnecting ? 'spin' : ''} />
+    </button>
   {/if}
 </div>
 
@@ -131,7 +159,32 @@
     color: var(--text-secondary);
     font-size: var(--text-xs);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    pointer-events: none;
     white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+  }
+
+  .offline-banner:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-color);
+  }
+
+  .offline-banner:disabled {
+    opacity: 0.75;
+    cursor: default;
+  }
+
+  :global(.spin) {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

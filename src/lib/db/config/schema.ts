@@ -76,6 +76,10 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_collection_series ON collection(series_code, last_edited_at)
   `,
 
+  idx_collection_card: `
+    CREATE INDEX IF NOT EXISTS idx_collection_card ON collection(card_no, card_no_extend)
+  `,
+
   idx_card_prints_variant: `
     CREATE INDEX IF NOT EXISTS idx_card_prints_variant ON card_prints(card_id, card_no_extend)
   `,
@@ -396,6 +400,10 @@ export const TABLE_DEFINITIONS = {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       note TEXT,
+      wechat TEXT,
+      qq TEXT,
+      phone TEXT,
+      email TEXT,
       created_at TEXT,
       updated_at TEXT
     )

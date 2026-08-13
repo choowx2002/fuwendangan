@@ -130,6 +130,18 @@ export async function getNetworkStatus(): Promise<NetworkStatus> {
   return { online, metered: isMetered() }
 }
 
+/**
+ * 手动重连：绕开 10s 缓存做一次新鲜探测，并立即同步全局在线状态。
+ * 供离线横幅点击重试使用；返回是否已恢复在线。
+ */
+export async function reconnectNow(): Promise<boolean> {
+  const ok = await probeOnline()
+  lastProbeAt = Date.now()
+  lastProbeOnline = ok
+  applyState(ok)
+  return ok
+}
+
 function init() {
   if (initiated || typeof window === 'undefined') return
   initiated = true

@@ -8,7 +8,6 @@
     removePurchaseListItem,
     refreshPurchaseListFromDeck,
     savePurchaseListBatch,
-    updatePurchaseList,
     getCardOtherVariantOwned,
     isTauri,
     printCacheName,
@@ -55,10 +54,6 @@
     }[]
   >([])
   let allowLeave = $state(false)
-
-  let showEditInfo = $state(false)
-  let editInfoName = $state('')
-  let editInfoSaving = $state(false)
 
   interface Edit {
     qtyOrdered: number
@@ -261,23 +256,7 @@
   }
 
   function openEditInfo() {
-    editInfoName = list?.name ?? ''
-    showEditInfo = true
-  }
-
-  async function submitEditInfo() {
-    if (!list || editInfoSaving) return
-    editInfoSaving = true
-    try {
-      await updatePurchaseList(listId, { name: editInfoName })
-      showToast(get(t)('purchase.listUpdated'), 'success')
-      showEditInfo = false
-      await load()
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
-    } finally {
-      editInfoSaving = false
-    }
+    void goto(`/collection/purchase-lists/${listId}/edit`)
   }
 
   function setEdit(item: ItemRow, patch: Partial<Edit>) {
@@ -827,37 +806,6 @@
   </CommonModal>
 
   <CommonModal
-    open={showEditInfo}
-    title={$t('purchase.editList')}
-    onclose={() => (showEditInfo = false)}
-  >
-    <div class="form">
-      <div class="field">
-        <label class="label" for="pl-info-name">{$t('purchase.listName')}</label>
-        <input
-          class="input"
-          id="pl-info-name"
-          bind:value={editInfoName}
-          placeholder={$t('purchase.listNamePlaceholder')}
-        />
-      </div>
-    </div>
-
-    {#snippet footer()}
-      <button class="button button-ghost" onclick={() => (showEditInfo = false)}>
-        {$t('common.cancel')}
-      </button>
-      <button
-        class="button button-primary"
-        disabled={editInfoSaving || editInfoName.trim() === ''}
-        onclick={submitEditInfo}
-      >
-        {editInfoSaving ? $t('common.saving') : $t('common.save')}
-      </button>
-    {/snippet}
-  </CommonModal>
-
-  <CommonModal
     open={showOtherOwned}
     title={$t('purchase.otherOwnedTitle')}
     onclose={() => (showOtherOwned = false)}
@@ -908,6 +856,7 @@
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+        width: 100%;
   }
 
   .filter-row {
@@ -937,6 +886,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-left:auto;
   }
 
   .sort-label {
@@ -1317,32 +1267,6 @@
     padding: 40px;
     text-align: center;
     color: var(--text-tertiary);
-    font-size: var(--text-sm);
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .label {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-
-  .input {
-    padding: 9px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
     font-size: var(--text-sm);
   }
 

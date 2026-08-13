@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Check, Archive, Heart, Upload, Download } from '@lucide/svelte'
+  import { Plus, Trash2, Check, Archive, Heart, Upload, Download, ShoppingCart } from '@lucide/svelte'
   import {
     getWishlistItems,
     upsertWishlistItem,
@@ -14,6 +14,7 @@
     PRESET_LANGUAGE_CODES,
     printCacheName,
     importWishlistCsv,
+    generatePurchaseListFromWishlist,
     isTauri,
     type WishlistStatus,
     type WishlistImportRow,
@@ -69,6 +70,10 @@
     errors: string[]
     fileName: string
   } | null>(null)
+
+  let showToPurchase = $state(false)
+  let toPurchaseName = $state('')
+  let toPurchaseBusy = $state(false)
 
   function finishLabel(finish: string): string {
     if (finish === 'normal') return get(t)('wishlist.finish.normal')
@@ -329,6 +334,21 @@
     if (!ok) showToast(get(t)('collection.saveCancelled'), 'info')
   }
 
+  async function confirmToPurchase() {
+    if (toPurchaseBusy) return
+    toPurchaseBusy = true
+    try {
+      const listId = await generatePurchaseListFromWishlist({ name: toPurchaseName.trim() })
+      showToPurchase = false
+      showToast(get(t)('purchase.created'), 'success')
+      await goto(`/collection/purchase-lists/${listId}`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    } finally {
+      toPurchaseBusy = false
+    }
+  }
+
   onMount(() => {
     void load()
   })
@@ -351,6 +371,16 @@
           icon: Download,
           title: $t('wishlist.importCsvTitle'),
           onClick: pickWishlistImport,
+        },
+        {
+          key: 'toPurchase',
+          label: $t('purchase.fromWishlist'),
+          icon: ShoppingCart,
+          title: $t('purchase.fromWishlistTitle'),
+          onClick: () => {
+            toPurchaseName = ''
+            showToPurchase = true
+          },
         },
         {
           key: 'add',
@@ -587,6 +617,41 @@
       onclick={confirmWishlistImport}
     >
       {importing ? $t('collection.importing') : $t('collection.confirmImport')}
+    </button>
+  {/snippet}
+</CommonModal>
+
+<CommonModal
+  open={showToPurchase}
+  title={$t('purchase.fromWishlistTitle')}
+  subtitle={$t('purchase.fromWishlistDesc')}
+  closable={!toPurchaseBusy}
+  onclose={() => {
+    if (!toPurchaseBusy) showToPurchase = false
+  }}
+>
+  <div class="form">
+    <div class="field">
+      <label class="label" for="to-purchase-name">{$t('purchase.listName')}</label>
+      <input
+        class="input"
+        id="to-purchase-name"
+        bind:value={toPurchaseName}
+        placeholder={$t('purchase.listNamePlaceholder')}
+      />
+    </div>
+  </div>
+
+  {#snippet footer()}
+    <button
+      class="button button-ghost"
+      disabled={toPurchaseBusy}
+      onclick={() => (showToPurchase = false)}
+    >
+      {$t('common.cancel')}
+    </button>
+    <button class="button button-primary" disabled={toPurchaseBusy} onclick={confirmToPurchase}>
+      {toPurchaseBusy ? $t('purchase.generating') : $t('purchase.create')}
     </button>
   {/snippet}
 </CommonModal>

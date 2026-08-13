@@ -7,12 +7,9 @@
     deletePurchaseList,
     updatePurchaseList,
     updatePurchaseListStatus,
-    generatePurchaseListFromDeck,
     getPurchaseListItemCounts,
-    getDecks,
     type PurchaseList,
     type PurchaseListStatus,
-    type Deck,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { confirmAction } from '$lib/utils/confirm'
@@ -23,12 +20,7 @@
 
   let lists = $state<PurchaseList[]>([])
   let itemCounts = $state<Map<string, number>>(new Map())
-  let decks = $state<Deck[]>([])
   let loading = $state(true)
-
-  let showCreate = $state(false)
-  let creating = $state(false)
-  let form = $state({ name: '', deckId: '' })
 
   let editingList = $state<PurchaseList | null>(null)
   let editSaving = $state(false)
@@ -37,37 +29,16 @@
   async function load() {
     loading = true
     try {
-      const [listRes, countRes, deckRes] = await Promise.all([
-        getPurchaseLists(),
-        getPurchaseListItemCounts(),
-        getDecks(),
-      ])
+      const [listRes, countRes] = await Promise.all([getPurchaseLists(), getPurchaseListItemCounts()])
       lists = listRes
       itemCounts = countRes
-      decks = deckRes
     } finally {
       loading = false
     }
   }
 
   function openCreate() {
-    form = { name: '', deckId: decks[0]?.id ?? '' }
-    showCreate = true
-  }
-
-  async function submit() {
-    if (!form.deckId) return
-    creating = true
-    try {
-      const listId = await generatePurchaseListFromDeck(form.deckId, form.name)
-      showToast(get(t)('purchase.created'), 'success')
-      showCreate = false
-      void goto(`/collection/purchase-lists/${listId}`)
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
-    } finally {
-      creating = false
-    }
+    void goto('/collection/purchase-lists/new')
   }
 
   async function setStatus(list: PurchaseList, status: PurchaseListStatus) {
@@ -240,41 +211,6 @@
   {/if}
 </div>
 
-<CommonModal open={showCreate} title={$t('purchase.create')} onclose={() => (showCreate = false)}>
-  <div class="form">
-    <div class="field">
-      <label class="label" for="pl-name">{$t('purchase.listName')}</label>
-      <input
-        class="input"
-        id="pl-name"
-        bind:value={form.name}
-        placeholder={$t('purchase.listNamePlaceholder')}
-      />
-    </div>
-    <div class="field">
-      <label class="label" for="pl-deck">{$t('purchase.sourceDeck')}</label>
-      {#if decks.length === 0}
-        <div class="no-decks">{$t('purchase.noDecks')}</div>
-      {:else}
-        <select class="select" id="pl-deck" bind:value={form.deckId}>
-          {#each decks as d (d.id)}
-            <option value={d.id}>{d.name}</option>
-          {/each}
-        </select>
-      {/if}
-    </div>
-  </div>
-
-  {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showCreate = false)}>
-      {$t('common.cancel')}
-    </button>
-    <button class="button button-primary" disabled={creating || !form.deckId} onclick={submit}>
-      {creating ? $t('common.saving') : $t('purchase.generate')}
-    </button>
-  {/snippet}
-</CommonModal>
-
 <CommonModal
   open={editingList !== null}
   title={$t('purchase.editList')}
@@ -443,15 +379,6 @@
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: var(--text-sm);
-  }
-
-  .no-decks {
-    padding: 12px;
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-tertiary);
-    font-size: var(--text-sm);
-    text-align: center;
   }
 
   .mode-toggle {
