@@ -111,6 +111,16 @@ export interface ApplyResult {
 
 /** 从本地库抽取全部同步实体 + 墓碑 */
 export async function extractSyncBody(): Promise<SyncBundleBody> {
+  // DEBUG: 逐实体提取并捕获失败点（老库缺列时定位是哪张表）
+  const extractWithLog = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn()
+    } catch (e) {
+      console.error(`[SYNC] extract ${label} 失败:`, e)
+      console.error(`[SYNC] extract ${label} 失败 string:`, e instanceof Error ? e.message : String(e))
+      throw e
+    }
+  }
   const [
     decks,
     collection,
@@ -124,17 +134,17 @@ export async function extractSyncBody(): Promise<SyncBundleBody> {
     settings,
     tombstones,
   ] = await Promise.all([
-    extractDecks(),
-    extractCollection(),
-    extractWishlist(),
-    extractLoans(),
-    extractContacts(),
-    extractPurchaseLists(),
-    extractMatches(),
-    extractLockers(),
-    extractCustomPrints(),
-    extractSettings(),
-    extractTombstones(),
+    extractWithLog('decks', extractDecks),
+    extractWithLog('collection', extractCollection),
+    extractWithLog('wishlist', extractWishlist),
+    extractWithLog('loans', extractLoans),
+    extractWithLog('contacts', extractContacts),
+    extractWithLog('purchaseLists', extractPurchaseLists),
+    extractWithLog('matches', extractMatches),
+    extractWithLog('lockers', extractLockers),
+    extractWithLog('customPrints', extractCustomPrints),
+    extractWithLog('settings', extractSettings),
+    extractWithLog('tombstones', extractTombstones),
   ])
   return {
     entities: {
@@ -353,33 +363,43 @@ export async function applySyncPlan(plan: SyncWritePlan): Promise<ApplyResult> {
         [t.id, t.entity_type, t.entity_key, t.updated_at]
       )
     }
+    console.log('[SYNC] 写回: 墓碑完成')
 
     // 2. 自定义打印先写（卡组写回需按 print_code 解析自定义打印）
     await applyCustomPrints(db, plan.upsertCustomPrints, plan.deleteCustomPrintIds)
+    console.log('[SYNC] 写回: 自定义打印完成')
 
     // 3. 卡组
     result.missingCards += await applyDecks(db, plan.upsertDecks, plan.deleteDeckIds)
+    console.log('[SYNC] 写回: 卡组完成')
 
     // 4. 收藏
     await applyCollection(db, plan.upsertCollection, plan.deleteCollectionKeys)
+    console.log('[SYNC] 写回: 收藏完成')
 
     // 5. 联系人（借还外键依赖）
     await applyContacts(db, plan.upsertContacts, plan.deleteContactIds)
+    console.log('[SYNC] 写回: 联系人完成')
 
     // 6. 借还
     await applyLoans(db, plan.upsertLoans, plan.deleteLoanIds)
+    console.log('[SYNC] 写回: 借还完成')
 
     // 7. 心愿单
     await applyWishlist(db, plan.upsertWishlist, plan.deleteWishlistIds)
+    console.log('[SYNC] 写回: 心愿单完成')
 
     // 8. 购买清单（卡组外键依赖）
     await applyPurchaseLists(db, plan.upsertPurchaseLists, plan.deletePurchaseListIds)
+    console.log('[SYNC] 写回: 购买清单完成')
 
     // 9. 对局（卡组外键依赖；卡组不存在则跳过）
     result.skippedMatches += await applyMatches(db, plan.upsertMatches, plan.deleteMatchIds)
+    console.log('[SYNC] 写回: 对局完成')
 
     // 10. 卡柜
     await applyLockers(db, plan.upsertLockers, plan.deleteLockerIds)
+    console.log('[SYNC] 写回: 卡柜完成')
   })
 
   // 11. 设置（事务外写 store + 游标；失败不阻断已提交的合并）

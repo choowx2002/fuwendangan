@@ -807,6 +807,8 @@
       })
       await refreshSupabaseStatus()
     } catch (e) {
+      console.error('[SETTINGS] testSupabaseConn 失败:', e)
+      console.error('[SETTINGS] testSupabaseConn 失败 string:', e instanceof Error ? e.message : String(e))
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseTest'),
         kind: 'error',
@@ -828,6 +830,8 @@
         kind: 'info',
       })
     } catch (e) {
+      console.error('[SETTINGS] handleSupabaseSignIn 失败:', e)
+      console.error('[SETTINGS] handleSupabaseSignIn 失败 string:', e instanceof Error ? e.message : String(e))
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignIn'),
         kind: 'error',
@@ -840,6 +844,8 @@
       await signOutSupabase()
       supabaseUser = ''
     } catch (e) {
+      console.error('[SETTINGS] handleSupabaseSignOut 失败:', e)
+      console.error('[SETTINGS] handleSupabaseSignOut 失败 string:', e instanceof Error ? e.message : String(e))
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignOut'),
         kind: 'error',
@@ -870,6 +876,9 @@
       )
       await loadDbInfo()
     } catch (e) {
+      // DEBUG: 移动端同步失败的真实错误（plugin-sql reject 的是普通字符串，不是 Error）
+      console.error('[SETTINGS] syncSupabaseNow 失败:', e)
+      console.error('[SETTINGS] syncSupabaseNow 失败 string:', e instanceof Error ? e.message : String(e))
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSync'),
         kind: 'error',

@@ -63,11 +63,17 @@ export async function mergeRemoteBody(
   remote: SyncBundleBody,
   remoteDeviceId: string
 ): Promise<SyncImportResult> {
+  console.log('[SYNC] mergeRemoteBody 开始')
   const local = await extractSyncBody()
   const localDeviceId = await getOrCreateDeviceId()
 
   const plan = buildSyncWritePlan({ local, remote, localDeviceId, remoteDeviceId })
+  console.log('[SYNC] 写回计划生成, upsertDecks=%d upsertCollection=%d upsertWishlist=%d upsertLoans=%d upsertContacts=%d upsertLists=%d upsertMatches=%d upsertLockers=%d tombstones=%d',
+    plan.upsertDecks.length, plan.upsertCollection.length, plan.upsertWishlist.length, plan.upsertLoans.length,
+    plan.upsertContacts.length, plan.upsertPurchaseLists.length, plan.upsertMatches.length, plan.upsertLockers.length,
+    plan.finalTombstones.length)
   const applied = await applySyncPlan(plan)
+  console.log('[SYNC] applySyncPlan 完成, applied =', JSON.stringify(applied))
 
   // 内容引用重链 / 孤儿清理 / 进度快照（事务外，走全局串行队列）
   await repointDeckCardReferences()
@@ -103,23 +109,33 @@ export async function getSyncStatus(): Promise<{ lastSync: string | null }> {
  * 首次（云端无数据）直接 push 本机全量。
  */
 export async function syncViaSupabase(): Promise<SyncImportResult> {
+  // DEBUG: 一键同步逐步日志（移动端排查）
+  console.log('[SYNC] syncViaSupabase 开始')
   const localDeviceId = await getOrCreateDeviceId()
+  console.log('[SYNC] deviceId =', localDeviceId)
   const remote = await fetchRemoteBody()
+  console.log('[SYNC] fetchRemoteBody 完成, body=', remote.body ? '有远端数据' : '无远端数据', 'remoteDeviceId=', remote.remoteDeviceId)
 
   let applied: ApplyResult | null = null
   if (remote.body) {
     applied = await mergeRemoteBody(remote.body, remote.remoteDeviceId ?? '')
+    console.log('[SYNC] mergeRemoteBody 完成, applied =', JSON.stringify(applied))
   }
 
   const merged = await extractSyncBody()
   const checksum = computeBodyChecksum(merged)
   const lastPushed = await getSyncMeta(SUPABASE_LAST_PUSH_CHECKSUM)
+  console.log('[SYNC] 提取完成, checksum =', checksum, 'lastPushed =', lastPushed)
   if (checksum !== lastPushed) {
     await pushBody(merged, localDeviceId)
     await setSyncMeta(SUPABASE_LAST_PUSH_CHECKSUM, checksum)
+    console.log('[SYNC] pushBody 完成')
+  } else {
+    console.log('[SYNC] 校验和相同，跳过上行 push')
   }
 
   await setLastSync(new Date().toISOString())
+  console.log('[SYNC] syncViaSupabase 完成')
 
   return {
     ...(applied ?? {

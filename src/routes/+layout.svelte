@@ -48,7 +48,9 @@
       // 启动后异步检查备份提醒（不阻塞界面）
       void maybePromptBackup()
     } catch (error) {
+      // DEBUG: 启动初始化失败的真实错误（plugin-sql reject 为普通字符串）
       console.error('[Layout] 初始化失败:', error)
+      console.error('[Layout] 初始化失败 string:', error instanceof Error ? error.message : String(error))
       setLoadStatus(
         'error',
         get(t)('loading.error'),
@@ -72,6 +74,7 @@
       await initializeDatabase({ skipMetered: false, confirm: false })
     } catch (error) {
       console.error('[Layout] 检查卡牌数据更新失败:', error)
+      console.error('[Layout] 检查卡牌数据更新失败 string:', error instanceof Error ? error.message : String(error))
     }
   }
 

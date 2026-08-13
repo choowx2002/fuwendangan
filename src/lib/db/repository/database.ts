@@ -69,6 +69,9 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
         return result
       } catch (err) {
         await raw.__rawExecute('ROLLBACK').catch(() => {})
+        // DEBUG: 事务回滚时的真实错误（移动端同步失败排查）
+        console.error('[DB] withTransaction ROLLBACK:', err)
+        console.error('[DB] withTransaction ROLLBACK string:', err instanceof Error ? err.message : String(err))
         throw err
       }
     } finally {
@@ -95,6 +98,9 @@ export async function getDatabase(): Promise<Database> {
       serializeDatabase(db)
       return db
     })().catch((err) => {
+      // DEBUG: 数据库初始化失败（启动即失败 / 唯一索引建不起来等）
+      console.error('[DB] getDatabase 初始化失败:', err)
+      console.error('[DB] getDatabase 初始化失败 string:', err instanceof Error ? err.message : String(err))
       // 初始化失败不污染后续调用：清空缓存，下次 getDatabase() 自动重试
       dbPromise = null
       throw err
@@ -180,6 +186,9 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CONTACTS, 'phone', 'TEXT')
   await ensureColumn(db, TABLES.CONTACTS, 'email', 'TEXT')
 
+  // DEBUG: schema 迁移阶段标记（老库缺列排查）
+  console.log('[DB] initializeTables: ensureColumn 完成')
+
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。
   const placeholders = SYNC_TABLE_NAMES.map(() => '?').join(', ')
@@ -187,12 +196,15 @@ async function initializeTables(db: Database): Promise<void> {
     `SELECT COUNT(*) AS n FROM ${TABLES.VERSION} WHERE name IS NULL OR name NOT IN (${placeholders})`,
     SYNC_TABLE_NAMES
   )
+  console.log('[DB] initializeTables: version 遗留行数 =', legacyRows[0]?.n ?? 0)
   if ((legacyRows[0]?.n ?? 0) > 0) {
     await migrateVersionSemantics(db)
   }
 
   // name 唯一索引在语义迁移之后创建，避免老库遗留重复 name 导致建索引失败
+  // DEBUG: 若此处报 UNIQUE constraint failed，说明 version 表有重复同步表名
   await db.execute(TABLE_DEFINITIONS.idx_version_name)
+  console.log('[DB] initializeTables: idx_version_name 唯一索引创建完成')
 
   // 老库回填 card_prints.card_no 快照：仅当存在缺卡号快照的打印时才写库
   const nullCardNo = await db.select<{ n: number }[]>(
@@ -222,6 +234,16 @@ async function initializeTables(db: Database): Promise<void> {
   )
   if ((anyLangRows[0]?.n ?? 0) > 0) {
     await migrateAnyLangToSc(db)
+  }
+
+  // DEBUG: 迁移完成后输出关键表列结构，用于移动端老库缺列排查（Android logcat）
+  try {
+    for (const t of [TABLES.COLLECTION, TABLES.COLLECTION_LANGS, TABLES.CARD_PRINTS, TABLES.VERSION]) {
+      const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(${t})`)
+      console.log(`[DB] schema ${t}:`, cols.map((c) => c.name).join(', '))
+    }
+  } catch (e) {
+    console.error('[DB] schema dump 失败:', e instanceof Error ? e.message : String(e))
   }
 }
 

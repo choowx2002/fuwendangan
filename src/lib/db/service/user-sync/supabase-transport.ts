@@ -47,7 +47,9 @@ export function getByoClient(): SupabaseClient | null {
 export async function getSupabaseUser(): Promise<User | null> {
   const client = getByoClient()
   if (!client) return null
-  const { data } = await client.auth.getUser()
+  const { data, error } = await client.auth.getUser()
+  // DEBUG: 登录会话状态（移动端 localStorage 会话丢失排查）
+  if (error) console.warn('[SYNC] getSupabaseUser error:', error.message, '| status=', (error as { status?: number }).status)
   return data.user ?? null
 }
 
@@ -77,7 +79,10 @@ export async function fetchRemoteBody(): Promise<RemoteBundleData> {
     .select('device_id, data')
     .eq('user_id', user.id)
     .maybeSingle()
-  if (error) throw transportError(error)
+  if (error) {
+    console.error('[SYNC] fetchRemoteBody 失败:', transportError(error).message, '| code=', (error as { code?: string }).code)
+    throw transportError(error)
+  }
   if (!data) return { body: null, remoteDeviceId: null }
   return {
     body: (data.data as SyncBundleBody) ?? null,
@@ -100,7 +105,10 @@ export async function pushBody(body: SyncBundleBody, deviceId: string): Promise<
     },
     { onConflict: 'user_id' }
   )
-  if (error) throw transportError(error)
+  if (error) {
+    console.error('[SYNC] pushBody 失败:', transportError(error).message, '| code=', (error as { code?: string }).code)
+    throw transportError(error)
+  }
 }
 
 export interface ConnectionTestResult {

@@ -71,7 +71,9 @@ export async function initializeDatabase(opts?: {
     uiState.status = 'syncing'
     await performSync(tablesToSync, remoteMap)
   } catch (error) {
+    // DEBUG: 内容同步失败的真实错误（不再只显示通用「同步失败」）
     console.error('[DB] 数据库初始化/同步失败:', error)
+    console.error('[DB] 数据库初始化/同步失败 string:', error instanceof Error ? error.message : String(error))
     showToast(get(t)('common.syncFailed'), 'error')
   } finally {
     if (uiState.status === 'syncing') uiState.status = 'success'
@@ -218,6 +220,11 @@ async function performSync(
       const remoteTime = remoteMap.get(name)
       if (remoteTime) await versionRepo.upsertTableVersion(name, remoteTime)
     }
+  } catch (error) {
+    // DEBUG: 写入阶段具体哪一步失败（老库缺列 / 外键冲突 / 锁）
+    console.error('[DB] performSync 写入阶段失败:', error)
+    console.error('[DB] performSync 写入阶段失败 string:', error instanceof Error ? error.message : String(error))
+    throw error
   } finally {
     await db.execute('PRAGMA foreign_keys = ON')
   }
