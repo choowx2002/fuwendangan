@@ -5,6 +5,7 @@
  */
 
 import { Snowflake } from '@theinternetfolks/snowflake'
+import { addTombstone } from './sync-repository'
 import type {
   CollectionHistory,
   CollectionHistoryItem,
@@ -282,6 +283,7 @@ async function removeLangRow(item: CollectionHistoryItem): Promise<void> {
   )
   if (remain.length === 0) {
     await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE id = ?`, [collectionId])
+    await addTombstone('collection', `${item.cardNo}|${item.cardNoExtend}`)
   } else {
     const t = now()
     await db.execute(

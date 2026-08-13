@@ -7,6 +7,7 @@ import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
 import { parseTags, serializeTags } from '../helper'
 import { createMatch } from './match-record-repository'
+import { addTombstone } from './sync-repository'
 import { Snowflake } from '@theinternetfolks/snowflake'
 
 export interface DeckInput {
@@ -159,13 +160,13 @@ export async function updateDeck(id: string, input: Partial<DeckInput>): Promise
 }
 
 /**
- * 删除套牌
+ * 删除套牌（级联删除版本与卡牌引用，写入同步墓碑传播删除）
  */
 export async function deleteDeck(id: string): Promise<boolean> {
   const db = await getDatabase()
   const sql = `DELETE FROM ${TABLES.DECKS} WHERE id = ?`
-  console.log('[DECKS] succes remove deck')
   await db.execute(sql, [id])
+  await addTombstone('deck', id)
   return true
 }
 
@@ -174,7 +175,9 @@ export async function deleteDeck(id: string): Promise<boolean> {
  */
 export async function deleteAllDecks(): Promise<boolean> {
   const db = await getDatabase()
+  const ids = await db.select<{ id: string }[]>(`SELECT id FROM ${TABLES.DECKS}`)
   await db.execute(`DELETE FROM ${TABLES.DECKS}`)
+  for (const row of ids) await addTombstone('deck', row.id)
   return true
 }
 
@@ -502,7 +505,6 @@ export async function getLatestDeckCardEffects(deckId: string): Promise<DeckCard
 }
 
 export async function getDeckVersions(deckId: string): Promise<DeckVersion[]> {
-
   const db = await getDatabase()
   const sql = `
       SELECT id, deck_id, version_number, note, created_at

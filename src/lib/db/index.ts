@@ -99,6 +99,7 @@ export {
   closeDatabase,
   resetDatabaseInstance,
   resetDatabase,
+  withTransaction,
 } from './repository/database'
 export {
   saveCard,
@@ -327,6 +328,20 @@ export {
 export { searchCards, searchCardVariants } from './service/search-service'
 export { initializeDatabase, checkForContentUpdates } from './service/sync-service'
 export { updateFilterOptions } from './service/filter-service'
+export {
+  buildSyncBundleText,
+  importSyncBundleText,
+  getSyncStatus,
+  parseBundle,
+  mergeRemoteBody,
+  syncViaSupabase,
+  getSupabaseUser,
+  signInSupabase,
+  signOutSupabase,
+  testSupabaseConnection,
+  buildSupabaseCreateTableSql,
+} from './service/user-sync'
+export type { SyncExportInfo, SyncImportResult } from './service/user-sync'
 export {
   COMPLETION_MODES,
   getCompletionMode,

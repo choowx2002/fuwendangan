@@ -11,6 +11,7 @@ import type { CardPrint } from '../types'
 import { parseTags, serializeTags } from '../helper'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
+import { addTombstone } from './sync-repository'
 
 const now = () => new Date().toISOString()
 
@@ -187,6 +188,7 @@ export async function updateLocker(
 export async function deleteLocker(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.LOCKERS} WHERE id = ?`, [id])
+  await addTombstone('locker', id)
 }
 
 // ==================== 抽屉/隔间（Section） ====================
@@ -238,7 +240,10 @@ async function loadSectionThumbs(sectionId: string): Promise<{ url: string; name
   for (const r of rows) {
     const print = await loadPrint(r.card_no, r.card_no_extend ?? null, r.language ?? null)
     if (print?.img_cdn || print?.tts_cdn) {
-      thumbs.push({ url: print.img_cdn ?? print.tts_cdn ?? '', name: `${r.card_no_extend ?? r.card_no}-${r.language ?? 'default'}` })
+      thumbs.push({
+        url: print.img_cdn ?? print.tts_cdn ?? '',
+        name: `${r.card_no_extend ?? r.card_no}-${r.language ?? 'default'}`,
+      })
     }
   }
   return thumbs
@@ -326,7 +331,11 @@ export async function updateSection(
     if (value === undefined) continue
     sets.push(`${key} = ?`)
     params.push(
-      typeof value === 'string' ? value.trim() || null : key === 'tags' ? serializeTags(value) : value
+      typeof value === 'string'
+        ? value.trim() || null
+        : key === 'tags'
+          ? serializeTags(value)
+          : value
     )
   }
   params.push(id)
@@ -449,12 +458,7 @@ export async function addSectionCard(
     `SELECT id, quantity FROM ${TABLES.LOCKER_CARDS}
      WHERE section_id = ? AND card_no = ? AND card_no_extend IS ? AND language IS ?
      LIMIT 1`,
-    [
-      sectionId,
-      input.card_no,
-      input.card_no_extend || null,
-      input.language || null,
-    ]
+    [sectionId, input.card_no, input.card_no_extend || null, input.language || null]
   )
   if (existing[0]) {
     await db.execute(
@@ -597,10 +601,9 @@ export async function findCardLocations(
 /** 按名称精确查找储物柜（trim 后匹配） */
 export async function getLockerByName(name: string): Promise<Locker | null> {
   const db = await getDatabase()
-  const rows = await db.select<any[]>(
-    `SELECT * FROM ${TABLES.LOCKERS} WHERE name = ? LIMIT 1`,
-    [name.trim()]
-  )
+  const rows = await db.select<any[]>(`SELECT * FROM ${TABLES.LOCKERS} WHERE name = ? LIMIT 1`, [
+    name.trim(),
+  ])
   const r = rows[0]
   if (!r) return null
   return {
@@ -680,10 +683,7 @@ export async function upsertSectionCard(
       params.push(input.note?.trim() || null)
     }
     params.push(existing[0].id)
-    await db.execute(
-      `UPDATE ${TABLES.LOCKER_CARDS} SET ${sets.join(', ')} WHERE id = ?`,
-      params
-    )
+    await db.execute(`UPDATE ${TABLES.LOCKER_CARDS} SET ${sets.join(', ')} WHERE id = ?`, params)
     return existing[0].id
   }
 
@@ -754,7 +754,9 @@ export async function getLockerExportVariants(opts?: {
   }
 
   // 3. 未收录变体的代表印刷语言（SC 优先 → is_default → 首张，与 VariantPool 口径一致）
-  const unplacedKeys = ownedRows.filter((r) => !placementMap.has(`${r.card_no}|${r.card_no_extend}`))
+  const unplacedKeys = ownedRows.filter(
+    (r) => !placementMap.has(`${r.card_no}|${r.card_no_extend}`)
+  )
   const repLangMap = new Map<string, string | null>()
   if (unplacedKeys.length > 0) {
     const conds = unplacedKeys.map(() => '(p.card_no = ? AND p.card_no_extend = ?)').join(' OR ')

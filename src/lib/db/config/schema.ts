@@ -495,6 +495,26 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_pli_card ON purchase_list_items(card_no, card_no_extend)
   `,
 
+  // 玩家数据同步元数据：单行 key/value（设备 id、上次同步时间、上次成功 bundle 校验和等）
+  sync_meta: `
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `,
+
+  // 玩家数据同步墓碑：删除跨设备传播（本地硬删时写入）
+  sync_tombstones: `
+    CREATE TABLE IF NOT EXISTS sync_tombstones (
+      id TEXT PRIMARY KEY,             -- snowflake
+      entity_type TEXT NOT NULL,       -- deck / collection / wishlist / loan / contact /
+                                       -- purchase_list / match / locker / custom_print / setting
+      entity_key TEXT NOT NULL,        -- 实体稳定键
+      updated_at TEXT NOT NULL,        -- 删除时间（与实体行 LWW 同源）
+      UNIQUE(entity_type, entity_key)
+    )
+  `,
+
   DROP: `
     DROP TABLE IF EXISTS version;
     DROP TABLE IF EXISTS match_games;
@@ -520,5 +540,7 @@ export const TABLE_DEFINITIONS = {
     DROP TABLE IF EXISTS contacts;
     DROP TABLE IF EXISTS purchase_list_items;
     DROP TABLE IF EXISTS purchase_lists;
+    DROP TABLE IF EXISTS sync_tombstones;
+    DROP TABLE IF EXISTS sync_meta;
   `,
 } as const

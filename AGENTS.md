@@ -77,7 +77,8 @@ pnpm tauri:build:linux   # Linux 专用构建：NO_STRIP=true tauri build
 
 ## 数据同步契约（Sync DB）
 
-- **同步范围**：仅云端 `version` 表登记的 5 张同步表 —— `cards_base` / `card_prints` / `icons` / `rules` / `series`。Collection、Deck、Match Record、玩家资料等本地数据**不参与同步**。
+- **同步范围**：仅云端 `version` 表登记的 5 张同步表 —— `cards_base` / `card_prints` / `icons` / `rules` / `series`。Collection、Deck、Match Record 等本地数据**不参与内容同步**。
+- **玩家数据同步**（独立于内容同步）：`src/lib/db/service/user-sync/` 处理玩家自有数据跨设备（收藏/卡组/心愿/借还/联系人/清单/对局/卡柜/自定义打印/设置白名单）。传输：手动 Sync Bundle（`bundle.ts`/`engine.ts`）与 Supabase BYO（`supabase-transport.ts`，用户自建项目、单 JSON 行 + RLS，Git 已永久放弃）。合并 = LWW + deviceId 决胜 + `sync_tombstones` 墓碑；写回一律走 `withTransaction()`（见 `docs/player-data-sync.md`）。
 - **同步模型**：按表 timestamp 同步。云端 `version` 表每张同步表一行（`name` = 表标识，唯一；`updated_at` = 该表数据最后发布时间），发布数据更新时对对应行做 upsert。客户端本地 `version` 表镜像同样结构，按 `name` upsert。
 - **同步流程**：比较每张表 local/remote 的 `updated_at`，只重下更新的表（整表全量替换，不做逐行 diff）。写入阶段先 `PRAGMA foreign_keys = OFF`，按「先清后插」顺序执行（clearAllCards → clearAllPrints → saveCards → saveCardPrints → 各附属表），`repointDeckCardReferences()` 重链卡组引用、`cleanupOrphans()` / `updateFilterOptions()` 条件后处理，最后按表写本地 version 行，并在 `finally` 恢复 `PRAGMA foreign_keys = ON`；崩溃中断则本地 version 不动，下次启动自动重试。
 - **外键已开启**：`@tauri-apps/plugin-sql` 经 sqlx 默认执行 `PRAGMA foreign_keys = ON`（`maintenance.ts` 里"未开启外键"的旧注释已修正）。同步**不用**跨语句事务/BEGIN/COMMIT（插件底层是 sqlx 多连接池，跨语句事务不可靠且会锁库），改为写阶段临时关闭外键、结束时恢复；恢复前 repoint 保证卡组引用全部合法。

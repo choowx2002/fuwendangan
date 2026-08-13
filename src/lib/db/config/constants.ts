@@ -31,6 +31,8 @@ export const TABLES = {
   CARD_LOANS: 'card_loans',
   PURCHASE_LISTS: 'purchase_lists',
   PURCHASE_LIST_ITEMS: 'purchase_list_items',
+  SYNC_META: 'sync_meta',
+  SYNC_TOMBSTONES: 'sync_tombstones',
 } as const
 
 export const TABLE_LIST = Object.values(TABLES) as readonly string[]

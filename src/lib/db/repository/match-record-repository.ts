@@ -13,6 +13,7 @@ import type {
   MatchWithGames,
 } from '../types'
 import { getDatabase } from './database'
+import { addTombstone } from './sync-repository'
 
 /**
  * SQL 平局条件：显式 win_type='draw'，或正常比分且双方同分（兼容历史数据）
@@ -269,11 +270,12 @@ async function withGames(records: MatchRecord[]): Promise<MatchWithGames[]> {
 }
 
 /**
- * 删除一场对局（小局级联删除）
+ * 删除一场对局（小局级联删除；写入同步墓碑传播删除）
  */
 export async function deleteMatch(matchId: string): Promise<boolean> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.MATCH_RECORDS} WHERE id = ?`, [matchId])
+  await addTombstone('match', matchId)
   return true
 }
 
@@ -304,10 +306,13 @@ export async function getDeckMatchStats(deckId: string): Promise<MatchSummary | 
 /**
  * 批量统计多个卡组的对局级结果（wins > losses 记胜，反之记负，相等记平）
  */
-async function getMatchResultCounts(deckIds: string[]): Promise<
-  Map<string, { match_wins: number; match_losses: number; match_draws: number }>
-> {
-  const result = new Map<string, { match_wins: number; match_losses: number; match_draws: number }>()
+async function getMatchResultCounts(
+  deckIds: string[]
+): Promise<Map<string, { match_wins: number; match_losses: number; match_draws: number }>> {
+  const result = new Map<
+    string,
+    { match_wins: number; match_losses: number; match_draws: number }
+  >()
   if (deckIds.length === 0) return result
 
   const db = await getDatabase()

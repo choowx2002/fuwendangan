@@ -6,6 +6,7 @@
 import { Snowflake } from '@theinternetfolks/snowflake'
 import type { Contact } from '../types'
 import { getDatabase } from './database'
+import { addTombstone } from './sync-repository'
 import { TABLES } from '../config/constants'
 
 const now = () => new Date().toISOString()
@@ -120,8 +121,9 @@ export async function updateContact(
   await db.execute(`UPDATE ${TABLES.CONTACTS} SET ${sets.join(', ')} WHERE id = ?`, params)
 }
 
-/** 删除借还对象（关联的借还记录 contact_id 置 NULL 保留） */
+/** 删除借还对象（关联的借还记录 contact_id 置 NULL 保留；写入同步墓碑传播删除） */
 export async function deleteContact(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.CONTACTS} WHERE id = ?`, [id])
+  await addTombstone('contact', id)
 }

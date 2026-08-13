@@ -9,6 +9,7 @@ import { get } from 'svelte/store'
 import type { WishlistFinish, WishlistItem, WishlistStatus } from '../types'
 import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
+import { addTombstone } from './sync-repository'
 import { defaultLanguage } from '$lib/stores/settings'
 
 const now = () => new Date().toISOString()
@@ -193,10 +194,11 @@ export async function updateWishlistStatus(id: string, status: WishlistStatus): 
   ])
 }
 
-/** 删除心愿单条目 */
+/** 删除心愿单条目（写入同步墓碑传播删除） */
 export async function deleteWishlistItem(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.WISHLIST_ITEMS} WHERE id = ?`, [id])
+  await addTombstone('wishlist', id)
 }
 
 /**

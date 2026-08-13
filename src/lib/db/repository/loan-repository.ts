@@ -10,6 +10,7 @@ import { get } from 'svelte/store'
 import type { CardLoan, LoanDirection, LoanStatus, WishlistFinish } from '../types'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
+import { addTombstone } from './sync-repository'
 import { defaultLanguage } from '$lib/stores/settings'
 
 const now = () => new Date().toISOString()
@@ -263,10 +264,11 @@ export async function updateLoan(
   await db.execute(`UPDATE ${TABLES.CARD_LOANS} SET ${sets.join(', ')} WHERE id = ?`, params)
 }
 
-/** 删除借还记录 */
+/** 删除借还记录（写入同步墓碑传播删除） */
 export async function deleteLoan(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.CARD_LOANS} WHERE id = ?`, [id])
+  await addTombstone('loan', id)
 }
 
 /**

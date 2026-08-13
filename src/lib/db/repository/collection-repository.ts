@@ -41,6 +41,7 @@ import {
   type HistoryItemInput,
 } from './collection-history-repository'
 import { captureCollectionSnapshot } from './collection-snapshot-repository'
+import { addTombstone } from './sync-repository'
 
 const now = () => new Date().toISOString()
 
@@ -148,6 +149,7 @@ async function _applyLangQtyWrite(
       )
       if (shouldDeleteVariant(remain)) {
         await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE id = ?`, [collectionId])
+        await addTombstone('collection', `${cardNo}|${cardNoExtend}`)
         return { before, after: null, action: 'delete_variant' }
       }
       return { before, after: null, action: 'remove' }
@@ -787,6 +789,8 @@ export async function deleteCustomPrint(printId: string): Promise<string | null>
   )
 
   await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS} WHERE id = ?`, [printId])
+  await addTombstone('custom_print', printId)
+  await addTombstone('collection', `${p.card_no}|${p.card_no_extend}`)
 
   await db.execute(
     `DELETE FROM ${TABLES.COLLECTION_LANGS} WHERE collection_id IN (
@@ -1238,6 +1242,7 @@ export async function bulkDeleteCollection(items: CollectionItem[]): Promise<num
   )
 
   await db.execute(`DELETE FROM ${TABLES.COLLECTION} WHERE ${delConds}`, params)
+  for (const i of valid) await addTombstone('collection', `${i.cardNo}|${i.cardNoExtend}`)
 
   if (langRows.length > 0) {
     await logCollectionHistory(

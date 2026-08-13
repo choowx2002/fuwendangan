@@ -2,6 +2,8 @@ import { writable } from 'svelte/store'
 import { Store } from '@tauri-apps/plugin-store'
 import { locale as i18nLocale } from 'svelte-i18n'
 import { isSupportedLocale, systemLocale } from '$lib/i18n'
+import { isTauri } from '$lib/db/env'
+import { setSyncMeta } from '$lib/db/repository/sync-repository'
 import type { ZoneKey } from '$lib/decks/zone'
 
 let storePromise: Promise<Store> | null = null
@@ -15,7 +17,25 @@ function getStore() {
 
 const pendingReads: Promise<unknown>[] = []
 
-export function persistentWritable<T>(key: string, defaultValue: T) {
+/**
+ * 玩家数据同步专用：白名单设置键在用户主动修改时 bump 其同步时间（存 sync_meta 按键游标）。
+ * 导入应用远端值时通过 setSyncSettingsApplying 抑制，避免把导入值误记为本地修改。
+ */
+let syncSettingsApplying = false
+export function setSyncSettingsApplying(v: boolean): void {
+  syncSettingsApplying = v
+}
+
+const SETTING_TS_PREFIX = 'settings:'
+const SETTING_TS_SUFFIX = ':ts'
+
+function markSettingChanged(key: string) {
+  if (syncSettingsApplying) return
+  if (!isTauri) return
+  void setSyncMeta(`${SETTING_TS_PREFIX}${key}${SETTING_TS_SUFFIX}`, new Date().toISOString())
+}
+
+export function persistentWritable<T>(key: string, defaultValue: T, onChange?: (v: T) => void) {
   const s = writable(defaultValue)
 
   const ready = getStore().then(async (store) => {
@@ -24,9 +44,12 @@ export function persistentWritable<T>(key: string, defaultValue: T) {
       s.set(value)
     }
 
+    let first = true
     s.subscribe(async (v) => {
       await store.set(key, v)
       await store.save()
+      if (onChange && !first) onChange(v)
+      first = false
     })
   })
 
@@ -36,22 +59,31 @@ export function persistentWritable<T>(key: string, defaultValue: T) {
 
 export const showForeignCardArt = persistentWritable('showForeignCardArt', false)
 
-export const darkMode = persistentWritable('darkMode', false)
-
 export const windowAlwaysOnTop = persistentWritable('windowAlwaysOnTop', false)
 
 export const showTTSFeatures = persistentWritable('showTTSFeatures', false)
 
-export const rulesTheme = persistentWritable('rulesTheme', 'parchment')
+export const rulesTheme = persistentWritable('rulesTheme', 'parchment', () =>
+  markSettingChanged('rulesTheme')
+)
 
 /** 玩家用户名（用于首页问候 / 卡组图案水印 / 对局记录 / 计分器默认名） */
-export const playerName = persistentWritable('playerName', '')
+export const playerName = persistentWritable('playerName', '', () =>
+  markSettingChanged('playerName')
+)
 
 /** 界面语言（zh-CN / en），默认跟随系统语言 */
-export const locale = persistentWritable('locale', systemLocale())
+export const locale = persistentWritable('locale', systemLocale(), () =>
+  markSettingChanged('locale')
+)
 
 /** 默认卡牌语言：新建借还/心愿单/购买清单等记录时的默认语言，初始 SC */
-export const defaultLanguage = persistentWritable('defaultLanguage', 'SC')
+export const defaultLanguage = persistentWritable('defaultLanguage', 'SC', () =>
+  markSettingChanged('defaultLanguage')
+)
+
+/** 暗色模式 */
+export const darkMode = persistentWritable('darkMode', false, () => markSettingChanged('darkMode'))
 
 /** 卡组构建页（竖屏/触屏设备）是否反转上下布局 */
 export const revertLayout = persistentWritable('revertLayout', false)
@@ -103,6 +135,12 @@ export const backupReminderEnabled = persistentWritable('backupReminderEnabled',
 
 /** 备份提醒间隔（天），默认 7 */
 export const backupReminderDays = persistentWritable('backupReminderDays', 7)
+
+/** Supabase BYO 云同步：用户自己的项目 URL（本地保存，绝不进入 bundle） */
+export const syncSupabaseUrl = persistentWritable('syncSupabaseUrl', '')
+
+/** Supabase BYO 云同步：用户自己的项目 anon key（本地保存，绝不进入 bundle） */
+export const syncSupabaseAnonKey = persistentWritable('syncSupabaseAnonKey', '')
 
 locale.subscribe((value) => {
   const next = isSupportedLocale(value) ? value : systemLocale()

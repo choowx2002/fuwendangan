@@ -28,6 +28,16 @@
     PRESET_LANGUAGE_CODES,
     clearHistory,
     captureCollectionSnapshot,
+    buildSyncBundleText,
+    importSyncBundleText,
+    getSyncStatus,
+    parseBundle,
+    syncViaSupabase,
+    getSupabaseUser,
+    signInSupabase,
+    signOutSupabase,
+    testSupabaseConnection,
+    buildSupabaseCreateTableSql,
     isTauri,
     type CustomLanguage,
     type ImportDeckPayload,
@@ -49,6 +59,8 @@
     lastBackupAt,
     backupReminderEnabled,
     backupReminderDays,
+    syncSupabaseUrl,
+    syncSupabaseAnonKey,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
@@ -81,7 +93,15 @@
   import { isMobile } from '$lib/utils/os'
   import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
-  import { Download, Upload, FileText, FileUp, ChevronRight, RefreshCw } from '@lucide/svelte'
+  import {
+    Download,
+    Upload,
+    FileText,
+    FileUp,
+    ChevronRight,
+    RefreshCw,
+    Cloud,
+  } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import { get } from 'svelte/store'
@@ -145,6 +165,11 @@
   }
 
   let lastSyncText = $state<string>(get(t)('common.loading'))
+  let syncLastSync = $state<string>('')
+  let syncFileInput = $state<HTMLInputElement | null>(null)
+  let supabaseUser = $state<string>('')
+  let supabaseEmail = $state('')
+  let supabasePassword = $state('')
   let deckCount = $state<number>(0)
   let statRows = $state<{ name: string | null; label: string; count: number; size: string }[]>([])
 
@@ -186,6 +211,7 @@
     await loadDbInfo()
     await Promise.all([loadImageCacheInfo(), loadImageCoverage()])
     await loadCustomLangs()
+    void refreshSupabaseStatus()
   })
 
   // 下载结束后刷新缓存覆盖统计
@@ -257,6 +283,12 @@
       // 3. 最后同步时间（各同步表中最新的 updated_at）
       lastSyncText = dbVersion?.updated_at
         ? `${_t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
+        : _t('settings.neverSynced')
+
+      // 3b. 玩家数据同步：上次 Bundle 同步时间
+      const syncStatus = await getSyncStatus()
+      syncLastSync = syncStatus.lastSync
+        ? new Date(syncStatus.lastSync).toLocaleString()
         : _t('settings.neverSynced')
 
       // 4. 各表统计
@@ -533,37 +565,6 @@
     }
   }
 
-  // --- 备份 / 恢复 / 导出 ---
-  async function backupDatabase() {
-    if (!dbFilePath) return
-
-    const dest = await save({
-      title: _t('settings.backupSaveTitle'),
-      defaultPath: `rune-archive-backup-${new Date().toISOString().slice(0, 10)}.db`,
-      filters: [{ name: _t('settings.sqliteFilter'), extensions: ['db', 'sqlite', 'sqlite3'] }],
-    })
-    if (!dest) return
-
-    try {
-      await withBusy(_t('settings.backupBusy'), async () => {
-        await closeDatabase()
-        try {
-          await copyFile(dbFilePath, dest)
-        } finally {
-          await getDatabase()
-          await loadDbInfo()
-        }
-      })
-      lastBackupAt.set(new Date().toISOString())
-      await message(_t('settings.backupSuccess'), { title: _t('settings.backup'), kind: 'info' })
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.backupFailed'), {
-        title: _t('settings.backup'),
-        kind: 'error',
-      })
-    }
-  }
-
   /** 一键导出完整数据包（DB + 收藏 CSV + 卡组 JSON + 说明） */
   async function exportDataPackAsk() {
     const dir = await open({
@@ -596,9 +597,287 @@
     }
   }
 
+  /** 玩家数据同步：导出 Sync Bundle */
+  async function exportSyncBundleAsk() {
+    const deviceName = get(playerName)
+    let text = ''
+    try {
+      text = await withBusy(_t('settings.syncExportBusy'), () => buildSyncBundleText(deviceName))
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.syncExport'),
+        kind: 'error',
+      })
+      return
+    }
+
+    try {
+      if (isTauri) {
+        const dir = await open({
+          title: _t('settings.syncExportSelectDir'),
+          directory: true,
+          multiple: false,
+        })
+        if (!dir) return
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const dest = await join(String(dir), `rune-archive-sync-${stamp}.json`)
+        await writeTextFile(dest, text)
+        await message(_t('settings.syncExportSuccess', { values: { path: dest } }), {
+          title: _t('settings.syncExport'),
+          kind: 'info',
+        })
+      } else {
+        const blob = new Blob([text], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = `rune-archive-sync-${new Date().toISOString().slice(0, 10)}.json`
+        anchor.click()
+        URL.revokeObjectURL(url)
+        await message(_t('settings.syncExportWebDone'), {
+          title: _t('settings.syncExport'),
+          kind: 'info',
+        })
+      }
+      await loadDbInfo()
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.syncExport'),
+        kind: 'error',
+      })
+    }
+  }
+
+  /** 玩家数据同步：导入 Sync Bundle（桌面文件选择） */
+  async function importSyncBundleAsk() {
+    let src: string
+    if (isTauri) {
+      const picked = await open({
+        title: _t('settings.syncImportOpenTitle'),
+        multiple: false,
+        filters: [{ name: _t('settings.syncJsonFilter'), extensions: ['json'] }],
+      })
+      if (!picked) return
+      src = String(picked)
+    } else {
+      syncFileInput?.click()
+      return
+    }
+
+    await importSyncBundleFromPath(src)
+  }
+
+  /** 玩家数据同步：导入 Sync Bundle（Web 文件选择回调） */
+  async function handleSyncFileChange(e: Event) {
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    try {
+      const text = await file.text()
+      await runSyncImport(text, file.name)
+    } catch (err) {
+      await message(err instanceof Error ? err.message : _t('common.unknownError'), {
+        title: _t('settings.syncImport'),
+        kind: 'error',
+      })
+    }
+  }
+
+  /** 玩家数据同步：桌面路径导入 */
+  async function importSyncBundleFromPath(path: string) {
+    let text = ''
+    try {
+      text = await withBusy(_t('settings.syncImportReadBusy'), () => readTextFile(path))
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.syncImport'),
+        kind: 'error',
+      })
+      return
+    }
+    await runSyncImport(text, path)
+  }
+
+  /** 玩家数据同步：校验 + 确认 + 合并写回 */
+  async function runSyncImport(text: string, source: string) {
+    const deviceName = get(playerName)
+    // 先解析校验（schema/版本/校验和），失败即中止，不落库
+    try {
+      parseBundle(text)
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.syncImport'),
+        kind: 'error',
+      })
+      return
+    }
+
+    const confirmed = await ask(_t('settings.syncImportConfirm', { values: { path: source } }), {
+      title: _t('settings.syncImportConfirmTitle'),
+      kind: 'warning',
+      okLabel: _t('common.confirm'),
+      cancelLabel: _t('common.cancel'),
+    })
+    if (!confirmed) return
+
+    try {
+      const result = await withBusy(_t('settings.syncImportBusy'), () =>
+        importSyncBundleText(text, deviceName)
+      )
+      await message(
+        _t('settings.syncImportSuccess', {
+          values: {
+            decks: result.upsertedDecks,
+            variants: result.upsertedVariants,
+            wishlist: result.upsertedWishlist,
+            loans: result.upsertedLoans,
+            contacts: result.upsertedContacts,
+            lists: result.upsertedPurchaseLists,
+            matches: result.upsertedMatches,
+            lockers: result.upsertedLockers,
+            customs: result.upsertedCustomPrints,
+            settings: result.appliedSettings,
+            missing: result.missingCards,
+          },
+        }),
+        { title: _t('settings.syncImport'), kind: 'info' }
+      )
+      await loadDbInfo()
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.syncImport'),
+        kind: 'error',
+      })
+    }
+  }
+
+  // --- Supabase BYO 云同步 ---
+  async function refreshSupabaseStatus() {
+    try {
+      const user = await getSupabaseUser()
+      supabaseUser = user?.email ?? ''
+    } catch {
+      supabaseUser = ''
+    }
+  }
+
+  async function copySupabaseSql() {
+    try {
+      await writeText(buildSupabaseCreateTableSql())
+      await message(_t('settings.supabaseCopySqlDone'), {
+        title: _t('settings.supabaseTitle'),
+        kind: 'info',
+      })
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseTitle'),
+        kind: 'error',
+      })
+    }
+  }
+
+  async function testSupabaseConn() {
+    try {
+      const res = await withBusy(_t('settings.supabaseTestBusy'), () => testSupabaseConnection())
+      let text: string
+      switch (res.code) {
+        case 'no_config':
+          text = _t('settings.supabaseNoConfig')
+          break
+        case 'signed_in':
+          text = _t('settings.supabaseOkSignedIn')
+          break
+        case 'not_signed_in':
+          text = _t('settings.supabaseOkNotSignedIn')
+          break
+        case 'table_missing':
+          text = _t('settings.supabaseTableMissing')
+          break
+        case 'paused_or_network':
+          text = _t('settings.supabasePausedHint')
+          break
+        default:
+          text = res.detail || _t('settings.supabaseError')
+      }
+      await message(text, {
+        title: _t('settings.supabaseTest'),
+        kind: res.ok ? 'info' : 'warning',
+      })
+      await refreshSupabaseStatus()
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseTest'),
+        kind: 'error',
+      })
+    }
+  }
+
+  async function handleSupabaseSignIn() {
+    if (!supabaseEmail || !supabasePassword) return
+    try {
+      await withBusy(_t('settings.supabaseSignInBusy'), () =>
+        signInSupabase(supabaseEmail, supabasePassword)
+      )
+      const email = supabaseEmail
+      supabasePassword = ''
+      await refreshSupabaseStatus()
+      await message(_t('settings.supabaseSignedIn', { values: { email } }), {
+        title: _t('settings.supabaseSignIn'),
+        kind: 'info',
+      })
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseSignIn'),
+        kind: 'error',
+      })
+    }
+  }
+
+  async function handleSupabaseSignOut() {
+    try {
+      await signOutSupabase()
+      supabaseUser = ''
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseSignOut'),
+        kind: 'error',
+      })
+    }
+  }
+
+  async function syncSupabaseNow() {
+    try {
+      const result = await withBusy(_t('settings.supabaseSyncBusy'), () => syncViaSupabase())
+      await message(
+        _t('settings.supabaseSyncSuccess', {
+          values: {
+            decks: result.upsertedDecks,
+            variants: result.upsertedVariants,
+            wishlist: result.upsertedWishlist,
+            loans: result.upsertedLoans,
+            contacts: result.upsertedContacts,
+            lists: result.upsertedPurchaseLists,
+            matches: result.upsertedMatches,
+            lockers: result.upsertedLockers,
+            customs: result.upsertedCustomPrints,
+            settings: result.appliedSettings,
+            missing: result.missingCards,
+          },
+        }),
+        { title: _t('settings.supabaseSync'), kind: 'info' }
+      )
+      await loadDbInfo()
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseSync'),
+        kind: 'error',
+      })
+    }
+  }
+
   async function restoreDatabase() {
     if (!dbFilePath) return
-
     const src = await open({
       title: _t('settings.restoreOpenTitle'),
       multiple: false,
@@ -1635,10 +1914,6 @@
         <Download size={16} />
         {$t('settings.exportDataPack')}
       </button>
-      <button class="button button-ghost" disabled={onloadInfo} onclick={backupDatabase}>
-        <Download size={16} />
-        {$t('settings.backupDb')}
-      </button>
       <button class="button button-ghost" disabled={onloadInfo} onclick={restoreDatabase}>
         <Upload size={16} />
         {$t('settings.restoreBackup')}
@@ -1659,6 +1934,121 @@
         {$t('settings.resetDb')}
       </button>
     </div>
+  </section>
+
+  <!-- 玩家数据同步 -->
+  <section class="settings-card">
+    <h2 class="card-title">
+      <RefreshCw size={16} />
+      {$t('settings.syncTitle')}
+    </h2>
+
+    <div class="notice-banner">{$t('settings.syncPrivacyNotice')}</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.syncLastSync')}</span>
+        <span class="setting-desc">{$t('settings.syncLastSyncDesc')}</span>
+      </div>
+      <span class="version-tag">{syncLastSync}</span>
+    </div>
+
+    <div class="db-actions">
+      <button class="button button-ghost" disabled={onloadInfo} onclick={exportSyncBundleAsk}>
+        <Download size={16} />
+        {$t('settings.syncExport')}
+      </button>
+      <button class="button button-ghost" disabled={onloadInfo} onclick={importSyncBundleAsk}>
+        <Upload size={16} />
+        {$t('settings.syncImport')}
+      </button>
+    </div>
+
+    <input
+      bind:this={syncFileInput}
+      type="file"
+      accept=".json,application/json"
+      hidden
+      onchange={handleSyncFileChange}
+    />
+  </section>
+
+  <!-- Supabase BYO 云同步 -->
+  <section class="settings-card">
+    <h2 class="card-title">
+      <Cloud size={16} />
+      {$t('settings.supabaseTitle')}
+    </h2>
+
+    <div class="notice-banner">{$t('settings.supabaseNotice')}</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.supabaseUrl')}</span>
+        <span class="setting-desc">{$t('settings.supabaseUrlDesc')}</span>
+      </div>
+      <input class="setting-input" type="text" bind:value={$syncSupabaseUrl} />
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.supabaseKey')}</span>
+        <span class="setting-desc">{$t('settings.supabaseKeyDesc')}</span>
+      </div>
+      <input class="setting-input" type="password" bind:value={$syncSupabaseAnonKey} />
+    </div>
+
+    <div class="db-actions">
+      <button class="button button-ghost" disabled={onloadInfo} onclick={copySupabaseSql}>
+        <FileText size={16} />
+        {$t('settings.supabaseCopySql')}
+      </button>
+      <button class="button button-ghost" disabled={onloadInfo} onclick={testSupabaseConn}>
+        <RefreshCw size={16} />
+        {$t('settings.supabaseTest')}
+      </button>
+      <button class="button button-primary" disabled={onloadInfo} onclick={syncSupabaseNow}>
+        <Upload size={16} />
+        {$t('settings.supabaseSync')}
+      </button>
+    </div>
+
+    {#if supabaseUser}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label"
+            >{$t('settings.supabaseSignedIn', { values: { email: supabaseUser } })}</span
+          >
+          <span class="setting-desc">{$t('settings.supabaseSignedInDesc')}</span>
+        </div>
+        <button class="button button-ghost" onclick={handleSupabaseSignOut}>
+          {$t('settings.supabaseSignOut')}
+        </button>
+      </div>
+    {:else}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">{$t('settings.supabaseEmail')}</span>
+          <span class="setting-desc">{$t('settings.supabaseNotSignedIn')}</span>
+        </div>
+        <input class="setting-input" type="email" bind:value={supabaseEmail} />
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">{$t('settings.supabasePassword')}</span>
+        </div>
+        <input class="setting-input" type="password" bind:value={supabasePassword} />
+      </div>
+      <div class="db-actions">
+        <button
+          class="button button-ghost"
+          disabled={!supabaseEmail || !supabasePassword}
+          onclick={handleSupabaseSignIn}
+        >
+          {$t('settings.supabaseSignIn')}
+        </button>
+      </div>
+    {/if}
   </section>
 
   <!-- 6. 本地图片 -->

@@ -16,6 +16,7 @@ import type {
 } from '../types'
 import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
+import { addTombstone } from './sync-repository'
 import { checkDeckOwnership, getCardOwnedQty } from './collection-repository'
 import { getLatestDeckCards } from './deck-repository'
 import { getWishlistItems } from './wishlist-repository'
@@ -144,10 +145,11 @@ export async function updatePurchaseList(id: string, patch: { name?: string }): 
   )
 }
 
-/** 删除购买清单（条目级联删除） */
+/** 删除购买清单（条目级联删除；写入同步墓碑传播删除） */
 export async function deletePurchaseList(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.PURCHASE_LISTS} WHERE id = ?`, [id])
+  await addTombstone('purchase_list', id)
 }
 
 // ==================== 清单条目 ====================

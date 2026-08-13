@@ -147,6 +147,8 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.purchase_list_items)
   await db.execute(TABLE_DEFINITIONS.idx_pli_list)
   await db.execute(TABLE_DEFINITIONS.idx_pli_card)
+  await db.execute(TABLE_DEFINITIONS.sync_meta)
+  await db.execute(TABLE_DEFINITIONS.sync_tombstones)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
   await db.execute(TABLE_DEFINITIONS.idx_collection_series)
