@@ -1,10 +1,22 @@
 <script lang="ts">
   import { goto, beforeNavigate, afterNavigate } from '$app/navigation'
   import { page } from '$app/state'
-  import { RefreshCw, Trash2, Save, Minus, Plus, Copy, FileDown, FileText, Pencil, Upload } from '@lucide/svelte'
+  import {
+    RefreshCw,
+    Trash2,
+    Save,
+    Minus,
+    Plus,
+    Copy,
+    FileDown,
+    FileText,
+    Pencil,
+    Upload,
+  } from '@lucide/svelte'
   import {
     getPurchaseList,
     getPurchaseListItems,
+    reconcilePurchaseListItems,
     removePurchaseListItem,
     refreshPurchaseListFromDeck,
     savePurchaseListBatch,
@@ -72,6 +84,7 @@
     qtyBought: number
     skipped: boolean
     owned: number
+    loanedOut: number
     toBuy: number
   }
 
@@ -83,10 +96,14 @@
       const qtyBought = e?.qtyBought ?? item.qty_bought
       const skipped = e?.skipped ?? item.status === 'skipped'
       const owned = item.owned_live
+      const loanedOut = item.loaned_out
       const toBuy = skipped
         ? 0
-        : Math.max(0, item.qty_required - owned - qtyOrdered - qtyBorrowed - qtyBought)
-      return { item, qtyOrdered, qtyBorrowed, qtyBought, skipped, owned, toBuy }
+        : Math.max(
+            0,
+            item.qty_required - item.available_live - qtyOrdered - qtyBorrowed - qtyBought
+          )
+      return { item, qtyOrdered, qtyBorrowed, qtyBought, skipped, owned, loanedOut, toBuy }
     })
   )
 
@@ -115,9 +132,7 @@
       case 'status':
         sorted.sort(
           (a, b) =>
-            statusOrder(a) - statusOrder(b) ||
-            oldToBuy(b) - oldToBuy(a) ||
-            byNo(a.item, b.item)
+            statusOrder(a) - statusOrder(b) || oldToBuy(b) - oldToBuy(a) || byNo(a.item, b.item)
         )
         break
       case 'needed':
@@ -189,7 +204,7 @@
       ? 0
       : Math.max(
           0,
-          it.qty_required - it.owned_live - it.qty_ordered - it.qty_borrowed - it.qty_bought
+          it.qty_required - it.available_live - it.qty_ordered - it.qty_borrowed - it.qty_bought
         )
   }
 
@@ -210,6 +225,8 @@
   async function load() {
     loading = true
     try {
+      // 打开清单时按当前库存自愈快照（qty_to_buy / status / qty_owned），保证存库与显示一致
+      await reconcilePurchaseListItems(listId)
       const [listRes, itemRes] = await Promise.all([
         getPurchaseList(listId),
         getPurchaseListItems(listId),
@@ -593,6 +610,12 @@
               <span class="stat-label">{$t('purchase.owned')}</span>
               <b>{v.owned}</b>
             </span>
+            {#if v.item.loaned_out > 0}
+              <span class="stat stat-loan">
+                <span class="stat-label">{$t('purchase.borrowedOut')}</span>
+                <b>{v.item.loaned_out}</b>
+              </span>
+            {/if}
             {#if v.item.other_owned > 0}
               <button class="other-owned" onclick={() => void openOtherOwned(v.item)}>
                 {$t('purchase.otherOwned', { values: { n: v.item.other_owned } })}
@@ -856,7 +879,7 @@
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-        width: 100%;
+    width: 100%;
   }
 
   .filter-row {
@@ -886,7 +909,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-left:auto;
+    margin-left: auto;
   }
 
   .sort-label {
@@ -1036,6 +1059,14 @@
     color: var(--text-primary);
   }
 
+  .stat-loan {
+    color: #b45309;
+  }
+
+  .stat-loan b {
+    color: #b45309;
+  }
+
   .to-buy {
     color: #d97706;
     font-weight: 600;
@@ -1132,13 +1163,13 @@
     /* min-width: 150px; */
   }
 
-  @media (max-width: 767.99px){
+  @media (max-width: 767.99px) {
     .qty-field {
-      min-width: 200px;  
+      min-width: 200px;
     }
   }
 
-  @media (max-width: 479.99px){
+  @media (max-width: 479.99px) {
     .qty-field {
       width: 100%;
     }

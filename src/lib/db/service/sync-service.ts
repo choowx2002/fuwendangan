@@ -38,37 +38,17 @@ type SyncTableName = (typeof SYNC_TABLE_NAMES)[number]
  * 初始化数据库（在 Tauri 环境中执行数据同步）
  * opts.skipMetered = true 时，检测到按流量计费网络会跳过自动同步（默认启用）；
  * 手动触发（设置页检查更新）传入 false 以放行。
+ * opts.confirm = false 时跳过升级确认框（调用方已自行确认，如启动时更新提示）。
  */
-export async function initializeDatabase(opts?: { skipMetered?: boolean }): Promise<void> {
-  if (!isTauri) {
-    console.log('[DB] Web 环境：跳过本地数据库初始化，直接使用 Supabase')
-    return
-  }
-
-  console.log('[DB] Tauri 环境：开始检查本地数据库同步状态...')
-
-  if (!(await whenOnline())) {
-    console.warn('[DB] 网络不可用，跳过同步')
-    return
-  }
-
+export async function initializeDatabase(opts?: {
+  skipMetered?: boolean
+  confirm?: boolean
+}): Promise<void> {
   try {
-    await getDatabase()
-    // 启动时兜底修复卡组引用（清空数据 / 远端换 id 后的残留）
-    await repointDeckCardReferences()
+    const check = await checkSyncStatus()
+    if (!check) return
 
-    const remoteVersions = await remoteApi.fetchAllVersions()
-    const remoteMap = new Map(remoteVersions.map((v) => [v.name, v.updated_at]))
-    const localVersions = await versionRepo.getVersions()
-    const localMap = new Map(localVersions.map((v) => [v.name, v.updated_at]))
-
-    const tablesToSync = SYNC_TABLE_NAMES.filter((name) => {
-      const remoteTime = remoteMap.get(name)
-      if (!remoteTime) return false
-      const localTime = localMap.get(name)
-      return !localTime || new Date(remoteTime).getTime() > new Date(localTime).getTime()
-    })
-
+    const { remoteMap, localVersions, tablesToSync } = check
     if (tablesToSync.length === 0) {
       console.log('[DB] 本地数据已是最新，无需同步')
       return
@@ -82,7 +62,7 @@ export async function initializeDatabase(opts?: { skipMetered?: boolean }): Prom
 
     // 首次安装（无本地 version 行）静默同步，升级才询问
     const isFreshInstall = localVersions.length === 0
-    if (!isFreshInstall) {
+    if (!isFreshInstall && opts?.confirm !== false) {
       const accepted = await ask(get(t)('common.syncDataPrompt'))
       if (!accepted) return
     }
@@ -96,6 +76,65 @@ export async function initializeDatabase(opts?: { skipMetered?: boolean }): Prom
   } finally {
     if (uiState.status === 'syncing') uiState.status = 'success'
   }
+}
+
+/**
+ * 后台静默检查是否有内容更新（不下载、不弹框）。
+ * 用于启动时提示「发现新卡牌数据」，返回是否有任一同步表需要更新。
+ */
+export async function checkForContentUpdates(): Promise<boolean> {
+  if (!isTauri) return false
+  try {
+    const check = await checkSyncStatus()
+    if (!check) return false
+    if (check.tablesToSync.length === 0) return false
+    // 流量网络下不提示（避免诱导消耗流量），由手动检查覆盖
+    if (isMetered()) return false
+    return true
+  } catch (error) {
+    console.error('[DB] 检查更新失败:', error)
+    return false
+  }
+}
+
+/**
+ * 检查本地与远端同步状态（不写入任何数据）。
+ * 返回 null 表示无需同步（非 Tauri / 离线）；否则返回各同步表的最新对比结果。
+ */
+async function checkSyncStatus(): Promise<{
+  remoteMap: Map<string, string>
+  localVersions: { name: string | null }[]
+  tablesToSync: SyncTableName[]
+} | null> {
+  if (!isTauri) {
+    console.log('[DB] Web 环境：跳过本地数据库初始化，直接使用 Supabase')
+    return null
+  }
+
+  console.log('[DB] Tauri 环境：开始检查本地数据库同步状态...')
+
+  if (!(await whenOnline())) {
+    console.warn('[DB] 网络不可用，跳过同步')
+    return null
+  }
+
+  await getDatabase()
+  // 启动时兜底修复卡组引用（清空数据 / 远端换 id 后的残留）
+  await repointDeckCardReferences()
+
+  const remoteVersions = await remoteApi.fetchAllVersions()
+  const remoteMap = new Map(remoteVersions.map((v) => [v.name, v.updated_at]))
+  const localVersions = await versionRepo.getVersions()
+  const localMap = new Map(localVersions.map((v) => [v.name, v.updated_at]))
+
+  const tablesToSync = SYNC_TABLE_NAMES.filter((name) => {
+    const remoteTime = remoteMap.get(name)
+    if (!remoteTime) return false
+    const localTime = localMap.get(name)
+    return !localTime || new Date(remoteTime).getTime() > new Date(localTime).getTime()
+  })
+
+  return { remoteMap, localVersions, tablesToSync }
 }
 
 /**

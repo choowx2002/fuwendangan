@@ -127,7 +127,7 @@ pnpm tauri:build:linux   # Linux 专用构建：NO_STRIP=true tauri build
 ## Rust command 编写规范
 
 1. 所有 command 写在 `src-tauri/src/lib.rs`，并通过 `tauri::generate_handler![...]` 注册。
-2. 现有 command 列表（8 个）：`greet`（遗留，前端无调用）、`send_to_tts`、`check_tts_connections`、`start_tts_listener`、`copy_file`、`write_text_file`、`read_text_file`、`read_image_file`。
+2. 现有 command 列表（10 个）：`greet`（遗留，前端无调用）、`send_to_tts`、`check_tts_connections`、`start_tts_listener`、`copy_file`、`write_text_file`、`read_text_file`、`read_image_file`、`validate_sqlite_file`（备份恢复前校验）、`list_zip_entries` / `extract_zip_images`（卡图 ZIP 导入）。
 3. 签名示例（推荐模式）：
 
 ```rust

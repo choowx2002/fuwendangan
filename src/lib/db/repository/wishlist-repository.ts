@@ -48,14 +48,20 @@ function mapWishlistRow(r: any): WishlistItem {
 }
 
 /** 心愿单列表（可选状态/卡牌过滤，join cards_base 取卡名，卡被删除时为 NULL） */
-export async function getWishlistItems(
-  filter?: WishlistFilter
-): Promise<
+export async function getWishlistItems(filter?: WishlistFilter): Promise<
   (WishlistItem & {
     card_name_cn: string | null
     card_sub_cn: string | null
     img_cdn: string | null
     img_lang: string | null
+    /** 实时收藏数（该印刷，跨语言合计，normal+foil） */
+    owned_live: number
+    /** 生效借出数 */
+    loaned_out: number
+    /** 生效借入数 */
+    borrowed_in: number
+    /** 可用数 = 收藏 − 借出 + 借入（与卡组持有检查口径一致） */
+    available_live: number
   })[]
 > {
   const db = await getDatabase()
@@ -87,7 +93,20 @@ export async function getWishlistItems(
                     COALESCE(print_order, 0)
          ) AS rn
        FROM ${TABLES.CARD_PRINTS}
-     ) rep ON rep.card_id = cb.id AND rep.card_no_extend = w.card_no_extend AND rep.rn = 1
+     ) rep ON rep.card_id = cb.id AND rep.card_no_extend = w.card_no_extend AND rep.rn = 1,
+     (SELECT COALESCE(SUM(ocl.normal_qty + ocl.foil_qty), 0)
+      FROM ${TABLES.COLLECTION} ocol
+      JOIN ${TABLES.COLLECTION_LANGS} ocl ON ocl.collection_id = ocol.id
+      WHERE ocol.card_no = w.card_no AND ocol.card_no_extend = w.card_no_extend
+        AND ocl.status = 'owned') AS owned_live,
+     (SELECT COALESCE(SUM(cl2.qty), 0)
+      FROM ${TABLES.CARD_LOANS} cl2
+      WHERE cl2.card_no = w.card_no AND cl2.card_no_extend = w.card_no_extend
+        AND cl2.direction = 'out' AND cl2.status IN ('active','overdue')) AS loaned_out,
+     (SELECT COALESCE(SUM(cl3.qty), 0)
+      FROM ${TABLES.CARD_LOANS} cl3
+      WHERE cl3.card_no = w.card_no AND cl3.card_no_extend = w.card_no_extend
+        AND cl3.direction = 'in' AND cl3.status IN ('active','overdue')) AS borrowed_in
      ${where}
      ORDER BY w.priority DESC, w.updated_at DESC`,
     params
@@ -98,6 +117,10 @@ export async function getWishlistItems(
     card_sub_cn: r.card_sub_cn ?? null,
     img_cdn: r.img_cdn ?? null,
     img_lang: r.img_lang ?? null,
+    owned_live: r.owned_live ?? 0,
+    loaned_out: r.loaned_out ?? 0,
+    borrowed_in: r.borrowed_in ?? 0,
+    available_live: (r.owned_live ?? 0) - (r.loaned_out ?? 0) + (r.borrowed_in ?? 0),
   }))
 }
 

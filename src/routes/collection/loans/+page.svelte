@@ -14,6 +14,7 @@
     Phone,
     Mail,
     UserRoundPen,
+    Download,
   } from '@lucide/svelte'
   import {
     getLoans,
@@ -43,6 +44,8 @@
   import VariantPicker from '$lib/components/collection/VariantPicker.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
+  import { saveTextFile } from '$lib/collection/collection-export'
+  import { buildLoansCsv, buildContactsCsv } from '$lib/collection/loan-csv'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -58,6 +61,7 @@
   let editingId = $state<string | null>(null)
   let showPicker = $state(false)
   let showContacts = $state(false)
+  let showExport = $state(false)
   let newContactInput = $state('')
   let saving = $state(false)
   let contactFilter = $state('')
@@ -158,6 +162,58 @@
     }
     return { active, overdue, dueToday, dueSoon }
   })
+
+  const contactNameById = $derived(new Map(contacts.map((c) => [c.id, c.name])))
+
+  async function exportLoansCsv() {
+    if (filteredLoans.length === 0) {
+      showToast(get(t)('loans.noDataToExport'), 'info')
+      return
+    }
+    const rows = filteredLoans.map((l) => ({
+      cardNoExtend: l.card_no_extend || l.card_no,
+      cardName: l.card_name_cn || l.card_no,
+      direction: get(t)(`loans.tab.${l.direction}`),
+      contact: l.contact_id ? (contactNameById.get(l.contact_id) ?? '') : '',
+      language: l.language_code,
+      finish: finishLabel(l.finish),
+      qty: l.qty,
+      loanedAt: l.loaned_at ? new Date(l.loaned_at).toLocaleString() : '',
+      dueAt: l.due_at ? new Date(l.due_at).toLocaleString() : '',
+      returnedAt: l.returned_at ? new Date(l.returned_at).toLocaleString() : '',
+      status: statusLabel(l.status, l.direction),
+      note: l.note ?? '',
+    }))
+    const stamp = new Date().toISOString().slice(0, 10)
+    const ok = await saveTextFile(buildLoansCsv(rows), `rune-archive-loans-${stamp}.csv`, {
+      format: 'csv',
+      title: get(t)('loans.exportLoans'),
+    })
+    if (ok) showToast(get(t)('loans.exported', { values: { count: rows.length } }), 'success')
+    else showToast(get(t)('loans.exportCancelled'), 'info')
+  }
+
+  async function exportContactsCsv() {
+    if (contacts.length === 0) {
+      showToast(get(t)('loans.noDataToExport'), 'info')
+      return
+    }
+    const rows = contacts.map((c) => ({
+      name: c.name,
+      wechat: c.wechat ?? '',
+      qq: c.qq ?? '',
+      phone: c.phone ?? '',
+      email: c.email ?? '',
+      note: c.note ?? '',
+    }))
+    const stamp = new Date().toISOString().slice(0, 10)
+    const ok = await saveTextFile(buildContactsCsv(rows), `rune-archive-contacts-${stamp}.csv`, {
+      format: 'csv',
+      title: get(t)('loans.exportContacts'),
+    })
+    if (ok) showToast(get(t)('loans.exported', { values: { count: rows.length } }), 'success')
+    else showToast(get(t)('loans.exportCancelled'), 'info')
+  }
 
   function openAdd() {
     editingId = null
@@ -330,7 +386,8 @@
     const v = contactValue(c, f)
     if (!v) return ''
     if (f === 'wechat') return `weixin://dl/chat?${encodeURIComponent(v)}`
-    if (f === 'qq') return `mqqwpa://im/chat?chat_type=wpa&uin=${encodeURIComponent(v)}&version=1&src_type=web`
+    if (f === 'qq')
+      return `mqqwpa://im/chat?chat_type=wpa&uin=${encodeURIComponent(v)}&version=1&src_type=web`
     if (f === 'phone') return `tel:${encodeURIComponent(v)}`
     return `mailto:${encodeURIComponent(v)}`
   }
@@ -434,6 +491,13 @@
           onClick: () => (showContacts = true),
         },
         {
+          key: 'export',
+          label: $t('loans.export'),
+          icon: Download,
+          title: $t('loans.export'),
+          onClick: () => (showExport = true),
+        },
+        {
           key: 'add',
           label: $t('loans.add'),
           icon: Plus,
@@ -447,10 +511,24 @@
 
 <div class="page">
   <div class="tab-row">
-    <button class="tab" class:active={direction === 'out'} onclick={() => { direction = 'out'; void load() }}>
+    <button
+      class="tab"
+      class:active={direction === 'out'}
+      onclick={() => {
+        direction = 'out'
+        void load()
+      }}
+    >
       {$t('loans.tab.out')}
     </button>
-    <button class="tab" class:active={direction === 'in'} onclick={() => { direction = 'in'; void load() }}>
+    <button
+      class="tab"
+      class:active={direction === 'in'}
+      onclick={() => {
+        direction = 'in'
+        void load()
+      }}
+    >
       {$t('loans.tab.in')}
     </button>
   </div>
@@ -458,9 +536,7 @@
   {#if loans.length > 0}
     <div class="filter-summary-row">
       <div class="summary-bar">
-        <span class="summary-item"
-          ><b>{summary.active}</b> {$t('loans.sumActive')}</span
-        >
+        <span class="summary-item"><b>{summary.active}</b> {$t('loans.sumActive')}</span>
         <span class="summary-item" class:summary-overdue={summary.overdue > 0}
           ><b>{summary.overdue}</b> {$t('loans.sumOverdue')}</span
         >
@@ -506,7 +582,9 @@
             <div class="row-title">
               <span class="row-name">{loan.card_name_cn || loan.card_no}</span>
               <span class="row-extend">{loan.card_no_extend}</span>
-              <span class="badge badge-{loan.status}">{statusLabel(loan.status, loan.direction)}</span>
+              <span class="badge badge-{loan.status}"
+                >{statusLabel(loan.status, loan.direction)}</span
+              >
             </div>
             <div class="row-meta">
               <span class="meta-item">
@@ -567,11 +645,7 @@
                 <Undo2 size={16} />
               </button>
             {/if}
-                        <button
-              class="icon-btn"
-              title={$t('loans.edit')}
-              onclick={() => openEdit(loan)}
-            >
+            <button class="icon-btn" title={$t('loans.edit')} onclick={() => openEdit(loan)}>
               <Pencil size={16} />
             </button>
             <button
@@ -579,7 +653,7 @@
               title={$t('common.delete')}
               onclick={() => remove(loan)}
             >
-              <Trash2 size={16} color={'red'}/>
+              <Trash2 size={16} color={'red'} />
             </button>
           </div>
         </div>
@@ -592,7 +666,10 @@
   open={showAdd}
   title={editingId ? $t('loans.edit') : $t('loans.add')}
   subtitle={form.cardNoExtend ? `${form.cardName} · ${form.cardNoExtend}` : ''}
-  onclose={() => { showAdd = false; editingId = null }}
+  onclose={() => {
+    showAdd = false
+    editingId = null
+  }}
 >
   <div class="form">
     <div class="field">
@@ -680,7 +757,6 @@
   {/snippet}
 </CommonModal>
 
-
 <VariantPicker
   open={showPicker}
   ownedOnly={direction === 'out'}
@@ -711,7 +787,10 @@
                   <button
                     type="button"
                     class="contact-chip"
-                    use:longpress={{ duration: 500, onLongPress: () => void openContactLink(c, f.key) }}
+                    use:longpress={{
+                      duration: 500,
+                      onLongPress: () => void openContactLink(c, f.key),
+                    }}
                     onclick={() => handleChipClick(c, f.key)}
                     oncontextmenu={(e) => {
                       e.preventDefault()
@@ -754,7 +833,11 @@
         <Plus size={15} />
         {$t('loans.quickAdd')}
       </button>
-      <button class="button button-ghost" onclick={openAddContact} title={$t('loans.addContactFull')}>
+      <button
+        class="button button-ghost"
+        onclick={openAddContact}
+        title={$t('loans.addContactFull')}
+      >
         <UserRoundPen size={14} />
       </button>
     </div>
@@ -770,28 +853,58 @@
   <div class="form">
     <div class="field">
       <label class="label" for="cf-name">{$t('loans.contactName')}</label>
-      <input class="input" id="cf-name" bind:value={contactForm.name} placeholder={get(t)('loans.contactName')} />
+      <input
+        class="input"
+        id="cf-name"
+        bind:value={contactForm.name}
+        placeholder={get(t)('loans.contactName')}
+      />
     </div>
     <div class="field">
       <label class="label" for="cf-note">{$t('common.note')}</label>
-      <input class="input" id="cf-note" bind:value={contactForm.note} placeholder={get(t)('common.optional')} />
+      <input
+        class="input"
+        id="cf-note"
+        bind:value={contactForm.note}
+        placeholder={get(t)('common.optional')}
+      />
     </div>
     <div class="field">
       <label class="label" for="cf-wechat">{$t('loans.contactField.wechat')}</label>
-      <input class="input" id="cf-wechat" bind:value={contactForm.wechat} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+      <input
+        class="input"
+        id="cf-wechat"
+        bind:value={contactForm.wechat}
+        placeholder={get(t)('loans.contactFieldPlaceholder')}
+      />
     </div>
     <div class="field">
       <label class="label" for="cf-qq">{$t('loans.contactField.qq')}</label>
-      <input class="input" id="cf-qq" bind:value={contactForm.qq} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+      <input
+        class="input"
+        id="cf-qq"
+        bind:value={contactForm.qq}
+        placeholder={get(t)('loans.contactFieldPlaceholder')}
+      />
     </div>
     <div class="form-row">
       <div class="field">
         <label class="label" for="cf-phone">{$t('loans.contactField.phone')}</label>
-        <input class="input" id="cf-phone" bind:value={contactForm.phone} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+        <input
+          class="input"
+          id="cf-phone"
+          bind:value={contactForm.phone}
+          placeholder={get(t)('loans.contactFieldPlaceholder')}
+        />
       </div>
       <div class="field">
         <label class="label" for="cf-email">{$t('loans.contactField.email')}</label>
-        <input class="input" id="cf-email" bind:value={contactForm.email} placeholder={get(t)('loans.contactFieldPlaceholder')} />
+        <input
+          class="input"
+          id="cf-email"
+          bind:value={contactForm.email}
+          placeholder={get(t)('loans.contactFieldPlaceholder')}
+        />
       </div>
     </div>
   </div>
@@ -806,6 +919,30 @@
       onclick={submitContactForm}
     >
       {savingContact ? $t('common.saving') : $t('common.save')}
+    </button>
+  {/snippet}
+</CommonModal>
+
+<CommonModal open={showExport} title={$t('loans.export')} onclose={() => (showExport = false)}>
+  <div class="export-options">
+    <button class="export-option" onclick={() => void exportLoansCsv()}>
+      <Download size={18} />
+      <div class="export-option-main">
+        <span class="export-option-title">{$t('loans.exportLoans')}</span>
+        <span class="export-option-desc">{$t('loans.exportLoansDesc')}</span>
+      </div>
+    </button>
+    <button class="export-option" onclick={() => void exportContactsCsv()}>
+      <Users size={18} />
+      <div class="export-option-main">
+        <span class="export-option-title">{$t('loans.exportContacts')}</span>
+        <span class="export-option-desc">{$t('loans.exportContactsDesc')}</span>
+      </div>
+    </button>
+  </div>
+  {#snippet footer()}
+    <button class="button button-ghost" onclick={() => (showExport = false)}>
+      {$t('common.cancel')}
     </button>
   {/snippet}
 </CommonModal>
@@ -906,7 +1043,7 @@
     gap: 8px;
     padding: 12px 16px 24px;
   }
-    @media (max-width: 767.99px) {
+  @media (max-width: 767.99px) {
     .list {
       display: flex;
       flex-direction: column;
@@ -1186,5 +1323,45 @@
     text-align: center;
     color: var(--text-tertiary);
     font-size: var(--text-sm);
+  }
+
+  .export-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .export-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .export-option:hover {
+    border-color: var(--text-tertiary);
+    background: var(--bg-hover);
+  }
+
+  .export-option-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .export-option-title {
+    font-size: var(--text-base);
+    font-weight: 500;
+  }
+
+  .export-option-desc {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
   }
 </style>

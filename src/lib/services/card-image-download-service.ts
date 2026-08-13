@@ -74,9 +74,10 @@ const updateProgressNotification = (completed: number, total: number, failed: nu
     id: NOTIFICATION_ID,
     channelId: CHANNEL_ID,
     title: get(t)('download.notificationTitle'),
-    body: get(t)('download.progressBody', {
-      values: { percent, completed, total },
-    }) + failedSuffix,
+    body:
+      get(t)('download.progressBody', {
+        values: { percent, completed, total },
+      }) + failedSuffix,
     icon: 'icon',
     ongoing: true, // 正在进行中，禁止用户滑动删除
     autoCancel: false,
@@ -181,8 +182,8 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
 
       const url = fileData.img_cdn ?? fileData.tts_cdn
 
-      // 本地图片（local://）不参与下载，跳过
-      if (localImgToken(url)) {
+      // 本地图片（local://）或无图片来源不参与下载，跳过
+      if (!url || localImgToken(url)) {
         completed++
         continue
       }

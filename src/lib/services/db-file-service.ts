@@ -20,6 +20,19 @@ export async function readTextFile(path: string): Promise<string> {
   return await invoke<string>('read_text_file', { path })
 }
 
+/** 校验备份 SQLite 文件（走 Rust validate_sqlite_file，只读）。返回是否有效及失败原因。 */
+export async function validateSqliteBackup(
+  path: string
+): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const res = await invoke<string>('validate_sqlite_file', { path })
+    const parsed = JSON.parse(res)
+    return { ok: parsed?.ok === true }
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 const IMAGE_MIME: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',

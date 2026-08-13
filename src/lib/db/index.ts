@@ -300,6 +300,7 @@ export {
   generatePurchaseListFromDeck,
   generatePurchaseListFromWishlist,
   refreshPurchaseListFromDeck,
+  reconcilePurchaseListItems,
   getPurchaseListItemCounts,
   getDeckPurchasePreview,
   savePurchaseListEditor,
@@ -324,7 +325,7 @@ export {
 } from './repository/match-record-repository'
 // ==================== 服务层 (Service) ====================
 export { searchCards, searchCardVariants } from './service/search-service'
-export { initializeDatabase } from './service/sync-service'
+export { initializeDatabase, checkForContentUpdates } from './service/sync-service'
 export { updateFilterOptions } from './service/filter-service'
 export {
   COMPLETION_MODES,

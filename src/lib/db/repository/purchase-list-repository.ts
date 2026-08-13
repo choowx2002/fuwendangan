@@ -128,10 +128,7 @@ export async function updatePurchaseListStatus(
 }
 
 /** 更新清单基本信息（仅名称；关联卡组不可在此修改，换卡组需重新生成清单） */
-export async function updatePurchaseList(
-  id: string,
-  patch: { name?: string }
-): Promise<void> {
+export async function updatePurchaseList(id: string, patch: { name?: string }): Promise<void> {
   const db = await getDatabase()
   const sets: string[] = []
   const params: unknown[] = []
@@ -165,6 +162,9 @@ export async function getPurchaseListItems(listId: string): Promise<
     card_color_list: string | null
     rarity: string | null
     owned_live: number
+    loaned_out: number
+    /** 可用数 = 实时收藏 − 生效借出（借入由清单内 qty_borrowed 单独管理，不重复计入） */
+    available_live: number
     other_owned: number
     img_cdn: string | null
     img_lang: string | null
@@ -189,6 +189,10 @@ export async function getPurchaseListItems(listId: string): Promise<
         JOIN ${TABLES.COLLECTION_LANGS} ocl ON ocl.collection_id = ocol.id
         WHERE ocol.card_no = i.card_no AND ocol.card_no_extend != i.card_no_extend
           AND ocl.status = 'owned') AS other_owned,
+       (SELECT COALESCE(SUM(cl2.qty), 0)
+        FROM ${TABLES.CARD_LOANS} cl2
+        WHERE cl2.card_no = i.card_no AND cl2.card_no_extend = i.card_no_extend
+          AND cl2.direction = 'out' AND cl2.status IN ('active','overdue')) AS loaned_out,
        rep.img_cdn AS img_cdn, rep.language AS img_lang
      FROM ${TABLES.PURCHASE_LIST_ITEMS} i
      LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = i.card_no
@@ -214,6 +218,8 @@ export async function getPurchaseListItems(listId: string): Promise<
     card_color_list: r.card_color_list ?? null,
     rarity: r.rarity ?? null,
     owned_live: r.owned_live ?? 0,
+    loaned_out: r.loaned_out ?? 0,
+    available_live: (r.owned_live ?? 0) - (r.loaned_out ?? 0),
     other_owned: r.other_owned ?? 0,
     img_cdn: r.img_cdn ?? null,
     img_lang: r.img_lang ?? null,
@@ -381,6 +387,73 @@ async function liveOwnedQty(db: Db, cardNo: string, cardNoExtend: string): Promi
   return rows[0]?.n ?? 0
 }
 
+/**
+ * 条目的实时收藏数与生效借出数（按印刷精确匹配）。
+ * 可用数 = 收藏 − 借出（借入由清单内 qty_borrowed 单独管理，不在此重复计入）。
+ */
+async function getPrintOwnedAndLoanedOut(
+  db: Db,
+  cardNo: string,
+  cardNoExtend: string
+): Promise<{ owned: number; loanedOut: number }> {
+  const owned = await liveOwnedQty(db, cardNo, cardNoExtend)
+  const loans = await getActiveLoanQty([`${cardNo}|${cardNoExtend}`], 'print')
+  const loanedOut = loans.get(`${cardNo}|${cardNoExtend}`)?.loanedOut ?? 0
+  return { owned, loanedOut }
+}
+
+/**
+ * 按当前库存自愈清单快照（打开清单时调用）：
+ * 对非 skipped 条目重算 qty_owned（实时收藏）、qty_to_buy 与 status（pending/met），
+ * 保留 skipped 与用户填写的 ordered/borrowed/bought。不写回收藏、不动借入。
+ * 覆盖卡片组生成与心愿单生成两类清单，与 refreshPurchaseListFromDeck 互补（后者还会补充新卡）。
+ * @returns 更新条数
+ */
+export async function reconcilePurchaseListItems(listId: string): Promise<number> {
+  return withTransaction(async () => {
+    const db = await getDatabase()
+    const rows = await db.select<
+      {
+        id: string
+        card_no: string
+        card_no_extend: string
+        qty_required: number
+        qty_ordered: number
+        qty_borrowed: number
+        qty_bought: number
+        status: string
+      }[]
+    >(
+      `SELECT id, card_no, card_no_extend, qty_required, qty_ordered, qty_borrowed, qty_bought, status
+       FROM ${TABLES.PURCHASE_LIST_ITEMS} WHERE list_id = ?`,
+      [listId]
+    )
+
+    let updated = 0
+    for (const row of rows) {
+      if (row.status === 'skipped') continue
+      const { owned, loanedOut } = await getPrintOwnedAndLoanedOut(
+        db,
+        row.card_no,
+        row.card_no_extend
+      )
+      const available = Math.max(0, owned - loanedOut)
+      const qtyToBuy = Math.max(
+        0,
+        row.qty_required - available - row.qty_ordered - row.qty_borrowed - row.qty_bought
+      )
+      const status: PurchaseListItemStatus = qtyToBuy > 0 ? 'pending' : 'met'
+      await db.execute(
+        `UPDATE ${TABLES.PURCHASE_LIST_ITEMS}
+         SET qty_owned = ?, qty_to_buy = ?, status = ?, updated_at = ? WHERE id = ?`,
+        [owned, qtyToBuy, status, now(), row.id]
+      )
+      updated += 1
+    }
+    return updated
+  })
+}
+
 /** 借入对账：目标数量与生效借入（direction='in' 且 active/overdue，按条目归属）比对，不足补建、超出取消。
  *  借入记录通过 purchase_item_id 与清单条目绑定，不同清单/条目之间互不干扰。 */
 async function reconcileBorrowIn(
@@ -476,12 +549,21 @@ export async function savePurchaseListBatch(
       const item = rows[0]
       if (!item) continue
 
-      const owned = await liveOwnedQty(db, item.card_no, item.card_no_extend)
+      const { owned, loanedOut } = await getPrintOwnedAndLoanedOut(
+        db,
+        item.card_no,
+        item.card_no_extend
+      )
+      const available = Math.max(0, owned - loanedOut)
       const qtyToBuy = change.skipped
         ? 0
         : Math.max(
             0,
-            item.qty_required - owned - change.qtyOrdered - change.qtyBorrowed - change.qtyBought
+            item.qty_required -
+              available -
+              change.qtyOrdered -
+              change.qtyBorrowed -
+              change.qtyBought
           )
       const status: PurchaseListItemStatus = change.skipped
         ? 'skipped'
@@ -558,8 +640,9 @@ export interface PurchaseListEditorSaveResult {
 
 /** 编辑器内新增/整行重写的落库：算实时已有与待购买，按唯一键 upsert */
 async function upsertEditorItem(db: Db, listId: string, row: PurchaseListEditorRow): Promise<void> {
-  const owned = await liveOwnedQty(db, row.cardNo, row.cardNoExtend)
-  const qtyToBuy = Math.max(0, row.qtyRequired - owned)
+  const { owned, loanedOut } = await getPrintOwnedAndLoanedOut(db, row.cardNo, row.cardNoExtend)
+  const available = Math.max(0, owned - loanedOut)
+  const qtyToBuy = Math.max(0, row.qtyRequired - available)
   await upsertPurchaseListItem(listId, {
     cardNo: row.cardNo,
     cardNoExtend: row.cardNoExtend,
@@ -603,10 +686,15 @@ export async function savePurchaseListEditor(
           cur.finish_pref === row.finishPref
         if (sameComposition) {
           if (cur.qty_required !== row.qtyRequired) {
-            const owned = await liveOwnedQty(db, row.cardNo, row.cardNoExtend)
+            const { owned, loanedOut } = await getPrintOwnedAndLoanedOut(
+              db,
+              row.cardNo,
+              row.cardNoExtend
+            )
+            const available = Math.max(0, owned - loanedOut)
             const qtyToBuy = Math.max(
               0,
-              row.qtyRequired - owned - cur.qty_ordered - cur.qty_borrowed - cur.qty_bought
+              row.qtyRequired - available - cur.qty_ordered - cur.qty_borrowed - cur.qty_bought
             )
             const status: PurchaseListItemStatus =
               cur.status === 'skipped' ? 'skipped' : qtyToBuy > 0 ? 'pending' : 'met'

@@ -22,6 +22,7 @@
   } from '$lib/db'
   import { Pencil, Trash2, X, CheckSquare, ListChecks, Boxes } from '@lucide/svelte'
   import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import TagInput from '$lib/components/ui/TagInput.svelte'
@@ -79,11 +80,14 @@
   let selectedMap = $state(new Map<string, VariantWithOwned>())
   let busy = $state(false)
 
-  const variantKey = (v: VariantWithOwned) => `${v.cardNo}:${v.cardNoExtend}:${v.printLanguage ?? ''}`
+  const variantKey = (v: VariantWithOwned) =>
+    `${v.cardNo}:${v.cardNoExtend}:${v.printLanguage ?? ''}`
 
   const selectedIds = $derived(new Set(selectedMap.keys()))
   const existingQty = $derived(
-    new Map(cards.map((c) => [`${c.card_no}:${c.card_no_extend ?? ''}:${c.language ?? ''}`, c.quantity]))
+    new Map(
+      cards.map((c) => [`${c.card_no}:${c.card_no_extend ?? ''}:${c.language ?? ''}`, c.quantity])
+    )
   )
   const drawerTotal = $derived(cards.reduce((a, c) => a + c.quantity, 0))
 
@@ -168,7 +172,12 @@
       showToast(get(t)('locker.atLimit', { values: { name: v.card_name_cn ?? v.cardNo } }), 'info')
       return
     }
-    const entry = cards.find((c) => c.card_no === v.cardNo && (c.card_no_extend ?? '') === v.cardNoExtend && (c.language ?? '') === (v.printLanguage ?? ''))
+    const entry = cards.find(
+      (c) =>
+        c.card_no === v.cardNo &&
+        (c.card_no_extend ?? '') === v.cardNoExtend &&
+        (c.language ?? '') === (v.printLanguage ?? '')
+    )
     if (entry) {
       await updateSectionCard(entry.id, { quantity: entry.quantity + 1 })
     } else {
@@ -183,9 +192,25 @@
   }
 
   async function handleQuickDec(v: VariantWithOwned) {
-    const entry = cards.find((c) => c.card_no === v.cardNo && (c.card_no_extend ?? '') === v.cardNoExtend && (c.language ?? '') === (v.printLanguage ?? ''))
+    const entry = cards.find(
+      (c) =>
+        c.card_no === v.cardNo &&
+        (c.card_no_extend ?? '') === v.cardNoExtend &&
+        (c.language ?? '') === (v.printLanguage ?? '')
+    )
     if (!entry) return
     if (entry.quantity <= 1) {
+      const ok = await confirmAction(
+        get(t)('locker.removeCardConfirm', {
+          values: { name: v.card_name_cn ?? v.cardNo, qty: 1 },
+        }),
+        {
+          title: get(t)('locker.removeCard'),
+          okLabel: get(t)('locker.removeCard'),
+          cancelLabel: get(t)('common.cancel'),
+        }
+      )
+      if (!ok) return
       await removeSectionCard(entry.id)
     } else {
       await updateSectionCard(entry.id, { quantity: entry.quantity - 1 })
@@ -243,7 +268,12 @@
     if (busy || selectedMap.size === 0) return
     busy = true
     let skipped = 0
-    const entries: { card_no: string; card_no_extend: string | null; language: string | null; quantity: number }[] = []
+    const entries: {
+      card_no: string
+      card_no_extend: string | null
+      language: string | null
+      quantity: number
+    }[] = []
     for (const v of selectedMap.values()) {
       const add = Math.max(0, v.ownedTotal - (globalQty.get(variantKey(v)) ?? 0))
       if (add <= 0) {
@@ -274,6 +304,15 @@
   /** 批量移出：选中项中已收录的变体整条删除 */
   async function removeSelected() {
     if (busy || selectedMap.size === 0) return
+    const ok = await confirmAction(
+      get(t)('locker.removeSelectedConfirm', { values: { count: selectedMap.size } }),
+      {
+        title: get(t)('locker.batchRemove'),
+        okLabel: get(t)('common.delete'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!ok) return
     busy = true
     const ids: string[] = []
     for (const v of selectedMap.values()) {
@@ -304,6 +343,17 @@
   }
 
   async function removeCard(card: LockerCard) {
+    const ok = await confirmAction(
+      get(t)('locker.removeCardConfirm', {
+        values: { name: card.card_no, qty: card.quantity },
+      }),
+      {
+        title: get(t)('locker.removeCard'),
+        okLabel: get(t)('common.delete'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!ok) return
     await removeSectionCard(card.id)
     void load()
   }
@@ -376,8 +426,13 @@
           {$t('locker.selectedCount', { values: { count: selectedMap.size } })}
         </span>
         <div class="batch-actions">
-          <button class="button button-ghost button-sm" disabled={busy} onclick={() => void selectAll()}>
-            <CheckSquare size={14} /> {$t('locker.selectAll')}
+          <button
+            class="button button-ghost button-sm"
+            disabled={busy}
+            onclick={() => void selectAll()}
+          >
+            <CheckSquare size={14} />
+            {$t('locker.selectAll')}
           </button>
           <button
             class="button button-primary button-sm"
@@ -394,7 +449,8 @@
             {busy ? $t('common.loading') : $t('locker.batchRemove')}
           </button>
           <button class="button button-ghost button-sm" disabled={busy} onclick={cancelSelect}>
-            <X size={14} /> {$t('common.cancel')}
+            <X size={14} />
+            {$t('common.cancel')}
           </button>
         </div>
       </div>
@@ -405,7 +461,8 @@
           batchMode = true
         }}
       >
-        <ListChecks size={14} /> {$t('locker.multiSelect')}
+        <ListChecks size={14} />
+        {$t('locker.multiSelect')}
       </button>
     {/if}
 
@@ -413,10 +470,10 @@
       bind:filters
       bind:variants
       bind:total={poolTotal}
-      existingQty={existingQty}
-      globalQty={globalQty}
+      {existingQty}
+      {globalQty}
       selectable={batchMode}
-      selectedIds={selectedIds}
+      {selectedIds}
       quickEdit={!batchMode}
       onQuickInc={handleQuickInc}
       onQuickDec={handleQuickDec}
@@ -436,7 +493,11 @@
   <div class="form">
     <label class="field">
       <span class="field-label">{$t('locker.sectionName')}</span>
-      <input class="input" bind:value={editName} placeholder={$t('locker.sectionNamePlaceholder')} />
+      <input
+        class="input"
+        bind:value={editName}
+        placeholder={$t('locker.sectionNamePlaceholder')}
+      />
     </label>
     <label class="field">
       <span class="field-label">{$t('locker.sectionDesc')}</span>
@@ -470,7 +531,11 @@
     </div>
     <label class="field">
       <span class="field-label">{$t('locker.tags')}</span>
-      <TagInput value={editTags} placeholder={$t('locker.tagPlaceholder')} onChange={(v) => (editTags = v)} />
+      <TagInput
+        value={editTags}
+        placeholder={$t('locker.tagPlaceholder')}
+        onChange={(v) => (editTags = v)}
+      />
     </label>
   </div>
 
@@ -514,7 +579,9 @@
               {card.card_no}{card.card_no_extend ? ` · ${card.card_no_extend}` : ''}
             </span>
             {#if card.ownedTotal > 0}
-              <span class="row-owned">{$t('locker.ownedBadge', { values: { count: card.ownedTotal } })}</span>
+              <span class="row-owned"
+                >{$t('locker.ownedBadge', { values: { count: card.ownedTotal } })}</span
+              >
             {/if}
           </div>
           <label class="qty-field">
@@ -524,10 +591,15 @@
               type="number"
               min="1"
               value={card.quantity}
-              onchange={(e) => void changeQty(card, Number((e.currentTarget as HTMLInputElement).value) || 1)}
+              onchange={(e) =>
+                void changeQty(card, Number((e.currentTarget as HTMLInputElement).value) || 1)}
             />
           </label>
-          <button class="mini-btn danger" title={$t('locker.removeCard')} onclick={() => void removeCard(card)}>
+          <button
+            class="mini-btn danger"
+            title={$t('locker.removeCard')}
+            onclick={() => void removeCard(card)}
+          >
             <X size={13} />
           </button>
         </div>

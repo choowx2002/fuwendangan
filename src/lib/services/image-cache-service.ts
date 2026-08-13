@@ -32,7 +32,9 @@ function safeSegment(str: string): string {
   return str.replace(/[<>:"/\|?*\x00-\x1F]/g, '_')
 }
 
-function urlToFilename(dataUrl: string, name: string = 'undefined'): string {
+function urlToFilename(dataUrl: string | null | undefined, name: string = 'undefined'): string {
+  // 无 URL 时返回确定性占位名，避免 null.replace 崩溃
+  if (!dataUrl) return safeSegment(`${name}-file`)
   // 移除末尾的斜杠，获取文件名部分
   const cleanUrl = dataUrl.replace(/\/$/, '')
   const id = cleanUrl.split('/').pop()?.split('.')[0] || 'file'
@@ -41,6 +43,27 @@ function urlToFilename(dataUrl: string, name: string = 'undefined'): string {
 }
 
 export const LOCAL_IMG_PREFIX = 'local://'
+
+/**
+ * 计算某打印的期望缓存文件名（= urlToFilename(url, printCacheName)）。
+ * 无可用图片来源时返回 null（无法缓存）。
+ */
+export function expectedCardImageName(
+  p:
+    | {
+        img_cdn?: string | null
+        tts_cdn?: string | null
+        card_no_extend?: string | null
+        language?: string | null
+        id?: string | null
+      }
+    | null
+    | undefined
+): string | null {
+  const url = p?.img_cdn ?? p?.tts_cdn
+  if (!url) return null
+  return urlToFilename(url, printCacheName(p))
+}
 
 /**
  * 从 local:// 协议 URL 中提取缓存文件名（形如 local://custom-123 → custom-123）。
@@ -287,7 +310,10 @@ export async function getMissingCardPrints(
 
   const missing = cardPrints.filter((print) => {
     if (localImgToken(print.img_cdn)) return false
-    const expectedName = urlToFilename(print.img_cdn ?? print.tts_cdn, printCacheName(print))
+    // 无任何图片来源的打印无法下载，不进入缺失清单（也避免 null 崩溃）
+    const url = print.img_cdn ?? print.tts_cdn
+    if (!url) return false
+    const expectedName = urlToFilename(url, printCacheName(print))
 
     return !fileNames.has(expectedName)
   })

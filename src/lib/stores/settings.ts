@@ -92,6 +92,18 @@ export const builderSideboardDisplayMode = persistentWritable<BuilderGroupMode>(
   'grouped'
 )
 
+/** 上次成功备份/导出数据包时间（ISO），用于启动时备份提醒 */
+export const lastBackupAt = persistentWritable('lastBackupAt', '')
+
+/** 上次弹过备份提醒的时间（ISO），避免每次启动都打扰 */
+export const lastBackupReminderAt = persistentWritable('lastBackupReminderAt', '')
+
+/** 是否启用启动备份提醒（默认关闭） */
+export const backupReminderEnabled = persistentWritable('backupReminderEnabled', false)
+
+/** 备份提醒间隔（天），默认 7 */
+export const backupReminderDays = persistentWritable('backupReminderDays', 7)
+
 locale.subscribe((value) => {
   const next = isSupportedLocale(value) ? value : systemLocale()
   i18nLocale.set(next)

@@ -209,6 +209,156 @@ async fn read_text_file(app: tauri::AppHandle, path: String) -> Result<String, S
     }
 }
 
+/// 列出 ZIP 归档中的条目（读中央目录，不写盘）。
+#[derive(serde::Serialize)]
+struct ZipEntryInfo {
+    name: String,
+    size: u64,
+    is_dir: bool,
+}
+
+#[tauri::command(async)]
+async fn list_zip_entries(path: String) -> Result<Vec<ZipEntryInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let file = std::fs::File::open(&path).map_err(|e| format!("无法打开 ZIP 文件：{}", e))?;
+        let mut archive =
+            zip::ZipArchive::new(file).map_err(|e| format!("不是有效的 ZIP 文件：{}", e))?;
+        let mut out = Vec::with_capacity(archive.len());
+        for i in 0..archive.len() {
+            let entry = archive.by_index(i).map_err(|e| e.to_string())?;
+            out.push(ZipEntryInfo {
+                name: entry.name().to_string(),
+                size: entry.size(),
+                is_dir: entry.is_dir(),
+            });
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
+/// 按作业从 ZIP 中提取卡图：把 entry 条目内容写入 dest_dir/dest。
+/// dest 必须是纯文件名（不含路径分隔与 `..`），防止路径穿越。
+#[derive(serde::Deserialize)]
+struct ZipExtractJob {
+    entry: String,
+    dest: String,
+}
+
+#[derive(serde::Serialize)]
+struct ZipExtractResult {
+    imported: usize,
+    failed: Vec<String>,
+}
+
+#[tauri::command(async)]
+async fn extract_zip_images(
+    path: String,
+    jobs: Vec<ZipExtractJob>,
+    dest_dir: String,
+) -> Result<ZipExtractResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dest_dir).map_err(|e| format!("创建目录失败：{}", e))?;
+        let file = std::fs::File::open(&path).map_err(|e| format!("无法打开 ZIP 文件：{}", e))?;
+        let mut archive =
+            zip::ZipArchive::new(file).map_err(|e| format!("不是有效的 ZIP 文件：{}", e))?;
+
+        let mut imported = 0usize;
+        let mut failed = Vec::new();
+        for job in jobs {
+            let dest = job.dest.replace('\\', "/");
+            if dest.is_empty()
+                || dest.starts_with('/')
+                || dest.contains("..")
+                || dest.split('/').count() > 1
+            {
+                failed.push(job.entry);
+                continue;
+            }
+            match archive.by_name(&job.entry) {
+                Ok(mut entry) => {
+                    let mut bytes = Vec::with_capacity(entry.size() as usize);
+                    if std::io::Read::read_to_end(&mut entry, &mut bytes).is_ok() {
+                        let out_path = std::path::Path::new(&dest_dir).join(&dest);
+                        if std::fs::write(&out_path, &bytes).is_ok() {
+                            imported += 1;
+                            continue;
+                        }
+                    }
+                    failed.push(job.entry);
+                }
+                Err(_) => failed.push(job.entry),
+            }
+        }
+        Ok(ZipExtractResult { imported, failed })
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
+/// 校验备份 SQLite 文件：只读打开，检查关键表存在且 quick_check 通过。
+/// 返回 OK(JSON `{ "ok": true }`) 或 Err(原因)；不会创建或修改任何文件。
+#[tauri::command(async)]
+async fn validate_sqlite_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use rusqlite::Connection;
+
+        let conn = Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .map_err(|e| format!("无法打开备份文件（不是有效的 SQLite 数据库）：{}", e))?;
+
+        let required = ["cards_base", "card_prints", "collection", "decks", "version"];
+        let mut stmt = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?, ?, ?, ?)",
+            )
+            .map_err(|e| e.to_string())?;
+        let names: std::collections::HashSet<String> = stmt
+            .query_map(
+                rusqlite::params![
+                    required[0],
+                    required[1],
+                    required[2],
+                    required[3],
+                    required[4]
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+
+        let missing: Vec<&str> = required
+            .iter()
+            .copied()
+            .filter(|t| !names.contains(*t))
+            .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "备份文件缺少关键数据表（{}），可能不是本应用的备份",
+                missing.join(", ")
+            ));
+        }
+
+        let check: String = conn
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .map_err(|e| format!("无法对备份文件执行完整性检查：{}", e))?;
+        if check != "ok" {
+            return Err(format!(
+                "备份文件完整性检查未通过（quick_check = {}），数据库可能已损坏",
+                check
+            ));
+        }
+
+        Ok(serde_json::json!({ "ok": true }).to_string())
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))?
+}
+
 /// 读取图片文件，返回 base64（用于卡组图案的本地背景图）
 #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
 #[tauri::command(async)]
@@ -354,7 +504,10 @@ pub fn run() {
             copy_file,
             write_text_file,
             read_text_file,
-            read_image_file
+            read_image_file,
+            validate_sqlite_file,
+            list_zip_entries,
+            extract_zip_images
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -53,6 +53,18 @@ function classifyZone(
 }
 
 /**
+ * 把签名后缀规整为应用的 `*` 约定（仅用于查卡键）。
+ * 库默认把签名卡解码为 `s`；本应用卡号存储用 `*`（见 tts-communication-service 的 `*`→`S` 替换）。
+ * 结尾的 `s`/`S`（签名变体）统一替换为 `*`，保证无论代码来源都能命中本地打印。
+ */
+function normalizeSignedSuffix(code: string): string {
+  if (!code) return code
+  const last = code[code.length - 1]
+  if (last === 's' || last === 'S') return `${code.slice(0, -1)}*`
+  return code
+}
+
+/**
  * 解码一个 Riftbound Deck Code。
  * 返回 null 表示解码失败（非法 / 或不支持的版本）。
  */
@@ -60,7 +72,8 @@ export function parseDeckCodeText(code: string): DeckWithSideboard | null {
   const trimmed = code.trim()
   if (!trimmed) return null
   try {
-    return getDeckFromCode(trimmed)
+    // 签名卡用 `*` 后缀解码，与应用本地卡号（card_no_extend 用 `*`）一致
+    return getDeckFromCode(trimmed, { signedSuffix: '*' })
   } catch {
     return null
   }
@@ -77,7 +90,7 @@ export function tryParseDeckCodeText(code: string): {
   const trimmed = code.trim()
   if (!trimmed) return { deck: null, error: null }
   try {
-    return { deck: getDeckFromCode(trimmed), error: null }
+    return { deck: getDeckFromCode(trimmed, { signedSuffix: '*' }), error: null }
   } catch (e) {
     return {
       deck: null,
@@ -101,11 +114,11 @@ export async function resolveDeckCards(decoded: DeckWithSideboard): Promise<Deco
     missingCodes: [],
   }
 
-  const championCode = decoded.chosenChampion?.trim()
+  const championCode = normalizeSignedSuffix(decoded.chosenChampion?.trim() ?? '')
 
   async function appendCards(cards: RiftboundCard[], target: cardAndPrint[]) {
     for (const item of cards) {
-      const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+      const resolved = await getCardAndPrintByPrintCode(normalizeSignedSuffix(item.cardCode))
       if (!resolved) {
         result.missingCodes.push(item.cardCode)
         result.missingCount++
@@ -123,8 +136,11 @@ export async function resolveDeckCards(decoded: DeckWithSideboard): Promise<Deco
   // mainDeck 需按类别拆分
   for (const item of decoded.mainDeck) {
     // chosenChampion 优先落到 champion 分区
-    if (championCode && item.cardCode.toUpperCase() === championCode.toUpperCase()) {
-      const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+    if (
+      championCode &&
+      normalizeSignedSuffix(item.cardCode).toUpperCase() === championCode.toUpperCase()
+    ) {
+      const resolved = await getCardAndPrintByPrintCode(normalizeSignedSuffix(item.cardCode))
       if (resolved) {
         result.deck.championCards = [resolved]
       } else {
@@ -134,7 +150,7 @@ export async function resolveDeckCards(decoded: DeckWithSideboard): Promise<Deco
       continue
     }
 
-    const resolved = await getCardAndPrintByPrintCode(item.cardCode)
+    const resolved = await getCardAndPrintByPrintCode(normalizeSignedSuffix(item.cardCode))
     if (!resolved) {
       result.missingCodes.push(item.cardCode)
       result.missingCount++

@@ -28,6 +28,7 @@
     PRESET_LANGUAGE_CODES,
     clearHistory,
     captureCollectionSnapshot,
+    isTauri,
     type CustomLanguage,
     type ImportDeckPayload,
     type ImportMatchPayload,
@@ -45,10 +46,17 @@
     builderGraphicColumns,
     builderMainDeckDisplayMode,
     builderSideboardDisplayMode,
+    lastBackupAt,
+    backupReminderEnabled,
+    backupReminderDays,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
   import { CARD_IMAGE, clearLocalCache, getImageDirSize } from '$lib/services/image-cache-service'
+  import {
+    planCardImageZipImport,
+    executeCardImageZipImport,
+  } from '$lib/services/card-image-zip-import'
   import { getLogText, clearLogs } from '$lib/services/log-service'
 
   import {
@@ -57,7 +65,13 @@
     isCardImageDownloading,
   } from '$lib/services/card-image-download-service'
   import { appConfigDir, appLocalDataDir, join } from '@tauri-apps/api/path'
-  import { copyFile, writeTextFile, readTextFile } from '$lib/services/db-file-service'
+  import {
+    copyFile,
+    writeTextFile,
+    readTextFile,
+    validateSqliteBackup,
+  } from '$lib/services/db-file-service'
+  import { exportDataPack } from '$lib/services/data-pack-service'
   import { onMount } from 'svelte'
   import { setLoadStatus, setTopbar, downloadState, showToast } from '$lib/stores/ui-store.svelte'
   import { getNetworkStatus } from '$lib/stores/network.svelte'
@@ -190,6 +204,7 @@
     try {
       const { missing, existingCount, totalCount } = await prepareCardImageDownload()
       imageCoverage = { existingCount, totalCount, missingCount: missing.length }
+      console.log('imageCoverage', imageCoverage)
     } catch (error) {
       console.error('[Settings] 读取卡图覆盖统计失败:', error)
     } finally {
@@ -448,6 +463,76 @@
     }
   }
 
+  // --- 卡图 ZIP 导入 ---
+  async function importCardImageZipAsk() {
+    if (!isTauri) return
+    const src = await open({
+      title: _t('settings.importZipPick'),
+      multiple: false,
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    })
+    if (!src) return
+
+    let plan
+    try {
+      plan = await withBusy(_t('settings.importZipPlanBusy'), () =>
+        planCardImageZipImport(String(src))
+      )
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
+        title: _t('settings.importZip'),
+        kind: 'error',
+      })
+      return
+    }
+
+    if (plan.newJobs.length === 0) {
+      await message(
+        _t('settings.importZipNoNew', {
+          values: { existing: plan.existingCount, unmatched: plan.unmatchedCount },
+        }),
+        { title: _t('settings.importZip'), kind: 'info' }
+      )
+      return
+    }
+
+    const accepted = await ask(
+      _t('settings.importZipConfirm', {
+        values: {
+          total: plan.totalEntries,
+          add: plan.newJobs.length,
+          existing: plan.existingCount,
+          unmatched: plan.unmatchedCount,
+        },
+      }),
+      {
+        title: _t('settings.importZip'),
+        kind: 'warning',
+        okLabel: _t('common.confirm'),
+        cancelLabel: _t('common.cancel'),
+      }
+    )
+    if (!accepted) return
+
+    try {
+      const result = await withBusy(_t('settings.importZipBusy'), () =>
+        executeCardImageZipImport(String(src), plan.newJobs)
+      )
+      await loadImageCoverage()
+      await message(
+        _t('settings.importZipSuccess', {
+          values: { count: result.imported, failed: result.failed.length },
+        }),
+        { title: _t('settings.importZip'), kind: 'info' }
+      )
+    } catch (e) {
+      await message(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
+        title: _t('settings.importZip'),
+        kind: 'error',
+      })
+    }
+  }
+
   // --- 备份 / 恢复 / 导出 ---
   async function backupDatabase() {
     if (!dbFilePath) return
@@ -469,12 +554,45 @@
           await loadDbInfo()
         }
       })
+      lastBackupAt.set(new Date().toISOString())
       await message(_t('settings.backupSuccess'), { title: _t('settings.backup'), kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : _t('settings.backupFailed'), {
         title: _t('settings.backup'),
         kind: 'error',
       })
+    }
+  }
+
+  /** 一键导出完整数据包（DB + 收藏 CSV + 卡组 JSON + 说明） */
+  async function exportDataPackAsk() {
+    const dir = await open({
+      title: _t('settings.dataPackSelectDir'),
+      directory: true,
+      multiple: false,
+    })
+    if (!dir) return
+
+    try {
+      const result = await withBusy(_t('settings.dataPackBusy'), () => exportDataPack(String(dir)))
+      lastBackupAt.set(new Date().toISOString())
+      await message(
+        _t('settings.dataPackSuccess', {
+          values: {
+            path: String(dir),
+            decks: result.deckCount,
+            rows: result.collectionRows,
+          },
+        }),
+        { title: _t('settings.dataPackTitle'), kind: 'info' }
+      )
+    } catch (e) {
+      await message(
+        _t('settings.dataPackFailed', {
+          values: { message: e instanceof Error ? e.message : _t('common.unknownError') },
+        }),
+        { title: _t('settings.dataPackTitle'), kind: 'error' }
+      )
     }
   }
 
@@ -487,6 +605,18 @@
       filters: [{ name: _t('settings.sqliteFilter'), extensions: ['db', 'sqlite', 'sqlite3'] }],
     })
     if (!src) return
+
+    // 恢复前校验备份文件：无效则报错中止，不覆盖现有库
+    const validation = await withBusy(_t('settings.restoreValidateBusy'), () =>
+      validateSqliteBackup(String(src))
+    )
+    if (!validation.ok) {
+      await message(validation.reason ?? _t('settings.restoreInvalid'), {
+        title: _t('settings.restore'),
+        kind: 'error',
+      })
+      return
+    }
 
     const confirmed = await ask(_t('settings.restoreConfirm'), {
       title: _t('settings.restoreConfirmTitle'),
@@ -506,6 +636,7 @@
           await loadDbInfo()
         }
       })
+      lastBackupAt.set(new Date().toISOString())
       await message(_t('settings.restoreSuccess'), { title: _t('settings.restore'), kind: 'info' })
     } catch (e) {
       await message(e instanceof Error ? e.message : _t('settings.restoreFailed'), {
@@ -1406,6 +1537,38 @@
 
     <div class="setting-item">
       <div class="setting-info">
+        <span class="setting-label">{$t('settings.backupReminder')}</span>
+        <span class="setting-desc">{$t('settings.backupReminderDesc')}</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" bind:checked={$backupReminderEnabled} />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    {#if $backupReminderEnabled}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">{$t('settings.backupReminderInterval')}</span>
+          <span class="setting-desc">{$t('settings.backupReminderIntervalDesc')}</span>
+        </div>
+        <input
+          class="setting-input backup-days-input"
+          type="number"
+          min="1"
+          max="365"
+          value={$backupReminderDays}
+          oninput={(e) => {
+            const target = e.target as HTMLInputElement
+            const v = parseInt(target.value || '7', 10)
+            $backupReminderDays = Math.min(365, Math.max(1, v))
+          }}
+        />
+      </div>
+    {/if}
+
+    <div class="setting-item">
+      <div class="setting-info">
         <span class="setting-label">{$t('settings.dbPath')}</span>
         <span
           role="presentation"
@@ -1454,7 +1617,9 @@
             <span class="stat-label">{row.label}</span>
             <span class="stat-right">
               <span class="stat-value"
-                >{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span
+                >{$t('settings.statRowsFormat', {
+                  values: { count: row.count, size: row.size },
+                })}</span
               >
               {#if row.name}
                 <ChevronRight size={14} />
@@ -1466,6 +1631,10 @@
     {/if}
 
     <div class="db-actions">
+      <button class="button button-primary" disabled={onloadInfo} onclick={exportDataPackAsk}>
+        <Download size={16} />
+        {$t('settings.exportDataPack')}
+      </button>
       <button class="button button-ghost" disabled={onloadInfo} onclick={backupDatabase}>
         <Download size={16} />
         {$t('settings.backupDb')}
@@ -1551,6 +1720,22 @@
 
     {#if isCardImageDownloading()}
       <p class="download-hint">{$t('settings.downloadHint')}</p>
+    {/if}
+
+    {#if isTauri}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">{$t('settings.importZip')}</span>
+          <span class="setting-desc">{$t('settings.importZipDesc')}</span>
+        </div>
+        <button
+          class="button button-ghost"
+          disabled={imageInfoLoading}
+          onclick={importCardImageZipAsk}
+        >
+          {$t('settings.importZip')}
+        </button>
+      </div>
     {/if}
 
     <div class="setting-item">

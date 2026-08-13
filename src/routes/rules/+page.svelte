@@ -36,17 +36,21 @@
       <h2 class="section-title">{$t('rules.documents')}</h2>
     </div>
     <div class="deck-list">
-      {#each docs as doc}
-        <!-- svelte-ignore a11y_invalid_attribute -->
-        <button class="deck-item" onclick={() => goto(`/rules/${doc.name}`)}>
-          <div class="deck-main">
-            <span class="deck-name">{doc.name}</span>
-          </div>
-          <div class="deck-stats">
-            <span class="stat time">{doc.updated_at}</span>
-          </div>
-        </button>
-      {/each}
+      {#if docs.length === 0}
+        <div class="rules-empty">{$t('rules.empty')}</div>
+      {:else}
+        {#each docs as doc}
+          <!-- svelte-ignore a11y_invalid_attribute -->
+          <button class="deck-item" onclick={() => goto(`/rules/${doc.name}`)}>
+            <div class="deck-main">
+              <span class="deck-name">{doc.name}</span>
+            </div>
+            <div class="deck-stats">
+              <span class="stat time">{doc.updated_at}</span>
+            </div>
+          </button>
+        {/each}
+      {/if}
     </div>
   </section>
 </div>
@@ -109,6 +113,13 @@
   }
   .deck-item:hover {
     background: var(--bg-secondary);
+  }
+
+  .rules-empty {
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
   }
 
   .deck-main {

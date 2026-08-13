@@ -1039,6 +1039,14 @@
         showShareModal = false
       } catch (error) {
         console.error('[DeckImage] 复制卡组图案失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
       } finally {
         exporting = false
       }
@@ -1053,6 +1061,14 @@
         showShareModal = false
       } catch (error) {
         console.error('[DeckQr] 复制二维码失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
       } finally {
         exporting = false
       }
@@ -1093,6 +1109,14 @@
         showShareModal = false
       } catch (error) {
         console.error('[ProxyExport] 导出 PDF 失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
       } finally {
         exporting = false
       }
@@ -1119,6 +1143,14 @@
         showShareModal = false
       } catch (error) {
         console.error('[DeckImage] 导出卡组图案失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
       } finally {
         exporting = false
       }
@@ -1146,6 +1178,14 @@
         showShareModal = false
       } catch (error) {
         console.error('[DeckQr] 导出二维码失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
       } finally {
         exporting = false
       }
@@ -1155,22 +1195,46 @@
     const text = currentShareText()
     if (!text) return
     if (isWeb) {
-      if (navigator.clipboard) await navigator.clipboard.writeText(text)
-      showShareModal = false
+      try {
+        if (navigator.clipboard) await navigator.clipboard.writeText(text)
+        showShareModal = false
+      } catch (error) {
+        console.error('[DeckExport] 复制文本失败:', error)
+        showToast(
+          get(t)('deckDetail.exportFailed', {
+            values: {
+              message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+            },
+          }),
+          'error'
+        )
+      }
       return
     }
 
-    const isCode = shareFormat === 'code'
-    const dest = await save({
-      title: get(t)('deckDetail.exportDeckTitle'),
-      defaultPath: `${deck?.name || 'deck'}${isCode ? '.code' : '.txt'}`,
-      filters: isCode
-        ? [{ name: 'Deck Code', extensions: ['code'] }]
-        : [{ name: 'Text', extensions: ['txt'] }],
-    })
-    if (!dest) return
-    await writeTextFile(dest, text)
-    showShareModal = false
+    try {
+      const isCode = shareFormat === 'code'
+      const dest = await save({
+        title: get(t)('deckDetail.exportDeckTitle'),
+        defaultPath: `${deck?.name || 'deck'}${isCode ? '.code' : '.txt'}`,
+        filters: isCode
+          ? [{ name: 'Deck Code', extensions: ['code'] }]
+          : [{ name: 'Text', extensions: ['txt'] }],
+      })
+      if (!dest) return
+      await writeTextFile(dest, text)
+      showShareModal = false
+    } catch (error) {
+      console.error('[DeckExport] 导出文本/卡组代码失败:', error)
+      showToast(
+        get(t)('deckDetail.exportFailed', {
+          values: {
+            message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+          },
+        }),
+        'error'
+      )
+    }
   }
 </script>
 
@@ -2360,7 +2424,7 @@
     >
       {$t('common.close')}
     </button>
-        <button
+    <button
       class="button button-primary"
       disabled={!deck || loadingOwnership || generatingPurchaseList}
       onclick={generatePurchaseList}

@@ -1,7 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Check, Archive, Heart, Upload, Download, ShoppingCart } from '@lucide/svelte'
+  import {
+    Plus,
+    Trash2,
+    Check,
+    Archive,
+    Heart,
+    Upload,
+    Download,
+    ShoppingCart,
+  } from '@lucide/svelte'
   import {
     getWishlistItems,
     upsertWishlistItem,
@@ -149,7 +158,12 @@
   let showWriteback = $state(false)
   let writebackTarget = $state<WishlistRow | null>(null)
   let writebackVariants = $state<
-    { cardNoExtend: string; rarityName: string | null; extendRarityName: string | null; isCustom: boolean }[]
+    {
+      cardNoExtend: string
+      rarityName: string | null
+      extendRarityName: string | null
+      isCustom: boolean
+    }[]
   >([])
   let writebackOwnedQty = $state(0)
 
@@ -326,11 +340,10 @@
   }
 
   async function downloadWishlistTemplate() {
-    const ok = await saveTextFile(
-      buildWishlistCsvTemplate(),
-      '心愿单导入模板.csv',
-      { format: 'csv', title: get(t)('collection.downloadTemplate') }
-    )
+    const ok = await saveTextFile(buildWishlistCsvTemplate(), '心愿单导入模板.csv', {
+      format: 'csv',
+      title: get(t)('collection.downloadTemplate'),
+    })
     if (!ok) showToast(get(t)('collection.saveCancelled'), 'info')
   }
 
@@ -439,6 +452,10 @@
                 <span class="note">{item.note}</span>
               {/if}
             </div>
+            {#if item.status === 'active' && item.available_live >= item.qty_wanted}
+              <span class="met-badge" title={$t('wishlist.metHint')}>{$t('wishlist.metBadge')}</span
+              >
+            {/if}
           </div>
           <div class="row-actions">
             {#if item.status === 'active'}
@@ -484,13 +501,11 @@
 <WritebackModal
   open={showWriteback}
   title={$t('wishlist.markAcquired')}
-  subtitle={
-    writebackTarget
-      ? `${writebackTarget.card_name_cn || writebackTarget.card_no_extend} · ${
-          writebackTarget.card_no_extend
-        }`
-      : ''
-  }
+  subtitle={writebackTarget
+    ? `${writebackTarget.card_name_cn || writebackTarget.card_no_extend} · ${
+        writebackTarget.card_no_extend
+      }`
+    : ''}
   cardName={writebackTarget?.card_name_cn || ''}
   cardNo={writebackTarget?.card_no || ''}
   cardNoExtend={writebackTarget?.card_no_extend || ''}
@@ -697,7 +712,7 @@
     gap: 8px;
     padding: 12px 16px 24px;
   }
-    @media (max-width: 767.99px) {
+  @media (max-width: 767.99px) {
     .list {
       display: flex;
       flex-direction: column;
@@ -777,6 +792,15 @@
   .note {
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+  }
+
+  .met-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(14, 138, 62, 0.12);
+    color: #0e8a3e;
+    font-size: var(--text-xs);
+    font-weight: 500;
   }
 
   .row-actions {

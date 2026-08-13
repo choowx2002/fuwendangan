@@ -3,10 +3,12 @@
   import AppShell from '../lib/components/layout/AppShell.svelte'
   import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
   import Toast from '../lib/components/ui/Toast.svelte'
-  import { getVersion, initializeDatabase } from '../lib/db'
+  import { getVersion, initializeDatabase, checkForContentUpdates } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
   import { initLogService } from '$lib/services/log-service'
+  import { maybePromptBackup } from '$lib/services/backup-reminder'
+  import { ask } from '@tauri-apps/plugin-dialog'
   import '$lib/i18n'
   import '../app.css'
   import { onMount } from 'svelte'
@@ -37,9 +39,14 @@
         }, 500)
 
         await initializeDatabase()
+      } else {
+        // 老用户启动：后台静默检查内容更新，发现新版本再询问
+        void checkContentUpdates()
       }
 
       setLoadStatus('success')
+      // 启动后异步检查备份提醒（不阻塞界面）
+      void maybePromptBackup()
     } catch (error) {
       console.error('[Layout] 初始化失败:', error)
       setLoadStatus(
@@ -47,6 +54,24 @@
         get(t)('loading.error'),
         error instanceof Error ? error.message : get(t)('common.unknownError')
       )
+    }
+  }
+
+  /** 后台静默检查卡牌数据更新；发现更新则询问用户是否同步 */
+  async function checkContentUpdates() {
+    try {
+      const hasUpdate = await checkForContentUpdates()
+      if (!hasUpdate) return
+      const accepted = await ask(get(t)('common.contentUpdatePrompt'), {
+        title: get(t)('common.contentUpdateTitle'),
+        kind: 'info',
+        okLabel: get(t)('common.contentUpdateConfirm'),
+        cancelLabel: get(t)('common.cancel'),
+      })
+      if (!accepted) return
+      await initializeDatabase({ skipMetered: false, confirm: false })
+    } catch (error) {
+      console.error('[Layout] 检查卡牌数据更新失败:', error)
     }
   }
 
