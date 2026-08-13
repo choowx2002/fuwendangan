@@ -7,7 +7,12 @@
  * - 免费版适配：闲置 7 天自动暂停、暂停后 URL 可能变更 → 提供 testConnection 与友好错误提示。
  */
 
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
+import {
+  createClient,
+  isAuthSessionMissingError,
+  type SupabaseClient,
+  type User,
+} from '@supabase/supabase-js'
 import { get } from 'svelte/store'
 import { syncSupabaseUrl, syncSupabaseAnonKey } from '$lib/stores/settings'
 import type { SyncBundleBody } from './types'
@@ -30,7 +35,10 @@ export function getByoClient(): SupabaseClient | null {
   if (!url || !key) return null
   const cacheKey = `${url}|${key}`
   if (byoClient && byoClientKey === cacheKey) return byoClient
-  byoClient = createClient(url, key)
+  // 自定义 storageKey，避免与内容同步客户端（remote-api 默认 key）共用存储触发多实例警告
+  byoClient = createClient(url, key, {
+    auth: { storageKey: 'sb-rune-archive-byo-auth-token' },
+  })
   byoClientKey = cacheKey
   return byoClient
 }
@@ -115,8 +123,14 @@ export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   let user: User | null = null
   try {
     const { data, error } = await client.auth.getUser()
-    if (error) return { ok: false, code: 'paused_or_network', detail: error.message }
-    user = data.user ?? null
+    if (error) {
+      // 未登录（本地无会话，非网络请求失败）→ 不视为暂停/断网，继续走查表验证连通性
+      if (!isAuthSessionMissingError(error)) {
+        return { ok: false, code: 'paused_or_network', detail: error.message }
+      }
+    } else {
+      user = data.user ?? null
+    }
   } catch (e) {
     return {
       ok: false,

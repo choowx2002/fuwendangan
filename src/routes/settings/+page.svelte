@@ -781,6 +781,7 @@
     try {
       const res = await withBusy(_t('settings.supabaseTestBusy'), () => testSupabaseConnection())
       let text: string
+      console.log('[SUPABASE]', res)
       switch (res.code) {
         case 'no_config':
           text = _t('settings.supabaseNoConfig')
