@@ -85,6 +85,25 @@ export async function getPrintsByCardId(cardId: string): Promise<CardPrint[]> {
 }
 
 /**
+ * 某卡牌（cards_base.card_no）的全部印刷版本，按代表优先级排序
+ * （非 promo → SC → is_default → print_order），供写回弹窗的 variant 选择。
+ */
+export async function listCardVariants(cardNo: string): Promise<CardPrint[]> {
+  const db = await getDatabase()
+  const results = await db.select<any[]>(
+    `SELECT p.* FROM ${TABLES.CARD_PRINTS} p
+     JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+     WHERE cb.card_no = ?
+     ORDER BY CASE WHEN COALESCE(p.is_promo, 0) = 1 THEN 1 ELSE 0 END,
+              CASE WHEN p.language = 'SC' THEN 0 WHEN COALESCE(p.is_default, 0) = 1 THEN 1 ELSE 2 END,
+              COALESCE(p.print_order, 0),
+              p.card_no_extend`,
+    [cardNo]
+  )
+  return results.map(mapRowToPrint)
+}
+
+/**
  * 获取所有卡图数量
  */
 export async function getPrintCount(): Promise<number> {

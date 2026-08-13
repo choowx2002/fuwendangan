@@ -13,3 +13,11 @@ export function seriesCodeOfCard(card: { card_prints?: { card_no_extend: string 
   const def = prints.find((p) => (p as { is_default?: boolean }).is_default)
   return deriveSeriesCode((def ?? prints[0])?.card_no_extend)
 }
+
+/** 合并卡名与副标题（任一为空则只取另一项；均空返回空串） */
+export function combineCardName(
+  cardNameCn: string | null | undefined,
+  subCn: string | null | undefined
+): string {
+  return [cardNameCn, subCn].filter((s): s is string => !!s && s.trim() !== '').join(' ')
+}

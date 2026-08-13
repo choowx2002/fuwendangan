@@ -23,6 +23,7 @@
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import type { VariantBucket } from '$lib/cards/utils/variant-utils'
   import { BUCKET_LABELS } from '$lib/cards/utils/variant-utils'
+  import { combineCardName } from '$lib/collection/collection-utils'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -182,12 +183,18 @@
   }
 
   async function handleExport(format: MissingExportFormat) {
+    // CSV 要求语言明确：避免“全部语言”的跨语言汇总数量被回导到单一语言
+    if (format === 'csv' && !language) {
+      showToast(get(t)('collection.csvNeedsLanguage'), 'error')
+      showExportModal = false
+      return
+    }
     exporting = true
     try {
       const items = includeComplete ? rows : missingRows
       const textRows: MissingListTextRow[] = items.map((r) => ({
         cardNoExtend: r.cardNoExtend,
-        cardNameCn: r.cardNameCn,
+        cardNameCn: combineCardName(r.cardNameCn, r.subCn),
         rarity: r.rarity,
         language,
         ownedQty: r.ownedQty,

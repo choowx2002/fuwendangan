@@ -482,8 +482,7 @@
     try {
       const listId = await generatePurchaseListFromDeck(
         deck.id,
-        deck.name || get(t)('builder.unnamedDeck'),
-        { matchMode: ownershipMatchMode }
+        deck.name || get(t)('builder.unnamedDeck')
       )
       showOwnershipModal = false
       showToast(get(t)('purchase.created'), 'success')

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, ListChecks, Check, Archive } from '@lucide/svelte'
+  import { Plus, Trash2, ListChecks, Check, Archive, Pencil } from '@lucide/svelte'
   import {
     getPurchaseLists,
     deletePurchaseList,
+    updatePurchaseList,
     updatePurchaseListStatus,
     generatePurchaseListFromDeck,
     getPurchaseListItemCounts,
@@ -14,6 +15,7 @@
     type Deck,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
   import { t } from '$lib/i18n'
@@ -26,8 +28,11 @@
 
   let showCreate = $state(false)
   let creating = $state(false)
-  let matchMode = $state<import('$lib/db').OwnershipMatchMode>('print')
   let form = $state({ name: '', deckId: '' })
+
+  let editingList = $state<PurchaseList | null>(null)
+  let editSaving = $state(false)
+  let editForm = $state({ name: '' })
 
   async function load() {
     loading = true
@@ -47,7 +52,6 @@
 
   function openCreate() {
     form = { name: '', deckId: decks[0]?.id ?? '' }
-    matchMode = 'print'
     showCreate = true
   }
 
@@ -55,7 +59,7 @@
     if (!form.deckId) return
     creating = true
     try {
-      const listId = await generatePurchaseListFromDeck(form.deckId, form.name, { matchMode })
+      const listId = await generatePurchaseListFromDeck(form.deckId, form.name)
       showToast(get(t)('purchase.created'), 'success')
       showCreate = false
       void goto(`/collection/purchase-lists/${listId}`)
@@ -71,7 +75,36 @@
     void load()
   }
 
+  function openEdit(list: PurchaseList) {
+    editingList = list
+    editForm.name = list.name
+  }
+
+  async function submitEdit() {
+    if (!editingList || editSaving) return
+    editSaving = true
+    try {
+      await updatePurchaseList(editingList.id, { name: editForm.name })
+      showToast(get(t)('purchase.listUpdated'), 'success')
+      editingList = null
+      await load()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    } finally {
+      editSaving = false
+    }
+  }
+
   async function remove(list: PurchaseList) {
+    const confirmed = await confirmAction(
+      get(t)('purchase.deleteListConfirm', { values: { name: list.name } }),
+      {
+        title: get(t)('purchase.title'),
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!confirmed) return
     await deletePurchaseList(list.id)
     showToast(get(t)('purchase.deleted'), 'info')
     void load()
@@ -140,9 +173,6 @@
             <div class="row-title">
               <span class="row-name">{list.name}</span>
               <span class="badge badge-{list.status}">{statusLabel(list.status)}</span>
-              {#if list.match_mode === 'card'}
-                <span class="badge badge-merge">{$t('purchase.byCard')}</span>
-              {/if}
             </div>
             <div class="row-meta">
               <span class="meta-item">{itemCounts.get(list.id) ?? 0} {$t('purchase.items')}</span>
@@ -184,6 +214,16 @@
               </button>
             {/if}
             <button
+              class="icon-btn"
+              title={$t('purchase.editList')}
+              onclick={(e) => {
+                e.stopPropagation()
+                openEdit(list)
+              }}
+            >
+              <Pencil size={16} />
+            </button>
+            <button
               class="icon-btn danger"
               title={$t('common.delete')}
               onclick={(e) => {
@@ -223,26 +263,6 @@
         </select>
       {/if}
     </div>
-    <div class="field">
-      <span class="label">{$t('purchase.checkMode')}</span>
-      <div class="mode-toggle">
-        <button
-          class="mode-option"
-          class:active={matchMode === 'card'}
-          onclick={() => (matchMode = 'card')}
-        >
-          {$t('purchase.byCard')}
-        </button>
-        <button
-          class="mode-option"
-          class:active={matchMode === 'print'}
-          onclick={() => (matchMode = 'print')}
-        >
-          {$t('purchase.byPrint')}
-        </button>
-      </div>
-      <span class="mode-hint">{$t('purchase.checkVariantHint')}</span>
-    </div>
   </div>
 
   {#snippet footer()}
@@ -251,6 +271,37 @@
     </button>
     <button class="button button-primary" disabled={creating || !form.deckId} onclick={submit}>
       {creating ? $t('common.saving') : $t('purchase.generate')}
+    </button>
+  {/snippet}
+</CommonModal>
+
+<CommonModal
+  open={editingList !== null}
+  title={$t('purchase.editList')}
+  onclose={() => (editingList = null)}
+>
+  <div class="form">
+    <div class="field">
+      <label class="label" for="pl-edit-name">{$t('purchase.listName')}</label>
+      <input
+        class="input"
+        id="pl-edit-name"
+        bind:value={editForm.name}
+        placeholder={$t('purchase.listNamePlaceholder')}
+      />
+    </div>
+  </div>
+
+  {#snippet footer()}
+    <button class="button button-ghost" onclick={() => (editingList = null)}>
+      {$t('common.cancel')}
+    </button>
+    <button
+      class="button button-primary"
+      disabled={editSaving || editForm.name.trim() === ''}
+      onclick={submitEdit}
+    >
+      {editSaving ? $t('common.saving') : $t('common.save')}
     </button>
   {/snippet}
 </CommonModal>

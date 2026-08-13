@@ -1274,6 +1274,8 @@
   <section class="settings-card">
     <h2 class="card-title">{$t('settings.localDb')}</h2>
 
+    <div class="notice-banner">{$t('settings.localOnlyNotice')}</div>
+
     <div class="setting-item">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.dbPath')}</span>
@@ -1795,6 +1797,20 @@
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 12px;
+  }
+
+  .notice-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+    margin-bottom: 4px;
+    border: 1px solid color-mix(in oklab, var(--accent-color) 35%, var(--border-color));
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklab, var(--accent-color) 8%, transparent);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.6;
   }
 
   /* 设置项布局 */

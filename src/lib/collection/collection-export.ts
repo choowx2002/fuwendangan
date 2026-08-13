@@ -1,10 +1,11 @@
 /**
- * 缺卡清单导出
- * 生成文本清单并保存为 .txt（Tauri 环境走插件，Web 环境降级为浏览器下载）。
+ * 缺卡清单导出 / 通用 CSV 文本保存
+ * 生成文本清单并保存为 .txt / .csv（Tauri 环境走插件，Web 环境降级为浏览器下载）。
  */
 
 import { isTauri } from '$lib/db/env'
 import { writeTextFile } from '$lib/services/db-file-service'
+import { buildCsv, downloadTextInWeb } from '$lib/csv/csv-utils'
 
 /** 缺卡清单导出行：一个印刷卡牌（编号/名字/稀有度/语言/拥有数/需求量） */
 export interface MissingListTextRow {
@@ -49,52 +50,32 @@ export function buildMissingListText(
 /** 导出文件格式 */
 export type MissingExportFormat = 'txt' | 'csv'
 
-/** CSV 单元格转义（引号包裹含逗号/引号/换行的字段） */
-function csvCell(value: string | number | null): string {
-  const s = value == null ? '' : String(value)
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
 /** 生成缺卡清单 CSV（首行表头，便于导入表格与回导：语言/拥有数列可回读写入收藏） */
 export function buildMissingListCsv(items: MissingListTextRow[]): string {
-  const lines: string[] = ['编号,卡名,稀有度,语言,拥有数,需求量']
-  for (const item of items) {
-    lines.push(
-      [
-        csvCell(item.cardNoExtend),
-        csvCell(item.cardNameCn),
-        csvCell(item.rarity),
-        csvCell(item.language),
-        csvCell(item.ownedQty),
-        csvCell(item.needed),
-      ].join(',')
-    )
-  }
-  return `\uFEFF${lines.join('\n')}`
+  const rows = items.map((item) => [
+    item.cardNoExtend,
+    item.cardNameCn,
+    item.rarity,
+    item.language,
+    item.ownedQty,
+    item.needed,
+  ])
+  return buildCsv(['编号', '卡名', '稀有度', '语言', '拥有数', '需求量'], rows)
 }
 
-function downloadTextInWeb(text: string, name: string, mime: string): void {
-  const blob = new Blob([text], { type: `${mime};charset=utf-8` })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = name
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
-
-/** 保存缺卡清单文件（返回是否成功） */
-export async function saveMissingList(
+/** 通用保存文本/CSV 文件（返回是否成功）。title 为 Tauri 保存对话框标题。 */
+export async function saveTextFile(
   content: string,
   defaultName: string,
-  format: MissingExportFormat = 'txt'
+  options: { format?: MissingExportFormat; title?: string } = {}
 ): Promise<boolean> {
+  const format = options.format ?? 'txt'
+  const isCsv = format === 'csv'
   try {
     if (isTauri) {
       const { save } = await import('@tauri-apps/plugin-dialog')
-      const isCsv = format === 'csv'
       const dest = await save({
-        title: '保存缺卡清单',
+        title: options.title ?? '保存文件',
         defaultPath: defaultName,
         filters: [
           {
@@ -106,10 +87,19 @@ export async function saveMissingList(
       if (!dest) return false
       await writeTextFile(dest, content)
     } else {
-      downloadTextInWeb(content, defaultName, format === 'csv' ? 'text/csv' : 'text/plain')
+      downloadTextInWeb(content, defaultName, isCsv ? 'text/csv' : 'text/plain')
     }
     return true
   } catch {
     return false
   }
+}
+
+/** 保存缺卡清单文件（返回是否成功） */
+export async function saveMissingList(
+  content: string,
+  defaultName: string,
+  format: MissingExportFormat = 'txt'
+): Promise<boolean> {
+  return saveTextFile(content, defaultName, { format, title: '保存缺卡清单' })
 }

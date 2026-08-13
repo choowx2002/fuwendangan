@@ -37,6 +37,17 @@ export async function isLanguageCodeValid(code: string): Promise<boolean> {
   return rows.length > 0
 }
 
+/** 获取全部合法语言码（预设 + 自定义），供导入批量校验（避免逐行查询） */
+export async function getValidLanguageCodes(): Promise<Set<string>> {
+  const db = await getDatabase()
+  const rows = await db.select<{ code: string }[]>(
+    `SELECT code FROM ${TABLES.CUSTOM_LANGUAGES}`
+  )
+  const set = new Set<string>((PRESET_LANGUAGE_CODES as readonly string[]).slice())
+  for (const r of rows) set.add(r.code)
+  return set
+}
+
 /** 添加自定义语言（码格式校验 + 与预设/既有注册查重） */
 export async function addCustomLanguage(code: string, name: string): Promise<void> {
   const db = await getDatabase()

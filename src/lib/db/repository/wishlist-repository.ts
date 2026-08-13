@@ -6,7 +6,7 @@
 
 import { Snowflake } from '@theinternetfolks/snowflake'
 import type { WishlistFinish, WishlistItem, WishlistStatus } from '../types'
-import { getDatabase } from './database'
+import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
 
 const now = () => new Date().toISOString()
@@ -51,6 +51,7 @@ export async function getWishlistItems(
 ): Promise<
   (WishlistItem & {
     card_name_cn: string | null
+    card_sub_cn: string | null
     img_cdn: string | null
     img_lang: string | null
   })[]
@@ -71,7 +72,8 @@ export async function getWishlistItems(
   const rows = await db.select<any[]>(
     `SELECT w.id, w.card_no, w.card_no_extend, w.language_code, w.finish,
        w.qty_wanted, w.priority, w.status, w.note, w.created_at, w.updated_at,
-       cb.card_name_cn AS card_name_cn, rep.img_cdn AS img_cdn, rep.language AS img_lang
+       cb.card_name_cn AS card_name_cn, cb.sub_title_cn AS card_sub_cn,
+       rep.img_cdn AS img_cdn, rep.language AS img_lang
      FROM ${TABLES.WISHLIST_ITEMS} w
      LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = w.card_no
      LEFT JOIN (
@@ -91,6 +93,7 @@ export async function getWishlistItems(
   return rows.map((r) => ({
     ...mapWishlistRow(r),
     card_name_cn: r.card_name_cn ?? null,
+    card_sub_cn: r.card_sub_cn ?? null,
     img_cdn: r.img_cdn ?? null,
     img_lang: r.img_lang ?? null,
   }))
@@ -169,4 +172,127 @@ export async function updateWishlistStatus(id: string, status: WishlistStatus): 
 export async function deleteWishlistItem(id: string): Promise<void> {
   const db = await getDatabase()
   await db.execute(`DELETE FROM ${TABLES.WISHLIST_ITEMS} WHERE id = ?`, [id])
+}
+
+/**
+ * 标记心愿单条目为已拥有，并写回收藏库存。
+ * 写回采用 max 语义（幂等）：仅确保至少拥有 qty_wanted 张，重复标记不会叠加。
+ * 语言偏好 '*' → EN；finish 决定普卡/闪卡维度。
+ * 时序：先写收藏、成功后再置 status='acquired'，避免「已标记但收藏未写」的部分失败态；
+ * 写回失败时不标记，可直接重试（幂等，不重复）。
+ */
+export async function markWishlistAcquired(
+  id: string,
+  opts?: { qty?: number; cardNoExtend?: string }
+): Promise<{ written: boolean }> {
+  const db = await getDatabase()
+  const rows = await db.select<
+    {
+      id: string
+      card_no: string
+      card_no_extend: string
+      language_code: string
+      finish: string
+      qty_wanted: number
+    }[]
+  >(
+    `SELECT id, card_no, card_no_extend, language_code, finish, qty_wanted
+     FROM ${TABLES.WISHLIST_ITEMS} WHERE id = ?`,
+    [id]
+  )
+  const item = rows[0]
+  if (!item) throw new Error('心愿单条目不存在')
+
+  const { writebackOwned } = await import('./collection-repository')
+  const written = await writebackOwned({
+    cardNo: item.card_no,
+    cardNoExtend: opts?.cardNoExtend ?? item.card_no_extend,
+    language: item.language_code,
+    finish: item.finish,
+    qty: opts?.qty ?? item.qty_wanted,
+  })
+
+  await db.execute(
+    `UPDATE ${TABLES.WISHLIST_ITEMS} SET status = 'acquired', updated_at = ? WHERE id = ?`,
+    [now(), id]
+  )
+  return { written: written > 0 }
+}
+
+// ==================== CSV 导入 ====================
+
+export interface WishlistImportRow {
+  cardNoExtend: string
+  languageCode?: string
+  finish?: WishlistFinish
+  qtyWanted?: number
+  priority?: number
+  status?: WishlistStatus
+  note?: string | null
+}
+
+export interface WishlistImportResult {
+  applied: number
+  created: number
+  updated: number
+  skipped: string[]
+}
+
+/**
+ * 心愿单 CSV 回导（事务化，幂等）：
+ * - 唯一键：card_no_extend × language_code × finish（与 upsertWishlistItem 一致）；
+ * - 已存在更新数量/优先级/状态/备注，不存在新建；重复导入不产生重复条目。
+ */
+export async function importWishlistCsv(rows: WishlistImportRow[]): Promise<WishlistImportResult> {
+  return withTransaction(async () => {
+    const db = await getDatabase()
+
+    const extendsList = [...new Set(rows.map((r) => r.cardNoExtend))]
+    const cardNoByExtend = new Map<string, string>()
+    if (extendsList.length > 0) {
+      const sql = `SELECT DISTINCT cb.card_no AS card_no, p.card_no_extend AS card_no_extend
+         FROM ${TABLES.CARD_PRINTS} p
+         JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+         WHERE p.card_no_extend IN (${extendsList.map(() => '?').join(',')})`
+      const found = await db.select<{ card_no: string; card_no_extend: string }[]>(sql, extendsList)
+      for (const f of found) cardNoByExtend.set(f.card_no_extend, f.card_no)
+    }
+
+    let applied = 0
+    let created = 0
+    let updated = 0
+    const skipped: string[] = []
+
+    for (const r of rows) {
+      const cardNo = cardNoByExtend.get(r.cardNoExtend)
+      if (!cardNo) {
+        skipped.push(r.cardNoExtend)
+        continue
+      }
+      const languageCode = r.languageCode ?? '*'
+      const finish = r.finish ?? 'any'
+      const existing = await db.select<{ id: string }[]>(
+        `SELECT id FROM ${TABLES.WISHLIST_ITEMS}
+         WHERE card_no = ? AND card_no_extend = ? AND language_code = ? AND finish = ?`,
+        [cardNo, r.cardNoExtend, languageCode, finish]
+      )
+
+      await upsertWishlistItem({
+        cardNo,
+        cardNoExtend: r.cardNoExtend,
+        languageCode,
+        finish,
+        qtyWanted: r.qtyWanted ?? 1,
+        priority: r.priority ?? 3,
+        status: r.status ?? 'active',
+        note: r.note ?? null,
+      })
+
+      if (existing.length > 0) updated += 1
+      else created += 1
+      applied += 1
+    }
+
+    return { applied, created, updated, skipped }
+  })
 }

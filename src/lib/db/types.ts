@@ -353,16 +353,15 @@ export interface CardLoan {
 
 export type PurchaseListStatus = 'open' | 'completed' | 'archived'
 
-/** 购买清单条目状态 */
-export type PurchaseListItemStatus = 'pending' | 'ordered' | 'bought' | 'skipped'
+/** 购买清单条目状态：pending=待购买（to_buy>0）/ met=已满足（to_buy=0）/ skipped=跳过 */
+export type PurchaseListItemStatus = 'pending' | 'met' | 'skipped'
 
-/** 购买清单头：deck_version_id 冻结生成时的卡组快照；match_mode 记录检查模式 */
+/** 购买清单头：deck_version_id 冻结生成时的卡组快照 */
 export interface PurchaseList {
   id: string
   name: string
   deck_id: string | null
   deck_version_id: string | null
-  match_mode: OwnershipMatchMode
   status: PurchaseListStatus
   created_at: string | null
   updated_at: string | null
@@ -380,6 +379,9 @@ export interface PurchaseListItem {
   qty_required: number
   qty_owned: number
   qty_to_buy: number
+  qty_ordered: number
+  qty_borrowed: number
+  qty_bought: number
   status: PurchaseListItemStatus
   created_at: string | null
   updated_at: string | null

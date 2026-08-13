@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Users, RotateCcw, Undo2, AlertTriangle } from '@lucide/svelte'
+  import { Plus, Trash2, Users, Check, Undo2, TriangleAlert } from '@lucide/svelte'
   import {
     getLoans,
     createLoan,
@@ -18,6 +18,7 @@
     type LoanStatus,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import VariantPicker from '$lib/components/collection/VariantPicker.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -69,7 +70,10 @@
     return d.toISOString().slice(0, 10)
   }
 
-  function statusLabel(status: LoanStatus): string {
+  function statusLabel(status: LoanStatus, direction: LoanDirection): string {
+    if (direction === 'in' && (status === 'active' || status === 'overdue')) {
+      return get(t)(`loans.status.in.${status}`)
+    }
     return get(t)(`loans.status.${status}`)
   }
 
@@ -154,6 +158,17 @@
   }
 
   async function remove(loan: CardLoanWithName) {
+    const confirmed = await confirmAction(
+      get(t)('loans.deleteConfirm', {
+        values: { card: loan.card_name_cn || loan.card_no_extend },
+      }),
+      {
+        title: get(t)('loans.title'),
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!confirmed) return
     await deleteLoan(loan.id)
     showToast(get(t)('loans.deleted'), 'info')
     void load()
@@ -169,6 +184,15 @@
   }
 
   async function removeContact(contact: Contact) {
+    const confirmed = await confirmAction(
+      get(t)('loans.deleteContactConfirm', { values: { name: contact.name } }),
+      {
+        title: get(t)('loans.contacts'),
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!confirmed) return
     await deleteContact(contact.id)
     contacts = await getContacts()
     void load()
@@ -204,10 +228,10 @@
 
 <div class="page">
   <div class="tab-row">
-    <button class="tab" class:active={direction === 'out'} onclick={() => (direction = 'out')}>
+    <button class="tab" class:active={direction === 'out'} onclick={() => { direction = 'out'; void load() }}>
       {$t('loans.tab.out')}
     </button>
-    <button class="tab" class:active={direction === 'in'} onclick={() => (direction = 'in')}>
+    <button class="tab" class:active={direction === 'in'} onclick={() => { direction = 'in'; void load() }}>
       {$t('loans.tab.in')}
     </button>
   </div>
@@ -234,7 +258,7 @@
             <div class="row-title">
               <span class="row-name">{loan.card_name_cn || loan.card_no}</span>
               <span class="row-extend">{loan.card_no_extend}</span>
-              <span class="badge badge-{loan.status}">{statusLabel(loan.status)}</span>
+              <span class="badge badge-{loan.status}">{statusLabel(loan.status, loan.direction)}</span>
             </div>
             <div class="row-meta">
               <span class="meta-item">
@@ -273,14 +297,14 @@
                 title={$t('loans.return')}
                 onclick={() => setStatus(loan, 'returned')}
               >
-                <RotateCcw size={16} />
+                <Check size={16} />
               </button>
               <button
                 class="icon-btn"
                 title={$t('loans.markLost')}
                 onclick={() => setStatus(loan, 'lost')}
               >
-                <AlertTriangle size={16} />
+                <TriangleAlert size={16} />
               </button>
               <button
                 class="icon-btn"
@@ -311,13 +335,6 @@
     </div>
   {/if}
 </div>
-
-<VariantPicker
-  open={showPicker}
-  ownedOnly={direction === 'out'}
-  onClose={() => (showPicker = false)}
-  onSelect={pickCard}
-/>
 
 <CommonModal
   open={showAdd}
@@ -406,6 +423,14 @@
   {/snippet}
 </CommonModal>
 
+
+<VariantPicker
+  open={showPicker}
+  ownedOnly={direction === 'out'}
+  onClose={() => (showPicker = false)}
+  onSelect={pickCard}
+/>
+
 <CommonModal
   open={showContacts}
   title={$t('loans.contacts')}
@@ -483,20 +508,26 @@
   }
 
   .list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     gap: 8px;
     padding: 12px 16px 24px;
+  }
+    @media (max-width: 767.99px) {
+    .list {
+      display: flex;
+      flex-direction: column;
+    }
   }
 
   .row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     padding: 12px 14px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
+    flex-wrap: wrap;
     background: var(--bg-secondary);
   }
 
@@ -580,7 +611,8 @@
   .row-actions {
     display: flex;
     gap: 4px;
-    flex-shrink: 0;
+    flex: 1 1 100%;
+    justify-content: end;
   }
 
   .icon-btn {

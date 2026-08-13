@@ -22,13 +22,14 @@ import type {
   RecentCollectionCard,
   SeriesStats,
 } from '../types'
-import { getDatabase } from './database'
+import { getDatabase, withTransaction } from './database'
 import { mapRowToPrint } from '../helper'
 import { TABLES } from '../config/constants'
 import { getAllSeries } from './series-repository'
 import { getCardById } from './card-repository'
 import { normalizePresetCode } from '../config/languages'
-import { isLanguageCodeValid } from './language-repository'
+import { getValidLanguageCodes, isLanguageCodeValid } from './language-repository'
+import { combineCardName } from '$lib/collection/collection-utils'
 import { resolveStatus, shouldKeepLangRow, shouldDeleteVariant } from '../config/collection-rules'
 import { getCompletionMode } from '../service/completion-modes'
 import { getActiveLoanQty } from './loan-repository'
@@ -1084,6 +1085,134 @@ export async function bulkIncrement(items: CollectionItem[]): Promise<number> {
   return updated
 }
 
+/**
+ * 写回收藏（max 语义，幂等）：确保某卡牌至少拥有 qty 张指定版本。
+ * 用于心愿单「标记已拥有」写回——重复标记/来回切换不会重复叠加数量。
+ * 语言偏好 '*' → EN，自定义语言未注册时回退 EN；finish 决定普卡/闪卡维度（any 按普卡）。
+ * 返回本次实际发生写入的卡牌数（0 = 已有足够数量，未变动）。
+ */
+export async function writebackOwned(input: {
+  cardNo: string
+  cardNoExtend?: string
+  language?: string
+  finish?: string
+  qty?: number
+}): Promise<number> {
+  const { cardNo } = input
+  const qty = input.qty ?? 1
+  const finish = input.finish ?? 'any'
+  const cardNoExtend = await resolveVariantForWriteback(cardNo, input.cardNoExtend)
+
+  let code = normalizePresetCode(input.language && input.language !== '*' ? input.language : 'EN')
+  if (!code || !(await isLanguageCodeValid(code))) code = 'EN'
+
+  const rows = await loadExistingLangs([{ cardNo, cardNoExtend }])
+  const existing = rows.get(`${cardNo}|${cardNoExtend}`) ?? []
+  const ownedRow = existing.find(
+    (r) => r.status === 'owned' && (r.normal_qty > 0 || r.foil_qty > 0)
+  )
+  const target = ownedRow ?? existing.find((r) => r.language_code === code)
+  const lang = target?.language_code ?? code
+
+  const curNormal = target?.language_code === lang ? (target.normal_qty ?? 0) : 0
+  const curFoil = target?.language_code === lang ? (target.foil_qty ?? 0) : 0
+  const isFoil = finish === 'foil'
+  const normal = isFoil ? curNormal : Math.max(curNormal, qty)
+  const foil = isFoil ? Math.max(curFoil, qty) : curFoil
+  if (ownedRow && normal === curNormal && foil === curFoil) return 0
+
+  const result = await _applyLangQtyWrite(cardNo, cardNoExtend, lang, { normal, foil })
+  await logCollectionHistory('upsert', 'wishlist', [
+    toHistoryItem(cardNo, cardNoExtend, lang, result),
+  ])
+  void captureCollectionSnapshot('auto')
+  return 1
+}
+
+/** 某卡牌当前收藏的 owned 总数（各语言行合计，foil 并入）。无记录时返回 0。 */
+export async function getCardOwnedQty(cardNo: string, cardNoExtend: string): Promise<number> {
+  const db = await getDatabase()
+  const rows = await db.select<{ n: number }[]>(
+    `SELECT COALESCE(SUM(cl.normal_qty + cl.foil_qty), 0) AS n
+     FROM ${TABLES.COLLECTION} col
+     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+     WHERE col.card_no = ? AND col.card_no_extend = ? AND cl.status = 'owned'`,
+    [cardNo, cardNoExtend]
+  )
+  return rows[0]?.n ?? 0
+}
+
+/**
+ * 累加写回收藏：给某卡牌指定语言行的普卡数量 +qty（真实购入数量）。
+ * 用于购买清单「已购买」写回。语言偏好 '*' → SC，自定义语言未注册时回退 SC。
+ * 空印刷号（卡牌合并）自动解析为默认印刷。返回本次累加的数量。
+ */
+export async function incrementOwned(input: {
+  cardNo: string
+  cardNoExtend?: string
+  language?: string
+  qty: number
+}): Promise<number> {
+  const { cardNo } = input
+  const qty = input.qty ?? 0
+  if (qty <= 0) return 0
+  const cardNoExtend = await resolveVariantForWriteback(cardNo, input.cardNoExtend)
+
+  let code = normalizePresetCode(input.language && input.language !== '*' ? input.language : 'SC')
+  if (!code || !(await isLanguageCodeValid(code))) code = 'SC'
+
+  const rows = await loadExistingLangs([{ cardNo, cardNoExtend }])
+  const existing = rows.get(`${cardNo}|${cardNoExtend}`) ?? []
+  const pick = existing.find((r) => r.language_code === code)
+  const result = await _applyLangQtyWrite(cardNo, cardNoExtend, code, {
+    normal: (pick?.normal_qty ?? 0) + qty,
+    foil: pick?.foil_qty ?? 0,
+  })
+  await logCollectionHistory('upsert', 'purchase_list', [
+    toHistoryItem(cardNo, cardNoExtend, code, result),
+  ])
+  void captureCollectionSnapshot('auto')
+  return qty
+}
+
+/**
+ * 解析卡牌的代表印刷 card_no_extend（非 promo → SC → is_default → print_order 升序）。
+ * 用于「按卡牌合并」条目（card_no_extend=''）写回时落到具体印刷；无可用印刷返回 null。
+ */
+export async function resolveDefaultVariant(
+  cardNo: string
+): Promise<{ card_no_extend: string } | null> {
+  const db = await getDatabase()
+  const rows = await db.select<{ card_no_extend: string }[]>(
+    `SELECT p.card_no_extend AS card_no_extend
+     FROM ${TABLES.CARD_PRINTS} p
+     JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+     WHERE cb.card_no = ?
+     ORDER BY CASE WHEN COALESCE(p.is_promo, 0) = 1 THEN 1 ELSE 0 END,
+              CASE WHEN p.language = 'SC' THEN 0 WHEN COALESCE(p.is_default, 0) = 1 THEN 1 ELSE 2 END,
+              COALESCE(p.print_order, 0),
+              p.card_no_extend
+     LIMIT 1`,
+    [cardNo]
+  )
+  return rows[0] ?? null
+}
+
+/** 写回收藏前解析空印刷号：card_no_extend 为空时解析为代表印刷，解析失败抛错。 */
+async function resolveVariantForWriteback(
+  cardNo: string,
+  cardNoExtend: string | undefined
+): Promise<string> {
+  let extend = cardNoExtend ?? ''
+  if (!extend) {
+    const resolved = await resolveDefaultVariant(cardNo)
+    if (!resolved) throw new Error(`该卡（${cardNo}）无可用印刷，无法写入收藏`)
+    extend = resolved.card_no_extend
+  }
+  await assertVariantExists(cardNo, extend)
+  return extend
+}
+
 /** 批量删除收藏记录（卡牌行级联删除语言行），返回删除数。整批合并为一条 history 记录。 */
 export async function bulkDeleteCollection(items: CollectionItem[]): Promise<number> {
   const db = await getDatabase()
@@ -1331,6 +1460,12 @@ export interface ImportOwnedResult {
  * 把缺卡清单 CSV 的拥有数列写回收藏。
  * @param mode 'overwrite' 精确设为 CSV 值；'add' 在现有数量上累加（缺省语言行按 0 起步）。
  * 需求数列不参与导入（需求数仅存于缺卡页临时状态）。
+ *
+ * 数量语义（P0 修复）：
+ * - CSV「拥有数」视为该语言下的总拥有数（normal + foil）。
+ * - overwrite：normal = max(0, 拥有数 - 既有闪卡)，保证总拥有数精确回环、不把闪卡误归为普卡；
+ * - add：在既有 normal 上累加（闪卡不变）。
+ * 语言由调用方保证非空（解析阶段已把空语言按错误跳过），此处再做合法性校验。
  */
 export async function importOwnedCounts(
   rows: ImportOwnedRow[],
@@ -1338,19 +1473,20 @@ export async function importOwnedCounts(
 ): Promise<ImportOwnedResult> {
   const db = await getDatabase()
 
-  // 语言码合法性预检，非法者记入 skipped
+  // 语言码合法性预检（一次性批量读取预设+自定义语言，避免逐行查询），非法者记入 skipped
+  const validSet = await getValidLanguageCodes()
   const validRows: Array<{ code: string; cardNoExtend: string; ownedQty: number }> = []
   const skippedSet = new Set<string>()
   for (const r of rows) {
     const code = normalizePresetCode(r.language)
-    if (!code || !(await isLanguageCodeValid(code))) {
+    if (!code || !validSet.has(code)) {
       skippedSet.add(`${r.cardNoExtend}#${r.language}`)
       continue
     }
     validRows.push({ code, cardNoExtend: r.cardNoExtend, ownedQty: r.ownedQty })
   }
 
-  // 反查 card_no_extend -> card_no
+  // 反查 card_no_extend -> card_no（批量）
   const extendsList = [...new Set(validRows.map((v) => v.cardNoExtend))]
   const cardNoByExtend = new Map<string, string>()
   if (extendsList.length > 0) {
@@ -1391,26 +1527,171 @@ export async function importOwnedCounts(
 
   let applied = 0
   const historyItems: HistoryItemInput[] = []
-  for (const v of validRows) {
-    const cardNo = cardNoByExtend.get(v.cardNoExtend)
-    if (!cardNo) {
-      skippedSet.add(`${v.cardNoExtend}#${v.code}`)
-      continue
+  const skipped: string[] = []
+
+  await withTransaction(async () => {
+    for (const v of validRows) {
+      const cardNo = cardNoByExtend.get(v.cardNoExtend)
+      if (!cardNo) {
+        skipped.push(`${v.cardNoExtend}#${v.code}`)
+        continue
+      }
+      const prev = existing.get(`${v.cardNoExtend}|${v.code}`)
+      let normal: number
+      if (mode === 'overwrite') {
+        // 拥有数为总拥有数：normal 取总减闪卡，避免把闪卡误归为普卡、保证总数回环
+        normal = Math.max(0, v.ownedQty - (prev?.foil_qty ?? 0))
+      } else {
+        normal = (prev?.normal_qty ?? 0) + v.ownedQty
+      }
+      const result = await _applyLangQtyWrite(cardNo, v.cardNoExtend, v.code, {
+        normal,
+        foil: prev?.foil_qty ?? 0,
+      })
+      historyItems.push(toHistoryItem(cardNo, v.cardNoExtend, v.code, result))
+      applied += 1
     }
-    const prev = existing.get(`${v.cardNoExtend}|${v.code}`)
-    const normal = mode === 'overwrite' ? v.ownedQty : (prev?.normal_qty ?? 0) + v.ownedQty
-    const result = await _applyLangQtyWrite(cardNo, v.cardNoExtend, v.code, {
-      normal,
-      foil: prev?.foil_qty ?? 0,
-    })
-    historyItems.push(toHistoryItem(cardNo, v.cardNoExtend, v.code, result))
-    applied += 1
-  }
+  })
 
   if (historyItems.length > 0) {
     await logCollectionHistory('csv_import', 'import', historyItems, `缺卡清单导入 × ${applied}`)
     void captureCollectionSnapshot('auto')
   }
 
-  return { applied, skipped: [...skippedSet] }
+  return { applied, skipped: [...skippedSet, ...skipped] }
+}
+
+// ==================== 完整收藏 CSV 导入导出 ====================
+
+/** 完整收藏导出：一行 = 一个印刷 × 语言 */
+export interface FullCollectionExportRow {
+  cardNoExtend: string
+  cardNameCn: string | null
+  language: string
+  normalQty: number
+  foilQty: number
+  status: CollectionStatus
+}
+
+/** 读取全部收藏明细（含普卡/闪卡/状态，语言维不合并；卡名含副标题） */
+export async function getCollectionFullRows(): Promise<FullCollectionExportRow[]> {
+  const db = await getDatabase()
+  const rows = await db.select<any[]>(
+    `SELECT col.card_no, col.card_no_extend, cb.card_name_cn AS card_name_cn,
+       cb.sub_title_cn AS sub_title_cn,
+       cl.language_code, cl.status, cl.normal_qty, cl.foil_qty
+     FROM ${TABLES.COLLECTION_LANGS} cl
+     JOIN ${TABLES.COLLECTION} col ON col.id = cl.collection_id
+     LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = col.card_no
+     ORDER BY col.card_no_extend COLLATE NOCASE ASC, cl.language_code ASC`
+  )
+  return rows.map((r) => ({
+    cardNoExtend: r.card_no_extend,
+    cardNameCn: combineCardName(r.card_name_cn, r.sub_title_cn),
+    language: r.language_code,
+    normalQty: r.normal_qty ?? 0,
+    foilQty: r.foil_qty ?? 0,
+    status: (r.status as CollectionStatus) ?? 'owned',
+  }))
+}
+
+export interface FullCollectionImportRow {
+  cardNoExtend: string
+  language: string
+  normalQty: number
+  foilQty: number
+  status?: CollectionStatus
+}
+
+export interface FullCollectionImportResult {
+  applied: number
+  updated: number
+  created: number
+  skipped: string[]
+}
+
+/**
+ * 完整收藏 CSV 回导：按 card_no_extend × language 幂等 upsert（事务化）。
+ * - 已存在语言行 → 更新数量/状态；不存在 → 新建；
+ * - 重复导入同一文件不产生脏数据（唯一键天然幂等）；
+ * - 中途失败整体回滚。
+ */
+export async function importFullCollection(
+  rows: FullCollectionImportRow[]
+): Promise<FullCollectionImportResult> {
+  const db = await getDatabase()
+  const validSet = await getValidLanguageCodes()
+
+  const validRows: Array<{
+    code: string
+    cardNoExtend: string
+    normalQty: number
+    foilQty: number
+    status?: CollectionStatus
+  }> = []
+  const skippedSet = new Set<string>()
+  for (const r of rows) {
+    const code = normalizePresetCode(r.language)
+    if (!code || !validSet.has(code)) {
+      skippedSet.add(`${r.cardNoExtend}#${r.language}`)
+      continue
+    }
+    validRows.push({
+      code,
+      cardNoExtend: r.cardNoExtend,
+      normalQty: r.normalQty,
+      foilQty: r.foilQty,
+      status: r.status,
+    })
+  }
+
+  const extendsList = [...new Set(validRows.map((v) => v.cardNoExtend))]
+  const cardNoByExtend = new Map<string, string>()
+  if (extendsList.length > 0) {
+    const sql = `SELECT DISTINCT cb.card_no AS card_no, p.card_no_extend AS card_no_extend
+       FROM ${TABLES.CARD_PRINTS} p
+       JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
+       WHERE p.card_no_extend IN (${extendsList.map(() => '?').join(',')})`
+    const found = await db.select<{ card_no: string; card_no_extend: string }[]>(sql, extendsList)
+    for (const f of found) cardNoByExtend.set(f.card_no_extend, f.card_no)
+  }
+
+  let applied = 0
+  let updated = 0
+  let created = 0
+  const skipped: string[] = []
+  const historyItems: HistoryItemInput[] = []
+
+  await withTransaction(async () => {
+    for (const v of validRows) {
+      const cardNo = cardNoByExtend.get(v.cardNoExtend)
+      if (!cardNo) {
+        skipped.push(`${v.cardNoExtend}#${v.code}`)
+        continue
+      }
+      const result = await _applyLangQtyWrite(
+        cardNo,
+        v.cardNoExtend,
+        v.code,
+        { normal: v.normalQty, foil: v.foilQty },
+        v.status
+      )
+      historyItems.push(toHistoryItem(cardNo, v.cardNoExtend, v.code, result))
+      if (result.action === 'add') created += 1
+      else updated += 1
+      applied += 1
+    }
+  })
+
+  if (historyItems.length > 0) {
+    await logCollectionHistory(
+      'csv_import',
+      'full_collection',
+      historyItems,
+      `完整收藏导入 × ${applied}`
+    )
+    void captureCollectionSnapshot('auto')
+  }
+
+  return { applied, updated, created, skipped: [...skippedSet, ...skipped] }
 }

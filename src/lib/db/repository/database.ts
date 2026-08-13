@@ -29,11 +29,53 @@ function serializeDatabase(db: Database): void {
   const rawSelect = db.select.bind(db)
   const rawExecute = db.execute.bind(db)
   const rawClose = db.close.bind(db)
+  // 保留原始方法引用，供 withTransaction 在单个串行槽内直接调用（避免经队列重入造成死锁）
+  ;(db as any).__rawSelect = rawSelect
+  ;(db as any).__rawExecute = rawExecute
+  ;(db as any).__rawClose = rawClose
   ;(db as any).select = ((query: string, bindValues?: unknown[]) =>
     serialized(() => rawSelect(query, bindValues))) as typeof db.select
   ;(db as any).execute = ((query: string, bindValues?: unknown[]) =>
     serialized(() => rawExecute(query, bindValues))) as typeof db.execute
   ;(db as any).close = ((name?: string) => serialized(() => rawClose(name))) as typeof db.close
+}
+
+interface RawDb {
+  __rawSelect: (query: string, bindValues?: unknown[]) => Promise<unknown>
+  __rawExecute: (query: string, bindValues?: unknown[]) => Promise<unknown>
+  select: (query: string, bindValues?: unknown[]) => Promise<unknown>
+  execute: (query: string, bindValues?: unknown[]) => Promise<unknown>
+}
+
+/**
+ * 在单个串行槽内执行跨语句事务（BEGIN/COMMIT/ROLLBACK）。
+ * 队列保证任意时刻只有一个 db 操作在跑（池子实际只开 1 个连接），
+ * 因此在槽内把 select/execute 临时还原为原始方法，事务内所有语句落在同一连接上，
+ * 且不会被其他操作插入（其他调用都在队列里等待当前槽完成），实现真正的原子性。
+ * 事务执行期间 fn 内的 db 访问（含各仓储内部 getDatabase()）走原始方法、不重入队列，避免死锁。
+ */
+export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  const db = await getDatabase()
+  return serialized(async () => {
+    const raw = db as unknown as RawDb
+    const { select, execute } = raw
+    raw.select = raw.__rawSelect
+    raw.execute = raw.__rawExecute
+    try {
+      await raw.__rawExecute('BEGIN')
+      try {
+        const result = await fn()
+        await raw.__rawExecute('COMMIT')
+        return result
+      } catch (err) {
+        await raw.__rawExecute('ROLLBACK').catch(() => {})
+        throw err
+      }
+    } finally {
+      raw.select = select
+      raw.execute = execute
+    }
+  })
 }
 
 /**
@@ -123,7 +165,11 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'tags', 'TEXT')
   await ensureColumn(db, TABLES.LOCKERS, 'icon', 'TEXT')
   await ensureColumn(db, TABLES.LOCKERS, 'tags', 'TEXT')
-  await ensureColumn(db, TABLES.PURCHASE_LISTS, 'match_mode', 'TEXT')
+  await ensureColumn(db, TABLES.PURCHASE_LIST_ITEMS, 'qty_ordered', 'INTEGER NOT NULL DEFAULT 0')
+  await ensureColumn(db, TABLES.PURCHASE_LIST_ITEMS, 'qty_borrowed', 'INTEGER NOT NULL DEFAULT 0')
+  await ensureColumn(db, TABLES.PURCHASE_LIST_ITEMS, 'qty_bought', 'INTEGER NOT NULL DEFAULT 0')
+  // 借入对账归属：card_loans 可选关联购买清单条目，使对账按条目隔离（多清单互不干扰）
+  await ensureColumn(db, TABLES.CARD_LOANS, 'purchase_item_id', 'TEXT')
 
   // 一次性语义迁移：仅当 version 表确实存在遗留行（name 非同步表名或为 NULL）时才写库，
   // 迁移完成后每次加载退化为只读 COUNT，不再拿写锁。

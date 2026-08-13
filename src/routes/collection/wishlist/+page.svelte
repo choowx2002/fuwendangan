@@ -1,18 +1,33 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Check, Archive, Heart } from '@lucide/svelte'
+  import { Plus, Trash2, Check, Archive, Heart, Upload, Download } from '@lucide/svelte'
   import {
     getWishlistItems,
     upsertWishlistItem,
     updateWishlistStatus,
     deleteWishlistItem,
+    markWishlistAcquired,
+    getCardOwnedQty,
+    listCardVariants,
     PRESET_LANGUAGE_CODES,
     printCacheName,
+    importWishlistCsv,
+    isTauri,
     type WishlistStatus,
+    type WishlistImportRow,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
+  import { saveTextFile } from '$lib/collection/collection-export'
+  import { combineCardName } from '$lib/collection/collection-utils'
+  import {
+    buildWishlistCsv,
+    buildWishlistCsvTemplate,
+    parseWishlistCsv,
+  } from '$lib/collection/wishlist-csv'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import WritebackModal from '$lib/components/collection/WritebackModal.svelte'
   import VariantPicker from '$lib/components/collection/VariantPicker.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
@@ -43,6 +58,14 @@
   })
 
   const filtered = $derived(filter === 'all' ? items : items.filter((i) => i.status === filter))
+
+  let showImport = $state(false)
+  let importing = $state(false)
+  let importRows = $state<{
+    rows: WishlistImportRow[]
+    errors: string[]
+    fileName: string
+  } | null>(null)
 
   function finishLabel(finish: string): string {
     if (finish === 'normal') return get(t)('wishlist.finish.normal')
@@ -105,14 +128,200 @@
   }
 
   async function setStatus(item: WishlistRow, status: WishlistStatus) {
+    if (status === 'acquired') {
+      await openAcquire(item)
+      return
+    }
     await updateWishlistStatus(item.id, status)
     void load()
   }
 
+  let showWriteback = $state(false)
+  let writebackTarget = $state<WishlistRow | null>(null)
+  let writebackVariants = $state<
+    { cardNoExtend: string; rarityName: string | null; extendRarityName: string | null; isCustom: boolean }[]
+  >([])
+  let writebackOwnedQty = $state(0)
+
+  async function openAcquire(item: WishlistRow) {
+    try {
+      const [variants, ownedQty] = await Promise.all([
+        listCardVariants(item.card_no),
+        getCardOwnedQty(item.card_no, item.card_no_extend),
+      ])
+      const seen = new Set<string>()
+      writebackVariants = variants
+        .filter((p) => {
+          if (seen.has(p.card_no_extend)) return false
+          seen.add(p.card_no_extend)
+          return true
+        })
+        .map((p) => ({
+          cardNoExtend: p.card_no_extend,
+          rarityName: p.rarity_name,
+          extendRarityName: p.extend_rarity_name,
+          isCustom: !!p.is_custom,
+        }))
+      writebackOwnedQty = ownedQty
+    } catch {
+      writebackVariants = []
+      writebackOwnedQty = 0
+    }
+    writebackTarget = item
+    showWriteback = true
+  }
+
+  async function onWritebackConfirm(payload: { qty: number; cardNoExtend: string }) {
+    const item = writebackTarget
+    if (!item) return
+    showWriteback = false
+    writebackTarget = null
+    try {
+      const { written } = await markWishlistAcquired(item.id, {
+        qty: payload.qty,
+        cardNoExtend: payload.cardNoExtend,
+      })
+      showToast(
+        get(t)(written ? 'wishlist.acquiredWithWriteback' : 'wishlist.acquiredAlreadyOwned'),
+        written ? 'success' : 'info'
+      )
+    } catch (err) {
+      console.error('[心愿单] 标记已拥有写回收藏失败:', err)
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    }
+    void load()
+  }
+
   async function remove(item: WishlistRow) {
+    const confirmed = await confirmAction(
+      get(t)('wishlist.deleteConfirm', {
+        values: { card: item.card_name_cn || item.card_no_extend },
+      }),
+      {
+        title: get(t)('wishlist.title'),
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!confirmed) return
     await deleteWishlistItem(item.id)
     showToast(get(t)('wishlist.deleted'), 'info')
     void load()
+  }
+
+  async function exportWishlistCsv() {
+    try {
+      const all = await getWishlistItems()
+      if (all.length === 0) {
+        showToast(get(t)('wishlist.emptyTitle'), 'info')
+        return
+      }
+      const rows = all.map((i) => ({
+        cardNoExtend: i.card_no_extend,
+        cardNameCn: combineCardName(i.card_name_cn, i.card_sub_cn),
+        languageCode: i.language_code,
+        finish: i.finish,
+        qtyWanted: i.qty_wanted,
+        priority: i.priority,
+        status: i.status,
+        note: i.note,
+      }))
+      const content = buildWishlistCsv(rows)
+      const stamp = new Date().toISOString().slice(0, 10)
+      const ok = await saveTextFile(content, `心愿单-${stamp}.csv`, {
+        format: 'csv',
+        title: get(t)('wishlist.exportTitle'),
+      })
+      if (ok) {
+        showToast(get(t)('wishlist.exported', { values: { count: rows.length } }), 'success')
+      } else {
+        showToast(get(t)('collection.saveCancelled'), 'info')
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    }
+  }
+
+  async function pickWishlistImport() {
+    try {
+      if (isTauri) {
+        const { open } = await import('@tauri-apps/plugin-dialog')
+        const { readTextFile } = await import('$lib/services/db-file-service')
+        const src = await open({
+          title: get(t)('wishlist.importCsvTitle'),
+          multiple: false,
+          filters: [{ name: 'CSV 文件', extensions: ['csv'] }],
+        })
+        if (!src) return
+        const content = await readTextFile(String(src))
+        const fileName = String(src).split(/[\\/]/).pop() ?? String(src)
+        reviewWishlistImport(fileName, content)
+      } else {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = '.csv,text/csv'
+        input.onchange = () => {
+          const file = input.files?.[0]
+          if (!file) return
+          const reader = new FileReader()
+          reader.onload = () => reviewWishlistImport(file.name, String(reader.result ?? ''))
+          reader.readAsText(file)
+        }
+        input.click()
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    }
+  }
+
+  function reviewWishlistImport(fileName: string, content: string) {
+    const parsed = parseWishlistCsv(content)
+    importRows = {
+      rows: parsed.rows,
+      errors: parsed.errors.map((e) =>
+        get(t)('collection.csvLineError', { values: { line: e.line, reason: e.reason } })
+      ),
+      fileName,
+    }
+    showImport = true
+  }
+
+  async function confirmWishlistImport() {
+    if (!importRows) return
+    importing = true
+    try {
+      const result = await importWishlistCsv(importRows.rows)
+      const skippedText = result.skipped.length
+        ? get(t)('collection.fullCsvImportSkipped', { values: { count: result.skipped.length } })
+        : ''
+      showToast(
+        get(t)('wishlist.imported', {
+          values: {
+            count: result.applied,
+            created: result.created,
+            updated: result.updated,
+            skipped: skippedText,
+          },
+        }),
+        'success'
+      )
+      showImport = false
+      importRows = null
+      void load()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
+    } finally {
+      importing = false
+    }
+  }
+
+  async function downloadWishlistTemplate() {
+    const ok = await saveTextFile(
+      buildWishlistCsvTemplate(),
+      '心愿单导入模板.csv',
+      { format: 'csv', title: get(t)('collection.downloadTemplate') }
+    )
+    if (!ok) showToast(get(t)('collection.saveCancelled'), 'info')
   }
 
   onMount(() => {
@@ -124,6 +333,20 @@
       title: $t('wishlist.title'),
       onBack: () => void goto('/collection'),
       actions: [
+        {
+          key: 'export',
+          label: $t('wishlist.exportCsv'),
+          icon: Upload,
+          title: $t('wishlist.exportTitle'),
+          onClick: () => void exportWishlistCsv(),
+        },
+        {
+          key: 'import',
+          label: $t('wishlist.importCsv'),
+          icon: Download,
+          title: $t('wishlist.importCsvTitle'),
+          onClick: pickWishlistImport,
+        },
         {
           key: 'add',
           label: $t('wishlist.add'),
@@ -189,7 +412,7 @@
               <button
                 class="icon-btn"
                 title={$t('wishlist.markAcquired')}
-                onclick={() => setStatus(item, 'acquired')}
+                onclick={() => openAcquire(item)}
               >
                 <Check size={16} />
               </button>
@@ -224,6 +447,30 @@
 </div>
 
 <VariantPicker open={showPicker} onClose={() => (showPicker = false)} onSelect={pickCard} />
+
+<WritebackModal
+  open={showWriteback}
+  title={$t('wishlist.markAcquired')}
+  subtitle={
+    writebackTarget
+      ? `${writebackTarget.card_name_cn || writebackTarget.card_no_extend} · ${
+          writebackTarget.card_no_extend
+        }`
+      : ''
+  }
+  cardName={writebackTarget?.card_name_cn || ''}
+  cardNo={writebackTarget?.card_no || ''}
+  cardNoExtend={writebackTarget?.card_no_extend || ''}
+  defaultQty={writebackTarget?.qty_wanted ?? 1}
+  ownedQty={writebackOwnedQty}
+  variants={writebackVariants}
+  confirmLabel={$t('common.confirm')}
+  onConfirm={(p) => void onWritebackConfirm(p)}
+  onClose={() => {
+    showWriteback = false
+    writebackTarget = null
+  }}
+/>
 
 <CommonModal
   open={showAdd}
@@ -292,6 +539,56 @@
   {/snippet}
 </CommonModal>
 
+<CommonModal
+  open={showImport}
+  title={$t('wishlist.importCsvTitle')}
+  subtitle={importRows?.fileName ?? ''}
+  closable={!importing}
+  onclose={() => {
+    if (!importing) showImport = false
+  }}
+>
+  <div class="import-preview">
+    <div class="import-hint">{$t('wishlist.importHint')}</div>
+    <button
+      class="import-template-btn"
+      disabled={importing}
+      onclick={() => void downloadWishlistTemplate()}
+    >
+      <Download size={14} />
+      {$t('collection.downloadTemplate')}
+    </button>
+    {#if importRows}
+      <div class="import-stats">
+        {$t('collection.parsedRows', { values: { count: importRows.rows.length } })}
+        {#if importRows.errors.length > 0}
+          · {$t('collection.skippedRows', { values: { count: importRows.errors.length } })}
+        {/if}
+      </div>
+      {#if importRows.errors.length > 0}
+        <div class="import-errors">
+          {#each importRows.errors as e (e)}
+            <div class="import-error-line">{e}</div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    <button class="button button-ghost" disabled={importing} onclick={() => (showImport = false)}>
+      {$t('common.cancel')}
+    </button>
+    <button
+      class="button button-primary"
+      disabled={importing || !importRows || importRows.rows.length === 0}
+      onclick={confirmWishlistImport}
+    >
+      {importing ? $t('collection.importing') : $t('collection.confirmImport')}
+    </button>
+  {/snippet}
+</CommonModal>
+
 <style>
   .page {
     display: flex;
@@ -328,16 +625,23 @@
   }
 
   .list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     gap: 8px;
-    padding: 8px 16px 24px;
+    padding: 12px 16px 24px;
+  }
+    @media (max-width: 767.99px) {
+    .list {
+      display: flex;
+      flex-direction: column;
+    }
   }
 
   .row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    /* justify-content: space-between; */
+    flex-wrap: wrap;
     gap: 12px;
     padding: 12px 14px;
     border: 1px solid var(--border-color);
@@ -411,7 +715,8 @@
   .row-actions {
     display: flex;
     gap: 4px;
-    flex-shrink: 0;
+    flex: 1 1 100%;
+    justify-content: end;
   }
 
   .icon-btn {
@@ -492,5 +797,61 @@
     text-align: center;
     color: var(--text-tertiary);
     font-size: var(--text-sm);
+  }
+
+  .import-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .import-hint {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .import-template-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .import-template-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .import-template-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .import-stats {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .import-errors {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    max-height: 140px;
+    overflow-y: auto;
+  }
+
+  .import-error-line {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
   }
 </style>

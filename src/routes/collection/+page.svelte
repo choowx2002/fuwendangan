@@ -2,7 +2,13 @@
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import type { CollectionStats, RecentCollectionCard } from '$lib/db'
-  import { getCollectionStats, getRecentCollectionCards, importOwnedCounts } from '$lib/db'
+  import {
+    getCollectionStats,
+    getRecentCollectionCards,
+    importOwnedCounts,
+    getCollectionFullRows,
+    importFullCollection,
+  } from '$lib/db'
   import {
     Save,
     Plus,
@@ -18,6 +24,13 @@
   import { isTauri } from '$lib/db/env'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { parseMissingListCsv } from '$lib/collection/collection-csv'
+  import { saveTextFile } from '$lib/collection/collection-export'
+  import {
+    buildFullCollectionCsv,
+    buildFullCollectionCsvTemplate,
+    parseFullCollectionCsv,
+  } from '$lib/collection/full-collection-csv'
+  import { createCsvTemplate } from '$lib/csv/csv-utils'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import CollectionHero from '$lib/components/collection/CollectionHero.svelte'
   import SeriesCardGrid from '$lib/components/collection/SeriesCardGrid.svelte'
@@ -35,9 +48,16 @@
 
   let importing = $state(false)
   let showImportModal = $state(false)
+  let importKind = $state<'missing' | 'full'>('missing')
   // 待确认的导入项与模式
   let importPreview = $state<{
-    rows: { cardNoExtend: string; language: string; ownedQty: number }[]
+    rows: {
+      cardNoExtend: string
+      language: string
+      ownedQty: number
+      normalQty?: number
+      foilQty?: number
+    }[]
     errors: string[]
     fileName: string
   } | null>(null)
@@ -95,17 +115,34 @@
   }
 
   function reviewImport(fileName: string, content: string) {
-    const parsed = parseMissingListCsv(content)
-    importPreview = {
-      rows: parsed.rows.map((r) => ({
-        cardNoExtend: r.cardNoExtend,
-        language: r.language,
-        ownedQty: r.ownedQty,
-      })),
-      errors: parsed.errors.map((e) =>
-        get(t)('collection.csvLineError', { values: { line: e.line, reason: e.reason } })
-      ),
-      fileName,
+    if (importKind === 'full') {
+      const parsed = parseFullCollectionCsv(content)
+      importPreview = {
+        rows: parsed.rows.map((r) => ({
+          cardNoExtend: r.cardNoExtend,
+          language: r.language,
+          ownedQty: r.normalQty + r.foilQty,
+          normalQty: r.normalQty,
+          foilQty: r.foilQty,
+        })),
+        errors: parsed.errors.map((e) =>
+          get(t)('collection.csvLineError', { values: { line: e.line, reason: e.reason } })
+        ),
+        fileName,
+      }
+    } else {
+      const parsed = parseMissingListCsv(content)
+      importPreview = {
+        rows: parsed.rows.map((r) => ({
+          cardNoExtend: r.cardNoExtend,
+          language: r.language,
+          ownedQty: r.ownedQty,
+        })),
+        errors: parsed.errors.map((e) =>
+          get(t)('collection.csvLineError', { values: { line: e.line, reason: e.reason } })
+        ),
+        fileName,
+      }
     }
     importMode = 'add'
     showImportModal = true
@@ -115,16 +152,41 @@
     if (!importPreview) return
     importing = true
     try {
-      const result = await importOwnedCounts(importPreview.rows, importMode)
-      const skippedText = result.skipped.length
-        ? get(t)('collection.skippedInfo', { values: { count: result.skipped.length } })
-        : ''
-      showToast(
-        get(t)('collection.importedCount', {
-          values: { count: result.applied, skipped: skippedText },
-        }),
-        'success'
-      )
+      if (importKind === 'full') {
+        const result = await importFullCollection(
+          importPreview.rows.map((r) => ({
+            cardNoExtend: r.cardNoExtend,
+            language: r.language,
+            normalQty: r.normalQty ?? 0,
+            foilQty: r.foilQty ?? 0,
+          }))
+        )
+        const skippedText = result.skipped.length
+          ? get(t)('collection.fullCsvImportSkipped', { values: { count: result.skipped.length } })
+          : ''
+        showToast(
+          get(t)('collection.fullCsvImported', {
+            values: {
+              count: result.applied,
+              updated: result.updated,
+              created: result.created,
+              skipped: skippedText,
+            },
+          }),
+          'success'
+        )
+      } else {
+        const result = await importOwnedCounts(importPreview.rows, importMode)
+        const skippedText = result.skipped.length
+          ? get(t)('collection.skippedInfo', { values: { count: result.skipped.length } })
+          : ''
+        showToast(
+          get(t)('collection.importedCount', {
+            values: { count: result.applied, skipped: skippedText },
+          }),
+          'success'
+        )
+      }
       showImportModal = false
       importPreview = null
       void loadAll()
@@ -138,6 +200,53 @@
     } finally {
       importing = false
     }
+  }
+
+  async function exportFullCollection() {
+    try {
+      const rows = await getCollectionFullRows()
+      if (rows.length === 0) {
+        showToast(get(t)('collection.emptyTitle'), 'info')
+        return
+      }
+      const content = buildFullCollectionCsv(rows)
+      const stamp = new Date().toISOString().slice(0, 10)
+      const ok = await saveTextFile(content, `收藏完整导出-${stamp}.csv`, {
+        format: 'csv',
+        title: get(t)('collection.exportFullCsvTitle'),
+      })
+      if (ok) {
+        showToast(
+          get(t)('collection.exportFullCsvSaved', { values: { count: rows.length } }),
+          'success'
+        )
+      } else {
+        showToast(get(t)('collection.saveCancelled'), 'info')
+      }
+    } catch (err) {
+      showToast(
+        get(t)('collection.exportFailed', {
+          values: { message: err instanceof Error ? err.message : get(t)('common.unknownError') },
+        }),
+        'error'
+      )
+    }
+  }
+
+  async function downloadImportTemplate() {
+    const content =
+      importKind === 'full'
+        ? buildFullCollectionCsvTemplate()
+        : createCsvTemplate(
+            ['编号', '卡名', '稀有度', '语言', '拥有数', '需求量'],
+            [['ABC-001', '示例卡牌', '普通', 'SC', 0, 3]]
+          )
+    const name = importKind === 'full' ? '收藏导入模板.csv' : '缺卡清单导入模板.csv'
+    const ok = await saveTextFile(content, name, {
+      format: 'csv',
+      title: get(t)('collection.downloadTemplate'),
+    })
+    if (!ok) showToast(get(t)('collection.saveCancelled'), 'info')
   }
 
   function handleGlobalSelect(card: { card_prints?: { card_no_extend: string }[] }) {
@@ -182,8 +291,21 @@
           icon: Download,
           variant: 'ghost',
           title: $t('collection.importCsvTitle'),
-          onClick: pickImportFile,
+          onClick: () => {
+            importKind = 'missing'
+            importPreview = null
+            pickImportFile()
+          },
           priority: 1,
+        },
+        {
+          key: 'export-full',
+          label: $t('collection.exportFullCsv'),
+          icon: Upload,
+          variant: 'ghost',
+          title: $t('collection.exportFullCsvTitle'),
+          onClick: () => void exportFullCollection(),
+          priority: 5,
         },
         {
           key: 'custom',
@@ -264,27 +386,59 @@
   }}
 >
   <div class="import-preview">
+    <div class="import-kind-group">
+      <button
+        class="import-format-option"
+        class:active={importKind === 'missing'}
+        disabled={importing}
+        onclick={() => {
+          importKind = 'missing'
+          importPreview = null
+        }}
+      >
+        <span class="import-format-name">{$t('collection.importKindMissing')}</span>
+      </button>
+      <button
+        class="import-format-option"
+        class:active={importKind === 'full'}
+        disabled={importing}
+        onclick={() => {
+          importKind = 'full'
+          importPreview = null
+        }}
+      >
+        <span class="import-format-name">{$t('collection.importKindFull')}</span>
+      </button>
+    </div>
+
+    <button class="import-template-btn" disabled={importing} onclick={() => void downloadImportTemplate()}>
+      <Download size={14} />
+      {$t('collection.downloadTemplate')}
+    </button>
+
     {#if importPreview}
-      <div class="import-mode-group">
-        <button
-          class="import-format-option"
-          class:active={importMode === 'add'}
-          disabled={importing}
-          onclick={() => (importMode = 'add')}
-        >
-          <span class="import-format-name">{$t('collection.addMode')}</span>
-          <span class="import-format-desc">{$t('collection.addModeDesc')}</span>
-        </button>
-        <button
-          class="import-format-option"
-          class:active={importMode === 'overwrite'}
-          disabled={importing}
-          onclick={() => (importMode = 'overwrite')}
-        >
-          <span class="import-format-name">{$t('collection.overwriteMode')}</span>
-          <span class="import-format-desc">{$t('collection.overwriteModeDesc')}</span>
-        </button>
-      </div>
+      {#if importKind === 'missing'}
+        <div class="import-mode-group">
+          <button
+            class="import-format-option"
+            class:active={importMode === 'add'}
+            disabled={importing}
+            onclick={() => (importMode = 'add')}
+          >
+            <span class="import-format-name">{$t('collection.addMode')}</span>
+            <span class="import-format-desc">{$t('collection.addModeDesc')}</span>
+          </button>
+          <button
+            class="import-format-option"
+            class:active={importMode === 'overwrite'}
+            disabled={importing}
+            onclick={() => (importMode = 'overwrite')}
+          >
+            <span class="import-format-name">{$t('collection.overwriteMode')}</span>
+            <span class="import-format-desc">{$t('collection.overwriteModeDesc')}</span>
+          </button>
+        </div>
+      {/if}
       <div class="import-stats">
         {$t('collection.parsedRows', { values: { count: importPreview.rows.length } })}
         {#if importPreview.errors.length > 0}
@@ -384,6 +538,36 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .import-kind-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .import-template-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .import-template-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .import-template-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .import-mode-group {

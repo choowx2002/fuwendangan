@@ -2,27 +2,26 @@
  * 购买清单仓储层
  * 清单头（purchase_lists）独立成表，与 collection_langs 解耦；
  * 条目保存 card_no / card_no_extend 快照 + 数量快照（qty_owned），库存变化不改写历史清单。
- * 生成流程：卡组缺卡检查（checkDeckOwnership）→ 建清单头 → 按条目 upsert（同一清单同卡去重）。
- * match_mode：'print' 按印刷号逐行比较；'card' 按卡牌合并（同 cards_base.card_no 的不同印刷视为同卡，
- * 条目以 card_no_extend='' 作「任意版本」锚点，每卡一行）。
+ * 生成流程：卡组缺卡检查（checkDeckOwnership，按印刷号）→ 建清单头 → 按条目 upsert（同一清单同卡去重）。
  */
 
 import { Snowflake } from '@theinternetfolks/snowflake'
 import type {
   OwnershipCheckRow,
-  OwnershipMatchMode,
   PurchaseList,
   PurchaseListItem,
   PurchaseListItemStatus,
   PurchaseListStatus,
   WishlistFinish,
 } from '../types'
-import { getDatabase } from './database'
+import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
 import { checkDeckOwnership } from './collection-repository'
 import { getLatestDeckCards } from './deck-repository'
 
 const now = () => new Date().toISOString()
+
+type Db = Awaited<ReturnType<typeof getDatabase>>
 
 function mapPurchaseListRow(r: any): PurchaseList {
   return {
@@ -30,7 +29,6 @@ function mapPurchaseListRow(r: any): PurchaseList {
     name: r.name,
     deck_id: r.deck_id ?? null,
     deck_version_id: r.deck_version_id ?? null,
-    match_mode: (r.match_mode ?? 'print') as OwnershipMatchMode,
     status: r.status as PurchaseListStatus,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
@@ -49,6 +47,9 @@ function mapPurchaseListItemRow(r: any): PurchaseListItem {
     qty_required: r.qty_required ?? 0,
     qty_owned: r.qty_owned ?? 0,
     qty_to_buy: r.qty_to_buy ?? 0,
+    qty_ordered: r.qty_ordered ?? 0,
+    qty_borrowed: r.qty_borrowed ?? 0,
+    qty_bought: r.qty_bought ?? 0,
     status: r.status as PurchaseListItemStatus,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
@@ -61,7 +62,6 @@ export interface CreatePurchaseListInput {
   name: string
   deckId?: string | null
   deckVersionId?: string | null
-  matchMode?: OwnershipMatchMode
 }
 
 /** 创建购买清单，返回 id */
@@ -71,17 +71,9 @@ export async function createPurchaseList(input: CreatePurchaseListInput): Promis
   const t = now()
   await db.execute(
     `INSERT INTO ${TABLES.PURCHASE_LISTS}
-     (id, name, deck_id, deck_version_id, match_mode, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
-    [
-      id,
-      input.name.trim(),
-      input.deckId ?? null,
-      input.deckVersionId ?? null,
-      input.matchMode ?? 'print',
-      t,
-      t,
-    ]
+     (id, name, deck_id, deck_version_id, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'open', ?, ?)`,
+    [id, input.name.trim(), input.deckId ?? null, input.deckVersionId ?? null, t, t]
   )
   return id
 }
@@ -99,7 +91,7 @@ export async function getPurchaseLists(filter?: {
   }
   const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
   const rows = await db.select<any[]>(
-    `SELECT id, name, deck_id, deck_version_id, match_mode, status, created_at, updated_at
+    `SELECT id, name, deck_id, deck_version_id, status, created_at, updated_at
      FROM ${TABLES.PURCHASE_LISTS} ${where}
      ORDER BY updated_at DESC`,
     params
@@ -111,7 +103,7 @@ export async function getPurchaseLists(filter?: {
 export async function getPurchaseList(id: string): Promise<PurchaseList | null> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
-    `SELECT id, name, deck_id, deck_version_id, match_mode, status, created_at, updated_at
+    `SELECT id, name, deck_id, deck_version_id, status, created_at, updated_at
      FROM ${TABLES.PURCHASE_LISTS} WHERE id = ?`,
     [id]
   )
@@ -131,6 +123,26 @@ export async function updatePurchaseListStatus(
   ])
 }
 
+/** 更新清单基本信息（仅名称；关联卡组不可在此修改，换卡组需重新生成清单） */
+export async function updatePurchaseList(
+  id: string,
+  patch: { name?: string }
+): Promise<void> {
+  const db = await getDatabase()
+  const sets: string[] = []
+  const params: unknown[] = []
+  if (patch.name !== undefined) {
+    sets.push('name = ?')
+    params.push(patch.name.trim() || '未命名清单')
+  }
+  if (sets.length === 0) return
+  params.push(now(), id)
+  await db.execute(
+    `UPDATE ${TABLES.PURCHASE_LISTS} SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`,
+    params
+  )
+}
+
 /** 删除购买清单（条目级联删除） */
 export async function deletePurchaseList(id: string): Promise<void> {
   const db = await getDatabase()
@@ -139,10 +151,17 @@ export async function deletePurchaseList(id: string): Promise<void> {
 
 // ==================== 清单条目 ====================
 
-/** 清单条目列表（join cards_base 取卡名，卡被删除时为 NULL；card_no_extend='' 表示任意版本） */
+/** 清单条目列表（join cards_base 取卡名/类别/颜色，卡被删除时为 NULL）
+ * owned_live 为该印刷的实时收藏数；other_owned 为同卡号其他印刷的收藏合计（供「其他版本」入口）。 */
 export async function getPurchaseListItems(listId: string): Promise<
   (PurchaseListItem & {
     card_name_cn: string | null
+    sub_title_cn: string | null
+    card_category: string | null
+    card_color_list: string | null
+    rarity: string | null
+    owned_live: number
+    other_owned: number
     img_cdn: string | null
     img_lang: string | null
   })[]
@@ -151,28 +170,34 @@ export async function getPurchaseListItems(listId: string): Promise<
   const rows = await db.select<any[]>(
     `SELECT i.id, i.list_id, i.card_no, i.card_no_extend, i.collection_id,
        i.language_pref, i.finish_pref, i.qty_required, i.qty_owned, i.qty_to_buy,
-       i.status, i.created_at, i.updated_at,
-       cb.card_name_cn AS card_name_cn, rep.img_cdn AS img_cdn, rep.language AS img_lang
+       i.qty_ordered, i.qty_borrowed, i.qty_bought, i.status, i.created_at, i.updated_at,
+       cb.card_name_cn AS card_name_cn, cb.sub_title_cn AS sub_title_cn,
+       cb.card_category AS card_category,
+       cb.card_color_list AS card_color_list,
+       COALESCE(rep.extend_rarity_name, rep.rarity_name) AS rarity,
+       (SELECT COALESCE(SUM(ocl.normal_qty + ocl.foil_qty), 0)
+        FROM ${TABLES.COLLECTION} ocol
+        JOIN ${TABLES.COLLECTION_LANGS} ocl ON ocl.collection_id = ocol.id
+        WHERE ocol.card_no = i.card_no AND ocol.card_no_extend = i.card_no_extend
+          AND ocl.status = 'owned') AS owned_live,
+       (SELECT COALESCE(SUM(ocl.normal_qty + ocl.foil_qty), 0)
+        FROM ${TABLES.COLLECTION} ocol
+        JOIN ${TABLES.COLLECTION_LANGS} ocl ON ocl.collection_id = ocol.id
+        WHERE ocol.card_no = i.card_no AND ocol.card_no_extend != i.card_no_extend
+          AND ocl.status = 'owned') AS other_owned,
+       rep.img_cdn AS img_cdn, rep.language AS img_lang
      FROM ${TABLES.PURCHASE_LIST_ITEMS} i
      LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.card_no = i.card_no
      LEFT JOIN (
-       SELECT card_id, card_no_extend, img_cdn, language,
+       SELECT card_id, card_no_extend, rarity_name, extend_rarity_name, img_cdn, language,
          ROW_NUMBER() OVER (
            PARTITION BY card_id, card_no_extend
            ORDER BY CASE WHEN COALESCE(is_promo, 0) = 1 THEN 1 ELSE 0 END,
                     CASE WHEN language = 'SC' THEN 0 WHEN COALESCE(is_default, 0) = 1 THEN 1 ELSE 2 END,
                     COALESCE(print_order, 0)
-         ) AS rn,
-         ROW_NUMBER() OVER (
-           PARTITION BY card_id
-           ORDER BY CASE WHEN COALESCE(is_promo, 0) = 1 THEN 1 ELSE 0 END,
-                    CASE WHEN language = 'SC' THEN 0 WHEN COALESCE(is_default, 0) = 1 THEN 1 ELSE 2 END,
-                    COALESCE(print_order, 0)
-         ) AS rn_card
+         ) AS rn
        FROM ${TABLES.CARD_PRINTS}
-     ) rep ON rep.card_id = cb.id
-       AND ((rep.card_no_extend = i.card_no_extend AND rep.rn = 1)
-            OR (i.card_no_extend = '' AND rep.rn_card = 1))
+     ) rep ON rep.card_id = cb.id AND rep.card_no_extend = i.card_no_extend AND rep.rn = 1
      WHERE i.list_id = ?
      ORDER BY i.qty_to_buy DESC, i.card_no COLLATE NOCASE`,
     [listId]
@@ -180,8 +205,55 @@ export async function getPurchaseListItems(listId: string): Promise<
   return rows.map((r) => ({
     ...mapPurchaseListItemRow(r),
     card_name_cn: r.card_name_cn ?? null,
+    sub_title_cn: r.sub_title_cn ?? null,
+    card_category: r.card_category ?? null,
+    card_color_list: r.card_color_list ?? null,
+    rarity: r.rarity ?? null,
+    owned_live: r.owned_live ?? 0,
+    other_owned: r.other_owned ?? 0,
     img_cdn: r.img_cdn ?? null,
     img_lang: r.img_lang ?? null,
+  }))
+}
+
+/** 其他印刷版本收藏明细（同 card_no、不同 card_no_extend 且 owned>0），供「其他版本」弹窗展示 */
+export async function getCardOtherVariantOwned(
+  cardNo: string,
+  excludeCardNoExtend: string
+): Promise<
+  {
+    card_no_extend: string
+    rarity: string | null
+    normal_qty: number
+    foil_qty: number
+    total: number
+  }[]
+> {
+  const db = await getDatabase()
+  const rows = await db.select<any[]>(
+    `SELECT col.card_no_extend AS card_no_extend,
+       (SELECT COALESCE(p2.extend_rarity_name, p2.rarity_name)
+        FROM ${TABLES.CARD_PRINTS} p2
+        WHERE p2.card_id = cb.id AND p2.card_no_extend = col.card_no_extend
+        ORDER BY CASE WHEN p2.language = 'SC' THEN 0 WHEN COALESCE(p2.is_default, 0) = 1 THEN 1 ELSE 2 END,
+                 COALESCE(p2.print_order, 0)
+        LIMIT 1) AS rarity,
+       SUM(cl.normal_qty) AS normal_qty, SUM(cl.foil_qty) AS foil_qty
+     FROM ${TABLES.CARDS_BASE} cb
+     JOIN ${TABLES.COLLECTION} col ON col.card_no = cb.card_no
+     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id AND cl.status = 'owned'
+     WHERE cb.card_no = ? AND col.card_no_extend != ?
+     GROUP BY col.card_no_extend
+     HAVING SUM(cl.normal_qty) + SUM(cl.foil_qty) > 0
+     ORDER BY col.card_no_extend`,
+    [cardNo, excludeCardNoExtend]
+  )
+  return rows.map((r) => ({
+    card_no_extend: r.card_no_extend,
+    rarity: r.rarity ?? null,
+    normal_qty: r.normal_qty ?? 0,
+    foil_qty: r.foil_qty ?? 0,
+    total: (r.normal_qty ?? 0) + (r.foil_qty ?? 0),
   }))
 }
 
@@ -194,6 +266,9 @@ export interface PurchaseListItemInput {
   qtyRequired: number
   qtyOwned: number
   qtyToBuy: number
+  qtyOrdered?: number
+  qtyBorrowed?: number
+  qtyBought?: number
   status?: PurchaseListItemStatus
 }
 
@@ -216,13 +291,18 @@ export async function upsertPurchaseListItem(
     `INSERT INTO ${TABLES.PURCHASE_LIST_ITEMS}
      (id, list_id, card_no, card_no_extend, collection_id,
       language_pref, finish_pref, qty_required, qty_owned, qty_to_buy,
-      status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      qty_ordered, qty_borrowed, qty_bought, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(list_id, card_no, card_no_extend, language_pref, finish_pref) DO UPDATE SET
        qty_required = excluded.qty_required,
        qty_owned = excluded.qty_owned,
        qty_to_buy = excluded.qty_to_buy,
-       status = CASE WHEN purchase_list_items.status = 'bought' THEN 'bought' ELSE excluded.status END,
+       qty_ordered = excluded.qty_ordered,
+       qty_borrowed = excluded.qty_borrowed,
+       qty_bought = excluded.qty_bought,
+       status = CASE WHEN purchase_list_items.status = 'skipped'
+                     THEN 'skipped'
+                     ELSE excluded.status END,
        updated_at = excluded.updated_at`,
     [
       id,
@@ -235,6 +315,9 @@ export async function upsertPurchaseListItem(
       input.qtyRequired,
       input.qtyOwned,
       input.qtyToBuy,
+      input.qtyOrdered ?? 0,
+      input.qtyBorrowed ?? 0,
+      input.qtyBought ?? 0,
       status,
       t,
       t,
@@ -254,18 +337,208 @@ export async function updatePurchaseListItemStatus(
   )
 }
 
-/** 删除清单条目 */
+/** 删除清单条目（先取消该条目名下的借入记录，避免残留孤儿借入） */
 export async function removePurchaseListItem(itemId: string): Promise<void> {
   const db = await getDatabase()
+  await db.execute(
+    `UPDATE ${TABLES.CARD_LOANS}
+     SET status = 'cancelled', updated_at = ?
+     WHERE purchase_item_id = ? AND status IN ('active','overdue')`,
+    [now(), itemId]
+  )
   await db.execute(`DELETE FROM ${TABLES.PURCHASE_LIST_ITEMS} WHERE id = ?`, [itemId])
+}
+
+export interface PurchaseListChange {
+  itemId: string
+  qtyOrdered: number
+  qtyBorrowed: number
+  qtyBought: number
+  skipped: boolean
+}
+
+export interface PurchaseListSaveResult {
+  updatedItems: number
+  loansCreated: number
+  loansCancelled: number
+  /** 写回收藏的总张数（已购买） */
+  writtenQty: number
+}
+
+/** 条目的实时收藏数（按印刷精确匹配） */
+async function liveOwnedQty(db: Db, cardNo: string, cardNoExtend: string): Promise<number> {
+  const rows = await db.select<{ n: number }[]>(
+    `SELECT COALESCE(SUM(cl.normal_qty + cl.foil_qty), 0) AS n
+     FROM ${TABLES.COLLECTION} col
+     JOIN ${TABLES.COLLECTION_LANGS} cl ON cl.collection_id = col.id
+     WHERE col.card_no = ? AND col.card_no_extend = ? AND cl.status = 'owned'`,
+    [cardNo, cardNoExtend]
+  )
+  return rows[0]?.n ?? 0
+}
+
+/** 借入对账：目标数量与生效借入（direction='in' 且 active/overdue，按条目归属）比对，不足补建、超出取消。
+ *  借入记录通过 purchase_item_id 与清单条目绑定，不同清单/条目之间互不干扰。 */
+async function reconcileBorrowIn(
+  db: Db,
+  cardNo: string,
+  cardNoExtend: string,
+  targetQty: number,
+  purchaseItemId: string
+): Promise<{ created: number; cancelled: number }> {
+  const loans = await db.select<{ id: string; qty: number }[]>(
+    `SELECT id, qty FROM ${TABLES.CARD_LOANS}
+     WHERE direction = 'in' AND status IN ('active','overdue')
+       AND card_no = ? AND card_no_extend = ? AND purchase_item_id = ?
+     ORDER BY created_at ASC`,
+    [cardNo, cardNoExtend, purchaseItemId]
+  )
+  const current = loans.reduce((s, l) => s + (l.qty ?? 0), 0)
+
+  let created = 0
+  let cancelled = 0
+  if (targetQty > current) {
+    const delta = targetQty - current
+    const id = Snowflake.generate()
+    const t = now()
+    await db.execute(
+      `INSERT INTO ${TABLES.CARD_LOANS}
+       (id, direction, contact_id, card_no, card_no_extend, language_code, finish,
+        qty, loaned_at, due_at, returned_at, status, note, purchase_item_id, created_at, updated_at)
+       VALUES (?, 'in', NULL, ?, ?, '*', 'any', ?, ?, NULL, NULL, 'active', NULL, ?, ?, ?)`,
+      [id, cardNo, cardNoExtend, delta, t, purchaseItemId, t, t]
+    )
+    created = delta
+  } else if (targetQty < current) {
+    let excess = current - targetQty
+    for (const l of loans.slice().reverse()) {
+      if (excess <= 0) break
+      const reduce = Math.min(l.qty, excess)
+      if (reduce >= l.qty) {
+        await db.execute(
+          `UPDATE ${TABLES.CARD_LOANS} SET status = 'cancelled', updated_at = ? WHERE id = ?`,
+          [now(), l.id]
+        )
+      } else {
+        await db.execute(
+          `UPDATE ${TABLES.CARD_LOANS} SET qty = qty - ?, updated_at = ? WHERE id = ?`,
+          [reduce, now(), l.id]
+        )
+      }
+      cancelled += reduce
+      excess -= reduce
+    }
+  }
+  return { created, cancelled }
+}
+
+/**
+ * 批量保存清单条目编辑（行内编辑后一次性确认调用）：
+ * 1. 整个批次包在一个事务里（withTransaction，串行槽内保证同一连接），任一条目失败整体回滚，
+ *    避免半途持久化导致的重试重复写回收藏 / 重复建借入。
+ * 2. 逐条更新 qty_ordered / qty_borrowed / qty_bought / qty_to_buy / status；
+ *    qty_to_buy = max(0, 需要 - 实时已有 - 已下单 - 借入 - 已购买)；
+ *    status 按 跳过/待购买/已满足 派生。
+ * 3. 跳过（skipped）条目不写回收藏、不对账借入（保留用户填写的数量，可随时取消跳过）；
+ *    非跳过条目：借入对账按条目归属（purchase_item_id）补建/取消。
+ * 4. 非跳过条目的已购买写回收藏（incrementOwned 累加），随后条目 qty_bought 归 0
+ *    （已计入「已有」，避免重复计数）。
+ */
+export async function savePurchaseListBatch(
+  listId: string,
+  changes: PurchaseListChange[]
+): Promise<PurchaseListSaveResult> {
+  return withTransaction(async () => {
+    const db = await getDatabase()
+    let updatedItems = 0
+    let loansCreated = 0
+    let loansCancelled = 0
+    let writtenQty = 0
+
+    for (const change of changes) {
+      const rows = await db.select<
+        {
+          id: string
+          card_no: string
+          card_no_extend: string
+          qty_required: number
+          language_pref: string
+        }[]
+      >(
+        `SELECT id, card_no, card_no_extend, qty_required, language_pref
+         FROM ${TABLES.PURCHASE_LIST_ITEMS} WHERE id = ? AND list_id = ?`,
+        [change.itemId, listId]
+      )
+      const item = rows[0]
+      if (!item) continue
+
+      const owned = await liveOwnedQty(db, item.card_no, item.card_no_extend)
+      const qtyToBuy = change.skipped
+        ? 0
+        : Math.max(
+            0,
+            item.qty_required - owned - change.qtyOrdered - change.qtyBorrowed - change.qtyBought
+          )
+      const status: PurchaseListItemStatus = change.skipped
+        ? 'skipped'
+        : qtyToBuy > 0
+          ? 'pending'
+          : 'met'
+
+      if (!change.skipped && change.qtyBought > 0) {
+        const { incrementOwned } = await import('./collection-repository')
+        writtenQty += await incrementOwned({
+          cardNo: item.card_no,
+          cardNoExtend: item.card_no_extend,
+          language: item.language_pref,
+          qty: change.qtyBought,
+        })
+      }
+
+      // 跳过条目保留用户填写的 qty_bought（不写回、不归零），取消跳过后可继续用
+      await db.execute(
+        `UPDATE ${TABLES.PURCHASE_LIST_ITEMS}
+         SET qty_ordered = ?, qty_borrowed = ?, qty_bought = ?,
+             qty_to_buy = ?, status = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          change.qtyOrdered,
+          change.qtyBorrowed,
+          change.skipped ? change.qtyBought : 0,
+          qtyToBuy,
+          status,
+          now(),
+          item.id,
+        ]
+      )
+      updatedItems += 1
+
+      if (!change.skipped) {
+        const borrow = await reconcileBorrowIn(
+          db,
+          item.card_no,
+          item.card_no_extend,
+          change.qtyBorrowed,
+          item.id
+        )
+        loansCreated += borrow.created
+        loansCancelled += borrow.cancelled
+      }
+    }
+
+    await db.execute(`UPDATE ${TABLES.PURCHASE_LISTS} SET updated_at = ? WHERE id = ?`, [
+      now(),
+      listId,
+    ])
+    return { updatedItems, loansCreated, loansCancelled, writtenQty }
+  })
 }
 
 // ==================== 从卡组生成 ====================
 
-/** 取卡组最新版本的缺卡检查结果（含借出/借入后的可用数量） */
+/** 取卡组最新版本的缺卡检查结果（按印刷号，含借出/借入后的可用数量） */
 async function loadDeckCheck(
-  deckId: string,
-  matchMode: OwnershipMatchMode
+  deckId: string
 ): Promise<{ deckVersionId: string | null; checkRows: OwnershipCheckRow[] }> {
   const db = await getDatabase()
   const versionRows = await db.select<{ id: string }[]>(
@@ -276,33 +549,25 @@ async function loadDeckCheck(
 
   const deckCards = await getLatestDeckCards(deckId)
   const checkRows = await checkDeckOwnership(
-    deckCards.map((c) => ({ cardPrintId: c.print_id, quantity: c.quantity })),
-    { matchMode }
+    deckCards.map((c) => ({ cardPrintId: c.print_id, quantity: c.quantity }))
   )
   return { deckVersionId, checkRows }
 }
 
 /**
- * 根据卡组最新版本缺卡生成购买清单：
+ * 根据卡组最新版本缺卡生成购买清单（按印刷号）：
  * 1. 取卡组最新版本的卡牌需求（getLatestDeckCards）；
  * 2. 复用 checkDeckOwnership 计算缺卡（含借出/借入后的可用数量）；
- * 3. 建清单头（冻结 deck_version_id + match_mode），缺卡条目逐行 upsert。
- * @param opts.matchMode 'print' 按印刷号（默认）；'card' 按卡牌合并（同卡不同印刷视为同卡，条目用 card_no_extend='' 锚定）
+ * 3. 建清单头（冻结 deck_version_id），缺卡条目逐行 upsert。
  * @returns 新清单 id
  */
-export async function generatePurchaseListFromDeck(
-  deckId: string,
-  name: string,
-  opts?: { matchMode?: OwnershipMatchMode }
-): Promise<string> {
-  const matchMode = opts?.matchMode ?? 'print'
-  const { deckVersionId, checkRows } = await loadDeckCheck(deckId, matchMode)
+export async function generatePurchaseListFromDeck(deckId: string, name: string): Promise<string> {
+  const { deckVersionId, checkRows } = await loadDeckCheck(deckId)
 
   const listId = await createPurchaseList({
     name: name.trim() || '未命名清单',
     deckId,
     deckVersionId,
-    matchMode,
   })
 
   for (const row of checkRows) {
@@ -321,75 +586,71 @@ export async function generatePurchaseListFromDeck(
 }
 
 /**
- * 按当前库存重新生成已存在清单的缺卡条目：
+ * 按当前库存重新生成已存在清单的缺卡条目（按印刷号）：
  * 复用 generatePurchaseListFromDeck 的检查逻辑，对既有清单逐条 upsert
- * （已标记 bought 的条目保持 bought，其余刷新数量）。
- * 模式解析：opts.matchMode 优先，否则沿用清单持久化的 match_mode；
- * 切换模式时清理「与新模式键冲突且非 bought」的旧条目
- * （card 模式删同卡号 extend≠'' 的，print 模式删同卡号 extend='' 的），避免重复行。
+ * （已标记 skipped 的条目保持 skipped，其余刷新数量）。
+ * 清理历史「按卡牌合并」遗留的锚点条目（card_no_extend='' 且非 skipped）。
  * @param listId 目标清单 id（需已存在）
  * @returns 更新后的条目数
  */
-export async function refreshPurchaseListFromDeck(
-  listId: string,
-  opts?: { matchMode?: OwnershipMatchMode }
-): Promise<number> {
+export async function refreshPurchaseListFromDeck(listId: string): Promise<number> {
   const db = await getDatabase()
 
-  const listRows = await db.select<{ deck_id: string | null; match_mode: string | null }[]>(
-    `SELECT deck_id, match_mode FROM ${TABLES.PURCHASE_LISTS} WHERE id = ?`,
+  const listRows = await db.select<{ deck_id: string | null }[]>(
+    `SELECT deck_id FROM ${TABLES.PURCHASE_LISTS} WHERE id = ?`,
     [listId]
   )
   const deckId = listRows[0]?.deck_id ?? null
   if (!deckId) throw new Error('该清单未关联卡组，无法重新生成')
-  const matchMode = opts?.matchMode ?? (listRows[0]?.match_mode as OwnershipMatchMode) ?? 'print'
 
-  const { deckVersionId, checkRows } = await loadDeckCheck(deckId, matchMode)
+  const { deckVersionId, checkRows } = await loadDeckCheck(deckId)
 
-  // 清理与新模式键冲突的旧条目（bought 保留）
+  // 清理历史「任意版本」锚点条目（skipped 保留）
   const cardNos = [...new Set(checkRows.map((r) => r.cardNo))]
   if (cardNos.length > 0) {
     const placeholders = cardNos.map(() => '?').join(',')
-    const extendCond = matchMode === 'card' ? "card_no_extend != ''" : "card_no_extend = ''"
     await db.execute(
       `DELETE FROM ${TABLES.PURCHASE_LIST_ITEMS}
-       WHERE list_id = ? AND card_no IN (${placeholders}) AND ${extendCond} AND status != 'bought'`,
+       WHERE list_id = ? AND card_no IN (${placeholders}) AND card_no_extend = ''
+         AND status != 'skipped'`,
       [listId, ...cardNos]
     )
   }
 
   let updated = 0
   for (const row of checkRows) {
-    if (row.qtyToBuy <= 0) continue
-    await upsertPurchaseListItem(listId, {
-      cardNo: row.cardNo,
-      cardNoExtend: row.cardNoExtend,
-      languagePref: '*',
-      finishPref: 'any',
-      qtyRequired: row.needed,
-      qtyOwned: row.owned,
-      qtyToBuy: row.qtyToBuy,
-    })
-    updated += 1
+    if (row.qtyToBuy > 0) {
+      await upsertPurchaseListItem(listId, {
+        cardNo: row.cardNo,
+        cardNoExtend: row.cardNoExtend,
+        languagePref: '*',
+        finishPref: 'any',
+        qtyRequired: row.needed,
+        qtyOwned: row.owned,
+        qtyToBuy: row.qtyToBuy,
+      })
+      updated += 1
+    } else {
+      // 已满足的条目：刷新快照（qty_owned 取实时收藏、qty_to_buy 归 0），
+      // 避免「已有/建议购买」停留在旧值。仅更新已存在的行，不新建；
+      // 状态同步为 met（跳过条目保持 skipped）。
+      await db.execute(
+        `UPDATE ${TABLES.PURCHASE_LIST_ITEMS}
+         SET qty_owned = ?, qty_to_buy = 0,
+             status = CASE WHEN status = 'skipped' THEN 'skipped' ELSE 'met' END,
+             updated_at = ?
+         WHERE list_id = ? AND card_no = ? AND card_no_extend = ?
+           AND language_pref = '*' AND finish_pref = 'any'`,
+        [row.owned, now(), listId, row.cardNo, row.cardNoExtend]
+      )
+    }
   }
 
   await db.execute(
-    `UPDATE ${TABLES.PURCHASE_LISTS} SET deck_version_id = ?, match_mode = ?, updated_at = ? WHERE id = ?`,
-    [deckVersionId, matchMode, now(), listId]
+    `UPDATE ${TABLES.PURCHASE_LISTS} SET deck_version_id = ?, updated_at = ? WHERE id = ?`,
+    [deckVersionId, now(), listId]
   )
   return updated
-}
-
-/** 更新清单的检查模式（print 按印刷号 / card 按卡牌合并），不触发重新计算 */
-export async function updatePurchaseListMatchMode(
-  id: string,
-  mode: OwnershipMatchMode
-): Promise<void> {
-  const db = await getDatabase()
-  await db.execute(
-    `UPDATE ${TABLES.PURCHASE_LISTS} SET match_mode = ?, updated_at = ? WHERE id = ?`,
-    [mode, now(), id]
-  )
 }
 
 /** 清单条目数（列表页展示用） */

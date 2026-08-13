@@ -439,15 +439,13 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_card_loans_contact ON card_loans(contact_id)
   `,
 
-  // 购买清单头：deck_version_id 冻结生成时的卡组快照；
-  // match_mode 记录生成/刷新时的检查模式：'print' 按印刷号、'card' 按卡牌合并（同 card_no 的不同印刷视为同卡）
+  // 购买清单头：deck_version_id 冻结生成时的卡组快照
   purchase_lists: `
     CREATE TABLE IF NOT EXISTS purchase_lists (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
       deck_version_id TEXT REFERENCES deck_versions(id) ON DELETE SET NULL,
-      match_mode TEXT NOT NULL DEFAULT 'print',
       status TEXT NOT NULL DEFAULT 'open',
       created_at TEXT,
       updated_at TEXT
@@ -471,6 +469,9 @@ export const TABLE_DEFINITIONS = {
       qty_required INTEGER NOT NULL DEFAULT 0,
       qty_owned INTEGER NOT NULL DEFAULT 0,
       qty_to_buy INTEGER NOT NULL DEFAULT 0,
+      qty_ordered INTEGER NOT NULL DEFAULT 0,
+      qty_borrowed INTEGER NOT NULL DEFAULT 0,
+      qty_bought INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT,
       updated_at TEXT,
