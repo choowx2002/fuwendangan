@@ -12,6 +12,8 @@ import {
   type CsvHeaderAliases,
 } from '$lib/csv/csv-utils'
 import type { WishlistFinish, WishlistStatus } from '$lib/db'
+import { get } from 'svelte/store'
+import { defaultLanguage } from '$lib/stores/settings'
 
 /** 心愿单 CSV 表头（稳定中文） */
 export const WISHLIST_CSV_HEADERS = [
@@ -141,7 +143,7 @@ export function parseWishlistCsv(content: string): WishlistCsvResult {
 
     rows.push({
       cardNoExtend: no,
-      languageCode: langIdx !== undefined ? cells[langIdx]?.trim() || '*' : '*',
+      languageCode: langIdx !== undefined ? cells[langIdx]?.trim() || get(defaultLanguage) : get(defaultLanguage),
       finish: rawFinish as WishlistFinish,
       qtyWanted: qty,
       priority,

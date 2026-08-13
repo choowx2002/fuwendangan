@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
-  import { Plus, Trash2, Users, Check, Undo2, TriangleAlert } from '@lucide/svelte'
+  import { Plus, Trash2, Users, Check, Undo2, TriangleAlert, Pencil } from '@lucide/svelte'
   import {
     getLoans,
     createLoan,
@@ -10,6 +10,7 @@
     getContacts,
     createContact,
     deleteContact,
+    getCustomLanguages,
     PRESET_LANGUAGE_CODES,
     printCacheName,
     type CardLoanWithName,
@@ -18,6 +19,7 @@
     type LoanStatus,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { defaultLanguage } from '$lib/stores/settings'
   import { confirmAction } from '$lib/utils/confirm'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import VariantPicker from '$lib/components/collection/VariantPicker.svelte'
@@ -32,8 +34,10 @@
   let loans = $state<CardLoanWithName[]>([])
   let contacts = $state<Contact[]>([])
   let loading = $state(true)
+  let langOptions = $state<string[]>([...PRESET_LANGUAGE_CODES])
 
   let showAdd = $state(false)
+  let editingId = $state<string | null>(null)
   let showPicker = $state(false)
   let showContacts = $state(false)
   let newContactInput = $state('')
@@ -45,7 +49,7 @@
     cardNo: '',
     cardNoExtend: '',
     cardName: '',
-    languageCode: '*',
+    languageCode: get(defaultLanguage),
     finish: 'any' as Finish,
     qty: 1,
     loanedAt: '',
@@ -89,19 +93,22 @@
       const [loanRes, contactRes] = await Promise.all([getLoans({ direction }), getContacts()])
       loans = loanRes
       contacts = contactRes
+      const customs = await getCustomLanguages()
+      langOptions = [...PRESET_LANGUAGE_CODES, ...customs.map((c) => c.code)]
     } finally {
       loading = false
     }
   }
 
   function openAdd() {
+    editingId = null
     form = {
       contactId: '',
       newContactName: '',
       cardNo: '',
       cardNoExtend: '',
       cardName: '',
-      languageCode: '*',
+      languageCode: get(defaultLanguage),
       finish: 'any',
       qty: 1,
       loanedAt: toLocalInput(new Date().toISOString()),
@@ -119,6 +126,24 @@
     showAdd = true
   }
 
+  function openEdit(loan: CardLoanWithName) {
+    editingId = loan.id
+    form = {
+      contactId: loan.contact_id ?? '',
+      newContactName: '',
+      cardNo: loan.card_no,
+      cardNoExtend: loan.card_no_extend,
+      cardName: loan.card_name_cn ?? '',
+      languageCode: loan.language_code,
+      finish: loan.finish,
+      qty: loan.qty,
+      loanedAt: toLocalInput(loan.loaned_at),
+      dueAt: loan.due_at ? toLocalInput(loan.due_at).slice(0, 10) : '',
+      note: loan.note ?? '',
+    }
+    showAdd = true
+  }
+
   async function submit() {
     if (!form.cardNoExtend || !form.loanedAt) return
     saving = true
@@ -130,20 +155,34 @@
         )
         contacts = await getContacts()
       }
-      await createLoan({
-        direction,
-        contactId: contactId || null,
-        cardNo: form.cardNo,
-        cardNoExtend: form.cardNoExtend,
-        languageCode: form.languageCode,
-        finish: form.finish,
-        qty: Math.max(1, form.qty),
-        loanedAt: isoDate(form.loanedAt),
-        dueAt: form.dueAt ? isoDate(form.dueAt) : null,
-        note: form.note.trim() || null,
-      })
-      showToast(get(t)('loans.created'), 'success')
+      if (editingId) {
+        await updateLoan(editingId, {
+          contactId: contactId || null,
+          qty: Math.max(1, form.qty),
+          languageCode: form.languageCode,
+          finish: form.finish,
+          loanedAt: isoDate(form.loanedAt),
+          dueAt: form.dueAt ? isoDate(form.dueAt) : null,
+          note: form.note.trim() || null,
+        })
+        showToast(get(t)('loans.updated'), 'success')
+      } else {
+        await createLoan({
+          direction,
+          contactId: contactId || null,
+          cardNo: form.cardNo,
+          cardNoExtend: form.cardNoExtend,
+          languageCode: form.languageCode,
+          finish: form.finish,
+          qty: Math.max(1, form.qty),
+          loanedAt: isoDate(form.loanedAt),
+          dueAt: form.dueAt ? isoDate(form.dueAt) : null,
+          note: form.note.trim() || null,
+        })
+        showToast(get(t)('loans.created'), 'success')
+      }
       showAdd = false
+      editingId = null
       void load()
     } catch (err) {
       showToast(err instanceof Error ? err.message : get(t)('common.unknownError'), 'error')
@@ -270,9 +309,6 @@
                 >
               </span>
               <span class="meta-item">{$t('loans.qty')} × {loan.qty}</span>
-              {#if loan.language_code !== '*'}
-                <span class="meta-item">{loan.language_code}</span>
-              {/if}
               {#if loan.finish !== 'any'}
                 <span class="meta-item">{finishLabel(loan.finish)}</span>
               {/if}
@@ -291,6 +327,13 @@
             </div>
           </div>
           <div class="row-actions">
+            <button
+              class="icon-btn"
+              title={$t('loans.edit')}
+              onclick={() => openEdit(loan)}
+            >
+              <Pencil size={16} />
+            </button>
             {#if loan.status === 'active' || loan.status === 'overdue'}
               <button
                 class="icon-btn"
@@ -338,18 +381,24 @@
 
 <CommonModal
   open={showAdd}
-  title={$t('loans.add')}
+  title={editingId ? $t('loans.edit') : $t('loans.add')}
   subtitle={form.cardNoExtend ? `${form.cardName} · ${form.cardNoExtend}` : ''}
-  onclose={() => (showAdd = false)}
+  onclose={() => { showAdd = false; editingId = null }}
 >
   <div class="form">
     <div class="field">
       <label class="label" for="loan-card">{$t('loans.card')}</label>
-      <button class="card-pick" id="loan-card" onclick={() => (showPicker = true)}>
-        {form.cardNoExtend
-          ? `${form.cardName || form.cardNo} · ${form.cardNoExtend}`
-          : $t('wishlist.pickCardHint')}
-      </button>
+      {#if editingId}
+        <div class="card-fixed">
+          {form.cardName || form.cardNo} · {form.cardNoExtend}
+        </div>
+      {:else}
+        <button class="card-pick" id="loan-card" onclick={() => (showPicker = true)}>
+          {form.cardNoExtend
+            ? `${form.cardName || form.cardNo} · ${form.cardNoExtend}`
+            : $t('wishlist.pickCardHint')}
+        </button>
+      {/if}
     </div>
     <div class="field">
       <label class="label" for="loan-contact">{$t('loans.contact')}</label>
@@ -377,8 +426,7 @@
       <div class="field">
         <label class="label" for="loan-lang">{$t('wishlist.language')}</label>
         <select class="select" id="loan-lang" bind:value={form.languageCode}>
-          <option value="*">{$t('wishlist.anyLang')}</option>
-          {#each PRESET_LANGUAGE_CODES as code (code)}
+          {#each langOptions as code (code)}
             <option value={code}>{code}</option>
           {/each}
         </select>
@@ -688,6 +736,15 @@
 
   .card-pick:hover {
     border-color: var(--text-tertiary);
+  }
+
+  .card-fixed {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
   }
 
   .contacts {

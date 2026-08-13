@@ -37,6 +37,7 @@
     playerName,
     darkMode,
     locale,
+    defaultLanguage,
     revertLayout,
     builderShowAllZones,
     builderZoneDisplayModes,
@@ -1522,6 +1523,18 @@
   <!-- 7. 自定义语言 -->
   <section class="settings-card">
     <h2 class="card-title">{$t('settings.customLang')}</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.defaultLang')}</span>
+        <span class="setting-desc">{$t('settings.defaultLangDesc')}</span>
+      </div>
+      <select class="setting-input lang-select" bind:value={$defaultLanguage}>
+        {#each [...PRESET_LANGUAGE_CODES, ...customLangs.map((c) => c.code)] as code (code)}
+          <option value={code}>{code}</option>
+        {/each}
+      </select>
+    </div>
 
     <div class="setting-item">
       <div class="setting-info">

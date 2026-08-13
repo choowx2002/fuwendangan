@@ -1,20 +1,22 @@
 /**
  * 心愿单仓储层
- * 与 owned 库存完全解耦：card_no + card_no_extend × 语言（'*' 任意）× 版本（'any' 不限）唯一。
+ * 与 owned 库存完全解耦：card_no + card_no_extend × 语言（默认 SC）× 版本（'any' 不限）唯一。
  * 心愿单条目允许卡尚未入库（不挂 collection FK），卡牌编号为快照。
  */
 
 import { Snowflake } from '@theinternetfolks/snowflake'
+import { get } from 'svelte/store'
 import type { WishlistFinish, WishlistItem, WishlistStatus } from '../types'
 import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
+import { defaultLanguage } from '$lib/stores/settings'
 
 const now = () => new Date().toISOString()
 
 export interface WishlistItemInput {
   cardNo: string
   cardNoExtend: string
-  /** '*' 表示任意语言 */
+  /** 期望语言码，缺省用设置中的默认语言 */
   languageCode?: string
   /** 'any' 表示不限普卡/闪卡 */
   finish?: WishlistFinish
@@ -34,7 +36,7 @@ function mapWishlistRow(r: any): WishlistItem {
     id: r.id,
     card_no: r.card_no,
     card_no_extend: r.card_no_extend,
-    language_code: r.language_code ?? '*',
+    language_code: r.language_code ?? get(defaultLanguage),
     finish: (r.finish ?? 'any') as WishlistFinish,
     qty_wanted: r.qty_wanted ?? 0,
     priority: r.priority ?? 3,
@@ -114,7 +116,7 @@ export async function countActiveWishlist(): Promise<number> {
  */
 export async function upsertWishlistItem(input: WishlistItemInput): Promise<string> {
   const db = await getDatabase()
-  const languageCode = input.languageCode ?? '*'
+  const languageCode = input.languageCode ?? get(defaultLanguage)
   const finish = input.finish ?? 'any'
   const qtyWanted = input.qtyWanted ?? 1
   const priority = input.priority ?? 3
@@ -269,7 +271,7 @@ export async function importWishlistCsv(rows: WishlistImportRow[]): Promise<Wish
         skipped.push(r.cardNoExtend)
         continue
       }
-      const languageCode = r.languageCode ?? '*'
+      const languageCode = r.languageCode ?? get(defaultLanguage)
       const finish = r.finish ?? 'any'
       const existing = await db.select<{ id: string }[]>(
         `SELECT id FROM ${TABLES.WISHLIST_ITEMS}

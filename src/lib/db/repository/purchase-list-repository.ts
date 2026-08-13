@@ -18,6 +18,8 @@ import { getDatabase, withTransaction } from './database'
 import { TABLES } from '../config/constants'
 import { checkDeckOwnership } from './collection-repository'
 import { getLatestDeckCards } from './deck-repository'
+import { get } from 'svelte/store'
+import { defaultLanguage } from '$lib/stores/settings'
 
 const now = () => new Date().toISOString()
 
@@ -42,7 +44,7 @@ function mapPurchaseListItemRow(r: any): PurchaseListItem {
     card_no: r.card_no,
     card_no_extend: r.card_no_extend,
     collection_id: r.collection_id ?? null,
-    language_pref: r.language_pref ?? '*',
+    language_pref: r.language_pref ?? get(defaultLanguage),
     finish_pref: (r.finish_pref ?? 'any') as WishlistFinish,
     qty_required: r.qty_required ?? 0,
     qty_owned: r.qty_owned ?? 0,
@@ -283,7 +285,7 @@ export async function upsertPurchaseListItem(
   const db = await getDatabase()
   const id = Snowflake.generate()
   const t = now()
-  const languagePref = input.languagePref ?? '*'
+  const languagePref = input.languagePref ?? get(defaultLanguage)
   const finishPref = input.finishPref ?? 'any'
   const status = input.status ?? 'pending'
 
@@ -575,7 +577,7 @@ export async function generatePurchaseListFromDeck(deckId: string, name: string)
     await upsertPurchaseListItem(listId, {
       cardNo: row.cardNo,
       cardNoExtend: row.cardNoExtend,
-      languagePref: '*',
+      languagePref: get(defaultLanguage),
       finishPref: 'any',
       qtyRequired: row.needed,
       qtyOwned: row.owned,
@@ -623,7 +625,7 @@ export async function refreshPurchaseListFromDeck(listId: string): Promise<numbe
       await upsertPurchaseListItem(listId, {
         cardNo: row.cardNo,
         cardNoExtend: row.cardNoExtend,
-        languagePref: '*',
+        languagePref: get(defaultLanguage),
         finishPref: 'any',
         qtyRequired: row.needed,
         qtyOwned: row.owned,
@@ -640,8 +642,8 @@ export async function refreshPurchaseListFromDeck(listId: string): Promise<numbe
              status = CASE WHEN status = 'skipped' THEN 'skipped' ELSE 'met' END,
              updated_at = ?
          WHERE list_id = ? AND card_no = ? AND card_no_extend = ?
-           AND language_pref = '*' AND finish_pref = 'any'`,
-        [row.owned, now(), listId, row.cardNo, row.cardNoExtend]
+           AND language_pref = ? AND finish_pref = 'any'`,
+        [row.owned, now(), listId, row.cardNo, row.cardNoExtend, get(defaultLanguage)]
       )
     }
   }

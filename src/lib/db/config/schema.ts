@@ -365,13 +365,13 @@ export const TABLE_DEFINITIONS = {
     CREATE INDEX IF NOT EXISTS idx_locker_cards_card ON locker_cards(card_no)
   `,
 
-  // 心愿单：language_code='*' 表示任意语言，finish='any' 表示不限普卡/闪卡版本
+  // 心愿单：language_code 记录期望语言（默认 SC），finish='any' 表示不限普卡/闪卡版本
   wishlist_items: `
     CREATE TABLE IF NOT EXISTS wishlist_items (
       id TEXT PRIMARY KEY,
       card_no TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
-      language_code TEXT NOT NULL DEFAULT '*',
+      language_code TEXT NOT NULL DEFAULT 'SC',
       finish TEXT NOT NULL DEFAULT 'any',
       qty_wanted INTEGER NOT NULL DEFAULT 1,
       priority INTEGER NOT NULL DEFAULT 3,
@@ -414,7 +414,7 @@ export const TABLE_DEFINITIONS = {
       contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
       card_no TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
-      language_code TEXT NOT NULL DEFAULT '*',
+      language_code TEXT NOT NULL DEFAULT 'SC',
       finish TEXT NOT NULL DEFAULT 'any',
       qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
       loaned_at TEXT NOT NULL,
@@ -464,7 +464,7 @@ export const TABLE_DEFINITIONS = {
       card_no TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
       collection_id TEXT,
-      language_pref TEXT NOT NULL DEFAULT '*',
+      language_pref TEXT NOT NULL DEFAULT 'SC',
       finish_pref TEXT NOT NULL DEFAULT 'any',
       qty_required INTEGER NOT NULL DEFAULT 0,
       qty_owned INTEGER NOT NULL DEFAULT 0,

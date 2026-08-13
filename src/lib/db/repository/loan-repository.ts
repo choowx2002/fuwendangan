@@ -6,9 +6,11 @@
  */
 
 import { Snowflake } from '@theinternetfolks/snowflake'
+import { get } from 'svelte/store'
 import type { CardLoan, LoanDirection, LoanStatus, WishlistFinish } from '../types'
 import { getDatabase } from './database'
 import { TABLES } from '../config/constants'
+import { defaultLanguage } from '$lib/stores/settings'
 
 const now = () => new Date().toISOString()
 
@@ -17,7 +19,7 @@ export interface LoanInput {
   contactId?: string | null
   cardNo: string
   cardNoExtend: string
-  /** '*' 表示任意语言 */
+  /** 语言码，缺省用设置中的默认语言 */
   languageCode?: string
   /** 'any' 表示不限普卡/闪卡 */
   finish?: WishlistFinish
@@ -48,7 +50,7 @@ function mapLoanRow(r: any): CardLoan {
     contact_id: r.contact_id ?? null,
     card_no: r.card_no,
     card_no_extend: r.card_no_extend,
-    language_code: r.language_code ?? '*',
+    language_code: r.language_code ?? get(defaultLanguage),
     finish: (r.finish ?? 'any') as WishlistFinish,
     qty: r.qty ?? 0,
     loaned_at: r.loaned_at,
@@ -187,7 +189,7 @@ export async function createLoan(input: LoanInput): Promise<string> {
       input.contactId ?? null,
       input.cardNo,
       input.cardNoExtend,
-      input.languageCode ?? '*',
+      input.languageCode ?? get(defaultLanguage),
       input.finish ?? 'any',
       input.qty,
       input.loanedAt,
@@ -206,6 +208,9 @@ export async function updateLoan(
   patch: {
     contactId?: string | null
     qty?: number
+    languageCode?: string
+    finish?: WishlistFinish
+    loanedAt?: string
     dueAt?: string | null
     status?: LoanStatus
     note?: string | null
@@ -221,6 +226,18 @@ export async function updateLoan(
   if (patch.qty !== undefined) {
     sets.push('qty = ?')
     params.push(patch.qty)
+  }
+  if (patch.languageCode !== undefined) {
+    sets.push('language_code = ?')
+    params.push(patch.languageCode ?? get(defaultLanguage))
+  }
+  if (patch.finish !== undefined) {
+    sets.push('finish = ?')
+    params.push(patch.finish ?? 'any')
+  }
+  if (patch.loanedAt !== undefined) {
+    sets.push('loaned_at = ?')
+    params.push(patch.loanedAt)
   }
   if (patch.dueAt !== undefined) {
     sets.push('due_at = ?')

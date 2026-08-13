@@ -50,6 +50,9 @@ export const playerName = persistentWritable('playerName', '')
 /** 界面语言（zh-CN / en），默认跟随系统语言 */
 export const locale = persistentWritable('locale', systemLocale())
 
+/** 默认卡牌语言：新建借还/心愿单/购买清单等记录时的默认语言，初始 SC */
+export const defaultLanguage = persistentWritable('defaultLanguage', 'SC')
+
 /** 卡组构建页（竖屏/触屏设备）是否反转上下布局 */
 export const revertLayout = persistentWritable('revertLayout', false)
 

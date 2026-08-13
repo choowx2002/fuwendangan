@@ -33,6 +33,8 @@ import { combineCardName } from '$lib/collection/collection-utils'
 import { resolveStatus, shouldKeepLangRow, shouldDeleteVariant } from '../config/collection-rules'
 import { getCompletionMode } from '../service/completion-modes'
 import { getActiveLoanQty } from './loan-repository'
+import { get } from 'svelte/store'
+import { defaultLanguage } from '$lib/stores/settings'
 import {
   logCollectionHistory,
   logCollectionHistoryNote,
@@ -1103,8 +1105,10 @@ export async function writebackOwned(input: {
   const finish = input.finish ?? 'any'
   const cardNoExtend = await resolveVariantForWriteback(cardNo, input.cardNoExtend)
 
-  let code = normalizePresetCode(input.language && input.language !== '*' ? input.language : 'EN')
-  if (!code || !(await isLanguageCodeValid(code))) code = 'EN'
+  let code = normalizePresetCode(
+    input.language && input.language !== '*' ? input.language : get(defaultLanguage)
+  )
+  if (!code || !(await isLanguageCodeValid(code))) code = get(defaultLanguage)
 
   const rows = await loadExistingLangs([{ cardNo, cardNoExtend }])
   const existing = rows.get(`${cardNo}|${cardNoExtend}`) ?? []

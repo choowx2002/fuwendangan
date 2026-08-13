@@ -16,6 +16,7 @@
     type PurchaseListChange,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { defaultLanguage } from '$lib/stores/settings'
   import { confirmAction } from '$lib/utils/confirm'
   import { combineCardName } from '$lib/collection/collection-utils'
   import {
@@ -363,7 +364,7 @@
       cardNoExtend: v.item.card_no_extend || v.item.card_no,
       cardNameCn: combineCardName(v.item.card_name_cn, v.item.sub_title_cn) || v.item.card_no,
       rarity: v.item.rarity,
-      language: v.item.language_pref || '*',
+      language: v.item.language_pref || get(defaultLanguage),
       // 拥有数 = 已有 + 已借入（own + borrowed）
       ownedQty: v.owned + v.qtyBorrowed,
       needed: v.item.qty_required,

@@ -201,6 +201,19 @@ async function initializeTables(db: Database): Promise<void> {
   if ((legacyLangRows[0]?.n ?? 0) > 0) {
     await migrateLegacyWishlistRows(db)
   }
+
+  // 一次性迁移：移除「任意语言(*）」语义，遗留 * 统一落为默认语言基线 SC。
+  // 老库已有借还/心愿单/购买清单条目中的 * 改写成 SC，避免与新默认（SC）产生重复条目。
+  const anyLangRows = await db.select<{ n: number }[]>(
+    `SELECT (
+       (SELECT COUNT(*) FROM ${TABLES.CARD_LOANS} WHERE language_code = '*') +
+       (SELECT COUNT(*) FROM ${TABLES.WISHLIST_ITEMS} WHERE language_code = '*') +
+       (SELECT COUNT(*) FROM ${TABLES.PURCHASE_LIST_ITEMS} WHERE language_pref = '*')
+     ) AS n`
+  )
+  if ((anyLangRows[0]?.n ?? 0) > 0) {
+    await migrateAnyLangToSc(db)
+  }
 }
 
 /**
@@ -255,6 +268,22 @@ async function migrateLegacyWishlistRows(db: Database): Promise<void> {
   await db.execute(
     `UPDATE ${TABLES.COLLECTION_LANGS}
      SET status = 'owned' WHERE status IN ('wishlist','ordered')`
+  )
+}
+
+/**
+ * 一次性迁移：移除「任意语言(*)」语义。
+ * 借还/心愿单/购买清单条目的遗留 '*' 统一改写为 SC（初始默认语言基线），
+ * 与新默认（defaultLanguage=SC）保持一致，避免刷新/upsert 时产生重复条目。
+ * 由 initializeTables 在读保护（存在遗留 * 行）下调用。
+ */
+async function migrateAnyLangToSc(db: Database): Promise<void> {
+  await db.execute(`UPDATE ${TABLES.CARD_LOANS} SET language_code = 'SC' WHERE language_code = '*'`)
+  await db.execute(
+    `UPDATE ${TABLES.WISHLIST_ITEMS} SET language_code = 'SC' WHERE language_code = '*'`
+  )
+  await db.execute(
+    `UPDATE ${TABLES.PURCHASE_LIST_ITEMS} SET language_pref = 'SC' WHERE language_pref = '*'`
   )
 }
 

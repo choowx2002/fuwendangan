@@ -10,6 +10,7 @@
     markWishlistAcquired,
     getCardOwnedQty,
     listCardVariants,
+    getCustomLanguages,
     PRESET_LANGUAGE_CODES,
     printCacheName,
     importWishlistCsv,
@@ -18,6 +19,7 @@
     type WishlistImportRow,
   } from '$lib/db'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { defaultLanguage } from '$lib/stores/settings'
   import { confirmAction } from '$lib/utils/confirm'
   import { saveTextFile } from '$lib/collection/collection-export'
   import { combineCardName } from '$lib/collection/collection-utils'
@@ -42,6 +44,7 @@
   let items = $state<WishlistRow[]>([])
   let loading = $state(true)
   let filter = $state<Filter>('active')
+  let langOptions = $state<string[]>([...PRESET_LANGUAGE_CODES])
 
   let showAdd = $state(false)
   let showPicker = $state(false)
@@ -50,7 +53,7 @@
     cardNo: '',
     cardNoExtend: '',
     cardName: '',
-    languageCode: '*',
+    languageCode: get(defaultLanguage),
     finish: 'any' as Finish,
     qtyWanted: 1,
     priority: 3,
@@ -77,6 +80,8 @@
     loading = true
     try {
       items = await getWishlistItems()
+      const customs = await getCustomLanguages()
+      langOptions = [...PRESET_LANGUAGE_CODES, ...customs.map((c) => c.code)]
     } finally {
       loading = false
     }
@@ -87,7 +92,7 @@
       cardNo: '',
       cardNoExtend: '',
       cardName: '',
-      languageCode: '*',
+      languageCode: get(defaultLanguage),
       finish: 'any',
       qtyWanted: 1,
       priority: 3,
@@ -396,9 +401,7 @@
               <span class="row-extend">{item.card_no_extend}</span>
             </div>
             <div class="row-meta">
-              <span class="tag"
-                >{item.language_code === '*' ? $t('wishlist.anyLang') : item.language_code}</span
-              >
+              <span class="tag">{item.language_code}</span>
               <span class="tag">{finishLabel(item.finish)}</span>
               <span class="tag">{$t('wishlist.qtyWanted')} × {item.qty_wanted}</span>
               <span class="tag">{$t('wishlist.priority')} {item.priority}</span>
@@ -490,8 +493,7 @@
     <div class="field">
       <label class="label" for="wish-lang">{$t('wishlist.language')}</label>
       <select class="select" id="wish-lang" bind:value={form.languageCode}>
-        <option value="*">{$t('wishlist.anyLang')}</option>
-        {#each PRESET_LANGUAGE_CODES as code (code)}
+        {#each langOptions as code (code)}
           <option value={code}>{code}</option>
         {/each}
       </select>
