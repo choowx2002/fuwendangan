@@ -85,3 +85,23 @@ export async function getDbStats(): Promise<DbStats> {
 
   return { totalBytes, tables }
 }
+
+/**
+ * 获取单张数据表的前 N 行原始数据（设置页「各表统计」点击查看明细用）。
+ * @param name 表名，仅允许 DISPLAY_TABLES 白名单内的表（防御注入）
+ * @param limit 最多返回行数，默认 200
+ */
+export async function getTableRows(
+  name: string,
+  limit = 200
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  if (!DISPLAY_TABLES.includes(name)) {
+    throw new Error(`不允许查看表 ${name}`)
+  }
+  const db = await getDatabase()
+  const [totalRows, dataRows] = await Promise.all([
+    db.select<{ total: number }[]>(`SELECT COUNT(*) AS total FROM ${name}`),
+    db.select<Record<string, unknown>[]>(`SELECT * FROM ${name} LIMIT ?`, [limit]),
+  ])
+  return { rows: dataRows, total: totalRows[0]?.total ?? 0 }
+}

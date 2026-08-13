@@ -5,6 +5,7 @@
     resetDatabase,
     initializeDatabase,
     getDbStats,
+    getTableRows,
     getVersion as getDbVersion,
     getDecks,
     deleteAllDecks,
@@ -65,7 +66,7 @@
   import { isMobile } from '$lib/utils/os'
   import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
-  import { Download, Upload, FileText, FileUp } from '@lucide/svelte'
+  import { Download, Upload, FileText, FileUp, ChevronRight } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import { get } from 'svelte/store'
@@ -88,6 +89,17 @@
   } | null>(null)
   let inMobile = $state<boolean>(false)
   let onloadInfo = $state<boolean>(false)
+  let imageInfoLoading = $state<boolean>(false)
+  let showStats = $state<boolean>(false)
+
+  let showTableModal = $state(false)
+  let tableLoading = $state(false)
+  let tableModal = $state<{
+    name: string
+    label: string
+    rows: Record<string, unknown>[]
+    total: number
+  } | null>(null)
 
   let showBuilderZoneModes = $state(false)
   const builderZoneKeys: ZoneKey[] = [
@@ -115,7 +127,7 @@
 
   let lastSyncText = $state<string>(get(t)('common.loading'))
   let deckCount = $state<number>(0)
-  let statRows = $state<{ label: string; count: number; size: string }[]>([])
+  let statRows = $state<{ name: string | null; label: string; count: number; size: string }[]>([])
 
   let showExportModal = $state(false)
   let exportMode = $state<'all' | 'latest'>('all')
@@ -153,7 +165,7 @@
     inMobile = await isMobile()
     appVersion = await getAppVersion()
     await loadDbInfo()
-    await loadImageCoverage()
+    await Promise.all([loadImageCacheInfo(), loadImageCoverage()])
     await loadCustomLangs()
   })
 
@@ -169,11 +181,29 @@
   }
 
   async function loadImageCoverage() {
+    imageInfoLoading = true
     try {
       const { missing, existingCount, totalCount } = await prepareCardImageDownload()
       imageCoverage = { existingCount, totalCount, missingCount: missing.length }
     } catch (error) {
       console.error('[Settings] 读取卡图覆盖统计失败:', error)
+    } finally {
+      imageInfoLoading = false
+    }
+  }
+
+  async function loadImageCacheInfo() {
+    imageInfoLoading = true
+    try {
+      const base = await appLocalDataDir()
+      imagePath = await join(base, CARD_IMAGE)
+      const imageCacheSizeByte = await getImageDirSize()
+      imageCacheSize = formatBytes(imageCacheSizeByte)
+    } catch (e) {
+      imageCacheSize = _t('settings.getFailed')
+      console.error('[Settings] 读取卡图缓存信息失败:', e)
+    } finally {
+      imageInfoLoading = false
     }
   }
 
@@ -190,9 +220,8 @@
   async function loadDbInfo() {
     onloadInfo = true
     try {
-      const [stats, base, configDir, dbVersion] = await Promise.all([
+      const [stats, configDir, dbVersion] = await Promise.all([
         getDbStats(),
-        appLocalDataDir(),
         appConfigDir(),
         getDbVersion(),
       ])
@@ -200,29 +229,29 @@
       // 1. 计算 DB size（文件真实大小）
       dbSize = formatBytes(stats.totalBytes)
 
-      // 2. 图片路径
-      imagePath = await join(base, CARD_IMAGE)
-
-      // 3. db 路径（实际存储于 appConfigDir，文件名由 DB_NAME 派生）
+      // 2. db 路径（实际存储于 appConfigDir，文件名由 DB_NAME 派生）
       const dbFileName = DB_NAME.replace(/^sqlite:/, '')
       dbFilePath = await join(configDir, dbFileName)
       dbPath = dbFilePath
 
-      // 4. 最后同步时间（各同步表中最新的 updated_at）
+      // 3. 最后同步时间（各同步表中最新的 updated_at）
       lastSyncText = dbVersion?.updated_at
         ? `${_t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
         : _t('settings.neverSynced')
 
-      // 5. 各表统计
-      const rows = stats.tables.map((t) => ({
-        label: t.label,
-        count: t.count,
-        size: formatBytes(t.bytes),
-      }))
+      // 4. 各表统计
+      const rows: { name: string | null; label: string; count: number; size: string }[] =
+        stats.tables.map((t) => ({
+          name: t.name,
+          label: t.label,
+          count: t.count,
+          size: formatBytes(t.bytes),
+        }))
       const tableBytes = stats.tables.reduce((sum, t) => sum + t.bytes, 0)
       const residual = stats.totalBytes - tableBytes
       if (residual > 0) {
         rows.push({
+          name: null,
           label: _t('settings.otherTable'),
           count: 0,
           size: formatBytes(residual),
@@ -230,18 +259,37 @@
       }
       statRows = rows
       deckCount = stats.tables.find((t) => t.name === 'decks')?.count ?? 0
-
-      // 6. 卡图缓存大小
-      const imageCacheSizeByte = await getImageDirSize()
-      imageCacheSize = formatBytes(imageCacheSizeByte)
     } catch (e) {
       dbSize = _t('settings.getFailed')
-      imageCacheSize = _t('settings.getFailed')
       dbPath = _t('settings.getFailed')
       lastSyncText = _t('settings.getFailed')
       console.error('[初始化失败]', e)
     } finally {
       onloadInfo = false
+    }
+  }
+
+  function cellValue(v: unknown): string {
+    if (v === null || v === undefined) return ''
+    if (typeof v === 'object') {
+      try {
+        return JSON.stringify(v)
+      } catch {
+        return String(v)
+      }
+    }
+    return String(v)
+  }
+
+  async function openTable(row: { name: string | null; label: string }) {
+    if (!row.name) return
+    showTableModal = true
+    tableLoading = true
+    try {
+      const res = await getTableRows(row.name, 200)
+      tableModal = { name: row.name, label: row.label, rows: res.rows, total: res.total }
+    } finally {
+      tableLoading = false
     }
   }
 
@@ -309,9 +357,8 @@
       try {
         await withBusy(_t('settings.resetImageCacheBusy'), async () => {
           await clearLocalCache()
-          const imageCacheSizeByte = await getImageDirSize()
-          imageCacheSize = formatBytes(imageCacheSizeByte)
         })
+        await loadImageCacheInfo()
         await message(_t('settings.resetImageCacheSuccess'))
       } catch (e) {
         setLoadStatus(
@@ -1022,6 +1069,18 @@
 
     <div class="setting-item">
       <div class="setting-info">
+        <span class="setting-label">{$t('settings.defaultLang')}</span>
+        <span class="setting-desc">{$t('settings.defaultLangDesc')}</span>
+      </div>
+      <select class="setting-input lang-select" bind:value={$defaultLanguage}>
+        {#each [...PRESET_LANGUAGE_CODES, ...customLangs.map((c) => c.code)] as code (code)}
+          <option value={code}>{code}</option>
+        {/each}
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
         <span class="setting-label">{$t('settings.darkMode')}</span>
         <span class="setting-desc">{$t('settings.darkModeDesc')}</span>
       </div>
@@ -1224,54 +1283,86 @@
     </div>
   </section>
 
-  <!-- 2. 版本与更新 -->
+  <!-- 4. 语言设置 -->
   <section class="settings-card">
-    <h2 class="card-title">{$t('settings.versionUpdate')}</h2>
+    <h2 class="card-title">{$t('settings.customLang')}</h2>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">{$t('settings.appVersion')}</span>
-        <span class="setting-desc">{$t('settings.appVersionDesc')}</span>
-      </div>
-      <span class="version-tag">{appVersion}</span>
-    </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.cardDataUpdate')}</span>
-        <span
-          class="setting-desc status-text"
-          class:text-success={cardDataUpdateStatus === 'upToDate'}
-          class:text-error={cardDataUpdateStatus === 'error'}
-        >
-          {getStatusText(cardDataUpdateStatus) || $t('settings.clickCheckUpdate')}
+        <span class="setting-label">{$t('settings.presetLang')}</span>
+        <span class="setting-desc">
+          {$t('settings.presetLangDesc', { values: { codes: PRESET_LANGUAGE_CODES.join(' / ') } })}
         </span>
       </div>
-      <button
-        class="button button-secondary"
-        onclick={checkCardDataUpdate}
-        disabled={cardDataUpdateStatus === 'checking'}
-      >
-        {cardDataUpdateStatus === 'checking' ? $t('settings.checking') : $t('settings.checkUpdate')}
-      </button>
     </div>
-  </section>
 
-  <!-- 3. 反馈与帮助 -->
-  <section class="settings-card">
-    <h2 class="card-title">{$t('settings.feedback')}</h2>
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.feedbackDoc')}</span>
-        <span class="setting-desc">{$t('settings.feedbackDocDesc')}</span>
+    <div class="add-lang-row">
+      <input
+        class="settings-input lang-code-input"
+        bind:value={newLangCode}
+        placeholder={$t('settings.langCodePlaceholder')}
+      />
+      <input
+        class="settings-input"
+        bind:value={newLangName}
+        placeholder={$t('settings.langNamePlaceholder')}
+      />
+      <button class="button button-primary" onclick={addLang}>{$t('common.add')}</button>
+    </div>
+
+    {#if langMsg}
+      <div class="lang-msg" class:lang-msg-error={langMsgError}>{langMsg}</div>
+    {/if}
+
+    {#if customLangs.length === 0}
+      <div class="lang-empty">{$t('settings.noCustomLang')}</div>
+    {:else}
+      <div class="manage-list">
+        {#each customLangs as lang (lang.code)}
+          <div class="manage-row">
+            <div class="manage-info">
+              <span class="manage-title">{lang.code}</span>
+              <span class="manage-desc">
+                {#if editingCode === lang.code}
+                  <input
+                    class="settings-input"
+                    bind:value={editingName}
+                    placeholder={$t('settings.langNameEditPlaceholder')}
+                  />
+                {:else}
+                  {lang.name}
+                {/if}
+              </span>
+            </div>
+            <div class="lang-actions">
+              {#if editingCode === lang.code}
+                <button class="button button-ghost" onclick={() => saveRename(lang.code)}>
+                  {$t('common.save')}
+                </button>
+                <button
+                  class="button button-ghost"
+                  onclick={() => {
+                    editingCode = ''
+                  }}
+                >
+                  {$t('common.cancel')}
+                </button>
+              {:else}
+                <button class="button button-ghost" onclick={() => startEdit(lang)}>
+                  {$t('common.rename')}
+                </button>
+                <button class="button button-danger-outline" onclick={() => removeLang(lang.code)}>
+                  {$t('common.delete')}
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
       </div>
-      <button class="button button-ghost" onclick={openHelpDoc}>
-        {$t('settings.visitLink')}
-      </button>
-    </div>
+    {/if}
   </section>
 
-  <!-- 4. 本地数据库 -->
+  <!-- 5. 本地数据库 -->
   <section class="settings-card">
     <h2 class="card-title">{$t('settings.localDb')}</h2>
 
@@ -1306,16 +1397,37 @@
       <span class="version-tag">{lastSyncText}</span>
     </div>
 
-    <div class="stat-breakdown">
-      {#each statRows as row}
-        <div class="stat-row">
-          <span class="stat-label">{row.label}</span>
-          <span class="stat-value"
-            >{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span
-          >
-        </div>
-      {/each}
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.tableStats')}</span>
+        <span class="setting-desc">{$t('settings.tableStatsDesc')}</span>
+      </div>
+      <button class="button button-ghost" onclick={() => (showStats = !showStats)}>
+        {showStats ? $t('builder.collapse') : $t('download.expand')}
+      </button>
     </div>
+
+    {#if showStats}
+      <div class="stat-breakdown">
+        {#each statRows as row}
+          <button
+            class="stat-row"
+            class:stat-row-disabled={!row.name}
+            onclick={() => openTable(row)}
+          >
+            <span class="stat-label">{row.label}</span>
+            <span class="stat-right">
+              <span class="stat-value"
+                >{$t('settings.statRowsFormat', { values: { count: row.count, size: row.size } })}</span
+              >
+              {#if row.name}
+                <ChevronRight size={14} />
+              {/if}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     <div class="db-actions">
       <button class="button button-ghost" disabled={onloadInfo} onclick={backupDatabase}>
@@ -1344,7 +1456,99 @@
     </div>
   </section>
 
-  <!-- 5. 数据管理（删除） -->
+  <!-- 6. 本地图片 -->
+  <section class="settings-card">
+    <h2 class="card-title">{$t('settings.localImageCache')}</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.cacheCoverage')}</span>
+        <span class="setting-desc">
+          {$t('settings.cachedImages', {
+            values: {
+              existing: imageCoverage?.existingCount ?? '-',
+              total: imageCoverage?.totalCount ?? '-',
+            },
+          })}
+          {#if imageCoverage && imageCoverage.totalCount > 0}
+            （{Math.round((imageCoverage.existingCount / imageCoverage.totalCount) * 100)}%）
+          {/if}
+        </span>
+      </div>
+      {#if imageCoverage && imageCoverage.totalCount > 0}
+        <div class="coverage-bar">
+          <div
+            class="coverage-fill"
+            style={`width: ${(imageCoverage.existingCount / imageCoverage.totalCount) * 100}%`}
+          ></div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.cardResourceDownload')}</span>
+        <span class="setting-desc">{$t('settings.cardResourceDownloadDesc')}</span>
+      </div>
+      {#if isCardImageDownloading()}
+        <button class="button button-primary" disabled>
+          {$t('settings.downloadingPercent', {
+            values: { percent: Math.round((downloadState.completed / downloadState.total) * 100) },
+          })}
+        </button>
+      {:else}
+        <button
+          class="button button-primary"
+          disabled={imageInfoLoading || !imageCoverage || imageCoverage.missingCount === 0}
+          onclick={startDownloadAll}
+        >
+          {#if imageCoverage && imageCoverage.missingCount === 0}
+            {$t('settings.alreadyLatest')}
+          {:else if imageCoverage}
+            {$t('settings.downloadAllImages', { values: { count: imageCoverage.missingCount } })}
+          {:else}
+            {$t('settings.startDownload')}
+          {/if}
+        </button>
+      {/if}
+    </div>
+
+    {#if isCardImageDownloading()}
+      <p class="download-hint">{$t('settings.downloadHint')}</p>
+    {/if}
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.imageCachePath')}</span>
+        <span
+          role="presentation"
+          class="setting-desc file-path"
+          onclick={async () => {
+            await writeText(imagePath)
+          }}>{imagePath}</span
+        >
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.imageCacheSize')}</span>
+      </div>
+      <span class="version-tag">{imageCacheSize}</span>
+    </div>
+
+    <div class="db-actions">
+      <button
+        class="button button-danger-outline"
+        disabled={imageInfoLoading}
+        onclick={handleResetImageCache}
+      >
+        {$t('settings.resetImageCache')}
+      </button>
+    </div>
+  </section>
+
+  <!-- 7. 数据管理（删除） -->
   <section class="settings-card">
     <h2 class="card-title">{$t('settings.dataManage')}</h2>
 
@@ -1428,187 +1632,49 @@
     </div>
   </section>
 
-  <!-- 6. 本地图片 -->
+  <!-- 8. 关于 -->
   <section class="settings-card">
-    <h2 class="card-title">{$t('settings.localImageCache')}</h2>
+    <h2 class="card-title">{$t('settings.about')}</h2>
+
+    <div class="about-group-title">{$t('settings.versionUpdate')}</div>
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.appVersion')}</span>
+        <span class="setting-desc">{$t('settings.appVersionDesc')}</span>
+      </div>
+      <span class="version-tag">{appVersion}</span>
+    </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">{$t('settings.cacheCoverage')}</span>
-        <span class="setting-desc">
-          {$t('settings.cachedImages', {
-            values: {
-              existing: imageCoverage?.existingCount ?? '-',
-              total: imageCoverage?.totalCount ?? '-',
-            },
-          })}
-          {#if imageCoverage && imageCoverage.totalCount > 0}
-            （{Math.round((imageCoverage.existingCount / imageCoverage.totalCount) * 100)}%）
-          {/if}
+        <span class="setting-label">{$t('settings.cardDataUpdate')}</span>
+        <span
+          class="setting-desc status-text"
+          class:text-success={cardDataUpdateStatus === 'upToDate'}
+          class:text-error={cardDataUpdateStatus === 'error'}
+        >
+          {getStatusText(cardDataUpdateStatus) || $t('settings.clickCheckUpdate')}
         </span>
       </div>
-      {#if imageCoverage && imageCoverage.totalCount > 0}
-        <div class="coverage-bar">
-          <div
-            class="coverage-fill"
-            style={`width: ${(imageCoverage.existingCount / imageCoverage.totalCount) * 100}%`}
-          ></div>
-        </div>
-      {/if}
-    </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.cardResourceDownload')}</span>
-        <span class="setting-desc">{$t('settings.cardResourceDownloadDesc')}</span>
-      </div>
-      {#if isCardImageDownloading()}
-        <button class="button button-primary" disabled>
-          {$t('settings.downloadingPercent', {
-            values: { percent: Math.round((downloadState.completed / downloadState.total) * 100) },
-          })}
-        </button>
-      {:else}
-        <button
-          class="button button-primary"
-          disabled={!imageCoverage || imageCoverage.missingCount === 0}
-          onclick={startDownloadAll}
-        >
-          {#if imageCoverage && imageCoverage.missingCount === 0}
-            {$t('settings.alreadyLatest')}
-          {:else if imageCoverage}
-            {$t('settings.downloadAllImages', { values: { count: imageCoverage.missingCount } })}
-          {:else}
-            {$t('settings.startDownload')}
-          {/if}
-        </button>
-      {/if}
-    </div>
-
-    {#if isCardImageDownloading()}
-      <p class="download-hint">{$t('settings.downloadHint')}</p>
-    {/if}
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.imageCachePath')}</span>
-        <span
-          role="presentation"
-          class="setting-desc file-path"
-          onclick={async () => {
-            await writeText(imagePath)
-          }}>{imagePath}</span
-        >
-      </div>
-    </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.imageCacheSize')}</span>
-      </div>
-      <span class="version-tag">{imageCacheSize}</span>
-    </div>
-
-    <div class="db-actions">
       <button
-        class="button button-danger-outline"
-        disabled={onloadInfo}
-        onclick={handleResetImageCache}
+        class="button button-secondary"
+        onclick={checkCardDataUpdate}
+        disabled={cardDataUpdateStatus === 'checking'}
       >
-        {$t('settings.resetImageCache')}
+        {cardDataUpdateStatus === 'checking' ? $t('settings.checking') : $t('settings.checkUpdate')}
       </button>
     </div>
-  </section>
 
-  <!-- 7. 自定义语言 -->
-  <section class="settings-card">
-    <h2 class="card-title">{$t('settings.customLang')}</h2>
-
+    <div class="about-group-title">{$t('settings.feedback')}</div>
     <div class="setting-item">
       <div class="setting-info">
-        <span class="setting-label">{$t('settings.defaultLang')}</span>
-        <span class="setting-desc">{$t('settings.defaultLangDesc')}</span>
+        <span class="setting-label">{$t('settings.feedbackDoc')}</span>
+        <span class="setting-desc">{$t('settings.feedbackDocDesc')}</span>
       </div>
-      <select class="setting-input lang-select" bind:value={$defaultLanguage}>
-        {#each [...PRESET_LANGUAGE_CODES, ...customLangs.map((c) => c.code)] as code (code)}
-          <option value={code}>{code}</option>
-        {/each}
-      </select>
+      <button class="button button-ghost" onclick={openHelpDoc}>
+        {$t('settings.visitLink')}
+      </button>
     </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.presetLang')}</span>
-        <span class="setting-desc">
-          {$t('settings.presetLangDesc', { values: { codes: PRESET_LANGUAGE_CODES.join(' / ') } })}
-        </span>
-      </div>
-    </div>
-
-    <div class="add-lang-row">
-      <input
-        class="settings-input lang-code-input"
-        bind:value={newLangCode}
-        placeholder={$t('settings.langCodePlaceholder')}
-      />
-      <input
-        class="settings-input"
-        bind:value={newLangName}
-        placeholder={$t('settings.langNamePlaceholder')}
-      />
-      <button class="button button-primary" onclick={addLang}>{$t('common.add')}</button>
-    </div>
-
-    {#if langMsg}
-      <div class="lang-msg" class:lang-msg-error={langMsgError}>{langMsg}</div>
-    {/if}
-
-    {#if customLangs.length === 0}
-      <div class="lang-empty">{$t('settings.noCustomLang')}</div>
-    {:else}
-      <div class="manage-list">
-        {#each customLangs as lang (lang.code)}
-          <div class="manage-row">
-            <div class="manage-info">
-              <span class="manage-title">{lang.code}</span>
-              <span class="manage-desc">
-                {#if editingCode === lang.code}
-                  <input
-                    class="settings-input"
-                    bind:value={editingName}
-                    placeholder={$t('settings.langNameEditPlaceholder')}
-                  />
-                {:else}
-                  {lang.name}
-                {/if}
-              </span>
-            </div>
-            <div class="lang-actions">
-              {#if editingCode === lang.code}
-                <button class="button button-ghost" onclick={() => saveRename(lang.code)}>
-                  {$t('common.save')}
-                </button>
-                <button
-                  class="button button-ghost"
-                  onclick={() => {
-                    editingCode = ''
-                  }}
-                >
-                  {$t('common.cancel')}
-                </button>
-              {:else}
-                <button class="button button-ghost" onclick={() => startEdit(lang)}>
-                  {$t('common.rename')}
-                </button>
-                <button class="button button-danger-outline" onclick={() => removeLang(lang.code)}>
-                  {$t('common.delete')}
-                </button>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
   </section>
 
   <CommonModal
@@ -1778,6 +1844,44 @@
           : $t('settings.importCount', { values: { count: selectedImportDeckIds.length } })}
       </button>
     {/snippet}
+  </CommonModal>
+
+  <CommonModal
+    open={showTableModal}
+    title={tableModal?.label ?? ''}
+    subtitle={tableModal
+      ? $t('settings.tableRowsPreview', { values: { total: tableModal.total, limit: 200 } })
+      : ''}
+    width="min(720px, 92vw)"
+    onclose={() => (showTableModal = false)}
+  >
+    {#if tableLoading}
+      <div class="table-loading">{$t('common.loading')}</div>
+    {:else if !tableModal || tableModal.rows.length === 0}
+      <div class="table-loading">{$t('settings.tableEmpty')}</div>
+    {:else}
+      {@const cols = Object.keys(tableModal.rows[0])}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              {#each cols as col (col)}
+                <th>{col}</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each tableModal.rows as row, i (i)}
+              <tr>
+                {#each cols as col (col)}
+                  <td title={cellValue(row[col])}>{cellValue(row[col])}</td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </CommonModal>
 
   {#if busyText}
@@ -1957,18 +2061,37 @@
 
   /* 各表统计明细 */
   .stat-breakdown {
-    margin-top: 12px;
+    margin-top: 8px;
     border: 1px solid rgba(205, 205, 203, 0.6);
     border-radius: var(--radius-md);
     overflow: hidden;
   }
 
   .stat-row {
+    width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     padding: 8px 14px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .stat-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .stat-row-disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .stat-row-disabled:hover {
+    background: transparent;
   }
 
   .stat-row + .stat-row {
@@ -1977,11 +2100,65 @@
 
   .stat-label {
     color: var(--text-secondary);
+    text-align: left;
+  }
+
+  .stat-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-tertiary);
   }
 
   .stat-value {
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 数据表明细弹窗 */
+  .table-loading {
+    padding: 32px 0;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+  }
+
+  .table-scroll {
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+  }
+
+  .data-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--text-xs);
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .data-table th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    z-index: 1;
+  }
+
+  .data-table tr:last-child td {
+    border-bottom: none;
   }
 
   /* 数据管理 */
@@ -2001,6 +2178,14 @@
   .manage-block-desc {
     font-size: var(--text-sm);
     color: var(--text-secondary);
+  }
+
+  /* 关于页分组标题 */
+  .about-group-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 14px 0 0;
   }
 
   .manage-list {

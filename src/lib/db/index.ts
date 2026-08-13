@@ -155,7 +155,7 @@ export {
   upsertTableVersion,
   clearVersion,
 } from './repository/version-repository'
-export { getDbStats } from './repository/stats'
+export { getDbStats, getTableRows } from './repository/stats'
 export { clearCardData } from './repository/maintenance'
 export {
   upsertLangQty,
