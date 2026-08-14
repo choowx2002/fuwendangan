@@ -112,6 +112,23 @@ export async function signOutSupabase(): Promise<void> {
   await vaultClearSession()
 }
 
+/** 轻量查询云端同步元数据（不拉 data 全量），用于启动时判断是否需要下拉 */
+export async function fetchRemoteMeta(): Promise<{ updatedAt: string | null; remoteDeviceId: string | null } | null> {
+  const client = getByoClient()
+  const user = await getSupabaseUser()
+  if (!client || !user) return null
+  const { data, error } = await client
+    .from(SUPABASE_SYNC_TABLE)
+    .select('updated_at, device_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (error || !data) return null
+  return {
+    updatedAt: (data.updated_at as string) ?? null,
+    remoteDeviceId: (data.device_id as string) ?? null,
+  }
+}
+
 /** 拉取远端 bundle（单行；云端无数据时 body=null） */
 export async function fetchRemoteBody(): Promise<RemoteBundleData> {
   const client = getByoClient()

@@ -3,7 +3,7 @@
   import AppShell from '../lib/components/layout/AppShell.svelte'
   import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
   import Toast from '../lib/components/ui/Toast.svelte'
-  import { getVersion, initializeDatabase, checkForContentUpdates } from '../lib/db'
+  import { getVersion, initializeDatabase, checkForContentUpdates, checkAutoSyncOnLaunch } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
   import { initLogService } from '$lib/services/log-service'
@@ -47,6 +47,8 @@
       setLoadStatus('success')
       // 启动后异步检查备份提醒（不阻塞界面）
       void maybePromptBackup()
+      // 启动后异步检测云同步更新（仅 Tauri + 开关开启，弹框确认后同步，失败静默）
+      void checkAutoSyncOnLaunch()
     } catch (error) {
       // DEBUG: 启动初始化失败的真实错误（plugin-sql reject 为普通字符串）
       console.error('[Layout] 初始化失败:', error)

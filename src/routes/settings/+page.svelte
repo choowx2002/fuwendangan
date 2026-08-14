@@ -61,6 +61,7 @@
     backupReminderDays,
     syncSupabaseUrl,
     syncSupabaseAnonKey,
+    autoSyncEnabled,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
@@ -2059,6 +2060,17 @@
         </button>
       </div>
     {/if}
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.autoSyncLabel')}</span>
+        <span class="setting-desc">{$t('settings.autoSyncDesc')}</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" bind:checked={$autoSyncEnabled} />
+        <span class="slider"></span>
+      </label>
+    </div>
   </section>
 
   <!-- 6. 本地图片 -->

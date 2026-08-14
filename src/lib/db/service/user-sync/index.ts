@@ -27,6 +27,7 @@ import { vaultGetSession, vaultSetSession, vaultClearSession } from './vault'
 import type { ApplyResult } from './engine'
 import type { SyncBundleBody } from './types'
 
+export { checkAutoSyncOnLaunch } from './auto-sync'
 export {
   getSupabaseUser,
   signInSupabase,

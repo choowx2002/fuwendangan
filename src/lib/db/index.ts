@@ -335,6 +335,7 @@ export {
   parseBundle,
   mergeRemoteBody,
   syncViaSupabase,
+  checkAutoSyncOnLaunch,
   getSupabaseUser,
   signInSupabase,
   signOutSupabase,

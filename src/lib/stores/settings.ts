@@ -142,6 +142,9 @@ export const syncSupabaseUrl = persistentWritable('syncSupabaseUrl', '')
 /** Supabase BYO 云同步：用户自己的项目 anon key（本地保存，绝不进入 bundle） */
 export const syncSupabaseAnonKey = persistentWritable('syncSupabaseAnonKey', '')
 
+/** 启动时自动检测云端更新（默认关闭；检测到更新弹框确认后同步，仅 Tauri） */
+export const autoSyncEnabled = persistentWritable('autoSyncEnabled', false)
+
 locale.subscribe((value) => {
   const next = isSupportedLocale(value) ? value : systemLocale()
   i18nLocale.set(next)

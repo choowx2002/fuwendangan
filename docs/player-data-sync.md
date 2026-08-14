@@ -186,7 +186,8 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 - **身份**：邮箱密码登录（免费版可用且跨设备成立），RLS 收紧为 `auth.uid() = user_id`，不再有 v1 的 anon key 公开洞。
 - **会话持久化（plugin-store）**：登录会话（access/refresh token）经 `@tauri-apps/plugin-store` 明文存本机 `session.json`（不再使用 Stronghold——其依赖 libsodium-sys-stable 在 Android 交叉编译无解），`persistSession: false` 不再写 localStorage——移动端 WebView 清缓存/更新后登录态不丢。启动后首次 auth 调用前 `ensureSession()` 从 vault 恢复（幂等；access_token 过期自动用 refresh_token 刷新）。
 - **免费版适配**：闲置 7 天自动暂停 → 「测试连接」区分暂停/未建表/URL 变更并给出引导；push 前按 bundle 校验和去重（内容未变跳过上行，省带宽/请求）；凭据（URL/key）仅存本机 plugin-store，**绝不进入 bundle**。
-- `supabase-transport.ts`：BYO 客户端工厂（独立于内容同步客户端）、auth、`fetchRemoteBody` / `pushBody`、`testConnection`、建表 SQL。`index.ts` 的 `syncViaSupabase()` 编排 pull → merge → push。
+- `supabase-transport.ts`：BYO 客户端工厂（独立于内容同步客户端）、auth、`fetchRemoteBody` / `pushBody` / `fetchRemoteMeta`（轻量查 `updated_at`，供启动检测）、`testConnection`、建表 SQL。`index.ts` 的 `syncViaSupabase()` 编排 pull → merge → push。
+- **启动自动同步（可选，默认关）**：设置页开关 `autoSyncEnabled` 开启后，每次启动（仅 Tauri）在内容检查之后异步检测——`fetchRemoteMeta()` 取云端 `updated_at` 与本地 `last_sync` 比较，云端更新则弹框询问，确认后走 `syncViaSupabase()`；未配置/未登录/断网/暂停一律静默跳过，不打扰。
 
 ## 9. 同步流程与触发
 
@@ -201,7 +202,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 
 - 触发时机：
   - 手动 Bundle：用户点击导出/导入。
-  - Supabase BYO：设置页「立即同步」（pull → merge → push）。Git 连续同步已放弃，无自动 pull/push。
+  - Supabase BYO：设置页「立即同步」（pull → merge → push）；可选「启动时自动同步」在每次启动时检测云端 `updated_at` 并弹框确认后同步。Git 连续同步已放弃，无自动 pull/push。
 - 幂等：bundle/文件行级 upsert 按稳定键，重复导入不产生重复行（与现有 CSV 回导、购买清单 upsert 同模式）。
 - 与内容同步互斥：玩家数据同步不应与内容同步并发（复用 `withTransaction` 串行槽，天然串行）。
 
