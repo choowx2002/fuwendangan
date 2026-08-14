@@ -24,6 +24,7 @@
   ]
 
   let loading = $state(true)
+  let mainEl = $state<HTMLElement | null>(null)
   let searchQuery = $state('')
   let effectiveQuery = $state('')
   let searchOpen = $state(false)
@@ -61,7 +62,39 @@
   })
 
   function setLang(l: Lang) {
+    const captured = captureScrollAnchor()
     lang.set(l)
+    restoreScrollAnchor(captured)
+  }
+
+  function captureScrollAnchor():
+    | { el: HTMLElement; offset: number }
+    | { toBottom: true }
+    | null {
+    const el = mainEl
+    if (!el) return null
+    const viewTop = el.getBoundingClientRect().top
+    for (const a of el.querySelectorAll<HTMLElement>('.rule-anchor')) {
+      const r = a.getBoundingClientRect()
+      if (r.bottom >= viewTop) return { el: a, offset: r.top - viewTop }
+    }
+    return { toBottom: true }
+  }
+
+  async function restoreScrollAnchor(
+    captured: { el: HTMLElement; offset: number } | { toBottom: true } | null
+  ) {
+    const el = mainEl
+    if (!el || !captured) return
+    await tick()
+    if ('toBottom' in captured) {
+      el.scrollTop = el.scrollHeight
+      return
+    }
+    if (captured.el.isConnected) {
+      el.scrollTop +=
+        captured.el.getBoundingClientRect().top - el.getBoundingClientRect().top - captured.offset
+    }
   }
 
   function goBack() {
@@ -116,11 +149,11 @@
     selectedRules = next
   }
 
-  function longpressSelect(ruleNumber: string) {
-    suppressClickUntil = Date.now() + 600
-    if (!copyMode) copyMode = true
-    toggleSelect(ruleNumber)
-  }
+  // function longpressSelect(ruleNumber: string) {
+  //   suppressClickUntil = Date.now() + 600
+  //   if (!copyMode) copyMode = true
+  //   toggleSelect(ruleNumber)
+  // }
 
   function buildCopyText(list: Rule[]): string {
     return list
@@ -245,7 +278,7 @@
   {/if}
 
   <!-- 正文 -->
-  <main class="main" id="main">
+  <main class="main" id="main" bind:this={mainEl}>
     {#if loading}
       <div class="loading">{$t('common.loading')}</div>
     {:else}
@@ -265,7 +298,6 @@
                   class="chapter rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                 >
                   <div class="chapter-num">{$t('rules.chapterLabel', { values: { number: rule.rule_number } })}</div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
@@ -279,7 +311,6 @@
                   class="section rule-anchor"
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                 >
                   <h3 class="section-title">
                     <div class="section-num">{rule.rule_number}</div>
@@ -297,7 +328,6 @@
                   class:selected={copyMode && selectedRules.has(rule.rule_number)}
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
-                  use:longpress={{ duration: 800, onLongPress: () => longpressSelect(rule.rule_number) }}
                   onclick={() => {
                     if (Date.now() < suppressClickUntil) return
                     if (copyMode) toggleSelect(rule.rule_number)
@@ -627,12 +657,13 @@
   }
 
   .content-wrap {
-    padding: 32px 40px 80px;
+    height: 100%;
+    padding: 32px 40px 16px;
   }
 
   @media (max-width: 767.99px) {
     .content-wrap {
-      padding: 16px 16px 80px;
+      padding: 16px 16px 16px;
     }
   }
 

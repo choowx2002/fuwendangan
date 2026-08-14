@@ -50,7 +50,8 @@
       page.url.pathname === '/scanner' ||
       page.url.pathname.startsWith('/rules/') ||
       page.url.pathname === '/tools/gameCounter' ||
-      page.url.pathname === '/tools/dice'
+      page.url.pathname === '/tools/dice' ||
+      page.url.pathname === '/simulator/chainSimulator'
   )
 </script>
 

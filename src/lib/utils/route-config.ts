@@ -13,6 +13,8 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/collection': { backTo: '/', description: '收藏与闪卡 → 首页' },
   '/locker': { backTo: '/', description: '储物柜 → 首页' },
   '/simulator': { backTo: '/', description: '模拟器 → 首页' },
+  '/simulator/chainSimulator': { backTo: '/simulator', description: '结算链模拟器 → 模拟器' },
+  '/simulator/packOpener': { backTo: '/simulator', description: '开包模拟 → 模拟器' },
 
   // 工具与设置
   '/tools': { backTo: '/', description: '对战工具 → 首页' },

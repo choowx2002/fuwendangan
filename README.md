@@ -151,7 +151,7 @@ Local Version
 | [TypeScript](https://www.typescriptlang.org/)                         | Programming language  |
 | [Vite](https://vite.dev/)                                             | Build tool            |
 | [Lucide Svelte](https://lucide.dev/)                                  | Icons                 |
-| [svelte-dnd-action](https://github.com/isaacHagoel/svelte-dnd-action) | Drag & Drop           |
+| [@thisux/sveltednd](https://sveltednd.thisux.com/)                    | Drag & Drop           |
 
 ### Desktop
 

@@ -18,7 +18,7 @@ Rune Archive（符文档案）是一款基于 **Tauri v2** 的桌面端（兼移
 | 包管理     | pnpm                                                                                          | -        | `pnpm-lock.yaml` / `pnpm-workspace.yaml`（仅 allowBuilds）                             |
 | 远程数据   | Supabase                                                                                      | ^2.108.2 | 凭证在本地 `.env.local`（gitignored，非仓库文件）                                      |
 | 本地数据库 | SQLite（`tauri-plugin-sql`）                                                                  | v2       | 表结构在 `src/lib/db/config/schema.ts`                                                 |
-| 其他       | lucide-svelte / snowflake / svelte-dnd-action / @piltoverarchive/riftbound-deck-codes / jspdf | -        | 图标 / 雪花ID / 拖拽 / Deck Code 编解码 / PDF 导出                                     |
+| 其他       | lucide-svelte / snowflake / @thisux/sveltednd / @piltoverarchive/riftbound-deck-codes / jspdf | -        | 图标 / 雪花ID / 拖拽 / Deck Code 编解码 / PDF 导出                                     |
 
 ## 目录结构说明
 

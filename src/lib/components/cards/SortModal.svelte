@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { SortKeyItem } from '$lib/db/types'
-  import { dndzone } from 'svelte-dnd-action'
+  import { draggable, droppable, type DragDropState } from '@thisux/sveltednd'
   import { fade, fly } from 'svelte/transition'
+  import { flip } from 'svelte/animate'
   import { t } from '$lib/i18n'
 
   // --- 数据与状态 ---
@@ -27,19 +28,24 @@
   }: SortModalProps = $props()
 
   let isSortModalOpen = $state(false)
+  let dndZoneEl = $state<HTMLElement | null>(null)
 
-  // DnD 配置
-  const flipDurationMs = 200
-  const dndType = 'sort-rules'
-
-  function handleConsider(e: CustomEvent) {
-    sortByList = e.detail.items
-  }
-
-  function handleFinalize(e: CustomEvent) {
-    sortByList = e.detail.items
+  function handleDrop(state: DragDropState<SortKeyItem>) {
+    const { draggedItem, targetElement, dropPosition } = state
+    const targetEl =
+      targetElement instanceof Element ? targetElement.closest<HTMLElement>('.sort-row') : null
+    const rest = sortByList.filter((i) => i.id !== draggedItem.id)
+    let next: SortKeyItem[]
+    if (targetEl && dndZoneEl) {
+      const rows = Array.from(dndZoneEl.children).filter((el) => el.classList.contains('sort-row'))
+      const idx = rows.indexOf(targetEl)
+      const at = dropPosition === 'after' ? idx + 1 : idx
+      next = [...rest.slice(0, at), draggedItem, ...rest.slice(at)]
+    } else {
+      next = [...rest, draggedItem]
+    }
     // 重新计算 order
-    sortByList = sortByList.map((item, index) => ({
+    sortByList = next.map((item, index) => ({
       ...item,
       order: index + 1,
     }))
@@ -125,18 +131,22 @@
         {:else}
           <div
             class="dnd-zone"
-            use:dndzone={{
-              items: sortByList,
-              flipDurationMs,
-              type: dndType,
-              dragDisabled: false,
-              dropFromOthersDisabled: false,
+            bind:this={dndZoneEl}
+            use:droppable={{
+              container: 'sort-rules',
+              callbacks: { onDrop: handleDrop },
             }}
-            onconsider={handleConsider}
-            onfinalize={handleFinalize}
           >
             {#each sortByList as item, i (item.id)}
-              <div class="sort-row" class:dragging={false}>
+              <div
+                class="sort-row"
+                use:draggable={{ container: 'sort-rules', dragData: item }}
+                use:droppable={{
+                  container: 'sort-rules',
+                  callbacks: { onDrop: handleDrop },
+                }}
+                animate:flip={{ duration: 200 }}
+              >
                 <!-- Drag Handle -->
                 <div class="drag-handle" title={$t('cards.dragSort')}>
                   <svg viewBox="0 0 24 24" fill="currentColor">
@@ -190,7 +200,11 @@
                 </div>
 
                 <!-- Remove Button -->
-                <button class="icon-btn remove-btn" onclick={() => removeSort(i)} aria-label={$t('cards.remove')}>
+                <button
+                  class="icon-btn remove-btn"
+                  onclick={() => removeSort(i)}
+                  aria-label={$t('cards.remove')}
+                >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path
                       d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
@@ -335,11 +349,9 @@
       background 0.1s;
   }
 
-  /* svelte-dnd-action 拖拽中的样式 */
-  :global(.sort-row[style*='transform']) {
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    z-index: 10;
-    background: var(--surface);
+  /* @thisux/sveltednd 拖拽中的样式 */
+  :global(.sort-row.dragging) {
+    opacity: 0.5;
   }
 
   .drag-handle {
