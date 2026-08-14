@@ -1620,10 +1620,9 @@ export interface FullCollectionImportResult {
 }
 
 /**
- * 完整收藏 CSV 回导：按 card_no_extend × language 幂等 upsert（事务化）。
+ * 完整收藏 CSV 回导：按 card_no_extend × language 幂等 upsert（withTransaction 批量写）。
  * - 已存在语言行 → 更新数量/状态；不存在 → 新建；
- * - 重复导入同一文件不产生脏数据（唯一键天然幂等）；
- * - 中途失败整体回滚。
+ * - 重复导入同一文件不产生脏数据（唯一键天然幂等）。
  */
 export async function importFullCollection(
   rows: FullCollectionImportRow[]

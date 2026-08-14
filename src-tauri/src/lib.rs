@@ -304,13 +304,16 @@ async fn validate_sqlite_file(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use rusqlite::Connection;
 
-        let conn = Connection::open_with_flags(
-            &path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .map_err(|e| format!("无法打开备份文件（不是有效的 SQLite 数据库）：{}", e))?;
+        let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("无法打开备份文件（不是有效的 SQLite 数据库）：{}", e))?;
 
-        let required = ["cards_base", "card_prints", "collection", "decks", "version"];
+        let required = [
+            "cards_base",
+            "card_prints",
+            "collection",
+            "decks",
+            "version",
+        ];
         let mut stmt = conn
             .prepare(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?, ?, ?, ?)",
@@ -492,9 +495,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_sharekit::init())
         .plugin(saf_plugin())
-        .setup(|_app| {
+        .setup(|app| {
             #[cfg(mobile)]
-            _app.handle().plugin(tauri_plugin_barcode_scanner::init());
+            {
+                let _ = app.handle().plugin(tauri_plugin_barcode_scanner::init());
+            }
+            #[cfg(not(mobile))]
+            {
+                let _ = app;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -54,7 +54,7 @@ export async function saveCard(card: CardBase): Promise<void> {
 }
 
 /**
- * 批量保存卡牌（使用事务）
+ * 批量保存卡牌（逐条 upsert，无跨语句事务；调用方负责 FK 关开包裹）
  */
 export async function saveCards(cards: CardBase[]): Promise<void> {
   await getDatabase()

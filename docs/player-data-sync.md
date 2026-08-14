@@ -32,7 +32,7 @@ v2 目标：**更小范围、更稳引用、更实用传输、更少重复实现
 4. **传输分级**：手动 Bundle（零基建，基线）→ Git 私有仓库（连续，桌面）→ Supabase BYO（远期，可选）。
 5. **同步配置永不随包**：URL / key / token / 仓库地址只在本机，避免凭据泄露。
 6. **与内容同步衔接**：玩家数据同步只在内容同步成功之后执行；失效引用由 `cleanupOrphans()` 兜底清理。
-7. **不侵入现有事务模型**：写回一律走 `database.ts` 的 `withTransaction()`（串行单连接），不开跨语句裸事务。
+7. **不侵入现有事务模型**：写回一律走 `database.ts` 的 `withTransaction()`（串行槽 + FK 开启的批量写，无跨语句事务），不开 BEGIN/COMMIT 裸事务。
 
 ## 3. 同步范围（v2 缩减后）
 
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
   删除：
     - 墓碑.updated_at > 实体行.updated_at → 删除本地行
     - 实体行.updated_at > 墓碑.updated_at → 复活（忽略墓碑）
-写回（一律在 `withTransaction()` 事务内，FK ON，依赖外键级联与写序，不切 FK OFF）：
+写回（一律在 `withTransaction()` 内，FK ON，依赖外键级联与写序）：
   tombstones → customPrints(→cards_base/card_prints) → decks(→versions→cards)
   → collection(→langs) → contacts → loans → wishlist → purchaseLists(→items)
   → matches(→games) → lockers(→sections→cards)
@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 - 用户在自己的 Supabase 项目（免费版可用）中运行「复制建表 SQL」，在设置页填入项目 URL + anon key 并邮箱登录，点「立即同步」。
 - **存储模型（与 §3.1 每实体一表不同）**：采用**单行 JSON**——`user_sync_bundle(user_id uuid PK, device_id, updated_at, data jsonb)`，整包 upsert。理由：合并引擎本就是整包语义；免费版 API 请求配额下「1 select + 1 upsert / 次同步」远优于每实体多表多次请求；单用户数据量远小于 500MB 上限。冲突仍由客户端合并引擎解决。
 - **身份**：邮箱密码登录（免费版可用且跨设备成立），RLS 收紧为 `auth.uid() = user_id`，不再有 v1 的 anon key 公开洞。
+- **会话持久化（plugin-store）**：登录会话（access/refresh token）经 `@tauri-apps/plugin-store` 明文存本机 `session.json`（不再使用 Stronghold——其依赖 libsodium-sys-stable 在 Android 交叉编译无解），`persistSession: false` 不再写 localStorage——移动端 WebView 清缓存/更新后登录态不丢。启动后首次 auth 调用前 `ensureSession()` 从 vault 恢复（幂等；access_token 过期自动用 refresh_token 刷新）。
 - **免费版适配**：闲置 7 天自动暂停 → 「测试连接」区分暂停/未建表/URL 变更并给出引导；push 前按 bundle 校验和去重（内容未变跳过上行，省带宽/请求）；凭据（URL/key）仅存本机 plugin-store，**绝不进入 bundle**。
 - `supabase-transport.ts`：BYO 客户端工厂（独立于内容同步客户端）、auth、`fetchRemoteBody` / `pushBody`、`testConnection`、建表 SQL。`index.ts` 的 `syncViaSupabase()` 编排 pull → merge → push。
 
@@ -233,7 +234,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 | 内容引用 | 稳定键（card_no / print_code），pull 后重链 | 内容重同步换 id 不破坏玩家数据 |
 | 增量标记 | 行 `updated_at > 游标`（需审计确保各表 bump） | 零显式脏标记；实施阶段审计补齐 |
 | 安全 | 同步配置永不随包；Supabase 默认收紧 RLS | 避免 v1 的 anon key 公开洞 |
-| 事务 | 一律 `withTransaction()`（串行单连接） | 与全局串行队列一致，避免跨语句锁库 |
+| 事务 | 一律 `withTransaction()`（串行槽 + FK 开启批量写） | 与全局串行队列一致，避免跨语句锁库/无效 COMMIT |
 
 ## 13. 风险与注意事项
 

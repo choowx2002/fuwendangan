@@ -340,6 +340,9 @@ export {
   signOutSupabase,
   testSupabaseConnection,
   buildSupabaseCreateTableSql,
+  vaultGetSession,
+  vaultSetSession,
+  vaultClearSession,
 } from './service/user-sync'
 export type { SyncExportInfo, SyncImportResult } from './service/user-sync'
 export {

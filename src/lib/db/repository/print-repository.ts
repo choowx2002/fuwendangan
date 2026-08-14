@@ -45,7 +45,7 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
 }
 
 /**
- * 批量保存卡图（使用事务）
+ * 批量保存卡图（逐条 upsert，无跨语句事务；调用方负责 FK 关开包裹）
  */
 export async function saveCardPrints(prints: CardPrint[]): Promise<void> {
   await getDatabase()

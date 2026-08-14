@@ -266,7 +266,7 @@ export interface WishlistImportResult {
 }
 
 /**
- * 心愿单 CSV 回导（事务化，幂等）：
+ * 心愿单 CSV 回导（withTransaction 批量写，幂等）：
  * - 唯一键：card_no_extend × language_code × finish（与 upsertWishlistItem 一致）；
  * - 已存在更新数量/优先级/状态/备注，不存在新建；重复导入不产生重复条目。
  */

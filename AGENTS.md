@@ -78,7 +78,7 @@ pnpm tauri:build:linux   # Linux 专用构建：NO_STRIP=true tauri build
 ## 数据同步契约（Sync DB）
 
 - **同步范围**：仅云端 `version` 表登记的 5 张同步表 —— `cards_base` / `card_prints` / `icons` / `rules` / `series`。Collection、Deck、Match Record 等本地数据**不参与内容同步**。
-- **玩家数据同步**（独立于内容同步）：`src/lib/db/service/user-sync/` 处理玩家自有数据跨设备（收藏/卡组/心愿/借还/联系人/清单/对局/卡柜/自定义打印/设置白名单）。传输：手动 Sync Bundle（`bundle.ts`/`engine.ts`）与 Supabase BYO（`supabase-transport.ts`，用户自建项目、单 JSON 行 + RLS，Git 已永久放弃）。合并 = LWW + deviceId 决胜 + `sync_tombstones` 墓碑；写回一律走 `withTransaction()`（见 `docs/player-data-sync.md`）。
+- **玩家数据同步**（独立于内容同步）：`src/lib/db/service/user-sync/` 处理玩家自有数据跨设备（收藏/卡组/心愿/借还/联系人/清单/对局/卡柜/自定义打印/设置白名单）。传输：手动 Sync Bundle（`bundle.ts`/`engine.ts`）与 Supabase BYO（`supabase-transport.ts`，用户自建项目、单 JSON 行 + RLS，Git 已永久放弃）。合并 = LWW + deviceId 决胜 + `sync_tombstones` 墓碑；写回一律走 `withTransaction()`（FK 开启的批量写，无跨语句事务，见 `docs/player-data-sync.md`）。
 - **同步模型**：按表 timestamp 同步。云端 `version` 表每张同步表一行（`name` = 表标识，唯一；`updated_at` = 该表数据最后发布时间），发布数据更新时对对应行做 upsert。客户端本地 `version` 表镜像同样结构，按 `name` upsert。
 - **同步流程**：比较每张表 local/remote 的 `updated_at`，只重下更新的表（整表全量替换，不做逐行 diff）。写入阶段先 `PRAGMA foreign_keys = OFF`，按「先清后插」顺序执行（clearAllCards → clearAllPrints → saveCards → saveCardPrints → 各附属表），`repointDeckCardReferences()` 重链卡组引用、`cleanupOrphans()` / `updateFilterOptions()` 条件后处理，最后按表写本地 version 行，并在 `finally` 恢复 `PRAGMA foreign_keys = ON`；崩溃中断则本地 version 不动，下次启动自动重试。
 - **外键已开启**：`@tauri-apps/plugin-sql` 经 sqlx 默认执行 `PRAGMA foreign_keys = ON`（`maintenance.ts` 里"未开启外键"的旧注释已修正）。同步**不用**跨语句事务/BEGIN/COMMIT（插件底层是 sqlx 多连接池，跨语句事务不可靠且会锁库），改为写阶段临时关闭外键、结束时恢复；恢复前 repoint 保证卡组引用全部合法。
@@ -172,7 +172,7 @@ async fn async_command() -> Result<serde_json::Value, String> {
 6. **`prevent-default` 插件版本为 5.x**（`Cargo.toml`），与多数 Tauri v2 插件版本号不同，属特例；若行为异常优先核对插件文档，不要盲目升/降版本。
 7. **TTS TCP 通信**：端口 39999（发送）/ 39998（接收）是外部 Tabletop Simulator 约定，别改动；连接失败是正常现象（TTS 未运行时），前端需优雅降级。
 8. **首次同步依赖网络**：本地库无版本时启动会触发全量同步（5 张表全部重下）；离线/弱网时跳过同步、使用本地数据，失败时提示错误 toast 而非卡在加载态。仓库无 CI、无测试脚本，不要找跑测试的命令。
-9. **事务必须依赖 `database.ts` 的串行化**：`@tauri-apps/plugin-sql` 底层是 sqlx 连接池（默认最多 10 连接，插件未暴露池配置），跨多次 `db.execute` 的 `BEGIN`/`COMMIT`/`PRAGMA defer_foreign_keys` 可能落在不同连接而报「database is locked」或失效。`database.ts` 已对 `select`/`execute` 做全局串行（单连接）；不要绕过它自行开事务，也不要在串行队列之外并发访问 db。
+9. **禁用跨语句事务，只用 `database.ts` 的串行化**：`@tauri-apps/plugin-sql` 底层是 sqlx 连接池（默认最多 10 连接，插件未暴露池配置），跨多次 `db.execute` 的 `BEGIN`/`COMMIT` 可能落在不同连接——移动端实测报「cannot commit - no transaction is active」（内容同步同样不可靠）。因此**不要**使用 BEGIN/COMMIT/`PRAGMA defer_foreign_keys`。批量写统一走 `withTransaction()`（`database.ts`，FK 开启的串行批量写，不关外键；内容同步的 `performSync` 才用 FK 关开包裹）；`database.ts` 已对 `select`/`execute` 做全局串行；不要在串行队列之外并发访问 db。
 10. **Linux 开发**：`lib.rs` 已设 `WEBKIT_DISABLE_DMABUF_RENDERER=1`（规避 WebKitGTK 渲染问题）；Linux 打包脚本为 `pnpm tauri:build:linux`（`NO_STRIP=true`，规避 strip 问题）。
 
 ## 提交代码前检查清单

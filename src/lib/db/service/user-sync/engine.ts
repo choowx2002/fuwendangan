@@ -328,7 +328,7 @@ export function buildSyncWritePlan(input: MergeInput): SyncWritePlan {
 
 // ==================== 写回 ====================
 
-/** 应用写回计划（withTransaction 内；settings 事务外应用） */
+/** 应用写回计划（withTransaction 内；settings 槽外应用） */
 export async function applySyncPlan(plan: SyncWritePlan): Promise<ApplyResult> {
   const result: ApplyResult = {
     missingCards: 0,

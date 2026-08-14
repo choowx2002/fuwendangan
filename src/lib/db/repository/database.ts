@@ -13,9 +13,11 @@ let dbPromise: Promise<Database> | null = null
 /**
  * 数据库操作串行队列：
  * tauri-plugin-sql 底层是 sqlx 连接池（默认最多 10 个连接，插件未暴露池配置），
- * 跨多次 db.execute 的事务（BEGIN/COMMIT）若落在不同连接上，会因写锁互斥报「database is locked」。
- * 通过全局 promise 队列保证任何时刻只有一个 db 操作在跑 → 池子实际只开 1 个连接，
- * 事务、PRAGMA defer_foreign_keys 等依赖同一连接的语义才能可靠生效。
+ * 跨多次 db.execute 的 BEGIN/COMMIT 可能落在不同连接上（移动端实测报
+ * 「cannot commit - no transaction is active」，内容同步同理不可靠）。
+ * 因此本项目不用跨语句事务：写回一律是幂等 upsert，失败后下次同步自愈。
+ * 通过全局 promise 队列保证任何时刻只有一个 db 操作在跑，避免写锁互斥
+ * （逐条语句在串行下可靠执行）。
  */
 let dbQueue: Promise<unknown> = Promise.resolve()
 
@@ -48,11 +50,12 @@ interface RawDb {
 }
 
 /**
- * 在单个串行槽内执行跨语句事务（BEGIN/COMMIT/ROLLBACK）。
- * 队列保证任意时刻只有一个 db 操作在跑（池子实际只开 1 个连接），
- * 因此在槽内把 select/execute 临时还原为原始方法，事务内所有语句落在同一连接上，
- * 且不会被其他操作插入（其他调用都在队列里等待当前槽完成），实现真正的原子性。
- * 事务执行期间 fn 内的 db 访问（含各仓储内部 getDatabase()）走原始方法、不重入队列，避免死锁。
+ * 在单个串行槽内执行一批写操作（对外名保留 withTransaction，实为 FK 开启下的批量写）。
+ * 不用 BEGIN/COMMIT：插件底层是 sqlx 多连接池，跨语句事务不可靠（移动端实测
+ * 「cannot commit - no transaction is active」，且会锁库）。FK 保持开启，
+ * 依赖 ON DELETE CASCADE 清理子表（先清后插），写序保证引用合法。
+ * 调用方依赖幂等 upsert，中途失败下次同步自愈，不依赖回滚。
+ * 串行槽内把 select/execute 临时还原为原始方法，避免重入队列造成死锁。
  */
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   const db = await getDatabase()
@@ -62,18 +65,12 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
     raw.select = raw.__rawSelect
     raw.execute = raw.__rawExecute
     try {
-      await raw.__rawExecute('BEGIN')
-      try {
-        const result = await fn()
-        await raw.__rawExecute('COMMIT')
-        return result
-      } catch (err) {
-        await raw.__rawExecute('ROLLBACK').catch(() => {})
-        // DEBUG: 事务回滚时的真实错误（移动端同步失败排查）
-        console.error('[DB] withTransaction ROLLBACK:', err)
-        console.error('[DB] withTransaction ROLLBACK string:', err instanceof Error ? err.message : String(err))
-        throw err
-      }
+      return await fn()
+    } catch (err) {
+      // DEBUG: 批量写失败的真实错误（移动端同步失败排查）
+      console.error('[DB] withTransaction 失败:', err)
+      console.error('[DB] withTransaction 失败 string:', err instanceof Error ? err.message : String(err))
+      throw err
     } finally {
       raw.select = select
       raw.execute = execute

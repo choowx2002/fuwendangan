@@ -23,6 +23,7 @@ import {
   testSupabaseConnection,
   buildSupabaseCreateTableSql,
 } from './supabase-transport'
+import { vaultGetSession, vaultSetSession, vaultClearSession } from './vault'
 import type { ApplyResult } from './engine'
 import type { SyncBundleBody } from './types'
 
@@ -33,6 +34,9 @@ export {
   testSupabaseConnection,
   buildSupabaseCreateTableSql,
   parseBundle,
+  vaultGetSession,
+  vaultSetSession,
+  vaultClearSession,
 }
 
 export const SUPABASE_LAST_PUSH_CHECKSUM = 'supabase_last_push_checksum'

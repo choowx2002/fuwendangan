@@ -513,8 +513,8 @@ async function reconcileBorrowIn(
 
 /**
  * 批量保存清单条目编辑（行内编辑后一次性确认调用）：
- * 1. 整个批次包在一个事务里（withTransaction，串行槽内保证同一连接），任一条目失败整体回滚，
- *    避免半途持久化导致的重试重复写回收藏 / 重复建借入。
+ * 1. 整个批次包在 withTransaction（FK 开启的批量写，无跨语句事务/回滚），
+ *    串行槽内保证不与其他 db 操作交错；写回顺序保证 FK 依赖合法。
  * 2. 逐条更新 qty_ordered / qty_borrowed / qty_bought / qty_to_buy / status；
  *    qty_to_buy = max(0, 需要 - 实时已有 - 已下单 - 借入 - 已购买)；
  *    status 按 跳过/待购买/已满足 派生。
@@ -662,7 +662,7 @@ async function upsertEditorItem(db: Db, listId: string, row: PurchaseListEditorR
  * - 仅 qty_required 变化：原地 UPDATE，保留 qty_ordered/borrowed/bought，重算 qty_to_buy；
  * - variant/语言/工艺变化：先移除旧条目（顺带取消其名下生效借入），再按新键 upsert；
  * - 新增行：upsert；编辑器中已删除的行：移除（取消借入）。
- * 整个批次在 withTransaction 内保证原子性。
+ * 整个批次在 withTransaction 内顺序写回；幂等 upsert，重试安全。
  */
 export async function savePurchaseListEditor(
   listId: string,

@@ -15,6 +15,7 @@ import {
 } from '@supabase/supabase-js'
 import { get } from 'svelte/store'
 import { syncSupabaseUrl, syncSupabaseAnonKey } from '$lib/stores/settings'
+import { vaultGetSession, vaultSetSession, vaultClearSession } from './vault'
 import type { SyncBundleBody } from './types'
 
 export const SUPABASE_SYNC_TABLE = 'user_sync_bundle'
@@ -27,6 +28,7 @@ export interface RemoteBundleData {
 
 let byoClient: SupabaseClient | null = null
 let byoClientKey = ''
+let sessionRestorePromise: Promise<void> | null = null
 
 /** 按当前 URL/key 构造（或复用）BYO 客户端；未配置返回 null */
 export function getByoClient(): SupabaseClient | null {
@@ -35,20 +37,54 @@ export function getByoClient(): SupabaseClient | null {
   if (!url || !key) return null
   const cacheKey = `${url}|${key}`
   if (byoClient && byoClientKey === cacheKey) return byoClient
-  // 自定义 storageKey，避免与内容同步客户端（remote-api 默认 key）共用存储触发多实例警告
+  // persistSession: false → 会话不写 localStorage（移动端 WebView 易丢/明文），改由本地 store 持久化
   byoClient = createClient(url, key, {
-    auth: { storageKey: 'sb-rune-archive-byo-auth-token' },
+    auth: {
+      storageKey: 'sb-rune-archive-byo-auth-token',
+      persistSession: false,
+    },
   })
   byoClientKey = cacheKey
+  // URL/key 变化（含设置延迟加载后首次配置）→ 重置恢复游标，重新尝试从 vault 恢复会话
+  sessionRestorePromise = null
   return byoClient
+}
+
+/** 从本地 store 恢复会话（幂等：成功一次即跳过）；无会话时零成本返回 */
+export async function ensureSession(): Promise<void> {
+  if (!sessionRestorePromise) {
+    sessionRestorePromise = (async () => {
+      const client = getByoClient()
+      const session = await vaultGetSession()
+      if (!client || !session) return
+      try {
+        const { error } = await client.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        })
+        if (error) throw error
+      } catch {
+        // access_token 已过期：尝试用 refresh_token 刷新；失败则清除 vault 会话
+        try {
+          const { error } = await client.auth.refreshSession({
+            refresh_token: session.refresh_token,
+          })
+          if (error) throw error
+        } catch {
+          await vaultClearSession()
+        }
+      }
+    })()
+  }
+  await sessionRestorePromise
 }
 
 /** 当前登录用户（未配置/未登录返回 null） */
 export async function getSupabaseUser(): Promise<User | null> {
   const client = getByoClient()
   if (!client) return null
+  await ensureSession()
   const { data, error } = await client.auth.getUser()
-  // DEBUG: 登录会话状态（移动端 localStorage 会话丢失排查）
   if (error) console.warn('[SYNC] getSupabaseUser error:', error.message, '| status=', (error as { status?: number }).status)
   return data.user ?? null
 }
@@ -57,8 +93,15 @@ export async function getSupabaseUser(): Promise<User | null> {
 export async function signInSupabase(email: string, password: string): Promise<void> {
   const client = getByoClient()
   if (!client) throw new Error('请先填写 Supabase URL 与 anon key')
-  const { error } = await client.auth.signInWithPassword({ email, password })
+  const { data, error } = await client.auth.signInWithPassword({ email, password })
   if (error) throw new Error(error.message)
+  if (data.session) {
+    await vaultSetSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at ?? 0,
+    })
+  }
 }
 
 /** 登出 */
@@ -66,6 +109,7 @@ export async function signOutSupabase(): Promise<void> {
   const client = getByoClient()
   if (!client) return
   await client.auth.signOut()
+  await vaultClearSession()
 }
 
 /** 拉取远端 bundle（单行；云端无数据时 body=null） */
@@ -128,6 +172,7 @@ export interface ConnectionTestResult {
 export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   const client = getByoClient()
   if (!client) return { ok: false, code: 'no_config', detail: '' }
+  await ensureSession()
   let user: User | null = null
   try {
     const { data, error } = await client.auth.getUser()
