@@ -73,10 +73,9 @@ export async function mergeRemoteBody(
   const localDeviceId = await getOrCreateDeviceId()
 
   const plan = buildSyncWritePlan({ local, remote, localDeviceId, remoteDeviceId })
-  console.log('[SYNC] 写回计划生成, upsertDecks=%d upsertCollection=%d upsertWishlist=%d upsertLoans=%d upsertContacts=%d upsertLists=%d upsertMatches=%d upsertLockers=%d tombstones=%d',
-    plan.upsertDecks.length, plan.upsertCollection.length, plan.upsertWishlist.length, plan.upsertLoans.length,
-    plan.upsertContacts.length, plan.upsertPurchaseLists.length, plan.upsertMatches.length, plan.upsertLockers.length,
-    plan.finalTombstones.length)
+  console.log(
+    `[SYNC] 写回计划生成, upsertDecks=${plan.upsertDecks.length} upsertCollection=${plan.upsertCollection.length} upsertWishlist=${plan.upsertWishlist.length} upsertLoans=${plan.upsertLoans.length} upsertContacts=${plan.upsertContacts.length} upsertLists=${plan.upsertPurchaseLists.length} upsertMatches=${plan.upsertMatches.length} upsertLockers=${plan.upsertLockers.length} upsertCustomPrints=${plan.upsertCustomPrints.length} tombstones=${plan.finalTombstones.length}`
+  )
   const applied = await applySyncPlan(plan)
   console.log('[SYNC] applySyncPlan 完成, applied =', JSON.stringify(applied))
 
@@ -119,7 +118,12 @@ export async function syncViaSupabase(): Promise<SyncImportResult> {
   const localDeviceId = await getOrCreateDeviceId()
   console.log('[SYNC] deviceId =', localDeviceId)
   const remote = await fetchRemoteBody()
-  console.log('[SYNC] fetchRemoteBody 完成, body=', remote.body ? '有远端数据' : '无远端数据', 'remoteDeviceId=', remote.remoteDeviceId)
+  console.log(
+    '[SYNC] fetchRemoteBody 完成, body=',
+    remote.body ? '有远端数据' : '无远端数据',
+    'remoteDeviceId=',
+    remote.remoteDeviceId
+  )
 
   let applied: ApplyResult | null = null
   if (remote.body) {

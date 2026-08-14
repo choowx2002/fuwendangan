@@ -138,6 +138,38 @@ export function mergeCustomPrints(opts: {
   }) as MergeResult<SyncCustomPrint>
 }
 
+/**
+ * 基础卡非破坏性 upsert：返回打印应引用的 cards_base id。
+ * id 已存在 → UPDATE 快照列（不动 id/card_no 身份键）；id 缺失但 card_no 冲突 → 复用现存卡；
+ * 否则 INSERT。禁止 REPLACE：删行会级联删除官方打印，触发 deck_cards 外键失败。
+ */
+async function upsertBaseCard(db: DbLike, baseCard: SyncCustomPrint['baseCard']): Promise<string> {
+  const { id, card_no } = baseCard
+  const exists = (await db.select(`SELECT id FROM ${TABLES.CARDS_BASE} WHERE id = ?`, [id])) as {
+    id: string
+  }[]
+  if (exists[0]?.id) {
+    const setCols = CARD_BASE_COLUMNS.filter((col) => col !== 'id' && col !== 'card_no')
+    await db.execute(
+      `UPDATE ${TABLES.CARDS_BASE} SET ${setCols.map((col) => `${col} = ?`).join(', ')} WHERE id = ?`,
+      [...setCols.map((col) => baseCard[col] ?? null), id]
+    )
+    return id
+  }
+  if (card_no) {
+    const byNo = (await db.select(`SELECT id FROM ${TABLES.CARDS_BASE} WHERE card_no = ?`, [
+      card_no,
+    ])) as { id: string }[]
+    if (byNo[0]?.id) return byNo[0].id
+  }
+  await db.execute(
+    `INSERT INTO ${TABLES.CARDS_BASE} (${CARD_BASE_COLUMNS.join(', ')})
+     VALUES (${CARD_BASE_COLUMNS.map(() => '?').join(', ')})`,
+    CARD_BASE_COLUMNS.map((col) => baseCard[col] ?? null)
+  )
+  return id
+}
+
 export async function applyCustomPrints(
   db: DbLike,
   upsert: SyncCustomPrint[],
@@ -147,6 +179,8 @@ export async function applyCustomPrints(
     const rows = (await db.select(`SELECT card_id FROM ${TABLES.CARD_PRINTS} WHERE id = ?`, [
       id,
     ])) as { card_id: string }[]
+    // 卡组引用该打印时先删引用（deck_cards.card_id 外键无 ON DELETE 动作，直接删打印会报错）
+    await db.execute(`DELETE FROM ${TABLES.DECK_CARDS} WHERE card_id = ?`, [id])
     await db.execute(`DELETE FROM ${TABLES.CARD_PRINTS} WHERE id = ?`, [id])
     const cardId = rows[0]?.card_id
     if (cardId) {
@@ -162,20 +196,19 @@ export async function applyCustomPrints(
 
   for (const c of upsert) {
     // 先写基础卡（print 外键依赖），再写打印
-    const cbPlaceholders = CARD_BASE_COLUMNS.map(() => '?').join(', ')
-    await db.execute(
-      `INSERT OR REPLACE INTO ${TABLES.CARDS_BASE} (${CARD_BASE_COLUMNS.join(', ')})
-       VALUES (${cbPlaceholders})`,
-      CARD_BASE_COLUMNS.map((col) => c.baseCard[col] ?? null)
-    )
+    const resolvedCardId = await upsertBaseCard(db, c.baseCard)
     const p = c.print
     await db.execute(
-      `INSERT OR REPLACE INTO ${TABLES.CARD_PRINTS}
+      `INSERT INTO ${TABLES.CARD_PRINTS}
        (${PRINT_COLUMNS.join(', ')})
-       VALUES (${PRINT_COLUMNS.map(() => '?').join(', ')})`,
+       VALUES (${PRINT_COLUMNS.map(() => '?').join(', ')})
+       ON CONFLICT(id) DO UPDATE SET
+         ${PRINT_COLUMNS.filter((col) => col !== 'id')
+           .map((col) => `${col} = excluded.${col}`)
+           .join(', ')}`,
       [
         p.id,
-        p.card_id,
+        resolvedCardId,
         p.card_no,
         p.card_no_extend,
         p.rarity_name,
