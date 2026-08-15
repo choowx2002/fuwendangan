@@ -267,11 +267,9 @@ export {
   deleteLoan,
   getActiveLoanQty,
   markOverdueLoans,
-  getLoanDueSummary,
   type LoanInput,
   type LoanFilter,
   type CardLoanWithName,
-  type LoanDueSummary,
 } from './repository/loan-repository'
 export {
   getWishlistItems,

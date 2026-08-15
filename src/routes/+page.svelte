@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getDeckList, getMatchStatsForDecks, getLoanDueSummary } from '$lib/db'
+  import { getDeckList, getMatchStatsForDecks } from '$lib/db'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { isDeckPinned } from '$lib/stores/pinned-decks'
@@ -10,7 +10,6 @@
     Pin,
     ChevronRight,
     UserRound,
-    CalendarClock,
     Boxes,
     Gamepad2,
     Settings,
@@ -36,27 +35,18 @@
   let recentDecks = $state<HomeDeck[]>([])
   let homeName = $state('')
   let settingsReady = $state(false)
-  let loanSummary = $state<{ overdue: number; dueToday: number; dueSoon: number } | null>(null)
 
-  const quickTools = [
+  const moreEntries = [
     {
       icon: Swords,
       labelKey: 'home.toolsGameCounter',
-      color: '#e03e3e',
       href: '/tools/gameCounter',
+      color: '#e03e3e',
     },
-    {
-      icon: Dice6,
-      labelKey: 'home.toolsDice',
-      color: '#d9730d',
-      href: '/tools/dice',
-    },
-  ]
-
-  const moreEntries = [
+    { icon: Dice6, labelKey: 'home.toolsDice', href: '/tools/dice', color: '#d9730d' },
     { icon: Boxes, labelKey: 'nav.locker', href: '/locker', color: '#d97706' },
     { icon: Gamepad2, labelKey: 'nav.simulator', href: '/simulator', color: '#7c3aed' },
-    { icon: Settings, labelKey: 'nav.settings', href: '/settings', color: '#64748b' },
+    // { icon: Settings, labelKey: 'nav.settings', href: '/settings', color: '#64748b' },
     { icon: Heart, labelKey: 'wishlist.title', href: '/collection/wishlist', color: '#ec4899' },
     { icon: ArrowLeftRight, labelKey: 'loans.title', href: '/collection/loans', color: '#0ea5e9' },
   ]
@@ -96,10 +86,6 @@
           pinned: isDeckPinned(d.id),
         }
       })
-    } catch (error) {}
-    try {
-      const s = await getLoanDueSummary(3)
-      loanSummary = { overdue: s.overdue, dueToday: s.dueToday, dueSoon: s.dueSoon }
     } catch (error) {}
   })
 
@@ -174,53 +160,19 @@
     </section>
   {/if}
 
-  <!-- 对战工具（紧凑按钮行） -->
+  <!-- 更多功能（无标题，原对战工具位置） -->
   <section class="section">
-    <div class="section-header">
-      <h2 class="section-title">{$t('home.tools')}</h2>
-      <a href="/tools" class="see-all">{$t('home.openToolbox')} <ChevronRight size={14} /></a>
-    </div>
-    <div class="tools-row">
-      {#each quickTools as tool}
-        <a href={tool.href} class="tool-chip">
-          <span class="tool-chip-icon" style="background: {tool.color}15; color: {tool.color}">
-            <tool.icon size={16} />
+    <div class="more-grid">
+      {#each moreEntries as entry (entry.href)}
+        <a href={entry.href} class="more-tile">
+          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+            <entry.icon size={18} />
           </span>
-          <span class="tool-chip-label">{$t(tool.labelKey)}</span>
+          <span class="more-tile-label">{$t(entry.labelKey)}</span>
         </a>
       {/each}
     </div>
   </section>
-
-  <!-- 借还提醒 -->
-  {#if loanSummary && (loanSummary.overdue > 0 || loanSummary.dueToday > 0 || loanSummary.dueSoon > 0)}
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">{$t('home.loanReminder')}</h2>
-        <a href="/collection/loans" class="see-all">{$t('home.openLoans')} <ChevronRight size={14} /></a>
-      </div>
-      <div class="loan-reminder">
-        {#if loanSummary.overdue > 0}
-          <span class="reminder-item reminder-overdue">
-            <CalendarClock size={15} />
-            {$t('home.overdueCount', { values: { count: loanSummary.overdue } })}
-          </span>
-        {/if}
-        {#if loanSummary.dueToday > 0}
-          <span class="reminder-item reminder-due">
-            <CalendarClock size={15} />
-            {$t('home.dueTodayCount', { values: { count: loanSummary.dueToday } })}
-          </span>
-        {/if}
-        {#if loanSummary.dueSoon > 0}
-          <span class="reminder-item">
-            <CalendarClock size={15} />
-            {$t('home.dueSoonCount', { values: { count: loanSummary.dueSoon, days: 3 } })}
-          </span>
-        {/if}
-      </div>
-    </section>
-  {/if}
 
   <!-- 最近使用的卡组 -->
   <section class="section">
@@ -252,23 +204,6 @@
         </a>
       {:else}
         <p class="deck-empty">{$t('home.noDecks')}</p>
-      {/each}
-    </div>
-  </section>
-
-  <!-- 更多功能 -->
-  <section class="section">
-    <div class="section-header">
-      <h2 class="section-title">{$t('home.moreFeatures')}</h2>
-    </div>
-    <div class="more-grid">
-      {#each moreEntries as entry (entry.href)}
-        <a href={entry.href} class="more-tile">
-          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
-            <entry.icon size={18} />
-          </span>
-          <span class="more-tile-label">{$t(entry.labelKey)}</span>
-        </a>
       {/each}
     </div>
   </section>
@@ -475,72 +410,6 @@
   }
   .see-all:hover {
     color: var(--text-primary);
-  }
-
-  /* 对战工具 - 紧凑按钮行 */
-  .tools-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .tool-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    background: var(--bg-primary);
-    text-decoration: none;
-    color: var(--text-primary);
-    font-size: var(--text-base);
-    font-weight: 500;
-    transition: all 0.15s;
-  }
-  .tool-chip:hover {
-    background: var(--bg-secondary);
-    border-color: var(--border-color);
-    transform: translateY(-1px);
-  }
-
-  .tool-chip-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  /* 借还提醒 */
-  .loan-reminder {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .reminder-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-  }
-
-  .reminder-overdue {
-    color: #d97706;
-    border-color: rgba(217, 119, 6, 0.4);
-  }
-
-  .reminder-due {
-    color: #e5484d;
-    border-color: rgba(229, 72, 77, 0.4);
   }
 
   /* 卡组列表 */

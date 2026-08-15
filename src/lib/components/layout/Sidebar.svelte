@@ -15,10 +15,12 @@
     ScanLine,
     WalletCards,
     Boxes,
+    Sun,
+    Moon,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { sidebarState } from '../../stores/ui-store.svelte'
-  import { showTTSFeatures, windowAlwaysOnTop } from '$lib/stores/settings'
+  import { showTTSFeatures, windowAlwaysOnTop, darkMode } from '$lib/stores/settings'
   import { isTauri } from '$lib/db'
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import TTSStatusPanel from './TTSStatusPanel.svelte'
@@ -149,6 +151,20 @@
   </nav>
 
   <div class="sidebar-footer">
+    <button
+      class="button button-text"
+      class:active={$darkMode}
+      onclick={() => darkMode.set(!$darkMode)}
+      aria-pressed={$darkMode}
+      aria-label={$t('settings.darkMode')}
+    >
+      {#if $darkMode}
+        <Sun size={18} strokeWidth={1.75} />
+      {:else}
+        <Moon size={18} strokeWidth={1.75} />
+      {/if}
+    </button>
+
     {#if isMobile2}
       <button class="button button-text" onclick={() => navigateTo('/scanner')}>
         <ScanLine size={18} strokeWidth={1.75} />

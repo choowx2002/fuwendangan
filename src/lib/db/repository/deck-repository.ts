@@ -260,6 +260,7 @@ export interface DeckCardDetail extends DeckCard {
   return_energy: number
   power: number
   card_color_list: string
+  card_category: string | null
   card_no: string | null
   print_code: string
   img_cdn: string
@@ -444,7 +445,7 @@ export async function getLatestDeckCards(deckId: string): Promise<DeckCardDetail
 SELECT
        dc.id, dc.card_id, dc.quantity, dc.zone,
        cb.id as card_base_id, cp.id as print_id,
-       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list, cb.card_no,
+       cb.card_name_cn, cb.card_name_en, cb.sub_title_cn, cb.sub_title_en, cb.energy, cb.return_energy, cb.power, cb.card_color_list, cb.card_category, cb.card_no,
        cp.card_no_extend as print_code, cp.img_cdn, cp.rarity_name, cp.language
      FROM deck_cards dc
      JOIN card_prints cp ON dc.card_id = cp.id

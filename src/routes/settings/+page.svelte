@@ -62,6 +62,7 @@
     syncSupabaseUrl,
     syncSupabaseAnonKey,
     autoSyncEnabled,
+    settingsStoreReady,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
@@ -169,6 +170,8 @@
   let syncLastSync = $state<string>('')
   let syncFileInput = $state<HTMLInputElement | null>(null)
   let supabaseUser = $state<string>('')
+  /** 登录状态检查中：避免把检查过程误显示为「未登录」 */
+  let supabaseChecking = $state(false)
   let supabaseEmail = $state('')
   let supabasePassword = $state('')
   let deckCount = $state<number>(0)
@@ -212,7 +215,30 @@
     await loadDbInfo()
     await Promise.all([loadImageCacheInfo(), loadImageCoverage()])
     await loadCustomLangs()
-    void refreshSupabaseStatus()
+    // 等 settings.json 的 URL/key 加载完成后再查登录状态，避免首次进入时
+    // 因配置尚未就绪而误判为「未登录」（挂载时的立即查询不依赖此等待）
+    void settingsStoreReady.then(() => refreshSupabaseStatus())
+  })
+
+  // URL / key 变化（含 settings.json 异步加载完成、用户手动修改配置）后
+  // 自动重查登录状态；输入停顿 800ms 后触发，避免逐键查询
+  let supabaseCheckTimer: ReturnType<typeof setTimeout> | undefined
+  let firstSupabaseCheckRun = true
+  $effect(() => {
+    void $syncSupabaseUrl
+    void $syncSupabaseAnonKey
+    // 挂载时的首次运行由 settingsStoreReady.then 的检查负责，这里只响应后续变化
+    if (firstSupabaseCheckRun) {
+      firstSupabaseCheckRun = false
+      return
+    }
+    if (supabaseCheckTimer) clearTimeout(supabaseCheckTimer)
+    supabaseCheckTimer = setTimeout(() => {
+      void refreshSupabaseStatus()
+    }, 800)
+    return () => {
+      if (supabaseCheckTimer) clearTimeout(supabaseCheckTimer)
+    }
   })
 
   // 下载结束后刷新缓存覆盖统计
@@ -755,11 +781,14 @@
 
   // --- Supabase BYO 云同步 ---
   async function refreshSupabaseStatus() {
+    supabaseChecking = true
     try {
       const user = await getSupabaseUser()
       supabaseUser = user?.email ?? ''
     } catch {
       supabaseUser = ''
+    } finally {
+      supabaseChecking = false
     }
   }
 
@@ -809,7 +838,10 @@
       await refreshSupabaseStatus()
     } catch (e) {
       console.error('[SETTINGS] testSupabaseConn 失败:', e)
-      console.error('[SETTINGS] testSupabaseConn 失败 string:', e instanceof Error ? e.message : String(e))
+      console.error(
+        '[SETTINGS] testSupabaseConn 失败 string:',
+        e instanceof Error ? e.message : String(e)
+      )
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseTest'),
         kind: 'error',
@@ -832,7 +864,10 @@
       })
     } catch (e) {
       console.error('[SETTINGS] handleSupabaseSignIn 失败:', e)
-      console.error('[SETTINGS] handleSupabaseSignIn 失败 string:', e instanceof Error ? e.message : String(e))
+      console.error(
+        '[SETTINGS] handleSupabaseSignIn 失败 string:',
+        e instanceof Error ? e.message : String(e)
+      )
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignIn'),
         kind: 'error',
@@ -846,7 +881,10 @@
       supabaseUser = ''
     } catch (e) {
       console.error('[SETTINGS] handleSupabaseSignOut 失败:', e)
-      console.error('[SETTINGS] handleSupabaseSignOut 失败 string:', e instanceof Error ? e.message : String(e))
+      console.error(
+        '[SETTINGS] handleSupabaseSignOut 失败 string:',
+        e instanceof Error ? e.message : String(e)
+      )
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignOut'),
         kind: 'error',
@@ -879,7 +917,10 @@
     } catch (e) {
       // DEBUG: 移动端同步失败的真实错误（plugin-sql reject 的是普通字符串，不是 Error）
       console.error('[SETTINGS] syncSupabaseNow 失败:', e)
-      console.error('[SETTINGS] syncSupabaseNow 失败 string:', e instanceof Error ? e.message : String(e))
+      console.error(
+        '[SETTINGS] syncSupabaseNow 失败 string:',
+        e instanceof Error ? e.message : String(e)
+      )
       await message(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSync'),
         kind: 'error',
@@ -2024,7 +2065,13 @@
       </button>
     </div>
 
-    {#if supabaseUser}
+    {#if supabaseChecking}
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-label">{$t('settings.supabaseChecking')}</span>
+        </div>
+      </div>
+    {:else if supabaseUser}
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-label"

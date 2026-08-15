@@ -69,7 +69,10 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err) {
       // DEBUG: 批量写失败的真实错误（移动端同步失败排查）
       console.error('[DB] withTransaction 失败:', err)
-      console.error('[DB] withTransaction 失败 string:', err instanceof Error ? err.message : String(err))
+      console.error(
+        '[DB] withTransaction 失败 string:',
+        err instanceof Error ? err.message : String(err)
+      )
       throw err
     } finally {
       raw.select = select
@@ -97,7 +100,10 @@ export async function getDatabase(): Promise<Database> {
     })().catch((err) => {
       // DEBUG: 数据库初始化失败（启动即失败 / 唯一索引建不起来等）
       console.error('[DB] getDatabase 初始化失败:', err)
-      console.error('[DB] getDatabase 初始化失败 string:', err instanceof Error ? err.message : String(err))
+      console.error(
+        '[DB] getDatabase 初始化失败 string:',
+        err instanceof Error ? err.message : String(err)
+      )
       // 初始化失败不污染后续调用：清空缓存，下次 getDatabase() 自动重试
       dbPromise = null
       throw err
@@ -164,6 +170,10 @@ async function initializeTables(db: Database): Promise<void> {
 
   await ensureColumn(db, TABLES.MATCH_RECORDS, 'player_name', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'card_no', 'TEXT')
+  // 老库缺列（2026-08-08 之前创建的库没有这两个标记列；原 migrateCardPrintsFlags 迁移
+  // 被删除后此补列曾缺失，导致老库首次内容同步在写入阶段报 no such column: is_custom/is_promo）
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'is_promo', 'INTEGER DEFAULT 0')
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'is_custom', 'INTEGER DEFAULT 0')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
   await ensureColumn(db, TABLES.SERIES, 'cover_image', 'TEXT')
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'color', 'TEXT')
@@ -235,7 +245,12 @@ async function initializeTables(db: Database): Promise<void> {
 
   // DEBUG: 迁移完成后输出关键表列结构，用于移动端老库缺列排查（Android logcat）
   try {
-    for (const t of [TABLES.COLLECTION, TABLES.COLLECTION_LANGS, TABLES.CARD_PRINTS, TABLES.VERSION]) {
+    for (const t of [
+      TABLES.COLLECTION,
+      TABLES.COLLECTION_LANGS,
+      TABLES.CARD_PRINTS,
+      TABLES.VERSION,
+    ]) {
       const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(${t})`)
       console.log(`[DB] schema ${t}:`, cols.map((c) => c.name).join(', '))
     }

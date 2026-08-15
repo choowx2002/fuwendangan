@@ -37,6 +37,8 @@
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { playerName } from '$lib/stores/settings'
+  import { ttsState } from '$lib/stores/tts'
+  import { spawnDeckToTTS } from '$lib/services/deck-tts-service'
   import { ZONE_CONFIG, getZoneConfig, resolveFormat, type ZoneKey } from '$lib/decks/zone'
   import {
     buildOwnershipText,
@@ -82,7 +84,6 @@
   import { t } from '$lib/i18n'
   import {
     History,
-    ChartPie,
     Dices,
     Pencil,
     Download,
@@ -106,6 +107,7 @@
     Shapes,
     ShoppingCart,
     Star,
+    Send,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -166,6 +168,9 @@
   let versionCards = $state<DeckVersionCard[]>([])
   let tokenSuggestions = $state<TokenSuggestion[]>([])
   let loadingTokens = $state(false)
+
+  /** 指示物按提及次数降序 */
+  const sortedTokens = $derived([...tokenSuggestions].sort((a, b) => b.mentions - a.mentions))
   let showShareModal = $state(false)
   let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'>('text')
   let textLang = $state<'en' | 'cn'>('en')
@@ -214,6 +219,19 @@
     const draws = results.filter((r) => r === 'draw').length
     if (draws > 0) return get(t)('records.summary', { values: { wins, losses, draws } })
     return `${wins} : ${losses}`
+  }
+
+  function matchOutcome(match: MatchWithGames): 'win' | 'loss' | 'draw' {
+    let wins = 0
+    let losses = 0
+    for (const g of match.games) {
+      const r = gameResult(g)
+      if (r === 'win') wins++
+      else if (r === 'loss') losses++
+    }
+    if (wins > losses) return 'win'
+    if (losses > wins) return 'loss'
+    return 'draw'
   }
 
   let imageSortList = $state<SortKeyItem[]>([
@@ -552,6 +570,23 @@
     showMatchModal = true
   }
 
+  let sendingTts = $state(false)
+
+  /** 把当前卡组生成到 TTS（topbar 按钮，仅 TTS 已连接时显示） */
+  async function generateDeckTTS() {
+    if (sendingTts || !page.params.deckid) return
+    sendingTts = true
+    try {
+      const count = await spawnDeckToTTS(page.params.deckid)
+      showToast(get(t)('decks.ttsSent', { values: { name: deck?.name ?? '', count } }), 'success')
+    } catch (error) {
+      console.error('[Deck] TTS 生成失败:', error)
+      showToast(get(t)('decks.ttsFailed'), 'error')
+    } finally {
+      sendingTts = false
+    }
+  }
+
   function openEditMatch(match: MatchWithGames) {
     editingMatch = match
     showMatchModal = true
@@ -584,6 +619,46 @@
   }
 
   const recentMatches = $derived(matchRecords.slice(0, 5))
+
+  // 对局胜率（平局不计分母；与记录页分析口径一致）
+  const matchWinRate = $derived(
+    matchStats && matchStats.match_wins + matchStats.match_losses > 0
+      ? Math.round(
+          (matchStats.match_wins / (matchStats.match_wins + matchStats.match_losses)) * 100
+        )
+      : 0
+  )
+  const firstWinRate = $derived(
+    matchStats && matchStats.first_games > 0
+      ? Math.round((matchStats.first_wins / matchStats.first_games) * 100)
+      : 0
+  )
+  const secondGames = $derived((matchStats?.games ?? 0) - (matchStats?.first_games ?? 0))
+  const secondWinRate = $derived(
+    secondGames > 0 ? Math.round(((matchStats?.second_wins ?? 0) / secondGames) * 100) : 0
+  )
+  const ringColor = $derived(
+    matchWinRate >= 60 ? '#16a34a' : matchWinRate >= 40 ? 'var(--accent-color, #4f46e5)' : '#dc2626'
+  )
+
+  // 最近 10 场状态点阵（左旧右新）
+  const trendDots = $derived(
+    [...matchRecords]
+      .sort((a, b) =>
+        (a.played_at ?? a.created_at ?? '').localeCompare(b.played_at ?? b.created_at ?? '')
+      )
+      .slice(-10)
+      .map((m) => ({
+        outcome: matchOutcome(m),
+        title: [
+          m.played_at ? new Date(m.played_at).toLocaleDateString() : '',
+          m.opponent_name ?? '',
+          matchSummaryText(m),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }))
+  )
 
   beforeNavigate(({ from, cancel, type, delta }) => {
     const isBackward = type === 'popstate' && delta && delta < 0
@@ -654,6 +729,20 @@
           priority: 0,
           onClick: () => goto(`/decks/builder?deckId=${page.params.deckid}`),
         },
+        // TTS 已连接时：把当前卡组生成到 Tabletop Simulator
+        ...($ttsState.sendPort
+          ? [
+              {
+                key: 'tts-generate',
+                label: $t('deckDetail.ttsGenerate'),
+                icon: Send,
+                variant: 'ghost' as const,
+                priority: 1,
+                disabled: sendingTts,
+                onClick: () => void generateDeckTTS(),
+              },
+            ]
+          : []),
       ],
     })
   })
@@ -706,24 +795,6 @@
     }))
   })
 
-  const compositionStats = $derived.by(() => {
-    const mainTotal = zoneCounts.mainDeck
-    const sideTotal = zoneCounts.sideboard
-    const legendTotal = zoneCounts.legend
-    const championTotal = zoneCounts.champion
-    const battlefieldTotal = zoneCounts.battlefields
-    const runeTotal = zoneCounts.runes
-    return {
-      mainTotal,
-      sideTotal,
-      legendTotal,
-      championTotal,
-      battlefieldTotal,
-      runeTotal,
-      total: mainTotal + sideTotal + legendTotal + championTotal + battlefieldTotal + runeTotal,
-    }
-  })
-
   // ===== 起手模拟状态机 =====
   // idle ──抽4──▶ initial ──调度2──▶ draw ──抽1(可重复)──▶ draw
   //  ▲____________________________________重置________________│
@@ -740,11 +811,22 @@
   let mulliganSelection = $state<Set<number>>(new Set())
   let uidCounter = 0
 
+  interface SimLogEntry {
+    kind: 'start' | 'mulligan' | 'draw'
+    text: string
+  }
+  let simLog = $state<SimLogEntry[]>([])
+
   const PHASE_LABEL: Record<SimPhase, string> = {
     idle: '',
     initial: 'deckDetail.simInitial',
     draw: 'deckDetail.simDraw',
   }
+
+  /** 牌库剩余：idle 阶段显示主牌总数 */
+  const simDeckLeft = $derived(
+    simPhase === 'idle' ? mainCards.reduce((s, c) => s + c.quantity, 0) : simDeck.length
+  )
 
   const simHint = $derived(
     simPhase === 'idle'
@@ -785,6 +867,7 @@
     simDeck = rest
     mulliganSelection = new Set()
     simPhase = 'initial'
+    simLog = [{ kind: 'start', text: get(t)('deckDetail.simLogStart', { values: { count: 4 } }) }]
   }
 
   function toggleMulligan(uid: number) {
@@ -808,6 +891,18 @@
     simDeck = rest
     mulliganSelection = new Set()
     simPhase = 'draw'
+    simLog = [
+      ...simLog,
+      {
+        kind: 'mulligan' as const,
+        text:
+          putBack.length > 0
+            ? get(t)('deckDetail.simLogMulligan', {
+                values: { back: putBack.length, draw: putBack.length },
+              })
+            : get(t)('deckDetail.simLogKeep'),
+      },
+    ].slice(-6)
   }
 
   function drawOne() {
@@ -815,6 +910,13 @@
     const { drawn, rest } = drawFromPool(simDeck, 1)
     simHand = [...simHand, ...toInstances(drawn)]
     simDeck = rest
+    simLog = [
+      ...simLog,
+      {
+        kind: 'draw' as const,
+        text: get(t)('deckDetail.simLogDraw', { values: { left: rest.length } }),
+      },
+    ].slice(-6)
   }
 
   function resetSim() {
@@ -822,6 +924,7 @@
     simDeck = []
     mulliganSelection = new Set()
     simPhase = 'idle'
+    simLog = []
   }
 
   const exportText = $derived(formatDeckExport(zoneCards, textLang))
@@ -1278,18 +1381,6 @@
         <div class="match-section-title">
           <Swords size={18} />
           <h2>{$t('records.title')}</h2>
-          {#if matchStats}
-            <span class="match-winrate-badge">
-              {$t('deckDetail.winRate', {
-                values: {
-                  value:
-                    matchStats.games > 0
-                      ? Math.round((matchStats.wins / matchStats.games) * 100)
-                      : 0,
-                },
-              })}
-            </span>
-          {/if}
         </div>
         <div class="match-section-actions">
           <button
@@ -1307,80 +1398,119 @@
       </div>
 
       {#if matchStats}
-        <div class="match-summary">
-          <div class="summary-item">
-            <span class="summary-value">{matchStats.matches}</span>
-            <span class="summary-label">{$t('records.statMatches')}</span>
+        <div class="match-overview">
+          <div class="match-overview-ring">
+            <svg viewBox="0 0 36 36" class="winrate-ring" aria-hidden="true">
+              <circle class="winrate-ring-bg" cx="18" cy="18" r="15.9"></circle>
+              <circle
+                class="winrate-ring-fg"
+                cx="18"
+                cy="18"
+                r="15.9"
+                stroke={ringColor}
+                stroke-dasharray="99.9"
+                stroke-dashoffset={99.9 * (1 - matchWinRate / 100)}
+              ></circle>
+            </svg>
+            <span class="winrate-ring-value">{matchWinRate}%</span>
+            <span class="winrate-ring-label">{$t('records.anaMatchWinRate')}</span>
           </div>
-          <div class="summary-item">
-            <span class="summary-value">{matchStats.games}</span>
-            <span class="summary-label">{$t('records.statGames')}</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-value summary-win">{matchStats.wins}</span>
-            <span class="summary-label">{$t('records.statWins')}</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-value summary-loss">{matchStats.losses}</span>
-            <span class="summary-label">{$t('records.statLosses')}</span>
-          </div>
-          {#if matchStats.draws > 0}
-            <div class="summary-item">
-              <span class="summary-value">{matchStats.draws}</span>
-              <span class="summary-label">{$t('records.statDraws')}</span>
+          <div class="match-overview-stats">
+            <div class="match-ov-grid">
+              <div class="ov-item">
+                <b>{matchStats.matches}</b>
+                <span>{$t('records.statMatches')}</span>
+              </div>
+              <div class="ov-item">
+                <b>{matchStats.games}</b>
+                <span>{$t('records.statGames')}</span>
+              </div>
+              <div class="ov-item">
+                <b class="ov-win">{matchStats.wins}</b>
+                <span>{$t('records.statWins')}</span>
+              </div>
+              <div class="ov-item">
+                <b class="ov-loss">{matchStats.losses}</b>
+                <span>{$t('records.statLosses')}</span>
+              </div>
+              {#if matchStats.draws > 0}
+                <div class="ov-item">
+                  <b>{matchStats.draws}</b>
+                  <span>{$t('records.statDraws')}</span>
+                </div>
+              {/if}
             </div>
-          {/if}
-          {#if matchStats.first_games > 0}
-            <div class="summary-item">
-              <span class="summary-value summary-win">
-                {Math.round((matchStats.first_wins / matchStats.first_games) * 100)}%
-              </span>
-              <span class="summary-label">{$t('records.statFirstWinRate')}</span>
+            <div class="match-ov-first">
+              <span class="ov-first-label">{$t('records.first')}</span>
+              <div class="ov-first-bar">
+                <div class="ov-first-fill ov-first-win" style="width: {firstWinRate}%"></div>
+              </div>
+              <span class="ov-first-value">{firstWinRate}%</span>
+              <span class="ov-first-label">{$t('records.second')}</span>
+              <div class="ov-first-bar">
+                <div class="ov-first-fill ov-first-loss" style="width: {secondWinRate}%"></div>
+              </div>
+              <span class="ov-first-value">{secondWinRate}%</span>
             </div>
-          {/if}
-          {#if matchStats.second_games > 0}
-            <div class="summary-item">
-              <span class="summary-value summary-loss">
-                {Math.round((matchStats.second_wins / matchStats.second_games) * 100)}%
-              </span>
-              <span class="summary-label">{$t('records.statSecondWinRate')}</span>
-            </div>
-          {/if}
+          </div>
         </div>
+
+        {#if trendDots.length > 0}
+          <div class="match-trend">
+            <span class="match-trend-label">{$t('deckDetail.recentForm')}</span>
+            <div class="match-trend-dots">
+              {#each trendDots as dot, i (i)}
+                <span class="trend-dot trend-{dot.outcome}" title={dot.title}></span>
+              {/each}
+            </div>
+          </div>
+        {/if}
       {/if}
 
       {#if recentMatches.length > 0}
         <ul class="match-list">
           {#each recentMatches as match (match.id)}
             {@const expanded = expandedMatchIds.has(match.id)}
-            <li class="match-item">
+            {@const outcome = matchOutcome(match)}
+            <li
+              class="match-item"
+              class:outcome-win={outcome === 'win'}
+              class:outcome-loss={outcome === 'loss'}
+              class:outcome-draw={outcome === 'draw'}
+            >
               <div
                 class="match-item-header"
                 role="presentation"
                 onclick={() => toggleMatchExpand(match.id)}
               >
-                <span class="match-item-date">
-                  {match.played_at
-                    ? new Date(match.played_at).toLocaleDateString()
-                    : $t('records.noDate')}
-                </span>
-                <span class="match-item-opponent">
-                  {match.player_name || $t('records.me')} vs {match.opponent_name ||
-                    $t('records.unknownOpponent')}
-                </span>
-                {#if match.group_name}
-                  <span class="match-group-badge">{match.group_name}</span>
-                {/if}
-                {#if match.best_of}
-                  <span class="match-bestof-badge">BO{match.best_of}</span>
-                {/if}
-                {#if match.deck_version_number}
-                  <span class="match-version-badge">v{match.deck_version_number.toFixed(1)}</span>
-                {/if}
-                <span class="match-item-result">{matchSummaryText(match)}</span>
-                <span class="match-item-chevron" class:rotate={expanded}>
-                  <ChevronRight size={14} />
-                </span>
+                <div class="match-item-meta">
+                  <span class="match-item-date">
+                    {match.played_at
+                      ? new Date(match.played_at).toLocaleDateString()
+                      : $t('records.noDate')}
+                  </span>
+                  {#if match.group_name}
+                    <span class="match-group-badge">{match.group_name}</span>
+                  {/if}
+                  <span class="match-item-meta-right">
+                    {#if match.deck_version_number}
+                      <span class="match-meta-text">v{match.deck_version_number.toFixed(1)}</span>
+                    {/if}
+                    {#if match.best_of}
+                      <span class="match-meta-text">BO{match.best_of}</span>
+                    {/if}
+                  </span>
+                </div>
+                <div class="match-item-main">
+                  <span class="match-item-opponent">
+                    {match.player_name || $t('records.me')} vs
+                    {match.opponent_name || $t('records.unknownOpponent')}
+                  </span>
+                  <span class="match-item-result">{matchSummaryText(match)}</span>
+                  <span class="match-item-chevron" class:rotate={expanded}>
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
               </div>
               {#if expanded}
                 <div class="match-item-detail">
@@ -1400,7 +1530,8 @@
                   {/if}
                   <ul class="game-list">
                     {#each match.games as game (game.id)}
-                      <li class="game-item">
+                      {@const gr = gameResult(game)}
+                      <li class="game-item" class:win={gr === 'win'} class:loss={gr === 'loss'}>
                         <span class="game-number-badge"
                           >{$t('match.gameNumber', { values: { number: game.game_number } })}</span
                         >
@@ -1420,26 +1551,26 @@
                             {$t('records.noScore')}
                           {/if}
                         </span>
-                        <span
-                          class="game-result"
-                          class:win={gameResult(game) === 'win'}
-                          class:loss={gameResult(game) === 'loss'}
-                          class:draw={gameResult(game) === 'draw'}
-                        >
-                          {gameResult(game) === 'win'
-                            ? $t('match.win')
-                            : gameResult(game) === 'loss'
-                              ? $t('match.loss')
-                              : $t('match.draw')}
-                        </span>
+                        {#if game.win_reason}
+                          <span class="game-reason" title={game.win_reason}>{game.win_reason}</span>
+                        {/if}
                         {#if game.win_type === 'concede'}
                           <span class="game-special-badge">{$t('match.oppConcede')}</span>
                         {:else if game.win_type === 'special'}
                           <span class="game-special-badge special">{$t('match.specialWin')}</span>
                         {/if}
-                        {#if game.win_reason}
-                          <span class="game-reason">{game.win_reason}</span>
-                        {/if}
+                        <span
+                          class="game-result"
+                          class:win={gr === 'win'}
+                          class:loss={gr === 'loss'}
+                          class:draw={gr === 'draw'}
+                        >
+                          {gr === 'win'
+                            ? $t('match.win')
+                            : gr === 'loss'
+                              ? $t('match.loss')
+                              : $t('match.draw')}
+                        </span>
                       </li>
                       {#if game.log}
                         <li class="game-log">📝 {game.log}</li>
@@ -1478,68 +1609,18 @@
       <CostCurveChart cards={mainCards} />
     </div>
 
-    <div class="analysis-card token-card">
-      <div class="analysis-card-header">
-        <Shapes size={18} />
-        <h3>{$t('deckDetail.tokenSectionTitle')}</h3>
-      </div>
-
-      {#if loadingTokens}
-        <p class="token-empty">{$t('deckDetail.tokenLoading')}</p>
-      {:else if tokenSuggestions.length > 0}
-        <p class="token-hint">{$t('deckDetail.tokenSectionHint')}</p>
-        <ul class="token-grid">
-          {#each tokenSuggestions as item (item.card.card_name_cn || item.card.card_name_en)}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <li class="token-item" onclick={() => openCardModalForBase(item.card)}>
-              <div class="token-item-img">
-                <CardSimpleImage
-                  url={item.bestPrint?.url}
-                  name={item.bestPrint ? printCacheName(item.bestPrint) : item.card.id}
-                  isLandscape={false}
-                />
-              </div>
-              <span class="token-item-name">{item.card.card_name_cn || item.card.card_name_en}</span
-              >
-              <span class="token-item-count">
-                {$t('deckDetail.tokenMentions', { values: { count: item.mentions } })}
-              </span>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <p class="token-empty">{$t('deckDetail.tokenEmpty')}</p>
-      {/if}
-    </div>
-
-    <!-- <div class="analysis-card">
-      <div class="analysis-card-header">
-        <ChartPie size={18} />
-        <h3>卡牌构成</h3>
-      </div>
-      <div class="stat-list">
-        {#each Object.entries(ZONE_CONFIG) as [key, config]}
-          <div class="stat-row">
-            <span class="stat-label">{config.label}</span>
-            <span class="stat-value">{zoneCounts[key as ZoneKey]} / {config.maxCount}</span>
-          </div>
-        {/each}
-        <div class="progress-bar-bg">
-          <div
-            class="progress-bar-fill"
-            style="width: {compositionStats.total > 0
-              ? (compositionStats.mainTotal / compositionStats.total) * 100
-              : 0}%"
-          ></div>
-        </div>
-      </div>
-    </div> -->
-
     <div class="analysis-card sim-card">
       <div class="analysis-card-header">
         <Dices size={18} />
         <h3>{$t('deckDetail.simTitle')}</h3>
+      </div>
+
+      <div class="sim-status">
+        <span class="sim-status-chip">{$t('deckDetail.simDeckLeft')} <b>{simDeckLeft}</b></span>
+        <span class="sim-status-chip">{$t('deckDetail.simHandCount')} <b>{simHand.length}</b></span>
+        <span class="sim-status-chip"
+          >{$t('deckDetail.simPutBack')} <b>{mulliganSelection.size}</b></span
+        >
         {#if simPhase !== 'idle'}
           <span class="sim-phase-badge">{$t(PHASE_LABEL[simPhase])}</span>
         {/if}
@@ -1574,6 +1655,14 @@
         <div class="sim-empty">{$t('deckDetail.simEmpty')}</div>
       {/if}
 
+      {#if simLog.length > 0}
+        <div class="sim-log">
+          {#each simLog as entry, i (i)}
+            <span class="sim-log-item sim-log-{entry.kind}">{entry.text}</span>
+          {/each}
+        </div>
+      {/if}
+
       <div class="sim-actions">
         <button
           class="button button-primary"
@@ -1596,12 +1685,51 @@
           disabled={simPhase !== 'draw' || simDeck.length === 0}
           onclick={drawOne}
         >
-          {$t('deckDetail.draw1')}
+          {$t('deckDetail.draw1')} · {simDeck.length}
         </button>
         <button class="button button-ghost" disabled={simPhase === 'idle'} onclick={resetSim}>
           {$t('common.reset')}
         </button>
       </div>
+    </div>
+
+    <div class="analysis-card token-card">
+      <div class="analysis-card-header">
+        <Shapes size={18} />
+        <h3>{$t('deckDetail.tokenSectionTitle')}</h3>
+        {#if tokenSuggestions.length > 0}
+          <span class="token-count-badge">
+            {$t('deckDetail.tokenCount', { values: { count: tokenSuggestions.length } })}
+          </span>
+        {/if}
+      </div>
+
+      {#if loadingTokens}
+        <p class="token-empty">{$t('deckDetail.tokenLoading')}</p>
+      {:else if tokenSuggestions.length > 0}
+        <p class="token-hint">{$t('deckDetail.tokenSectionHint')}</p>
+        <ul class="token-grid">
+          {#each sortedTokens as item (item.card.card_name_cn || item.card.card_name_en)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <li class="token-item" onclick={() => openCardModalForBase(item.card)}>
+              <div class="token-item-img">
+                <CardSimpleImage
+                  url={item.bestPrint?.url}
+                  name={item.bestPrint ? printCacheName(item.bestPrint) : item.card.id}
+                  isLandscape={false}
+                />
+              </div>
+              <span class="token-item-name" title={item.card.card_name_cn || item.card.card_name_en}
+                >{item.card.card_name_cn || item.card.card_name_en}</span
+              >
+              <span class="token-item-count">×{item.mentions}</span>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="token-empty">{$t('deckDetail.tokenEmpty')}</p>
+      {/if}
     </div>
   </section>
 
@@ -2515,7 +2643,7 @@
 
   .analysis-dashboard {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
     margin-bottom: 32px;
   }
@@ -2545,12 +2673,23 @@
 
   /* ===== 曲线卡片 ===== */
   .curve-card {
-    grid-column: span 2;
+    grid-column: 1;
   }
 
   /* ===== 指示物建议 ===== */
   .token-card {
     grid-column: 1 / -1;
+  }
+
+  .token-count-badge {
+    margin-left: 2px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    white-space: nowrap;
   }
 
   .token-hint {
@@ -2570,6 +2709,7 @@
   }
 
   .token-item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2579,11 +2719,14 @@
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      transform 0.15s ease;
   }
 
   .token-item:hover {
     border-color: var(--accent-color);
+    transform: translateY(-2px);
   }
 
   .token-item-img {
@@ -2607,11 +2750,23 @@
     color: var(--text-primary);
     text-align: center;
     line-height: 1.3;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .token-item-count {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 2px 7px;
     font-size: var(--text-xs);
-    color: var(--text-tertiary);
+    font-weight: 700;
+    border-radius: 999px;
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color, #4f46e5) 14%, transparent);
+    font-variant-numeric: tabular-nums;
   }
 
   .token-empty {
@@ -2624,17 +2779,76 @@
   .sim-card {
     display: flex;
     flex-direction: column;
-    grid-column: span 2;
+    grid-column: 2;
   }
 
   .sim-phase-badge {
-    margin-left: auto;
     font-size: var(--text-xs);
     font-weight: 600;
     padding: 2px 9px;
     border-radius: 9999px;
     background: color-mix(in oklab, var(--accent-color) 12%, transparent);
     color: var(--accent-color);
+  }
+
+  .sim-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .sim-status-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 3px 10px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .sim-status-chip b {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sim-log {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .sim-log-item {
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+  }
+
+  .sim-log-start {
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color, #4f46e5) 12%, transparent);
+  }
+
+  .sim-log-mulligan {
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+  }
+
+  .sim-log-draw {
+    color: #15803d;
+    background: color-mix(in srgb, #16a34a 12%, transparent);
   }
 
   .sim-hint {
@@ -3223,9 +3437,15 @@
   }
 
   @media (max-width: 900px) {
+    .analysis-dashboard {
+      grid-template-columns: 1fr;
+    }
+
+    .curve-card,
     .sim-card,
-    .curve-card {
-      grid-column: span 1;
+    .token-card,
+    .match-section {
+      grid-column: 1 / -1;
     }
 
     .hero-card-slot {
@@ -3935,54 +4155,208 @@
     color: var(--accent-color, #4f46e5);
   }
 
-  .match-winrate-badge {
-    padding: 3px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    border-radius: 999px;
-    color: var(--text-primary);
-    background: color-mix(in srgb, var(--accent-color, #4f46e5) 12%, transparent);
-  }
-
   .match-section-actions {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  .match-summary {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
+  /* 概览：胜率环 + 数字格 + 先后手对比条 */
+  .match-overview {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: center;
     margin: 16px 0;
-    padding: 14px 18px;
+    padding: 16px;
     background: var(--bg-hover);
+    border-radius: 12px;
+  }
+
+  .match-overview-ring {
+    position: relative;
+    width: 104px;
+    height: 104px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .winrate-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .winrate-ring-bg {
+    fill: none;
+    stroke: var(--border-color);
+    stroke-width: 3.5;
+  }
+
+  .winrate-ring-fg {
+    fill: none;
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    transition: stroke-dashoffset 0.3s;
+  }
+
+  .winrate-ring-value {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .winrate-ring-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .match-overview-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .match-ov-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ov-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 58px;
+    padding: 8px 6px;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
   }
 
-  .summary-item {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-
-  .summary-value {
+  .ov-item b {
     font-size: 18px;
     font-weight: 700;
-    color: var(--text-primary);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
 
-  .summary-value.summary-win {
+  .ov-item b.ov-win {
     color: #16a34a;
   }
 
-  .summary-value.summary-loss {
+  .ov-item b.ov-loss {
     color: #dc2626;
   }
 
-  .summary-label {
+  .ov-item span {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .match-ov-first {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ov-first-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .ov-first-bar {
+    flex: 1;
+    min-width: 36px;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--border-color);
+  }
+
+  .ov-first-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.3s;
+  }
+
+  .ov-first-fill.ov-first-win {
+    background: #16a34a;
+  }
+
+  .ov-first-fill.ov-first-loss {
+    background: #dc2626;
+  }
+
+  .ov-first-value {
+    width: 38px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 最近状态点阵 */
+  .match-trend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .match-trend-label {
     font-size: 12px;
     color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .match-trend-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  .trend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: default;
+  }
+
+  .trend-dot.trend-win {
+    background: #16a34a;
+  }
+
+  .trend-dot.trend-loss {
+    background: #dc2626;
+  }
+
+  .trend-dot.trend-draw {
+    background: var(--text-tertiary);
+  }
+
+  @media (max-width: 767.99px) {
+    .match-overview {
+      grid-template-columns: 1fr;
+    }
+
+    .match-overview-ring {
+      margin: 0 auto;
+    }
   }
 
   .match-list {
@@ -3996,16 +4370,30 @@
 
   .match-item {
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-left: 4px solid var(--border-color);
+    border-radius: 12px;
     overflow: hidden;
-    background: var(--bg-primary);
+    background: var(--surface);
+    transition: border-color 0.15s;
+  }
+
+  .match-item.outcome-win {
+    border-left-color: #16a34a;
+  }
+
+  .match-item.outcome-loss {
+    border-left-color: #dc2626;
+  }
+
+  .match-item.outcome-draw {
+    border-left-color: var(--text-tertiary);
   }
 
   .match-item-header {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
     cursor: pointer;
     user-select: none;
     transition: background 0.15s;
@@ -4015,6 +4403,35 @@
     background: var(--bg-hover);
   }
 
+  .match-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .match-item-meta-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .match-meta-text {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .match-item-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
   .match-item-date {
     font-size: 12px;
     color: var(--text-secondary);
@@ -4022,7 +4439,7 @@
   }
 
   .match-item-opponent {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-primary);
     flex: 1;
@@ -4032,30 +4449,13 @@
     white-space: nowrap;
   }
 
-  .match-group-badge,
-  .match-bestof-badge {
+  .match-group-badge {
     padding: 2px 8px;
     font-size: 11px;
     border-radius: 999px;
     white-space: nowrap;
-  }
-
-  .match-group-badge {
     color: var(--text-primary);
     background: color-mix(in srgb, var(--accent-color, #4f46e5) 14%, transparent);
-  }
-
-  .match-bestof-badge {
-    color: var(--text-secondary);
-    background: var(--bg-hover);
-  }
-
-  .match-version-badge {
-    font-size: var(--text-sm);
-    padding: 2px 5px;
-    color: var(--text-primary);
-    background: color-mix(in srgb, var(--accent-color, #4f46e5) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent-color, #4f46e5) 25%, transparent);
   }
 
   .game-turn-badge {
@@ -4076,10 +4476,25 @@
   }
 
   .match-item-result {
-    font-size: 13px;
+    flex-shrink: 0;
+    font-size: 14px;
     font-weight: 700;
-    color: var(--text-primary);
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    transition: color 0.15s;
+  }
+
+  .match-item.outcome-win .match-item-result {
+    color: #16a34a;
+  }
+
+  .match-item.outcome-loss .match-item-result {
+    color: #dc2626;
+  }
+
+  .match-item.outcome-draw .match-item-result {
+    color: var(--text-tertiary);
   }
 
   .match-item-header :global(svg) {
@@ -4099,9 +4514,21 @@
   }
 
   .match-item-detail {
-    padding: 12px 14px;
+    padding: 12px 16px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
+    animation: matchDetailIn 0.18s ease;
+  }
+
+  @keyframes matchDetailIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .match-note {
@@ -4124,8 +4551,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    padding: 6px 10px;
+    border-radius: 8px;
     font-size: 13px;
+  }
+
+  .game-item.win {
+    background: color-mix(in srgb, #16a34a 6%, transparent);
+  }
+
+  .game-item.loss {
+    background: color-mix(in srgb, #dc2626 6%, transparent);
   }
 
   .game-number-badge {
@@ -4144,11 +4580,13 @@
   }
 
   .game-result {
+    margin-left: auto;
     padding: 2px 8px;
     font-size: 11px;
     font-weight: 700;
     border-radius: 999px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .game-result.win {
@@ -4181,8 +4619,13 @@
   }
 
   .game-reason {
+    flex: 1;
+    min-width: 0;
     font-size: 12px;
     color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .game-log {
