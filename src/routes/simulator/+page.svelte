@@ -1,8 +1,9 @@
 <script lang="ts">
   import { setTopbar } from '$lib/stores/ui-store.svelte'
-  import { Package, Layers, ChevronRight } from '@lucide/svelte'
+  import { Layers, ChevronRight, FileArchiveIcon } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { t } from '$lib/i18n'
+  import { isMobile } from '$lib/utils/os'
 
   const simulatorCards = [
     {
@@ -13,13 +14,35 @@
       href: '/simulator/chainSimulator',
     },
     {
-      icon: Package,
+      icon: FileArchiveIcon,
       labelKey: 'simulator.packTitle',
       descKey: 'simulator.packDesc',
       color: '#d9730d',
       href: '/simulator/packOpener',
     },
   ]
+
+  let isMobileOs = $state(false)
+
+  const availableCards = $derived(
+    simulatorCards.filter(
+      (card) => card.href !== '/simulator/chainSimulator' || (!isMobileOs)
+    )
+  )
+
+  $effect(() => {
+    let cancelled = false
+    isMobile()
+      .then((mobile) => {
+        if (!cancelled) isMobileOs = mobile
+      })
+      .catch(() => {
+        isMobileOs = false
+      })
+    return () => {
+      cancelled = true
+    }
+  })
 
   $effect(() => {
     setTopbar({ title: $t('simulator.title'), onBack: () => void goto('/') })
@@ -28,7 +51,7 @@
 
 <div class="simulator-page">
   <div class="simulator-grid">
-    {#each simulatorCards as tool}
+    {#each availableCards as tool}
       <button class="simulator-card" onclick={() => goto(tool.href)}>
         <div
           class="simulator-icon"

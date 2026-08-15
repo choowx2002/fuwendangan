@@ -11,12 +11,10 @@ export const CHAIN_SIM_EXPORT_TYPE = 'chain-sim'
 /** 侧栏自定义条目池的区域 key */
 export const POOL_KEY = 'pool'
 
-export const MAX_HISTORY = 50
-
-export type PlayerZoneId = 'hand' | 'base' | 'discard' | 'exile' | 'deck'
+export type PlayerZoneId = 'hand' | 'base' | 'discard' | 'banish' | 'deck'
 export type DisplayMode = 'text' | 'image' | 'both'
-/** 显示偏好：'auto' = 按区域类型使用 DEFAULT_ZONE_MODES */
-export type DisplayPreference = DisplayMode | 'auto'
+/** 显示偏好：'auto' 为兼容旧存档保留，新 UI 不再使用 */
+export type DisplayPreference = DisplayMode | 'image'
 
 export interface ChainItem {
   id: string
@@ -26,11 +24,22 @@ export interface ChainItem {
   customName?: string | null
   /** 自定义条目备注 */
   customNote?: string | null
+  /** 自定义/覆盖副标题 */
+  subtitle?: string | null
   /** 玩家归属 0..3，null = 未标记 */
   owner?: number | null
   /** 自定义条目「结算后去向」区域 key */
   targetZone?: string | null
+  /** 用户标签，如 "已发效"、"不可被破坏" */
+  tags?: string[]
+  /** 横置状态 */
+  rotated?: boolean
+  /** 是否背面朝上 */
+  faceDown?: boolean
 }
+
+/** 前端卡牌实例：当前以 ChainItem 为唯一数据载体 */
+export type CardInstance = ChainItem
 
 export interface CustomZone {
   id: string
@@ -44,7 +53,7 @@ export interface PlayerZone {
   hand: ChainItem[]
   base: ChainItem[]
   discard: ChainItem[]
-  exile: ChainItem[]
+  banish: ChainItem[]
 }
 
 export interface SimState {
@@ -61,30 +70,32 @@ export interface SimState {
   customPool: ChainItem[]
   /** 可选牌库（默认 null 关闭） */
   extra: { deck: ChainItem[] } | null
+  /** 备用卡组区（Sidebar 加载的卡组临时区） */
+  sideDeck: ChainItem[]
   /** 显示偏好：'auto' 按区域类型默认，或全局统一（text/image/both） */
   displayMode: DisplayPreference
 }
 
-/** 'auto' 时各区域类型的默认显示方式：结算链/战场/基地看卡图，其余看文本（结算中图文兼顾） */
-const DEFAULT_ZONE_MODES: Record<string, DisplayMode> = {
-  chain: 'image',
-  resolving: 'both',
-  pending: 'text',
-  battlefield: 'image',
-  hand: 'text',
-  base: 'image',
-  discard: 'text',
-  exile: 'text',
-  deck: 'text',
+export interface Snapshot {
+  id: string
+  label: string
+  createdAt: string
+  /** 保存完整 SimState，保证导入导出/回退不丢结构 */
+  state: SimState
 }
 
-/** 解析区域显示方式：pref 非 'auto' 全局统一，否则按区域类型默认 */
-export function resolveZoneMode(pref: DisplayPreference, key: string): DisplayMode {
-  if (pref !== 'auto') return pref
-  if (key.startsWith('bf')) return DEFAULT_ZONE_MODES.battlefield
-  const pMatch = /^p(\d+)-(hand|base|discard|exile|deck)$/.exec(key)
-  if (pMatch) return DEFAULT_ZONE_MODES[pMatch[2]] ?? 'text'
-  return DEFAULT_ZONE_MODES[key] ?? 'text'
+export interface SimulatorSettings {
+  /** 各区域显示状态：key 为区域类型（chain/resolving/pending/battlefield/hand/base/discard/banish/deck/sideDeck） */
+  zoneModes: Record<string, DisplayMode>
+  snapToGrid: boolean
+  autoSnapshotIntervalSec: number
+  collapsedZones: Record<string, boolean>
+}
+
+export interface GameState {
+  zones: Record<string, ChainItem[]>
+  snapshots: Snapshot[]
+  settings: SimulatorSettings
 }
 
 export function newChainItem(partial?: Partial<ChainItem>): ChainItem {
@@ -118,7 +129,7 @@ export function unwrapDragItem(p: ChainDragPayload): ChainItem {
 export function createSimState(playerCount = 2, battlefieldCount = 2): SimState {
   const players: PlayerZone[] = []
   for (let i = 0; i < playerCount; i++) {
-    players.push({ hand: [], base: [], discard: [], exile: [] })
+    players.push({ hand: [], base: [], discard: [], banish: [] })
   }
   const battlefields: ChainItem[][] = []
   for (let i = 0; i < battlefieldCount; i++) battlefields.push([])
@@ -130,8 +141,9 @@ export function createSimState(playerCount = 2, battlefieldCount = 2): SimState 
     battlefields,
     customZones: [],
     customPool: [],
-    extra: null,
-    displayMode: 'auto',
+    extra: { deck: [] },
+    sideDeck: [],
+    displayMode: 'image',
   }
 }
 
@@ -161,11 +173,6 @@ function splitCustomKey(key: string): { id: string; player: number | undefined }
   return { id: key, player: undefined }
 }
 
-/** 解析区域 key 是否为自定义区域地址（含 #player 后缀） */
-export function customZoneMeta(key: string): { id: string; player: number | undefined } {
-  return splitCustomKey(key)
-}
-
 /** 全部有效区域 key（含自定义区域），按展示顺序 */
 export function allZoneKeys(s: SimState): string[] {
   const keys: string[] = ['chain', 'resolving', 'pending']
@@ -179,7 +186,7 @@ export function allZoneKeys(s: SimState): string[] {
   }
   for (let p = 0; p < s.playerCount; p++) {
     keys.push(playerZoneKey(p, 'hand'), playerZoneKey(p, 'base'), playerZoneKey(p, 'discard'))
-    keys.push(playerZoneKey(p, 'exile'))
+    keys.push(playerZoneKey(p, 'banish'))
     if (s.extra) keys.push(playerZoneKey(p, 'deck'))
   }
   return keys
@@ -187,6 +194,7 @@ export function allZoneKeys(s: SimState): string[] {
 
 /** 读取某区域 items（每玩家自定义区域按 owner 过滤） */
 export function getZoneItems(s: SimState, key: string): ChainItem[] | null {
+  if (key === 'sideDeck') return s.sideDeck
   if (key === POOL_KEY) return s.customPool
   if (key === 'chain') return s.shared.chain
   if (key === 'resolving') return s.shared.resolving
@@ -195,7 +203,7 @@ export function getZoneItems(s: SimState, key: string): ChainItem[] | null {
     const i = Number(key.slice(2))
     return s.battlefields[i] ?? null
   }
-  const pMatch = /^p(\d+)-(hand|base|discard|exile|deck)$/.exec(key)
+  const pMatch = /^p(\d+)-(hand|base|discard|banish|deck)$/.exec(key)
   if (pMatch) {
     const p = Number(pMatch[1])
     const zoneName = pMatch[2] as PlayerZoneId
@@ -217,6 +225,10 @@ export function getZoneItems(s: SimState, key: string): ChainItem[] | null {
 
 /** 写入某区域 items（每玩家自定义区域：保留其他玩家项，写入项强制 owner 归该玩家） */
 export function setZoneItems(s: SimState, key: string, items: ChainItem[]): void {
+  if (key === 'sideDeck') {
+    s.sideDeck = items
+    return
+  }
   if (key === POOL_KEY) {
     s.customPool = items
     return
@@ -238,7 +250,7 @@ export function setZoneItems(s: SimState, key: string, items: ChainItem[]): void
     if (s.battlefields[i]) s.battlefields[i] = items
     return
   }
-  const pMatch = /^p(\d+)-(hand|base|discard|exile|deck)$/.exec(key)
+  const pMatch = /^p(\d+)-(hand|base|discard|banish|deck)$/.exec(key)
   if (pMatch) {
     const p = Number(pMatch[1])
     const zoneName = pMatch[2] as PlayerZoneId
@@ -271,9 +283,87 @@ export function zoneTitleKey(key: string): string {
   if (key === 'resolving') return 'simulator.zone.resolving'
   if (key === 'pending') return 'simulator.zone.pending'
   if (key.startsWith('bf')) return 'simulator.zone.battlefield'
-  const pMatch = /^p(\d+)-(hand|base|discard|exile|deck)$/.exec(key)
+  const pMatch = /^p(\d+)-(hand|base|discard|banish|deck)$/.exec(key)
   if (pMatch) return `simulator.zone.${pMatch[2]}`
   return '' // 自定义区域用 zone.name
+}
+
+// ---------------- GameState 辅助 ----------------
+
+export const SIDE_DECK_KEY = 'sideDeck'
+
+/** 把 SimState 投影为扁平 zones（含 sideDeck / pool） */
+export function simToZones(s: SimState): Record<string, ChainItem[]> {
+  const zones: Record<string, ChainItem[]> = {}
+  for (const key of allZoneKeys(s)) {
+    zones[key] = getZoneItems(s, key) ?? []
+  }
+  zones[POOL_KEY] = s.customPool
+  zones[SIDE_DECK_KEY] = s.sideDeck
+  return zones
+}
+
+/** 把扁平 zones 写回 SimState；未提供的区域保持 fallback 原值 */
+export function zonesToSim(zones: Record<string, ChainItem[]>, fallback?: SimState): SimState {
+  const sim = fallback ? cloneSimState(fallback) : createSimState(2, 2)
+  for (const key of allZoneKeys(sim)) {
+    const items = zones[key]
+    if (items) setZoneItems(sim, key, items)
+  }
+  if (zones[POOL_KEY]) sim.customPool = zones[POOL_KEY]
+  if (zones[SIDE_DECK_KEY]) sim.sideDeck = zones[SIDE_DECK_KEY]
+  return sim
+}
+
+export function defaultZoneModes(): Record<string, DisplayMode> {
+  return {
+    chain: 'image',
+    resolving: 'image',
+    pending: 'text',
+    battlefield: 'image',
+    hand: 'text',
+    base: 'image',
+    discard: 'text',
+    banish: 'text',
+    deck: 'text',
+    sideDeck: 'text',
+  }
+}
+
+export function createDefaultSettings(): SimulatorSettings {
+  return {
+    zoneModes: defaultZoneModes(),
+    snapToGrid: true,
+    autoSnapshotIntervalSec: 0,
+    collapsedZones: {},
+  }
+}
+
+export function createGameState(playerCount = 2, battlefieldCount = 2): GameState {
+  const sim = createSimState(playerCount, battlefieldCount)
+  return {
+    zones: simToZones(sim),
+    snapshots: [],
+    settings: {
+      zoneModes: defaultZoneModes(),
+      snapToGrid: true,
+      autoSnapshotIntervalSec: 0,
+      collapsedZones: {},
+    },
+  }
+}
+
+export function createSnapshot(state: SimState, label?: string): Snapshot {
+  return {
+    id: Snowflake.generate().toString(),
+    label: label || `快照 ${new Date().toLocaleTimeString()}`,
+    createdAt: new Date().toISOString(),
+    state: cloneSimState(state),
+  }
+}
+
+export function deleteSnapshot(game: GameState, snapshotId: string): void {
+  game.snapshots = game.snapshots.filter((s) => s.id !== snapshotId)
 }
 
 // ---------------- 克隆 / 校验 / 归一化 ----------------
@@ -302,8 +392,12 @@ function isChainItem(v: unknown): v is ChainItem {
     (o.cardNo === undefined || o.cardNo === null || typeof o.cardNo === 'string') &&
     (o.customName === undefined || o.customName === null || typeof o.customName === 'string') &&
     (o.customNote === undefined || o.customNote === null || typeof o.customNote === 'string') &&
+    (o.subtitle === undefined || o.subtitle === null || typeof o.subtitle === 'string') &&
     (o.owner === undefined || o.owner === null || typeof o.owner === 'number') &&
-    (o.targetZone === undefined || o.targetZone === null || typeof o.targetZone === 'string')
+    (o.targetZone === undefined || o.targetZone === null || typeof o.targetZone === 'string') &&
+    (o.tags === undefined || (Array.isArray(o.tags) && o.tags.every((t) => typeof t === 'string'))) &&
+    (o.rotated === undefined || typeof o.rotated === 'boolean') &&
+    (o.faceDown === undefined || typeof o.faceDown === 'boolean')
   )
 }
 
@@ -314,7 +408,7 @@ function isDisplayMode(v: unknown): v is DisplayMode {
 function isPlayerZone(v: unknown): v is PlayerZone {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
-  return ['hand', 'base', 'discard', 'exile'].every(
+  return ['hand', 'base', 'discard', 'banish'].every(
     (k) => Array.isArray(o[k]) && o[k].every(isChainItem)
   )
 }
@@ -362,6 +456,7 @@ export function normalizeSimState(v: unknown): SimState | null {
   const rawBattlefields = Array.isArray(raw.battlefields) ? (raw.battlefields as unknown[]) : []
   const rawZones = Array.isArray(raw.customZones) ? (raw.customZones as unknown[]) : []
   const rawPool = Array.isArray(raw.customPool) ? (raw.customPool as unknown[]) : []
+  const rawSideDeck = Array.isArray(raw.sideDeck) ? (raw.sideDeck as unknown[]) : []
 
   const players: PlayerZone[] = []
   for (let p = 0; p < playerCount; p++) {
@@ -372,9 +467,9 @@ export function normalizeSimState(v: unknown): SimState | null {
             hand: dedupeItems(src.hand),
             base: dedupeItems(src.base),
             discard: dedupeItems(src.discard),
-            exile: dedupeItems(src.exile),
+            banish: dedupeItems(src.banish),
           }
-        : { hand: [], base: [], discard: [], exile: [] }
+        : { hand: [], base: [], discard: [], banish: [] }
     )
   }
 
@@ -413,7 +508,8 @@ export function normalizeSimState(v: unknown): SimState | null {
     customZones,
     customPool,
     extra,
-    displayMode: isDisplayMode(raw.displayMode) ? raw.displayMode : 'auto',
+    sideDeck: dedupeItems(rawSideDeck.filter(isChainItem)),
+    displayMode: isDisplayMode(raw.displayMode) ? raw.displayMode : 'image',
   }
 
   // targetZone：兼容旧存档保留字段校验（UI 已不再提供设置，落位改由玩家拖拽决定）
@@ -427,7 +523,7 @@ export function normalizeSimState(v: unknown): SimState | null {
     if (item.targetZone && !validKeys.has(item.targetZone)) item.targetZone = null
   }
   for (const p of players) {
-    for (const zone of [p.hand, p.base, p.discard, p.exile]) {
+    for (const zone of [p.hand, p.base, p.discard, p.banish]) {
       for (const item of zone) {
         if (item.targetZone && !validKeys.has(item.targetZone)) item.targetZone = null
       }
@@ -440,41 +536,6 @@ export function normalizeSimState(v: unknown): SimState | null {
   }
 
   return state
-}
-
-// ---------------- 快照历史 ----------------
-
-export interface ChainHistory {
-  past: SimState[]
-  present: SimState
-  future: SimState[]
-}
-
-export function createChainHistory(state: SimState): ChainHistory {
-  return { past: [], present: cloneSimState(state), future: [] }
-}
-
-/** 手动记录快照点：把当前状态压入 past（上限 MAX_HISTORY），清空 future */
-export function snapshotForChange(history: ChainHistory): void {
-  history.past.push(cloneSimState(history.present))
-  if (history.past.length > MAX_HISTORY) history.past.shift()
-  history.future = []
-}
-
-export function undoHistory(history: ChainHistory): boolean {
-  const prev = history.past.pop()
-  if (!prev) return false
-  history.future.push(cloneSimState(history.present))
-  history.present = prev
-  return true
-}
-
-export function redoHistory(history: ChainHistory): boolean {
-  const next = history.future.pop()
-  if (!next) return false
-  history.past.push(cloneSimState(history.present))
-  history.present = next
-  return true
 }
 
 // ---------------- 导入导出 ----------------
@@ -508,4 +569,16 @@ export function parseSimImport(text: string): SimState | null {
 export const chainSimulatorState = persistentWritable<SimState>(
   'chainSimulator',
   createSimState(2, 2)
+)
+
+/** 链模拟器 UI 设置持久化（不进入 SimState / 导入导出格式） */
+export const chainSimulatorSettings = persistentWritable<SimulatorSettings>(
+  'chainSimulatorSettings',
+  createDefaultSettings()
+)
+
+/** 链模拟器快照历史持久化（独立于 SimState 导入导出） */
+export const chainSimulatorSnapshots = persistentWritable<Snapshot[]>(
+  'chainSimulatorSnapshots',
+  []
 )

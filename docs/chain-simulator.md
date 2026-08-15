@@ -41,7 +41,7 @@
 | 手牌 `hand`     | 每人一组                          |
 | 基地 `base`     | 每人一组（4 人对局 → 基地最多 4 个）        |
 | 弃牌堆 `discard` | 每人一组（即"废牌"）                   |
-| 放逐 `exile`    | 每人一组                          |
+| 放逐 `banish`    | 每人一组                          |
 | 牌库 `deck`     | **可选区域，默认关闭**，设置里可开启（演示抽牌流程用） |
 
 ### 2.3 战场与自定义
@@ -74,7 +74,7 @@ interface SimState {
     hand: ChainItem[]
     base: ChainItem[]
     discard: ChainItem[]
-    exile: ChainItem[]
+    banish: ChainItem[]
   }[]                       // 按玩家下标 0..playerCount-1
   battlefields: ChainItem[][]   // 下标 0..battlefieldCount-1
   customZones: {
@@ -89,7 +89,7 @@ interface SimState {
 }
 ```
 
-区域 key 约定：`chain` / `resolving` / `pending` / `bf0..bf2` / `p<玩家下标>-hand|base|discard|exile|deck` / 自定义区域 id（每玩家自定义区域地址为 `自定义id#<玩家下标>`）。每玩家自定义区域渲染时按 owner 分组展示（未标记项归玩家 1）。
+区域 key 约定：`chain` / `resolving` / `pending` / `bf0..bf2` / `p<玩家下标>-hand|base|discard|banish|deck` / 自定义区域 id（每玩家自定义区域地址为 `自定义id#<玩家下标>`）。每玩家自定义区域渲染时按 owner 分组展示（未标记项归玩家 1）。
 
 ### 3.1 校验与兼容
 
@@ -139,8 +139,8 @@ interface SimState {
   "battlefieldCount": 2,
   "shared": { "chain": [], "resolving": [], "pending": [] },
   "players": [
-    { "hand": [], "base": [], "discard": [], "exile": [] },
-    { "hand": [], "base": [], "discard": [], "exile": [] }
+    { "hand": [], "base": [], "discard": [], "banish": [] },
+    { "hand": [], "base": [], "discard": [], "banish": [] }
   ],
   "battlefields": [[], []],
   "customZones": [],

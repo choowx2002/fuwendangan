@@ -10,6 +10,8 @@ function getStore() {
   return storePromise
 }
 
+const pendingReads: Promise<unknown>[] = []
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
@@ -46,7 +48,7 @@ function isGameRecord(v: unknown): v is GameRecord {
 export function persistentWritable<T>(key: string, defaultValue: T) {
   const s = writable(defaultValue)
 
-  getStore().then(async (store) => {
+  const ready = getStore().then(async (store) => {
     const value = await store.get<T>(key)
     if (value !== undefined) {
       s.set(value)
@@ -57,6 +59,7 @@ export function persistentWritable<T>(key: string, defaultValue: T) {
       await store.save()
     })
   })
+  pendingReads.push(ready)
 
   return s
 }
@@ -159,4 +162,15 @@ getStore().then(async (store) => {
     }
     scoreCounterState.set(normalized)
   }
+})
+
+/**
+ * 所有 tools.json 持久化项完成初始读取后的 resolve 标记。
+ * 使用 setTimeout(0) 等待所有静态模块（含 chainSimulatorState 所在的 chain.ts）完成注册，
+ * 再统一等待 pendingReads。
+ */
+export const toolsStoreReady = new Promise<void>((resolve) => {
+  setTimeout(() => {
+    Promise.all(pendingReads).then(() => resolve())
+  }, 0)
 })
