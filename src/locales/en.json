@@ -10,7 +10,8 @@
     "settings": "Settings",
     "locker": "Locker",
     "scanner": "Scanner",
-    "sectionTools": "Tools & Settings"
+    "sectionTools": "Tools & Settings",
+    "supabaseSync": "Cloud Sync"
   },
   "rules": {
     "title": "Game Documents",
@@ -425,7 +426,11 @@
     "importCount": "Import {count} decks",
     "pleaseWait": "Please wait, processing...",
     "sqliteFilter": "SQLite database",
-    "jsonFilter": "JSON file"
+    "jsonFilter": "JSON file",
+    "supabaseSyncConfirm": "This will upload local data and pull remote changes to merge. Continue?",
+    "supabaseSyncDone": "Cloud sync completed",
+    "supabaseLastSync": "Last sync",
+    "supabaseLastSyncDesc": "Time of the last successful cloud sync"
   },
   "decks": {
     "formatAll": "All",

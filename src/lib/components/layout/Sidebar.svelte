@@ -17,11 +17,16 @@
     Boxes,
     Sun,
     Moon,
+    RefreshCw,
+    Loader2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
-  import { sidebarState } from '../../stores/ui-store.svelte'
+  import { get } from 'svelte/store'
+  import { ask } from '@tauri-apps/plugin-dialog'
+  import { sidebarState, showToast } from '../../stores/ui-store.svelte'
   import { showTTSFeatures, windowAlwaysOnTop, darkMode } from '$lib/stores/settings'
-  import { isTauri } from '$lib/db'
+  import { isTauri, syncViaSupabase } from '$lib/db'
+  import { refreshSupabaseUser, supabaseState } from '$lib/stores/supabase.svelte'
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import TTSStatusPanel from './TTSStatusPanel.svelte'
   import { t } from 'svelte-i18n'
@@ -56,6 +61,7 @@
 
   onMount(() => {
     checkMobile()
+    void refreshSupabaseUser()
 
     const handleResize = () => {
       // 3. 使用全局状态
@@ -76,6 +82,28 @@
 
   function togglePin() {
     windowAlwaysOnTop.set(!$windowAlwaysOnTop)
+  }
+
+  let syncing = $state(false)
+
+  async function handleSyncClick() {
+    if (syncing) return
+    const accepted = await ask(get(t)('settings.supabaseSyncConfirm'), {
+      title: get(t)('settings.supabaseSync'),
+      kind: 'warning',
+      okLabel: get(t)('settings.autoSyncConfirm'),
+      cancelLabel: get(t)('common.cancel'),
+    })
+    if (!accepted) return
+    syncing = true
+    try {
+      await syncViaSupabase()
+      showToast(get(t)('settings.supabaseSyncDone'), 'success')
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : get(t)('common.unknownError'), 'error')
+    } finally {
+      syncing = false
+    }
   }
 
   $effect(() => {
@@ -151,6 +179,9 @@
   </nav>
 
   <div class="sidebar-footer">
+      {#if $showTTSFeatures}
+        <TTSStatusPanel />
+      {/if}
     <button
       class="button button-text"
       class:active={$darkMode}
@@ -164,6 +195,22 @@
         <Moon size={18} strokeWidth={1.75} />
       {/if}
     </button>
+
+    {#if isTauri && supabaseState.userEmail}
+      <button
+        class="button button-text"
+        disabled={syncing}
+        onclick={handleSyncClick}
+        aria-label={$t('nav.supabaseSync')}
+        title={$t('nav.supabaseSync')}
+      >
+        {#if syncing}
+          <Loader2 size={18} strokeWidth={1.75} class="spin" />
+        {:else}
+          <RefreshCw size={18} strokeWidth={1.75} />
+        {/if}
+      </button>
+    {/if}
 
     {#if isMobile2}
       <button class="button button-text" onclick={() => navigateTo('/scanner')}>
@@ -184,10 +231,6 @@
           <Pin size={18} strokeWidth={1.75} />
         {/if}
       </button>
-    {/if}
-
-    {#if $showTTSFeatures}
-      <TTSStatusPanel />
     {/if}
   </div>
 </aside>
@@ -381,6 +424,16 @@
 
   .sidebar-footer > .button {
     padding: 0;
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   @media (min-width: 767.99px) {

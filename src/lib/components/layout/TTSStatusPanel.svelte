@@ -82,6 +82,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    grid-column: 1 / -1;
   }
 
   .tts-status {

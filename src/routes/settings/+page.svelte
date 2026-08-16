@@ -33,7 +33,6 @@
     getSyncStatus,
     parseBundle,
     syncViaSupabase,
-    getSupabaseUser,
     signInSupabase,
     signOutSupabase,
     testSupabaseConnection,
@@ -108,6 +107,7 @@
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import { get } from 'svelte/store'
   import { t } from 'svelte-i18n'
+  import { refreshSupabaseUser, supabaseState } from '$lib/stores/supabase.svelte'
 
   // --- 状态管理 ---
   let appVersion = $state('1.0.0')
@@ -169,9 +169,6 @@
   let lastSyncText = $state<string>(get(t)('common.loading'))
   let syncLastSync = $state<string>('')
   let syncFileInput = $state<HTMLInputElement | null>(null)
-  let supabaseUser = $state<string>('')
-  /** 登录状态检查中：避免把检查过程误显示为「未登录」 */
-  let supabaseChecking = $state(false)
   let supabaseEmail = $state('')
   let supabasePassword = $state('')
   let deckCount = $state<number>(0)
@@ -781,15 +778,7 @@
 
   // --- Supabase BYO 云同步 ---
   async function refreshSupabaseStatus() {
-    supabaseChecking = true
-    try {
-      const user = await getSupabaseUser()
-      supabaseUser = user?.email ?? ''
-    } catch {
-      supabaseUser = ''
-    } finally {
-      supabaseChecking = false
-    }
+    await refreshSupabaseUser()
   }
 
   async function copySupabaseSql() {
@@ -836,6 +825,7 @@
         kind: res.ok ? 'info' : 'warning',
       })
       await refreshSupabaseStatus()
+      await loadDbInfo()
     } catch (e) {
       console.error('[SETTINGS] testSupabaseConn 失败:', e)
       console.error(
@@ -878,7 +868,7 @@
   async function handleSupabaseSignOut() {
     try {
       await signOutSupabase()
-      supabaseUser = ''
+      await refreshSupabaseStatus()
     } catch (e) {
       console.error('[SETTINGS] handleSupabaseSignOut 失败:', e)
       console.error(
@@ -893,6 +883,13 @@
   }
 
   async function syncSupabaseNow() {
+    const accepted = await ask(_t('settings.supabaseSyncConfirm'), {
+      title: _t('settings.supabaseSync'),
+      kind: 'warning',
+      okLabel: _t('settings.autoSyncConfirm'),
+      cancelLabel: _t('common.cancel'),
+    })
+    if (!accepted) return
     try {
       const result = await withBusy(_t('settings.supabaseSyncBusy'), () => syncViaSupabase())
       await message(
@@ -2065,17 +2062,17 @@
       </button>
     </div>
 
-    {#if supabaseChecking}
+    {#if supabaseState.checking}
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-label">{$t('settings.supabaseChecking')}</span>
         </div>
       </div>
-    {:else if supabaseUser}
+    {:else if supabaseState.userEmail}
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-label"
-            >{$t('settings.supabaseSignedIn', { values: { email: supabaseUser } })}</span
+            >{$t('settings.supabaseSignedIn', { values: { email: supabaseState.userEmail } })}</span
           >
           <span class="setting-desc">{$t('settings.supabaseSignedInDesc')}</span>
         </div>
@@ -2107,6 +2104,14 @@
         </button>
       </div>
     {/if}
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.supabaseLastSync')}</span>
+        <span class="setting-desc">{$t('settings.supabaseLastSyncDesc')}</span>
+      </div>
+      <span class="version-tag">{syncLastSync}</span>
+    </div>
 
     <div class="setting-item">
       <div class="setting-info">

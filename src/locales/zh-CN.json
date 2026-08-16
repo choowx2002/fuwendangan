@@ -10,7 +10,8 @@
     "settings": "设置",
     "locker": "储物柜",
     "scanner": "扫码",
-    "sectionTools": "工具与设置"
+    "sectionTools": "工具与设置",
+    "supabaseSync": "云同步"
   },
   "rules": {
     "title": "游戏文档",
@@ -425,7 +426,11 @@
     "importCount": "导入 {count} 副卡组",
     "pleaseWait": "请稍候，正在处理...",
     "sqliteFilter": "SQLite 数据库",
-    "jsonFilter": "JSON 文件"
+    "jsonFilter": "JSON 文件",
+    "supabaseSyncConfirm": "将上传本机玩家数据并拉取云端更新进行合并，继续？",
+    "supabaseSyncDone": "云同步完成",
+    "supabaseLastSync": "上次同步时间",
+    "supabaseLastSyncDesc": "上次成功云端同步的时间"
   },
   "decks": {
     "formatAll": "全部",

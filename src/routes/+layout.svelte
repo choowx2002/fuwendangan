@@ -11,6 +11,7 @@
   } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
+  import { refreshSupabaseUser } from '../lib/stores/supabase.svelte'
   import { initLogService } from '$lib/services/log-service'
   import { maybePromptBackup } from '$lib/services/backup-reminder'
   import { ask } from '@tauri-apps/plugin-dialog'
@@ -54,6 +55,8 @@
       void maybePromptBackup()
       // 启动后异步检测云同步更新（仅 Tauri + 开关开启，弹框确认后同步，失败静默）
       void checkAutoSyncOnLaunch()
+      // 启动后异步刷新 Supabase 登录状态（Sidebar 同步按钮显隐）
+      void refreshSupabaseUser()
     } catch (error) {
       // DEBUG: 启动初始化失败的真实错误（plugin-sql reject 为普通字符串）
       console.error('[Layout] 初始化失败:', error)
