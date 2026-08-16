@@ -23,6 +23,7 @@
     getDeckMatchStats,
     getMatchesByDeck,
     deleteMatch,
+    saveDeckAsNewVersion,
     gameResult,
     type MatchSummary,
     type MatchWithGames,
@@ -53,6 +54,9 @@
   import { formatDeckExport, formatOfficialDeckExport } from '$lib/decks/deck-export'
   import { buildDeckCode } from '$lib/decks/deck-code'
   import { buildDeckQrDataUrl, serializeDeckPayload, QR_PAYLOAD_VERSION } from '$lib/decks/deck-qr'
+  import { flattenDeckCards, convertDeckCardInput, compressDeckCards } from '$lib/decks/deck-input'
+  import ImportDeckModal from '$lib/components/decks/ImportDeckModal.svelte'
+  import type { DecodedDeckResult } from '$lib/decks/deck-import'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
   import { parseColorList } from '$lib/cards/utils/cost-curve-utils'
   import { isTauri, isWeb } from '$lib/db'
@@ -108,6 +112,7 @@
     ShoppingCart,
     Star,
     Send,
+    RefreshCw,
   } from '@lucide/svelte'
 
   interface DeckVersion {
@@ -172,6 +177,8 @@
   /** 指示物按提及次数降序 */
   const sortedTokens = $derived([...tokenSuggestions].sort((a, b) => b.mentions - a.mentions))
   let showShareModal = $state(false)
+  let showOverwriteModal = $state(false)
+  let overwriting = $state(false)
   let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'>('text')
   let textLang = $state<'en' | 'cn'>('en')
   let exporting = $state(false)
@@ -248,6 +255,12 @@
   let imageBgOverlay = $state(55)
   let imageMaskColor = $state('#1e3a8a')
   let imageTextColor = $state('')
+  let imageBgScale = $state(1)
+  let imageBgX = $state(0)
+  let imageBgY = $state(0)
+  let imageShowPlayerName = $state(true)
+  let imageShowQr = $state(false)
+  let imageQrDataUrl = $state<string | null>(null)
   let imagePreviewUrl = $state<string | null>(null)
   let imagePreviewing = $state(false)
   let previewGenerated = false
@@ -618,6 +631,66 @@
     goto('/decks')
   }
 
+  /** 覆盖：把导入解析结果写回本卡组，创建新版本（名称/描述/格式不变） */
+  async function overwriteDeckWith(
+    result: DecodedDeckResult | import('$lib/db').ImportDeckPayload
+  ) {
+    if (!deck) return
+    let cards: import('$lib/db').DeckCardInput[] = []
+    if ('versions' in result) {
+      const versions = [...result.versions].sort((a, b) => b.version_number - a.version_number)
+      const latest = versions[0]
+      if (latest) {
+        cards = latest.cards
+          .filter((c) => c.card_id)
+          .map((c) => ({
+            cardPrintId: c.card_id,
+            printCode: c.print_code ?? '',
+            quantity: c.quantity,
+            zone: c.zone,
+          }))
+      }
+    } else {
+      cards = compressDeckCards(convertDeckCardInput(flattenDeckCards(result.deck)))
+    }
+    if (cards.length === 0) {
+      showToast(get(t)('deckDetail.overwriteEmpty'), 'error')
+      return
+    }
+    const nextVersion = versions.reduce((max, v) => Math.max(max, v.version_number), 0) + 1
+    const confirm = await ask(
+      get(t)('deckDetail.overwriteAsk', { values: { version: nextVersion } }),
+      {
+        kind: 'warning',
+        okLabel: get(t)('deckDetail.overwriteConfirm'),
+        cancelLabel: get(t)('common.cancel'),
+      }
+    )
+    if (!confirm) return
+    overwriting = true
+    try {
+      await saveDeckAsNewVersion(deck.id, cards)
+      showOverwriteModal = false
+      showToast(
+        get(t)('deckDetail.overwriteSuccess', { values: { version: nextVersion } }),
+        'success'
+      )
+      if (page.params.deckid) await init(page.params.deckid)
+    } catch (error) {
+      console.error('[DeckOverwrite] 覆盖卡组失败:', error)
+      showToast(
+        get(t)('deckDetail.exportFailed', {
+          values: {
+            message: error instanceof Error ? error.message : get(t)('common.unknownError'),
+          },
+        }),
+        'error'
+      )
+    } finally {
+      overwriting = false
+    }
+  }
+
   const recentMatches = $derived(matchRecords.slice(0, 5))
 
   // 对局胜率（平局不计分母；与记录页分析口径一致）
@@ -699,10 +772,22 @@
           title: $t('deckDetail.shareDeck'),
           label: $t('common.export'),
           onClick: () => {
+            console.log("click");
             shareFormat = 'text'
             showShareModal = true
+            console.log("clicked", showShareModal);
           },
           priority: 2,
+        },
+        {
+          key: 'overwrite',
+          icon: RefreshCw,
+          title: $t('deckDetail.overwriteTitle'),
+          label: $t('deckDetail.overwriteTitle'),
+          onClick: () => {
+            showOverwriteModal = true
+          },
+          priority: 3,
         },
         {
           key: 'ownership',
@@ -1011,6 +1096,9 @@
       imageUrl: imageBgImage ?? undefined,
       overlay: imageBgImage ? imageBgOverlay / 100 : undefined,
       maskColor: imageMaskColor,
+      scale: imageBgImage ? imageBgScale : undefined,
+      offsetX: imageBgImage ? imageBgX : undefined,
+      offsetY: imageBgImage ? imageBgY : undefined,
     }
   }
 
@@ -1022,6 +1110,8 @@
       background: currentDeckBackground(),
       textColor: imageTextColor || undefined,
       playerName: $playerName.trim() || undefined,
+      showPlayerName: imageShowPlayerName,
+      qrDataUrl: imageShowQr ? (imageQrDataUrl ?? undefined) : undefined,
     }
   }
 
@@ -1060,8 +1150,30 @@
     imageBgOverlay
     imageMaskColor
     imageTextColor
+    imageBgScale
+    imageBgX
+    imageBgY
+    imageShowPlayerName
+    imageShowQr
     imageSortList
     schedulePreviewRegen()
+  })
+
+  $effect(() => {
+    if (imageShowQr) {
+      if (!imageQrDataUrl && qrPayloadText) {
+        buildDeckQrDataUrl(qrPayloadText)
+          .then((url) => {
+            imageQrDataUrl = url
+          })
+          .catch((error) => {
+            console.error('[DeckImage] 生成二维码失败:', error)
+            imageQrDataUrl = null
+          })
+      }
+    } else {
+      imageQrDataUrl = null
+    }
   })
 
   async function generateQrPreview() {
@@ -2223,6 +2335,44 @@
           >
           <input type="range" min="0" max="100" step="5" bind:value={imageBgOverlay} />
         </div>
+        <div class="image-bg-overlay-row">
+          <span class="overlay-label"
+            >{$t('deckDetail.bgScale', { values: { value: Math.round(imageBgScale * 100) } })}</span
+          >
+          <input
+            type="range"
+            min="50"
+            max="250"
+            step="5"
+            value={Math.round(imageBgScale * 100)}
+            oninput={(e) => (imageBgScale = Number(e.currentTarget.value) / 100)}
+          />
+        </div>
+        <div class="image-bg-overlay-row">
+          <span class="overlay-label"
+            >{$t('deckDetail.bgOffsetX', { values: { value: imageBgX } })}</span
+          >
+          <input type="range" min="-150" max="150" step="5" bind:value={imageBgX} />
+        </div>
+        <div class="image-bg-overlay-row">
+          <span class="overlay-label"
+            >{$t('deckDetail.bgOffsetY', { values: { value: imageBgY } })}</span
+          >
+          <input type="range" min="-150" max="150" step="5" bind:value={imageBgY} />
+        </div>
+        <div class="image-bg-overlay-row">
+          <button
+            type="button"
+            class="button button-ghost button-sm"
+            onclick={() => {
+              imageBgScale = 1
+              imageBgX = 0
+              imageBgY = 0
+            }}
+          >
+            {$t('deckDetail.bgReset')}
+          </button>
+        </div>
       {/if}
       <input
         bind:this={bgFileInput}
@@ -2231,6 +2381,24 @@
         class="hidden-file-input"
         onchange={onBgFileChange}
       />
+    </div>
+
+    <div class="image-sort-section">
+      <div class="image-sort-title">{$t('deckDetail.extraInfo')}</div>
+      <div class="image-extra-row">
+        <label class="switch">
+          <input type="checkbox" bind:checked={imageShowPlayerName} />
+          <span class="slider"></span>
+        </label>
+        <span class="switch-text">{$t('deckDetail.showPlayerName')}</span>
+      </div>
+      <div class="image-extra-row">
+        <label class="switch">
+          <input type="checkbox" bind:checked={imageShowQr} />
+          <span class="slider"></span>
+        </label>
+        <span class="switch-text">{$t('deckDetail.showQr')}</span>
+      </div>
     </div>
 
     <div class="image-sort-section">
@@ -2568,6 +2736,18 @@
     {/if}
   {/snippet}
 </CommonModal>
+
+<ImportDeckModal
+  open={showOverwriteModal}
+  variant="overwrite"
+  onclose={() => {
+    if (!overwriting) showOverwriteModal = false
+  }}
+  onConfirm={overwriteDeckWith}
+  onJsonConfirm={async (payloads) => {
+    if (payloads.length > 0) await overwriteDeckWith(payloads[0])
+  }}
+/>
 
 <style>
   .deck-builder-container {
@@ -3958,6 +4138,65 @@
 
   .hidden-file-input {
     display: none;
+  }
+
+  .image-extra-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: 0.25s;
+    border-radius: 22px;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: '';
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: 0.25s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(55, 53, 47, 0.2);
+  }
+
+  input:checked + .slider {
+    background-color: var(--accent-color);
+  }
+
+  input:checked + .slider:before {
+    transform: translateX(18px);
+  }
+
+  .switch-text {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
   }
 
   /* ===== 编辑卡组信息 ===== */

@@ -28,15 +28,6 @@
     PRESET_LANGUAGE_CODES,
     clearHistory,
     captureCollectionSnapshot,
-    buildSyncBundleText,
-    importSyncBundleText,
-    getSyncStatus,
-    parseBundle,
-    syncViaSupabase,
-    signInSupabase,
-    signOutSupabase,
-    testSupabaseConnection,
-    buildSupabaseCreateTableSql,
     isTauri,
     type CustomLanguage,
     type ImportDeckPayload,
@@ -58,10 +49,6 @@
     lastBackupAt,
     backupReminderEnabled,
     backupReminderDays,
-    syncSupabaseUrl,
-    syncSupabaseAnonKey,
-    autoSyncEnabled,
-    settingsStoreReady,
   } from '$lib/stores/settings'
   import { SUPPORTED_LOCALES } from '$lib/i18n'
   import { ZONE_CONFIG, type ZoneKey } from '$lib/decks/zone'
@@ -94,20 +81,11 @@
   import { isMobile } from '$lib/utils/os'
   import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
-  import {
-    Download,
-    Upload,
-    FileText,
-    FileUp,
-    ChevronRight,
-    RefreshCw,
-    Cloud,
-  } from '@lucide/svelte'
+  import { Download, Upload, FileText, FileUp, ChevronRight, RefreshCw } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import LoadingModal from '$lib/components/ui/LoadingModal.svelte'
   import { get } from 'svelte/store'
   import { t } from 'svelte-i18n'
-  import { refreshSupabaseUser, supabaseState } from '$lib/stores/supabase.svelte'
 
   // --- 状态管理 ---
   let appVersion = $state('1.0.0')
@@ -167,10 +145,6 @@
   }
 
   let lastSyncText = $state<string>(get(t)('common.loading'))
-  let syncLastSync = $state<string>('')
-  let syncFileInput = $state<HTMLInputElement | null>(null)
-  let supabaseEmail = $state('')
-  let supabasePassword = $state('')
   let deckCount = $state<number>(0)
   let statRows = $state<{ name: string | null; label: string; count: number; size: string }[]>([])
 
@@ -212,30 +186,6 @@
     await loadDbInfo()
     await Promise.all([loadImageCacheInfo(), loadImageCoverage()])
     await loadCustomLangs()
-    // 等 settings.json 的 URL/key 加载完成后再查登录状态，避免首次进入时
-    // 因配置尚未就绪而误判为「未登录」（挂载时的立即查询不依赖此等待）
-    void settingsStoreReady.then(() => refreshSupabaseStatus())
-  })
-
-  // URL / key 变化（含 settings.json 异步加载完成、用户手动修改配置）后
-  // 自动重查登录状态；输入停顿 800ms 后触发，避免逐键查询
-  let supabaseCheckTimer: ReturnType<typeof setTimeout> | undefined
-  let firstSupabaseCheckRun = true
-  $effect(() => {
-    void $syncSupabaseUrl
-    void $syncSupabaseAnonKey
-    // 挂载时的首次运行由 settingsStoreReady.then 的检查负责，这里只响应后续变化
-    if (firstSupabaseCheckRun) {
-      firstSupabaseCheckRun = false
-      return
-    }
-    if (supabaseCheckTimer) clearTimeout(supabaseCheckTimer)
-    supabaseCheckTimer = setTimeout(() => {
-      void refreshSupabaseStatus()
-    }, 800)
-    return () => {
-      if (supabaseCheckTimer) clearTimeout(supabaseCheckTimer)
-    }
   })
 
   // 下载结束后刷新缓存覆盖统计
@@ -307,12 +257,6 @@
       // 3. 最后同步时间（各同步表中最新的 updated_at）
       lastSyncText = dbVersion?.updated_at
         ? `${_t('settings.dataLabel')} · ${new Date(dbVersion.updated_at).toLocaleString()}`
-        : _t('settings.neverSynced')
-
-      // 3b. 玩家数据同步：上次 Bundle 同步时间
-      const syncStatus = await getSyncStatus()
-      syncLastSync = syncStatus.lastSync
-        ? new Date(syncStatus.lastSync).toLocaleString()
         : _t('settings.neverSynced')
 
       // 4. 各表统计
@@ -618,310 +562,6 @@
         }),
         { title: _t('settings.dataPackTitle'), kind: 'error' }
       )
-    }
-  }
-
-  /** 玩家数据同步：导出 Sync Bundle */
-  async function exportSyncBundleAsk() {
-    const deviceName = get(playerName)
-    let text = ''
-    try {
-      text = await withBusy(_t('settings.syncExportBusy'), () => buildSyncBundleText(deviceName))
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.syncExport'),
-        kind: 'error',
-      })
-      return
-    }
-
-    try {
-      if (isTauri) {
-        const dir = await open({
-          title: _t('settings.syncExportSelectDir'),
-          directory: true,
-          multiple: false,
-        })
-        if (!dir) return
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-        const dest = await join(String(dir), `rune-archive-sync-${stamp}.json`)
-        await writeTextFile(dest, text)
-        await message(_t('settings.syncExportSuccess', { values: { path: dest } }), {
-          title: _t('settings.syncExport'),
-          kind: 'info',
-        })
-      } else {
-        const blob = new Blob([text], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = `rune-archive-sync-${new Date().toISOString().slice(0, 10)}.json`
-        anchor.click()
-        URL.revokeObjectURL(url)
-        await message(_t('settings.syncExportWebDone'), {
-          title: _t('settings.syncExport'),
-          kind: 'info',
-        })
-      }
-      await loadDbInfo()
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.syncExport'),
-        kind: 'error',
-      })
-    }
-  }
-
-  /** 玩家数据同步：导入 Sync Bundle（桌面文件选择） */
-  async function importSyncBundleAsk() {
-    let src: string
-    if (isTauri) {
-      const picked = await open({
-        title: _t('settings.syncImportOpenTitle'),
-        multiple: false,
-        filters: [{ name: _t('settings.syncJsonFilter'), extensions: ['json'] }],
-      })
-      if (!picked) return
-      src = String(picked)
-    } else {
-      syncFileInput?.click()
-      return
-    }
-
-    await importSyncBundleFromPath(src)
-  }
-
-  /** 玩家数据同步：导入 Sync Bundle（Web 文件选择回调） */
-  async function handleSyncFileChange(e: Event) {
-    const input = e.target as HTMLInputElement
-    const file = input.files?.[0]
-    input.value = ''
-    if (!file) return
-    try {
-      const text = await file.text()
-      await runSyncImport(text, file.name)
-    } catch (err) {
-      await message(err instanceof Error ? err.message : _t('common.unknownError'), {
-        title: _t('settings.syncImport'),
-        kind: 'error',
-      })
-    }
-  }
-
-  /** 玩家数据同步：桌面路径导入 */
-  async function importSyncBundleFromPath(path: string) {
-    let text = ''
-    try {
-      text = await withBusy(_t('settings.syncImportReadBusy'), () => readTextFile(path))
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.syncImport'),
-        kind: 'error',
-      })
-      return
-    }
-    await runSyncImport(text, path)
-  }
-
-  /** 玩家数据同步：校验 + 确认 + 合并写回 */
-  async function runSyncImport(text: string, source: string) {
-    const deviceName = get(playerName)
-    // 先解析校验（schema/版本/校验和），失败即中止，不落库
-    try {
-      parseBundle(text)
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.syncImport'),
-        kind: 'error',
-      })
-      return
-    }
-
-    const confirmed = await ask(_t('settings.syncImportConfirm', { values: { path: source } }), {
-      title: _t('settings.syncImportConfirmTitle'),
-      kind: 'warning',
-      okLabel: _t('common.confirm'),
-      cancelLabel: _t('common.cancel'),
-    })
-    if (!confirmed) return
-
-    try {
-      const result = await withBusy(_t('settings.syncImportBusy'), () =>
-        importSyncBundleText(text, deviceName)
-      )
-      await message(
-        _t('settings.syncImportSuccess', {
-          values: {
-            decks: result.upsertedDecks,
-            variants: result.upsertedVariants,
-            wishlist: result.upsertedWishlist,
-            loans: result.upsertedLoans,
-            contacts: result.upsertedContacts,
-            lists: result.upsertedPurchaseLists,
-            matches: result.upsertedMatches,
-            lockers: result.upsertedLockers,
-            customs: result.upsertedCustomPrints,
-            settings: result.appliedSettings,
-            missing: result.missingCards,
-          },
-        }),
-        { title: _t('settings.syncImport'), kind: 'info' }
-      )
-      await loadDbInfo()
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.syncImport'),
-        kind: 'error',
-      })
-    }
-  }
-
-  // --- Supabase BYO 云同步 ---
-  async function refreshSupabaseStatus() {
-    await refreshSupabaseUser()
-  }
-
-  async function copySupabaseSql() {
-    try {
-      await writeText(buildSupabaseCreateTableSql())
-      await message(_t('settings.supabaseCopySqlDone'), {
-        title: _t('settings.supabaseTitle'),
-        kind: 'info',
-      })
-    } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.supabaseTitle'),
-        kind: 'error',
-      })
-    }
-  }
-
-  async function testSupabaseConn() {
-    try {
-      const res = await withBusy(_t('settings.supabaseTestBusy'), () => testSupabaseConnection())
-      let text: string
-      console.log('[SUPABASE]', res)
-      switch (res.code) {
-        case 'no_config':
-          text = _t('settings.supabaseNoConfig')
-          break
-        case 'signed_in':
-          text = _t('settings.supabaseOkSignedIn')
-          break
-        case 'not_signed_in':
-          text = _t('settings.supabaseOkNotSignedIn')
-          break
-        case 'table_missing':
-          text = _t('settings.supabaseTableMissing')
-          break
-        case 'paused_or_network':
-          text = _t('settings.supabasePausedHint')
-          break
-        default:
-          text = res.detail || _t('settings.supabaseError')
-      }
-      await message(text, {
-        title: _t('settings.supabaseTest'),
-        kind: res.ok ? 'info' : 'warning',
-      })
-      await refreshSupabaseStatus()
-      await loadDbInfo()
-    } catch (e) {
-      console.error('[SETTINGS] testSupabaseConn 失败:', e)
-      console.error(
-        '[SETTINGS] testSupabaseConn 失败 string:',
-        e instanceof Error ? e.message : String(e)
-      )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.supabaseTest'),
-        kind: 'error',
-      })
-    }
-  }
-
-  async function handleSupabaseSignIn() {
-    if (!supabaseEmail || !supabasePassword) return
-    try {
-      await withBusy(_t('settings.supabaseSignInBusy'), () =>
-        signInSupabase(supabaseEmail, supabasePassword)
-      )
-      const email = supabaseEmail
-      supabasePassword = ''
-      await refreshSupabaseStatus()
-      await message(_t('settings.supabaseSignedIn', { values: { email } }), {
-        title: _t('settings.supabaseSignIn'),
-        kind: 'info',
-      })
-    } catch (e) {
-      console.error('[SETTINGS] handleSupabaseSignIn 失败:', e)
-      console.error(
-        '[SETTINGS] handleSupabaseSignIn 失败 string:',
-        e instanceof Error ? e.message : String(e)
-      )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.supabaseSignIn'),
-        kind: 'error',
-      })
-    }
-  }
-
-  async function handleSupabaseSignOut() {
-    try {
-      await signOutSupabase()
-      await refreshSupabaseStatus()
-    } catch (e) {
-      console.error('[SETTINGS] handleSupabaseSignOut 失败:', e)
-      console.error(
-        '[SETTINGS] handleSupabaseSignOut 失败 string:',
-        e instanceof Error ? e.message : String(e)
-      )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.supabaseSignOut'),
-        kind: 'error',
-      })
-    }
-  }
-
-  async function syncSupabaseNow() {
-    const accepted = await ask(_t('settings.supabaseSyncConfirm'), {
-      title: _t('settings.supabaseSync'),
-      kind: 'warning',
-      okLabel: _t('settings.autoSyncConfirm'),
-      cancelLabel: _t('common.cancel'),
-    })
-    if (!accepted) return
-    try {
-      const result = await withBusy(_t('settings.supabaseSyncBusy'), () => syncViaSupabase())
-      await message(
-        _t('settings.supabaseSyncSuccess', {
-          values: {
-            decks: result.upsertedDecks,
-            variants: result.upsertedVariants,
-            wishlist: result.upsertedWishlist,
-            loans: result.upsertedLoans,
-            contacts: result.upsertedContacts,
-            lists: result.upsertedPurchaseLists,
-            matches: result.upsertedMatches,
-            lockers: result.upsertedLockers,
-            customs: result.upsertedCustomPrints,
-            settings: result.appliedSettings,
-            missing: result.missingCards,
-          },
-        }),
-        { title: _t('settings.supabaseSync'), kind: 'info' }
-      )
-      await loadDbInfo()
-    } catch (e) {
-      // DEBUG: 移动端同步失败的真实错误（plugin-sql reject 的是普通字符串，不是 Error）
-      console.error('[SETTINGS] syncSupabaseNow 失败:', e)
-      console.error(
-        '[SETTINGS] syncSupabaseNow 失败 string:',
-        e instanceof Error ? e.message : String(e)
-      )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
-        title: _t('settings.supabaseSync'),
-        kind: 'error',
-      })
     }
   }
 
@@ -1982,146 +1622,6 @@
       <button class="button button-danger-outline" disabled={onloadInfo} onclick={handleResetDb}>
         {$t('settings.resetDb')}
       </button>
-    </div>
-  </section>
-
-  <!-- 玩家数据同步 -->
-  <section class="settings-card">
-    <h2 class="card-title">
-      <RefreshCw size={16} />
-      {$t('settings.syncTitle')}
-    </h2>
-
-    <div class="notice-banner">{$t('settings.syncPrivacyNotice')}</div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.syncLastSync')}</span>
-        <span class="setting-desc">{$t('settings.syncLastSyncDesc')}</span>
-      </div>
-      <span class="version-tag">{syncLastSync}</span>
-    </div>
-
-    <div class="db-actions">
-      <button class="button button-ghost" disabled={onloadInfo} onclick={exportSyncBundleAsk}>
-        <Download size={16} />
-        {$t('settings.syncExport')}
-      </button>
-      <button class="button button-ghost" disabled={onloadInfo} onclick={importSyncBundleAsk}>
-        <Upload size={16} />
-        {$t('settings.syncImport')}
-      </button>
-    </div>
-
-    <input
-      bind:this={syncFileInput}
-      type="file"
-      accept=".json,application/json"
-      hidden
-      onchange={handleSyncFileChange}
-    />
-  </section>
-
-  <!-- Supabase BYO 云同步 -->
-  <section class="settings-card">
-    <h2 class="card-title">
-      <Cloud size={16} />
-      {$t('settings.supabaseTitle')}
-    </h2>
-
-    <div class="notice-banner">{$t('settings.supabaseNotice')}</div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.supabaseUrl')}</span>
-        <span class="setting-desc">{$t('settings.supabaseUrlDesc')}</span>
-      </div>
-      <input class="setting-input" type="text" bind:value={$syncSupabaseUrl} />
-    </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.supabaseKey')}</span>
-        <span class="setting-desc">{$t('settings.supabaseKeyDesc')}</span>
-      </div>
-      <input class="setting-input" type="password" bind:value={$syncSupabaseAnonKey} />
-    </div>
-
-    <div class="db-actions">
-      <button class="button button-ghost" disabled={onloadInfo} onclick={copySupabaseSql}>
-        <FileText size={16} />
-        {$t('settings.supabaseCopySql')}
-      </button>
-      <button class="button button-ghost" disabled={onloadInfo} onclick={testSupabaseConn}>
-        <RefreshCw size={16} />
-        {$t('settings.supabaseTest')}
-      </button>
-      <button class="button button-primary" disabled={onloadInfo} onclick={syncSupabaseNow}>
-        <Upload size={16} />
-        {$t('settings.supabaseSync')}
-      </button>
-    </div>
-
-    {#if supabaseState.checking}
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-label">{$t('settings.supabaseChecking')}</span>
-        </div>
-      </div>
-    {:else if supabaseState.userEmail}
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-label"
-            >{$t('settings.supabaseSignedIn', { values: { email: supabaseState.userEmail } })}</span
-          >
-          <span class="setting-desc">{$t('settings.supabaseSignedInDesc')}</span>
-        </div>
-        <button class="button button-ghost" onclick={handleSupabaseSignOut}>
-          {$t('settings.supabaseSignOut')}
-        </button>
-      </div>
-    {:else}
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-label">{$t('settings.supabaseEmail')}</span>
-          <span class="setting-desc">{$t('settings.supabaseNotSignedIn')}</span>
-        </div>
-        <input class="setting-input" type="email" bind:value={supabaseEmail} />
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-label">{$t('settings.supabasePassword')}</span>
-        </div>
-        <input class="setting-input" type="password" bind:value={supabasePassword} />
-      </div>
-      <div class="db-actions">
-        <button
-          class="button button-ghost"
-          disabled={!supabaseEmail || !supabasePassword}
-          onclick={handleSupabaseSignIn}
-        >
-          {$t('settings.supabaseSignIn')}
-        </button>
-      </div>
-    {/if}
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.supabaseLastSync')}</span>
-        <span class="setting-desc">{$t('settings.supabaseLastSyncDesc')}</span>
-      </div>
-      <span class="version-tag">{syncLastSync}</span>
-    </div>
-
-    <div class="setting-item">
-      <div class="setting-info">
-        <span class="setting-label">{$t('settings.autoSyncLabel')}</span>
-        <span class="setting-desc">{$t('settings.autoSyncDesc')}</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" bind:checked={$autoSyncEnabled} />
-        <span class="slider"></span>
-      </label>
     </div>
   </section>
 

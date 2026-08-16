@@ -11,7 +11,8 @@
     "locker": "储物柜",
     "scanner": "扫码",
     "sectionTools": "工具与设置",
-    "supabaseSync": "云同步"
+    "supabaseSync": "云同步",
+    "sync": "数据同步"
   },
   "rules": {
     "title": "游戏文档",
@@ -152,7 +153,10 @@
     "losses": "{count}负",
     "draws": "{count}平",
     "noDecks": "暂无卡组，去创建一个吧。",
-    "moreFeatures": "更多功能"
+    "moreFeatures": "更多功能",
+    "moreTitle": "全部功能",
+    "moreCustomize": "自定义排序",
+    "moreSortHint": "上下拖拽调整顺序，越靠前越优先展示"
   },
   "settings": {
     "title": "设置",
@@ -253,6 +257,8 @@
     "syncPrivacyNotice": "同步包含收藏与卡组等玩家数据，请妥善保管同步包、勿外传；同步包不携带任何云密钥或账号凭据。",
     "syncLastSync": "上次同步时间",
     "syncLastSyncDesc": "上次成功导出/导入玩家同步包的时间",
+    "syncDeviceId": "本机设备标识",
+    "syncDeviceIdDesc": "多设备同步时用于识别来源，防止同设备重复合并",
     "syncExport": "导出同步包",
     "syncImport": "导入同步包",
     "syncExportBusy": "正在生成同步包…",
@@ -835,6 +841,18 @@
     "maskColor": "遮罩颜色",
     "customMaskColor": "自定义遮罩颜色",
     "maskStrength": "遮罩强度 {value}%",
+    "bgScale": "背景缩放 {value}%",
+    "bgOffsetX": "水平偏移 {value}px",
+    "bgOffsetY": "垂直偏移 {value}px",
+    "bgReset": "重置缩放与偏移",
+    "extraInfo": "额外信息",
+    "showPlayerName": "显示玩家名字",
+    "showQr": "右下角二维码",
+    "overwriteTitle": "覆盖卡组",
+    "overwriteConfirm": "覆盖为新版本",
+    "overwriteAsk": "将用解析出的卡牌内容覆盖本卡组，并创建新版本（v{version}）。历史版本会保留。确定继续？",
+    "overwriteSuccess": "已创建新版本 v{version}",
+    "overwriteEmpty": "解析结果中没有可写入的卡牌",
     "cardSort": "卡牌排序",
     "cardSortDesc": "调整主牌堆与备牌在图案中的排列顺序（可多级排序）。",
     "generatingQr": "正在生成二维码...",

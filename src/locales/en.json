@@ -11,7 +11,8 @@
     "locker": "Locker",
     "scanner": "Scanner",
     "sectionTools": "Tools & Settings",
-    "supabaseSync": "Cloud Sync"
+    "supabaseSync": "Cloud Sync",
+    "sync": "Sync"
   },
   "rules": {
     "title": "Game Documents",
@@ -152,7 +153,10 @@
     "losses": "{count}L",
     "draws": "{count}D",
     "noDecks": "No decks yet, create one to get started.",
-    "moreFeatures": "More"
+    "moreFeatures": "More",
+    "moreTitle": "All Features",
+    "moreCustomize": "Customize Order",
+    "moreSortHint": "Drag to reorder — items closer to the top are shown first"
   },
   "settings": {
     "title": "Settings",
@@ -253,6 +257,8 @@
     "syncPrivacyNotice": "Sync contains player data such as collection and decks. Keep sync bundles safe and do not share them; bundles never carry cloud keys or credentials.",
     "syncLastSync": "Last sync",
     "syncLastSyncDesc": "Time of the last successful player sync bundle export/import",
+    "syncDeviceId": "Device ID",
+    "syncDeviceIdDesc": "Identifies this device during multi-device sync to avoid duplicate merges",
     "syncExport": "Export Sync Bundle",
     "syncImport": "Import Sync Bundle",
     "syncExportBusy": "Generating sync bundle…",
@@ -835,6 +841,18 @@
     "maskColor": "Mask color",
     "customMaskColor": "Custom mask color",
     "maskStrength": "Mask strength {value}%",
+    "bgScale": "Background scale {value}%",
+    "bgOffsetX": "Horizontal offset {value}px",
+    "bgOffsetY": "Vertical offset {value}px",
+    "bgReset": "Reset scale and offset",
+    "extraInfo": "Extra info",
+    "showPlayerName": "Show player name",
+    "showQr": "QR code (bottom right)",
+    "overwriteTitle": "Overwrite Deck",
+    "overwriteConfirm": "Overwrite as new version",
+    "overwriteAsk": "The parsed cards will overwrite this deck as a new version (v{version}). History versions are kept. Continue?",
+    "overwriteSuccess": "Created new version v{version}",
+    "overwriteEmpty": "No cards to write from the parsed result",
     "cardSort": "Card Sorting",
     "cardSortDesc": "Adjust the ordering of main deck and sideboard cards in the image (multi-level sorting).",
     "generatingQr": "Generating QR code...",

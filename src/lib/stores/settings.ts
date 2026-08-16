@@ -145,6 +145,9 @@ export const syncSupabaseAnonKey = persistentWritable('syncSupabaseAnonKey', '')
 /** 启动时自动检测云端更新（默认关闭；检测到更新弹框确认后同步，仅 Tauri） */
 export const autoSyncEnabled = persistentWritable('autoSyncEnabled', false)
 
+/** 首页更多功能入口顺序（id 列表，本地偏好，不参与玩家同步） */
+export const homeMoreOrder = persistentWritable<string[]>('homeMoreOrder', [])
+
 locale.subscribe((value) => {
   const next = isSupportedLocale(value) ? value : systemLocale()
   i18nLocale.set(next)

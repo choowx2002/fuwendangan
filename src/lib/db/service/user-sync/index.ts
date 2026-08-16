@@ -39,6 +39,7 @@ export {
   vaultSetSession,
   vaultClearSession,
 }
+export { getOrCreateDeviceId } from './state'
 
 export const SUPABASE_LAST_PUSH_CHECKSUM = 'supabase_last_push_checksum'
 

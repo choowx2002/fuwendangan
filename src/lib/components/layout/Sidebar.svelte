@@ -45,6 +45,7 @@
   const toolItems = [
     { icon: Library, key: 'rules', href: '/rules' },
     { icon: Wrench, key: 'tools', href: '/tools' },
+    { icon: RefreshCw, key: 'sync', href: '/sync' },
     { icon: Settings, key: 'settings', href: '/settings' },
   ]
 
@@ -179,9 +180,9 @@
   </nav>
 
   <div class="sidebar-footer">
-      {#if $showTTSFeatures}
-        <TTSStatusPanel />
-      {/if}
+    {#if $showTTSFeatures}
+      <TTSStatusPanel />
+    {/if}
     <button
       class="button button-text"
       class:active={$darkMode}

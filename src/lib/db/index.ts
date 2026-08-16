@@ -342,6 +342,7 @@ export {
   vaultGetSession,
   vaultSetSession,
   vaultClearSession,
+  getOrCreateDeviceId,
 } from './service/user-sync'
 export type { SyncExportInfo, SyncImportResult } from './service/user-sync'
 export {

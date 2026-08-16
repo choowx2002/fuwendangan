@@ -3,7 +3,7 @@
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { isDeckPinned } from '$lib/stores/pinned-decks'
-  import { playerName, settingsStoreReady } from '$lib/stores/settings'
+  import { homeMoreOrder, playerName, settingsStoreReady } from '$lib/stores/settings'
   import {
     Swords,
     Dice6,
@@ -15,11 +15,18 @@
     Settings,
     Heart,
     ArrowLeftRight,
+    RefreshCw,
+    BookOpen,
+    ClipboardList,
+    MoreHorizontal,
   } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import { get } from 'svelte/store'
   import { t } from 'svelte-i18n'
+  import { draggable, droppable, type DragDropState } from '@thisux/sveltednd'
+  import { flip } from 'svelte/animate'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
 
   interface HomeDeck {
     id: string
@@ -32,24 +39,153 @@
     pinned: boolean
   }
 
-  let recentDecks = $state<HomeDeck[]>([])
-  let homeName = $state('')
-  let settingsReady = $state(false)
+  interface MoreEntry {
+    id: string
+    icon: typeof Swords
+    labelKey: string
+    href: string
+    color: string
+  }
 
-  const moreEntries = [
+  const MORE_ENTRIES: MoreEntry[] = [
     {
+      id: 'gameCounter',
       icon: Swords,
       labelKey: 'home.toolsGameCounter',
       href: '/tools/gameCounter',
       color: '#e03e3e',
     },
-    { icon: Dice6, labelKey: 'home.toolsDice', href: '/tools/dice', color: '#d9730d' },
-    { icon: Boxes, labelKey: 'nav.locker', href: '/locker', color: '#d97706' },
-    { icon: Gamepad2, labelKey: 'nav.simulator', href: '/simulator', color: '#7c3aed' },
-    // { icon: Settings, labelKey: 'nav.settings', href: '/settings', color: '#64748b' },
-    { icon: Heart, labelKey: 'wishlist.title', href: '/collection/wishlist', color: '#ec4899' },
-    { icon: ArrowLeftRight, labelKey: 'loans.title', href: '/collection/loans', color: '#0ea5e9' },
+    { id: 'dice', icon: Dice6, labelKey: 'home.toolsDice', href: '/tools/dice', color: '#d9730d' },
+    { id: 'locker', icon: Boxes, labelKey: 'nav.locker', href: '/locker', color: '#d97706' },
+    { id: 'rules', icon: BookOpen, labelKey: 'nav.rules', href: '/rules', color: '#6366f1' },
+    {
+      id: 'wishlist',
+      icon: Heart,
+      labelKey: 'wishlist.title',
+      href: '/collection/wishlist',
+      color: '#ec4899',
+    },
+    {
+      id: 'loans',
+      icon: ArrowLeftRight,
+      labelKey: 'loans.title',
+      href: '/collection/loans',
+      color: '#0ea5e9',
+    },
+    {
+      id: 'simulator',
+      icon: Gamepad2,
+      labelKey: 'nav.simulator',
+      href: '/simulator',
+      color: '#7c3aed',
+    },
+    {
+      id: 'purchase',
+      icon: ClipboardList,
+      labelKey: 'purchase.title',
+      href: '/collection/purchase-lists',
+      color: '#22c55e',
+    },
+    { id: 'sync', icon: RefreshCw, labelKey: 'nav.sync', href: '/sync', color: '#0891b2' },
+    {
+      id: 'settings',
+      icon: Settings,
+      labelKey: 'nav.settings',
+      href: '/settings',
+      color: '#64748b',
+    },
   ]
+
+  const DEFAULT_MORE_ORDER = MORE_ENTRIES.map((e) => e.id)
+
+  let recentDecks = $state<HomeDeck[]>([])
+  let homeName = $state('')
+  let settingsReady = $state(false)
+
+  // --- 更多功能：可见数量与排序 ---
+  let moreGridEl = $state<HTMLElement | null>(null)
+  let gridCols = $state(3)
+  let showMoreModal = $state(false)
+  let sortMode = $state(false)
+  let sortOrder = $state<string[]>([])
+  let dndZoneEl = $state<HTMLElement | null>(null)
+
+  function computeGridCols() {
+    if (window.matchMedia('(max-width: 767.99px)').matches) {
+      gridCols = 3
+      return
+    }
+    if (!moreGridEl) return
+    const gap = 10
+    const min = 140
+    gridCols = Math.max(1, Math.floor((moreGridEl.clientWidth + gap) / (min + gap)))
+  }
+
+  $effect(() => {
+    const el = moreGridEl
+    if (!el) return
+    computeGridCols()
+    const ro = new ResizeObserver(() => computeGridCols())
+    ro.observe(el)
+    return () => ro.disconnect()
+  })
+
+  const orderedEntries = $derived.by(() => {
+    const order = $homeMoreOrder.length > 0 ? $homeMoreOrder : DEFAULT_MORE_ORDER
+    const byId = new Map(MORE_ENTRIES.map((e) => [e.id, e]))
+    const sorted = order.map((id) => byId.get(id)).filter((e): e is MoreEntry => !!e)
+    for (const e of MORE_ENTRIES) {
+      if (!sorted.includes(e)) sorted.push(e)
+    }
+    return sorted
+  })
+
+  const maxVisible = $derived(gridCols * 2)
+  const hiddenEntries = $derived(
+    orderedEntries.length > maxVisible ? orderedEntries.slice(maxVisible - 1) : []
+  )
+  const visibleEntries = $derived(
+    orderedEntries.length > maxVisible ? orderedEntries.slice(0, maxVisible - 1) : orderedEntries
+  )
+
+  function openMoreModal() {
+    sortMode = false
+    sortOrder = [...orderedEntries.map((e) => e.id)]
+    showMoreModal = true
+  }
+
+  function enterSortMode() {
+    sortMode = true
+    sortOrder = [...orderedEntries.map((e) => e.id)]
+  }
+
+  function handleDrop(state: DragDropState<string>) {
+    const { draggedItem, targetElement, dropPosition } = state
+    const targetEl =
+      targetElement instanceof Element ? targetElement.closest<HTMLElement>('.sort-row') : null
+    const rest = sortOrder.filter((id) => id !== draggedItem)
+    let next: string[]
+    if (targetEl && dndZoneEl) {
+      const rows = Array.from(dndZoneEl.children).filter((el) => el.classList.contains('sort-row'))
+      const idx = rows.indexOf(targetEl)
+      const at = dropPosition === 'after' ? idx + 1 : idx
+      next = [...rest.slice(0, at), draggedItem, ...rest.slice(at)]
+    } else {
+      next = [...rest, draggedItem]
+    }
+    sortOrder = next
+  }
+
+  function confirmSort() {
+    $homeMoreOrder = sortOrder
+    sortMode = false
+    showMoreModal = false
+  }
+
+  function cancelSort() {
+    sortMode = false
+    showMoreModal = false
+  }
 
   const orderedDecks = $derived(
     [...recentDecks].sort((a, b) => {
@@ -162,8 +298,8 @@
 
   <!-- 更多功能（无标题，原对战工具位置） -->
   <section class="section">
-    <div class="more-grid">
-      {#each moreEntries as entry (entry.href)}
+    <div class="more-grid" bind:this={moreGridEl}>
+      {#each visibleEntries as entry (entry.id)}
         <a href={entry.href} class="more-tile">
           <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
             <entry.icon size={18} />
@@ -171,6 +307,17 @@
           <span class="more-tile-label">{$t(entry.labelKey)}</span>
         </a>
       {/each}
+      {#if hiddenEntries.length > 0}
+        <button class="more-tile more-more" onclick={openMoreModal}>
+          <span
+            class="more-tile-icon"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+          >
+            <MoreHorizontal size={18} />
+          </span>
+          <span class="more-tile-label">{$t('home.moreFeatures')}</span>
+        </button>
+      {/if}
     </div>
   </section>
 
@@ -208,6 +355,78 @@
     </div>
   </section>
 </div>
+
+<CommonModal
+  open={showMoreModal}
+  onclose={cancelSort}
+  title={sortMode ? $t('home.moreCustomize') : $t('home.moreTitle')}
+  subtitle={sortMode ? $t('home.moreSortHint') : undefined}
+>
+  {#if sortMode}
+    <div
+      class="dnd-zone"
+      bind:this={dndZoneEl}
+      use:droppable={{
+        container: 'home-more-sort',
+        callbacks: { onDrop: handleDrop },
+      }}
+    >
+      {#each sortOrder as id, i (id)}
+        {@const entry = MORE_ENTRIES.find((e) => e.id === id)!}
+        <div
+          class="sort-row"
+          use:draggable={{ container: 'home-more-sort', dragData: id }}
+          use:droppable={{
+            container: 'home-more-sort',
+            callbacks: { onDrop: handleDrop },
+          }}
+          animate:flip={{ duration: 200 }}
+        >
+          <div class="drag-handle" title={$t('cards.dragSort')}>
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="9" cy="6" r="1.5" />
+              <circle cx="15" cy="6" r="1.5" />
+              <circle cx="9" cy="12" r="1.5" />
+              <circle cx="15" cy="12" r="1.5" />
+              <circle cx="9" cy="18" r="1.5" />
+              <circle cx="15" cy="18" r="1.5" />
+            </svg>
+          </div>
+          <span class="order-num">{i + 1}</span>
+          <span class="sort-label">
+            <entry.icon size={16} />
+            <span>{$t(entry.labelKey)}</span>
+          </span>
+        </div>
+      {/each}
+    </div>
+    <div class="modal-actions">
+      <button class="button button-ghost" onclick={cancelSort}>
+        {$t('common.cancel')}
+      </button>
+      <button class="button button-primary" onclick={confirmSort}>
+        {$t('common.confirm')}
+      </button>
+    </div>
+  {:else}
+    <div class="more-modal-grid">
+      {#each hiddenEntries as entry (entry.id)}
+        <a href={entry.href} class="more-tile" onclick={() => (showMoreModal = false)}>
+          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+            <entry.icon size={18} />
+          </span>
+          <span class="more-tile-label">{$t(entry.labelKey)}</span>
+        </a>
+      {/each}
+    </div>
+    <div class="modal-actions">
+      <button class="button button-secondary" onclick={enterSortMode}>
+        <MoreHorizontal size={16} />
+        {$t('home.moreCustomize')}
+      </button>
+    </div>
+  {/if}
+</CommonModal>
 
 <style>
   .page-container {
@@ -533,6 +752,15 @@
       transform 0.15s;
   }
 
+  button.more-tile {
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .more-more:hover {
+    border-color: var(--accent-color);
+  }
+
   .more-tile:hover {
     background: var(--bg-secondary);
     transform: translateY(-1px);
@@ -558,5 +786,84 @@
     .more-grid {
       grid-template-columns: repeat(3, 1fr);
     }
+  }
+
+  /* --- 更多功能弹窗 --- */
+  .more-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .dnd-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 50px;
+  }
+
+  .sort-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition:
+      box-shadow 0.2s,
+      transform 0.2s,
+      background 0.1s;
+  }
+
+  :global(.sort-row.dragging) {
+    opacity: 0.5;
+  }
+
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 0.1s;
+  }
+
+  .drag-handle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .drag-handle svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .order-num {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .sort-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-base);
+    color: var(--text-primary);
   }
 </style>
