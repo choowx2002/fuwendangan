@@ -7228,7 +7228,7 @@ dependencies = [
 
 [[package]]
 name = "符文档案"
-version = "0.8.5"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "rusqlite",
