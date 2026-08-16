@@ -114,11 +114,14 @@ export function initLogService(): void {
 
   window.addEventListener('error', (e) => {
     if (isBenignError(e.message)) return
-    push('error', [
-      e.message,
-      e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : '',
-      e.error?.stack ?? '',
-    ].filter(Boolean))
+    push(
+      'error',
+      [
+        e.message,
+        e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : '',
+        e.error?.stack ?? '',
+      ].filter(Boolean)
+    )
   })
 
   window.addEventListener('unhandledrejection', (e) => {
@@ -140,9 +143,7 @@ export async function getLogText(): Promise<string> {
       return ''
     }
   }
-  return buffer
-    .map((e) => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`)
-    .join('\n')
+  return buffer.map((e) => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`).join('\n')
 }
 
 /** 清空日志（内存 + 文件） */

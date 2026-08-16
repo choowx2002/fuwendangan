@@ -56,7 +56,11 @@
   import { onMount } from 'svelte'
   import { get } from 'svelte/store'
   import { t } from '$lib/i18n'
-  import { setQrScanPending, consumeQrScanPending, consumeQrScanContent } from '$lib/stores/qr-scan.svelte'
+  import {
+    setQrScanPending,
+    consumeQrScanPending,
+    consumeQrScanContent,
+  } from '$lib/stores/qr-scan.svelte'
 
   let allDecks = $state<DeckListResult[]>([])
   let matchStatsMap = $state<Map<string, import('$lib/db/types').MatchSummary>>(new Map())
@@ -254,9 +258,7 @@
     }
   }
 
-  function importErrText(
-    errors: import('$lib/decks/deck-import').ImportError[]
-  ): string {
+  function importErrText(errors: import('$lib/decks/deck-import').ImportError[]): string {
     const first = errors[0]
     return first ? get(t)(first.messageKey, { values: first.params }) : ''
   }
@@ -362,7 +364,12 @@
       const src = await open({
         title: get(t)('decks.pickQrImage'),
         multiple: false,
-        filters: [{ name: get(t)('decks.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+        filters: [
+          {
+            name: get(t)('decks.imageFilter'),
+            extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+          },
+        ],
       })
       if (!src || Array.isArray(src)) return
       const dataUrl = await readImageFileAsDataUrl(src)
@@ -557,7 +564,10 @@
         latestOnly: false,
         filterMissingCards: true,
       })
-      const missingText = missingCards > 0 ? get(t)('decks.importSkippedMissing', { values: { count: missingCards } }) : ''
+      const missingText =
+        missingCards > 0
+          ? get(t)('decks.importSkippedMissing', { values: { count: missingCards } })
+          : ''
       await message(get(t)('decks.importSuccess', { values: { imported, extra: missingText } }), {
         title: get(t)('decks.importTitle'),
         kind: 'info',
@@ -728,7 +738,9 @@
           </span>
         {/each}
       </div>
-      <button class="clear-tags-btn" onclick={() => (activeTags = [])}>{$t('decks.clearTags')}</button>
+      <button class="clear-tags-btn" onclick={() => (activeTags = [])}
+        >{$t('decks.clearTags')}</button
+      >
     </div>
   {/if}
 
@@ -963,15 +975,37 @@
         <div class="import-preview">
           <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>{$t('decks.zoneMain', { values: { count: importedResult.deck.mainDeckCards.length } })}</li>
-            <li>{$t('decks.zoneRune', { values: { count: importedResult.deck.runeCards.length } })}</li>
-            <li>{$t('decks.zoneBattlefield', { values: { count: importedResult.deck.battlefieldCards.length } })}</li>
-            <li>{$t('decks.zoneSideboard', { values: { count: importedResult.deck.sideboardCards.length } })}</li>
+            <li>
+              {$t('decks.zoneMain', {
+                values: { count: importedResult.deck.mainDeckCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneRune', { values: { count: importedResult.deck.runeCards.length } })}
+            </li>
+            <li>
+              {$t('decks.zoneBattlefield', {
+                values: { count: importedResult.deck.battlefieldCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneSideboard', {
+                values: { count: importedResult.deck.sideboardCards.length },
+              })}
+            </li>
             {#if importedResult.deck.legendCards.length > 0}
-              <li>{$t('decks.zoneLegend', { values: { count: importedResult.deck.legendCards.length } })}</li>
+              <li>
+                {$t('decks.zoneLegend', {
+                  values: { count: importedResult.deck.legendCards.length },
+                })}
+              </li>
             {/if}
             {#if importedResult.deck.championCards.length > 0}
-              <li>{$t('decks.zoneChampion', { values: { count: importedResult.deck.championCards.length } })}</li>
+              <li>
+                {$t('decks.zoneChampion', {
+                  values: { count: importedResult.deck.championCards.length },
+                })}
+              </li>
             {/if}
           </ul>
           {#if importedResult.missingCount > 0}
@@ -1027,7 +1061,9 @@
               <span class="import-json-info">
                 <span class="import-json-row-name">{deck.name}</span>
                 <span class="import-json-row-meta">
-                  {$t('decks.versionCount', { values: { count: deck.versionCount, time: deck.updatedAt } })}
+                  {$t('decks.versionCount', {
+                    values: { count: deck.versionCount, time: deck.updatedAt },
+                  })}
                 </span>
               </span>
             </label>
@@ -1063,12 +1099,36 @@
         <div class="import-preview">
           <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>{$t('decks.zoneLegend', { values: { count: importedTextResult.deck.legendCards.length } })}</li>
-            <li>{$t('decks.zoneChampion', { values: { count: importedTextResult.deck.championCards.length } })}</li>
-            <li>{$t('decks.zoneMain', { values: { count: importedTextResult.deck.mainDeckCards.length } })}</li>
-            <li>{$t('decks.zoneBattlefield', { values: { count: importedTextResult.deck.battlefieldCards.length } })}</li>
-            <li>{$t('decks.zoneRune', { values: { count: importedTextResult.deck.runeCards.length } })}</li>
-            <li>{$t('decks.zoneSideboard', { values: { count: importedTextResult.deck.sideboardCards.length } })}</li>
+            <li>
+              {$t('decks.zoneLegend', {
+                values: { count: importedTextResult.deck.legendCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneChampion', {
+                values: { count: importedTextResult.deck.championCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneMain', {
+                values: { count: importedTextResult.deck.mainDeckCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneBattlefield', {
+                values: { count: importedTextResult.deck.battlefieldCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneRune', {
+                values: { count: importedTextResult.deck.runeCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneSideboard', {
+                values: { count: importedTextResult.deck.sideboardCards.length },
+              })}
+            </li>
           </ul>
           {#if importedTextResult.missingCount > 0}
             <p class="import-warn">
@@ -1136,12 +1196,34 @@
         <div class="import-preview">
           <p>{$t('decks.parseSuccess')}</p>
           <ul>
-            <li>{$t('decks.zoneLegend', { values: { count: importedQrResult.deck.legendCards.length } })}</li>
-            <li>{$t('decks.zoneChampion', { values: { count: importedQrResult.deck.championCards.length } })}</li>
-            <li>{$t('decks.zoneMain', { values: { count: importedQrResult.deck.mainDeckCards.length } })}</li>
-            <li>{$t('decks.zoneBattlefield', { values: { count: importedQrResult.deck.battlefieldCards.length } })}</li>
-            <li>{$t('decks.zoneRune', { values: { count: importedQrResult.deck.runeCards.length } })}</li>
-            <li>{$t('decks.zoneSideboard', { values: { count: importedQrResult.deck.sideboardCards.length } })}</li>
+            <li>
+              {$t('decks.zoneLegend', {
+                values: { count: importedQrResult.deck.legendCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneChampion', {
+                values: { count: importedQrResult.deck.championCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneMain', {
+                values: { count: importedQrResult.deck.mainDeckCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneBattlefield', {
+                values: { count: importedQrResult.deck.battlefieldCards.length },
+              })}
+            </li>
+            <li>
+              {$t('decks.zoneRune', { values: { count: importedQrResult.deck.runeCards.length } })}
+            </li>
+            <li>
+              {$t('decks.zoneSideboard', {
+                values: { count: importedQrResult.deck.sideboardCards.length },
+              })}
+            </li>
           </ul>
           {#if importedQrResult.missingCount > 0}
             <p class="import-warn">
@@ -1161,7 +1243,9 @@
   {/if}
 
   {#snippet footer()}
-    <button class="button button-ghost" onclick={() => (showImportModal = false)}>{$t('common.cancel')}</button>
+    <button class="button button-ghost" onclick={() => (showImportModal = false)}
+      >{$t('common.cancel')}</button
+    >
     {#if importTab === 'code'}
       <button
         class="button button-primary"
@@ -1192,7 +1276,9 @@
         disabled={importingJson || selectedJsonDeckIds.length === 0}
         onclick={confirmJsonImport}
       >
-        {importingJson ? $t('decks.importing') : $t('decks.importCount', { values: { count: selectedJsonDeckIds.length } })}
+        {importingJson
+          ? $t('decks.importing')
+          : $t('decks.importCount', { values: { count: selectedJsonDeckIds.length } })}
       </button>
     {/if}
   {/snippet}
@@ -1940,14 +2026,14 @@
     color: var(--text-tertiary);
   }
 
-  .import-qr-actions{
-      display: flex;
-      gap: 5px;
+  .import-qr-actions {
+    display: flex;
+    gap: 5px;
   }
 
   .import-qr-block {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
   }
 </style>

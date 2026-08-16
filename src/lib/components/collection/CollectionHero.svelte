@@ -43,7 +43,9 @@
       <div class="hero-title">{$t('collection.overallProgress')}</div>
       <div class="hero-chips">
         <span class="chip promo-chip">Promo ×{stats?.promoOwned ?? 0}</span>
-        <span class="chip foil-chip">{$t('collection.foilCountLabel')} ×{stats?.foilOwned ?? 0}</span>
+        <span class="chip foil-chip"
+          >{$t('collection.foilCountLabel')} ×{stats?.foilOwned ?? 0}</span
+        >
         {#if percent === 100}
           <span class="chip done-chip">{$t('collection.allComplete')}</span>
         {/if}

@@ -8,7 +8,12 @@
     printCacheName,
     type DeckListResult,
   } from '$lib/db'
-  import { scoreCounterState, matchTimerMinutes, type GameRecord, type ActionEntry } from '$lib/stores/tools'
+  import {
+    scoreCounterState,
+    matchTimerMinutes,
+    type GameRecord,
+    type ActionEntry,
+  } from '$lib/stores/tools'
   import { playerName } from '$lib/stores/settings'
   import type { CardBase } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
@@ -133,7 +138,7 @@
   }
 
   function startTimer() {
-    const durationMs = (Math.max(1, Number($matchTimerMinutes) || 60)) * 60_000
+    const durationMs = Math.max(1, Number($matchTimerMinutes) || 60) * 60_000
     scoreCounterState.update((s) => ({
       ...s,
       timerEndsAt: Date.now() + durationMs,
@@ -411,7 +416,10 @@
         },
         gameInputs
       )
-      await message(get(t)('tools.matchSaved'), { title: get(t)('tools.saveSuccessTitle'), kind: 'info' })
+      await message(get(t)('tools.matchSaved'), {
+        title: get(t)('tools.saveSuccessTitle'),
+        kind: 'info',
+      })
       scoreCounterState.update((st) => ({
         ...st,
         mePoints: 0,
@@ -421,7 +429,10 @@
       }))
     } catch (error) {
       console.error('[Tools] 保存对局失败:', error)
-      await message(get(t)('tools.saveFailedRetry'), { title: get(t)('tools.saveFailedTitle'), kind: 'error' })
+      await message(get(t)('tools.saveFailedRetry'), {
+        title: get(t)('tools.saveFailedTitle'),
+        kind: 'error',
+      })
     }
   }
 
@@ -458,14 +469,17 @@
       </button>
       <div class="section-actions">
         <button class="button button-ghost button-sm" onclick={() => (settingsOpen = true)}>
-          <SlidersHorizontal size={16} /> {$t('tools.settings')}
+          <SlidersHorizontal size={16} />
+          {$t('tools.settings')}
         </button>
         <button class="button button-ghost button-sm" onclick={() => (historyOpen = true)}>
-          <History size={16} /> {$t('tools.history')}
+          <History size={16} />
+          {$t('tools.history')}
           {#if games.length > 0}<span class="history-btn-badge">{games.length}</span>{/if}
         </button>
         <button class="button button-ghost button-sm" onclick={() => (diceOpen = true)}>
-          <Dice6 size={16} /> {$t('tools.dice')}
+          <Dice6 size={16} />
+          {$t('tools.dice')}
         </button>
       </div>
     </div>
@@ -474,26 +488,41 @@
       <div class="match-end-banner">
         {#if matchWinner === 'both'}
           <Trophy size={18} />
-          <span>{$t('tools.bothMatchWins', { values: { count: bestOfTarget[$scoreCounterState.bestOf] } })}</span>
+          <span
+            >{$t('tools.bothMatchWins', {
+              values: { count: bestOfTarget[$scoreCounterState.bestOf] },
+            })}</span
+          >
         {:else if matchWinner === 'me'}
           <Trophy size={18} />
-          <span>{$t('tools.playerWonMatch', { values: { name: $scoreCounterState.meName, me: meWins, opp: oppWins } })}</span>
+          <span
+            >{$t('tools.playerWonMatch', {
+              values: { name: $scoreCounterState.meName, me: meWins, opp: oppWins },
+            })}</span
+          >
         {:else if matchWinner === 'draw'}
           <Trophy size={18} />
           <span>{$t('tools.matchDraw', { values: { me: meWins, opp: oppWins } })}</span>
         {:else}
           <Trophy size={18} />
-          <span>{$t('tools.playerWonMatch', { values: { name: $scoreCounterState.oppName, me: meWins, opp: oppWins } })}</span>
+          <span
+            >{$t('tools.playerWonMatch', {
+              values: { name: $scoreCounterState.oppName, me: meWins, opp: oppWins },
+            })}</span
+          >
         {/if}
         <div class="banner-actions">
           {#if $scoreCounterState.deckId}
             <button class="button button-primary button-sm" onclick={saveMatchRecord}>
-              <Save size={14} /> {$t('tools.saveToRecords')}
+              <Save size={14} />
+              {$t('tools.saveToRecords')}
             </button>
           {:else}
             <span class="banner-hint">{$t('tools.saveHint')}</span>
           {/if}
-          <button class="button button-ghost button-sm" onclick={resetScore}> {$t('tools.noSaveReset')} </button>
+          <button class="button button-ghost button-sm" onclick={resetScore}>
+            {$t('tools.noSaveReset')}
+          </button>
         </div>
       </div>
     {/if}
@@ -503,9 +532,17 @@
         {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
           <span>{$t('tools.tieNoWinner')}</span>
         {:else if reachedInfo === 'me'}
-          <span>{$t('tools.playerReached', { values: { name: $scoreCounterState.meName, score: $scoreCounterState.targetScore } })}</span>
+          <span
+            >{$t('tools.playerReached', {
+              values: { name: $scoreCounterState.meName, score: $scoreCounterState.targetScore },
+            })}</span
+          >
         {:else if reachedInfo === 'opp'}
-          <span>{$t('tools.playerReached', { values: { name: $scoreCounterState.oppName, score: $scoreCounterState.targetScore } })}</span>
+          <span
+            >{$t('tools.playerReached', {
+              values: { name: $scoreCounterState.oppName, score: $scoreCounterState.targetScore },
+            })}</span
+          >
         {:else}
           <span>{$t('tools.bothReached')}</span>
         {/if}
@@ -631,13 +668,16 @@
 
     <div class="score-tools-row">
       <button class="button button-ghost button-sm" onclick={() => settleGame('special')}>
-        <Flag size={14} /> {$t('tools.specialWin')}
+        <Flag size={14} />
+        {$t('tools.specialWin')}
       </button>
       <button class="button button-ghost button-sm" onclick={() => settleGame('concede')}>
-        <RotateCcw size={14} /> {$t('tools.oppConcede')}
+        <RotateCcw size={14} />
+        {$t('tools.oppConcede')}
       </button>
       <button class="button button-ghost button-sm" onclick={() => settleGame('draw')}>
-        <Timer size={14} /> {$t('tools.timeoutDraw')}
+        <Timer size={14} />
+        {$t('tools.timeoutDraw')}
       </button>
       <span class="score-tools-hint">{$t('tools.manualSettleHint')}</span>
     </div>
@@ -760,7 +800,9 @@
       >
         {$t('tools.resetScore')}
       </button>
-      <button class="button button-primary" onclick={() => (settingsOpen = false)}> {$t('tools.done')} </button>
+      <button class="button button-primary" onclick={() => (settingsOpen = false)}>
+        {$t('tools.done')}
+      </button>
     {/snippet}
   </CommonModal>
 
@@ -804,7 +846,9 @@
         {/if}
         {#each [...games].reverse() as g, i (g.gameNumber)}
           <li class="history-item">
-            <span class="history-time">{$t('tools.gameNumber', { values: { number: g.gameNumber } })}</span>
+            <span class="history-time"
+              >{$t('tools.gameNumber', { values: { number: g.gameNumber } })}</span
+            >
             <span class="history-desc">
               <span class="history-side" class:me={g.winner === 'me'}>
                 {g.winner === 'me'
@@ -870,7 +914,9 @@
       >
         {$t('tools.clearRecords')}
       </button>
-      <button class="button button-primary" onclick={() => (historyOpen = false)}> {$t('common.close')} </button>
+      <button class="button button-primary" onclick={() => (historyOpen = false)}>
+        {$t('common.close')}
+      </button>
     {/snippet}
   </CommonModal>
 
@@ -909,7 +955,9 @@
           <span class="dice-face">{diceRolling ? '?' : (diceResult ?? '20')}</span>
         </button>
         <span class="rng-result" class:ready={diceResult !== null}>
-          {diceResult !== null ? $t('tools.rolled', { values: { value: diceResult } }) : $t('tools.clickRoll')}
+          {diceResult !== null
+            ? $t('tools.rolled', { values: { value: diceResult } })
+            : $t('tools.clickRoll')}
         </span>
         <div class="rng-history">
           <span class="rng-history-label">{$t('tools.dice')}</span>
@@ -930,7 +978,9 @@
           onclick={flipCoin}
           aria-label={$t('tools.flipCoinAria')}
         >
-          <span class="coin-face">{coinFlipping ? '…' : (coinResult ? coinLabel(coinResult) : '?')}</span>
+          <span class="coin-face"
+            >{coinFlipping ? '…' : coinResult ? coinLabel(coinResult) : '?'}</span
+          >
         </button>
         <span class="rng-result" class:ready={coinResult !== null}>
           {coinResult ? coinLabel(coinResult) : $t('tools.clickFlip')}

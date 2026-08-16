@@ -24,8 +24,22 @@ export const DEFAULT_FORMAT: FormatKey = '1v1（比赛）'
 
 /** 各模式各分区的数量上限（主牌 39 + 英雄 1 = 40 张主牌堆） */
 export const FORMAT_ZONE_LIMITS: Record<FormatKey, Record<ZoneKey, number>> = {
-  '1v1（决斗）': { legend: 1, champion: 1, mainDeck: 39, battlefields: 3, runes: 12, sideboard: 10 },
-  '1v1（比赛）': { legend: 1, champion: 1, mainDeck: 39, battlefields: 3, runes: 12, sideboard: 10 },
+  '1v1（决斗）': {
+    legend: 1,
+    champion: 1,
+    mainDeck: 39,
+    battlefields: 3,
+    runes: 12,
+    sideboard: 10,
+  },
+  '1v1（比赛）': {
+    legend: 1,
+    champion: 1,
+    mainDeck: 39,
+    battlefields: 3,
+    runes: 12,
+    sideboard: 10,
+  },
   '3 人乱斗（遭遇战）': {
     legend: 1,
     champion: 1,

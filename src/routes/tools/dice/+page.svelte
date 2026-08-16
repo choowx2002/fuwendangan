@@ -41,7 +41,12 @@
 </script>
 
 <div class="dice-page">
-  <button class="back-btn" onclick={() => window.history.back()} aria-label={$t('common.back')} title={$t('common.back')}>
+  <button
+    class="back-btn"
+    onclick={() => window.history.back()}
+    aria-label={$t('common.back')}
+    title={$t('common.back')}
+  >
     <ChevronLeft size={18} />
   </button>
 
@@ -66,7 +71,12 @@
       </button>
     </div>
     {#if rngMode === 'dice'}
-      <button class="dice" class:rolling={diceRolling} onclick={rollDice} aria-label={$t('tools.rollDiceAria')}>
+      <button
+        class="dice"
+        class:rolling={diceRolling}
+        onclick={rollDice}
+        aria-label={$t('tools.rollDiceAria')}
+      >
         <span class="dice-face">
           {#if diceRolling}
             ?
@@ -76,10 +86,17 @@
         </span>
       </button>
       <span class="rng-result" class:ready={diceResult !== null}>
-        {diceResult !== null ? $t('tools.rolled', { values: { value: diceResult } }) : $t('tools.clickRoll')}
+        {diceResult !== null
+          ? $t('tools.rolled', { values: { value: diceResult } })
+          : $t('tools.clickRoll')}
       </span>
     {:else}
-      <button class="coin" class:flipping={coinFlipping} onclick={flipCoin} aria-label={$t('tools.flipCoinAria')}>
+      <button
+        class="coin"
+        class:flipping={coinFlipping}
+        onclick={flipCoin}
+        aria-label={$t('tools.flipCoinAria')}
+      >
         <span class="coin-face">
           {#if coinFlipping}
             …
@@ -101,7 +118,9 @@
     </div>
     <div class="rng-history">
       <div class="rng-history-col">
-        <span class="rng-history-label">{rngMode === 'dice' ? $t('tools.dice') : $t('tools.coin')}</span>
+        <span class="rng-history-label"
+          >{rngMode === 'dice' ? $t('tools.dice') : $t('tools.coin')}</span
+        >
         {#if rngMode === 'dice'}
           {#if diceHistory.length === 0}
             <span class="rng-history-empty">—</span>

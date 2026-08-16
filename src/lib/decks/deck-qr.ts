@@ -92,5 +92,3 @@ export async function decodeQrImageDataUrl(dataUrl: string): Promise<string> {
   if (!result?.data) throw new Error(get(t)('decks.qrNoQrFound'))
   return result.data
 }
-
-

@@ -108,10 +108,13 @@
       <div class="match-header">
         <div class="match-title-row">
           <span class="match-date">
-            {match.played_at ? new Date(match.played_at).toLocaleDateString() : $t('records.noDate')}
+            {match.played_at
+              ? new Date(match.played_at).toLocaleDateString()
+              : $t('records.noDate')}
           </span>
           <span class="match-opponent">
-            {match.player_name || $t('records.me')} vs {match.opponent_name || $t('records.unknownOpponent')}
+            {match.player_name || $t('records.me')} vs {match.opponent_name ||
+              $t('records.unknownOpponent')}
           </span>
           {#if match.group_name}
             <span class="match-badge group">{match.group_name}</span>
@@ -158,11 +161,7 @@
                 {$t('match.gameNumber', { values: { number: game.game_number } })}
               </span>
               {#if game.is_first !== null}
-                <span
-                  class="game-turn"
-                  class:first={game.is_first}
-                  class:second={!game.is_first}
-                >
+                <span class="game-turn" class:first={game.is_first} class:second={!game.is_first}>
                   {game.is_first ? $t('records.first') : $t('records.second')}
                 </span>
               {/if}

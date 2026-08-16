@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte'
   import { draggable } from '@thisux/sveltednd'
   import { Eye, Copy, Tags, Trash2, RotateCw, X, Pencil } from '@lucide/svelte'
-    import { getBestPrint, printCacheName, type CardWithOwned } from '$lib/db'
+  import { getBestPrint, printCacheName, type CardWithOwned } from '$lib/db'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import type { CardInstance, DisplayMode } from '$lib/simulator/chain'
   import { t } from '$lib/i18n'
@@ -46,14 +46,10 @@
   const showText = $derived(mode === 'text' || mode === 'both')
   const displayName = $derived(
     item.customName ||
-      (card
-        ? card.card_name_cn || card.card_name_en || item.cardNo || ''
-        : item.cardNo || '')
+      (card ? card.card_name_cn || card.card_name_en || item.cardNo || '' : item.cardNo || '')
   )
   const subtitle = $derived(
-    item.subtitle ||
-      (card ? card.sub_title_cn || card.sub_title_en || '' : '') ||
-      ''
+    item.subtitle || (card ? card.sub_title_cn || card.sub_title_en || '' : '') || ''
   )
   const fullName = $derived(subtitle ? `${displayName} · ${subtitle}` : displayName)
 
@@ -109,7 +105,11 @@
   }
 
   function removeTag(tag: string) {
-    ontagchange?.(zoneKey, item, tags.filter((t) => t !== tag))
+    ontagchange?.(
+      zoneKey,
+      item,
+      tags.filter((t) => t !== tag)
+    )
   }
 </script>
 
@@ -148,18 +148,18 @@
           className="card-img"
           fallback="/blue.jpg"
         />
-        {#if ownerColor && showLabel }
+        {#if ownerColor && showLabel}
           <span class="img-owner-chip" style="--owner-color: {ownerColor}">
             {playerLabel}
           </span>
         {/if}
       </div>
-      {#if mode === 'image' && showLabel }
+      {#if mode === 'image' && showLabel}
         <span class="image-name">{fullName || item.id}</span>
       {/if}
     {/if}
 
-    {#if showText }
+    {#if showText}
       <div class="text-wrap">
         {#if ownerColor}
           <span class="owner-chip" style="--owner-color: {ownerColor}">
@@ -195,34 +195,80 @@
       }}
     ></button>
 
-    <div
-      class="context-menu"
-      style="left: {menuPos.x}px; top: {menuPos.y}px;"
-      role="menu"
-    >
-      <button type="button" onclick={() => { onpreview?.(item); closeMenu() }}>
-        <Eye size={14} /> {$t('simulator.preview')}
+    <div class="context-menu" style="left: {menuPos.x}px; top: {menuPos.y}px;" role="menu">
+      <button
+        type="button"
+        onclick={() => {
+          onpreview?.(item)
+          closeMenu()
+        }}
+      >
+        <Eye size={14} />
+        {$t('simulator.preview')}
       </button>
-      <button type="button" onclick={() => { onremovecard?.(zoneKey, item); closeMenu() }}>
-        <Trash2 size={14} /> {$t('simulator.removeCard')}
+      <button
+        type="button"
+        onclick={() => {
+          onremovecard?.(zoneKey, item)
+          closeMenu()
+        }}
+      >
+        <Trash2 size={14} />
+        {$t('simulator.removeCard')}
       </button>
-      <button type="button" onclick={() => { onremove?.(zoneKey, item, 'discard'); closeMenu() }}>
-        <Trash2 size={14} /> {$t('simulator.sendToDiscard')}
+      <button
+        type="button"
+        onclick={() => {
+          onremove?.(zoneKey, item, 'discard')
+          closeMenu()
+        }}
+      >
+        <Trash2 size={14} />
+        {$t('simulator.sendToDiscard')}
       </button>
-      <button type="button" onclick={() => { onremove?.(zoneKey, item, 'banish'); closeMenu() }}>
-        <Trash2 size={14} /> {$t('simulator.sendToBanish')}
+      <button
+        type="button"
+        onclick={() => {
+          onremove?.(zoneKey, item, 'banish')
+          closeMenu()
+        }}
+      >
+        <Trash2 size={14} />
+        {$t('simulator.sendToBanish')}
       </button>
-      <button type="button" onclick={() => { onduplicate?.(zoneKey, item); closeMenu() }}>
-        <Copy size={14} /> {$t('simulator.duplicate')}
+      <button
+        type="button"
+        onclick={() => {
+          onduplicate?.(zoneKey, item)
+          closeMenu()
+        }}
+      >
+        <Copy size={14} />
+        {$t('simulator.duplicate')}
       </button>
-      <button type="button" onclick={() => { onrotate?.(zoneKey, item); closeMenu() }}>
-        <RotateCw size={14} /> {$t('simulator.rotate')}
+      <button
+        type="button"
+        onclick={() => {
+          onrotate?.(zoneKey, item)
+          closeMenu()
+        }}
+      >
+        <RotateCw size={14} />
+        {$t('simulator.rotate')}
       </button>
-      <button type="button" onclick={() => { onedit?.(zoneKey, item); closeMenu() }}>
-        <Pencil size={14} /> {$t('simulator.editCardInfo')}
+      <button
+        type="button"
+        onclick={() => {
+          onedit?.(zoneKey, item)
+          closeMenu()
+        }}
+      >
+        <Pencil size={14} />
+        {$t('simulator.editCardInfo')}
       </button>
       <button type="button" onclick={() => (editingTags = !editingTags)}>
-        <Tags size={14} /> {$t('simulator.editTags')}
+        <Tags size={14} />
+        {$t('simulator.editTags')}
       </button>
 
       {#if editingTags}
@@ -254,7 +300,11 @@
   {#if ctrlPreview}
     <div
       class="ctrl-preview"
-      style="left: {ctrlPreview.x + 18 > window.innerWidth - 240 ? ctrlPreview.x - 240 - 12 : ctrlPreview.x + 18}px; top: {ctrlPreview.y + 18 > window.innerHeight - 340 ? ctrlPreview.y - 340 - 12 : ctrlPreview.y + 18}px;"
+      style="left: {ctrlPreview.x + 18 > window.innerWidth - 240
+        ? ctrlPreview.x - 240 - 12
+        : ctrlPreview.x + 18}px; top: {ctrlPreview.y + 18 > window.innerHeight - 340
+        ? ctrlPreview.y - 340 - 12
+        : ctrlPreview.y + 18}px;"
     >
       {#if showImage}
         <CardSimpleImage
@@ -457,7 +507,7 @@
     color: var(--text-primary);
     font-size: 12px;
   }
-.ctrl-preview {
+  .ctrl-preview {
     position: fixed;
     z-index: 2000;
     width: 240px;

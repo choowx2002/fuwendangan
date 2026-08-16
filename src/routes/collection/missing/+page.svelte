@@ -219,7 +219,10 @@
         format
       )
       if (ok) {
-        showToast(get(t)('collection.savedDetail', { values: { count: textRows.length } }), 'success')
+        showToast(
+          get(t)('collection.savedDetail', { values: { count: textRows.length } }),
+          'success'
+        )
       } else {
         showToast(get(t)('collection.saveCancelled'), 'info')
       }
@@ -260,7 +263,9 @@
         <button class="filter-toggle" onclick={() => (filtersCollapsed = !filtersCollapsed)}>
           <Filter size={14} />
           {$t('collection.filter')}
-          {#if selectedCount > 0}<span class="filter-count">{$t('collection.selectedCount', { values: { count: selectedCount } })}</span>{/if}
+          {#if selectedCount > 0}<span class="filter-count"
+              >{$t('collection.selectedCount', { values: { count: selectedCount } })}</span
+            >{/if}
           <span class="chevron-wrap" class:rotated={!filtersCollapsed}>
             <ChevronDown class="chevron" size={14} />
           </span>
@@ -268,7 +273,11 @@
         {#if bucket}
           <span class="bucket-badge">
             {$t('collection.bucketLabel')}: {$t(BUCKET_LABEL_KEYS[bucket as VariantBucket])}
-            <button class="badge-clear" onclick={() => (bucket = null)} aria-label={$t('collection.clearBucket')}>
+            <button
+              class="badge-clear"
+              onclick={() => (bucket = null)}
+              aria-label={$t('collection.clearBucket')}
+            >
               <X size={12} />
             </button>
           </span>
@@ -451,7 +460,9 @@
 <CommonModal
   open={showExportModal}
   title={$t('collection.exportMissingTitle')}
-  subtitle={$t('collection.exportCount', { values: { count: includeComplete ? rows.length : missingRows.length } })}
+  subtitle={$t('collection.exportCount', {
+    values: { count: includeComplete ? rows.length : missingRows.length },
+  })}
   closable={!exporting}
   onclose={() => (showExportModal = false)}
 >

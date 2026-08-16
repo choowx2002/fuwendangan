@@ -144,14 +144,14 @@ Local Version
 
 ### Frontend
 
-| Technology                                                            | Purpose               |
-| --------------------------------------------------------------------- | --------------------- |
-| [SvelteKit](https://kit.svelte.dev/)                                  | Application framework |
-| [Svelte 5](https://svelte.dev/)                                       | UI                    |
-| [TypeScript](https://www.typescriptlang.org/)                         | Programming language  |
-| [Vite](https://vite.dev/)                                             | Build tool            |
-| [Lucide Svelte](https://lucide.dev/)                                  | Icons                 |
-| [@thisux/sveltednd](https://sveltednd.thisux.com/)                    | Drag & Drop           |
+| Technology                                         | Purpose               |
+| -------------------------------------------------- | --------------------- |
+| [SvelteKit](https://kit.svelte.dev/)               | Application framework |
+| [Svelte 5](https://svelte.dev/)                    | UI                    |
+| [TypeScript](https://www.typescriptlang.org/)      | Programming language  |
+| [Vite](https://vite.dev/)                          | Build tool            |
+| [Lucide Svelte](https://lucide.dev/)               | Icons                 |
+| [@thisux/sveltednd](https://sveltednd.thisux.com/) | Drag & Drop           |
 
 ### Desktop
 

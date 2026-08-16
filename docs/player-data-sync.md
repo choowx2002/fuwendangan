@@ -13,14 +13,14 @@
 
 v1 方案（`docs/player-data-sync.md` 旧版）的主要问题：
 
-| 问题 | 说明 |
-| --- | --- |
-| 表面过大 | 每类数据镜像 14+ 张 user_ 表，建表与维护成本高 |
-| 同步范围过宽 | 收藏历史、快照、自定义语言等低价值/可重建数据也纳入 |
-| 增量依赖不成立 | 按 `updated_at > 游标` 增量要求每行每次变更都 bump updated_at，部分路径不保证 |
-| 安全默认差 | anon key 直连 + 宽松权限为默认，公钥泄露即数据可读写 |
-| 双传输语义重复 | Supabase 与 Git 都要实现 LWW/墓碑，工程量翻倍 |
-| 引用键不稳 | deck_cards 同步依赖 `card_prints.id`，内容重同步后 id 会变（已有 `print_code`/`card_no` 稳定快照可复用） |
+| 问题           | 说明                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------- |
+| 表面过大       | 每类数据镜像 14+ 张 user_ 表，建表与维护成本高                                                           |
+| 同步范围过宽   | 收藏历史、快照、自定义语言等低价值/可重建数据也纳入                                                      |
+| 增量依赖不成立 | 按 `updated_at > 游标` 增量要求每行每次变更都 bump updated_at，部分路径不保证                            |
+| 安全默认差     | anon key 直连 + 宽松权限为默认，公钥泄露即数据可读写                                                     |
+| 双传输语义重复 | Supabase 与 Git 都要实现 LWW/墓碑，工程量翻倍                                                            |
+| 引用键不稳     | deck_cards 同步依赖 `card_prints.id`，内容重同步后 id 会变（已有 `print_code`/`card_no` 稳定快照可复用） |
 
 v2 目标：**更小范围、更稳引用、更实用传输、更少重复实现**。
 
@@ -38,18 +38,18 @@ v2 目标：**更小范围、更稳引用、更实用传输、更少重复实现
 
 ### 3.1 纳入同步
 
-| 实体 | 本地表 | 稳定键 | 冲突规则 | 删除 |
-| --- | --- | --- | --- | --- |
-| 卡组 | `decks` + `deck_versions` + `deck_cards` | `decks.id` | 实体级 LWW（decks.updated_at） | 墓碑 `deck` |
-| 收藏 | `collection` + `collection_langs` | `(card_no, card_no_extend, language_code)` | 行级 LWW | 墓碑 `collection` |
-| 心愿单 | `wishlist_items` | `id`（UNIQUE 卡×语言×工艺） | 行级 LWW | 墓碑 `wishlist` |
-| 借还 | `card_loans` | `id` | 行级 LWW | 墓碑 `loan` |
-| 联系人 | `contacts` | `id` | 行级 LWW | 墓碑 `contact` |
-| 购买清单 | `purchase_lists` + `purchase_list_items` | `purchase_lists.id`（条目键 `(list_id, card_no, card_no_extend, language_pref, finish_pref)`） | 实体 LWW（头 updated_at）+ 条目行级 LWW | 墓碑 `purchase_list` |
-| 对局记录 | `match_records` + `match_games` | `match_records.id` | 实体级 LWW | 墓碑 `match` |
-| 卡柜 | `lockers` + `locker_sections` + `locker_cards` | `lockers.id` | 实体级 LWW | 墓碑 `locker` |
-| 自定义打印/卡 | `card_prints`（`is_custom=1`）+ `cards_base`（`card_no` 以 `CUSTOM-` 前缀） | `card_prints.id` / `cards_base.id` | 实体级 LWW | 墓碑 `custom_print` |
-| 设置（白名单） | settings.json（plugin-store） | 键 | 按键 LWW | — |
+| 实体           | 本地表                                                                      | 稳定键                                                                                         | 冲突规则                                | 删除                 |
+| -------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------- |
+| 卡组           | `decks` + `deck_versions` + `deck_cards`                                    | `decks.id`                                                                                     | 实体级 LWW（decks.updated_at）          | 墓碑 `deck`          |
+| 收藏           | `collection` + `collection_langs`                                           | `(card_no, card_no_extend, language_code)`                                                     | 行级 LWW                                | 墓碑 `collection`    |
+| 心愿单         | `wishlist_items`                                                            | `id`（UNIQUE 卡×语言×工艺）                                                                    | 行级 LWW                                | 墓碑 `wishlist`      |
+| 借还           | `card_loans`                                                                | `id`                                                                                           | 行级 LWW                                | 墓碑 `loan`          |
+| 联系人         | `contacts`                                                                  | `id`                                                                                           | 行级 LWW                                | 墓碑 `contact`       |
+| 购买清单       | `purchase_lists` + `purchase_list_items`                                    | `purchase_lists.id`（条目键 `(list_id, card_no, card_no_extend, language_pref, finish_pref)`） | 实体 LWW（头 updated_at）+ 条目行级 LWW | 墓碑 `purchase_list` |
+| 对局记录       | `match_records` + `match_games`                                             | `match_records.id`                                                                             | 实体级 LWW                              | 墓碑 `match`         |
+| 卡柜           | `lockers` + `locker_sections` + `locker_cards`                              | `lockers.id`                                                                                   | 实体级 LWW                              | 墓碑 `locker`        |
+| 自定义打印/卡  | `card_prints`（`is_custom=1`）+ `cards_base`（`card_no` 以 `CUSTOM-` 前缀） | `card_prints.id` / `cards_base.id`                                                             | 实体级 LWW                              | 墓碑 `custom_print`  |
+| 设置（白名单） | settings.json（plugin-store）                                               | 键                                                                                             | 按键 LWW                                | —                    |
 
 ### 3.2 不纳入同步（可重建 / 本地派生 / 低价值）
 
@@ -60,12 +60,12 @@ v2 目标：**更小范围、更稳引用、更实用传输、更少重复实现
 
 ## 4. 稳定引用约定（内容表）
 
-| 引用方 | 使用稳定键 | pull 后处理 |
-| --- | --- | --- |
-| `deck_cards` | `print_code`（若空则回退 `card_no`+`card_no_extend`） | `repointDeckCardReferences()` 按 print_code 重链到本地存活打印，无法映射的行删除 |
-| `collection` / `collection_langs` | `card_no` / `card_no_extend` | `cleanupOrphans()` 清理已下架印刷 |
-| `wishlist_items` / `card_loans` / `purchase_list_items` | `card_no` / `card_no_extend` 快照 | 卡已下架时保留行（`LEFT JOIN` 卡名为 NULL），不自动删除 |
-| 自定义卡 | `CUSTOM-<snowflake>` 前缀 `card_no` | 与官方卡号永不冲突；`is_custom=1` 受现有内容同步保留逻辑保护 |
+| 引用方                                                  | 使用稳定键                                            | pull 后处理                                                                      |
+| ------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `deck_cards`                                            | `print_code`（若空则回退 `card_no`+`card_no_extend`） | `repointDeckCardReferences()` 按 print_code 重链到本地存活打印，无法映射的行删除 |
+| `collection` / `collection_langs`                       | `card_no` / `card_no_extend`                          | `cleanupOrphans()` 清理已下架印刷                                                |
+| `wishlist_items` / `card_loans` / `purchase_list_items` | `card_no` / `card_no_extend` 快照                     | 卡已下架时保留行（`LEFT JOIN` 卡名为 NULL），不自动删除                          |
+| 自定义卡                                                | `CUSTOM-<snowflake>` 前缀 `card_no`                   | 与官方卡号永不冲突；`is_custom=1` 受现有内容同步保留逻辑保护                     |
 
 ## 5. 本地改动
 
@@ -97,14 +97,14 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 
 ### 5.3 新增代码目录 `src/lib/db/service/user-sync/`
 
-| 文件 | 职责 |
-| --- | --- |
-| `engine.ts` | 实体提取、行级 LWW 合并（含 deviceId 决胜）、墓碑应用（传输无关核心） |
-| `state.ts` | `sync_meta` / `sync_tombstones` 读写、device_id / last_sync 游标 |
-| `bundle.ts` | Sync Bundle 的序列化/反序列化 + 校验和（传输 A） |
-| `entities/` | 每实体一个模块：`decks` / `collection` / `contacts` / `loans` / `wishlist` / `purchase-lists` / `matches` / `lockers` / `custom-prints` / `settings`，各含提取/合并/写回 |
-| `supabase-transport.ts` | Supabase BYO 传输（传输 C）：独立客户端、auth、fetch/push、连接测试、建表 SQL |
-| `index.ts` | 编排导出/导入、`syncViaSupabase()`（pull → merge → push）、与内容同步衔接 |
+| 文件                    | 职责                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `engine.ts`             | 实体提取、行级 LWW 合并（含 deviceId 决胜）、墓碑应用（传输无关核心）                                                                                                    |
+| `state.ts`              | `sync_meta` / `sync_tombstones` 读写、device_id / last_sync 游标                                                                                                         |
+| `bundle.ts`             | Sync Bundle 的序列化/反序列化 + 校验和（传输 A）                                                                                                                         |
+| `entities/`             | 每实体一个模块：`decks` / `collection` / `contacts` / `loans` / `wishlist` / `purchase-lists` / `matches` / `lockers` / `custom-prints` / `settings`，各含提取/合并/写回 |
+| `supabase-transport.ts` | Supabase BYO 传输（传输 C）：独立客户端、auth、fetch/push、连接测试、建表 SQL                                                                                            |
+| `index.ts`              | 编排导出/导入、`syncViaSupabase()`（pull → merge → push）、与内容同步衔接                                                                                                |
 
 ## 6. 统一同步格式（Sync Bundle）
 
@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 ```
 
 要点：
+
 - 卡组/购买清单/卡柜/对局以「实体聚合」为行（含子表），子表不单独出同步行 → 单实体原子合并，天然免版本碎片。
 - 收藏/心愿/借还/联系人以「行」为单位（量大、跨设备交错编辑多）。
 - 自定义打印以「print + 引用的 CUSTOM 基础卡」成对打包。
@@ -215,27 +216,27 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 
 ## 11. 实施阶段
 
-| 阶段 | 内容 | 完成标准 |
-| --- | --- | --- |
-| 1. 基建 ✅ | `sync_meta`/`sync_tombstones` 建表 + `state.ts` + `engine.ts`（实体提取/合并/墓碑）+ 硬删路径补墓碑 + 设置页同步区块（导出/导入 Bundle UI） | `pnpm check` 通过；导出/导入 Bundle 收藏与卡组双向正确 |
-| 2. Bundle 全量 ✅ | 覆盖全部实体（§3.1：心愿/借还/联系人/清单/对局/卡柜/自定义打印）+ settings 白名单（按键 LWW）+ 导入前备份提示 | 两设备互导 Bundle，LWW 与墓碑删除传播验证通过（待手动验证） |
-| ~~3. Git 传输~~ | **已永久放弃** | — |
-| 4. 收尾 ✅ | Web 模式验证 + `supabase-transport.ts`（已实现，见 §8.3） | 全范围可用；`cargo check` 通过 |
+| 阶段              | 内容                                                                                                                                        | 完成标准                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| 1. 基建 ✅        | `sync_meta`/`sync_tombstones` 建表 + `state.ts` + `engine.ts`（实体提取/合并/墓碑）+ 硬删路径补墓碑 + 设置页同步区块（导出/导入 Bundle UI） | `pnpm check` 通过；导出/导入 Bundle 收藏与卡组双向正确      |
+| 2. Bundle 全量 ✅ | 覆盖全部实体（§3.1：心愿/借还/联系人/清单/对局/卡柜/自定义打印）+ settings 白名单（按键 LWW）+ 导入前备份提示                               | 两设备互导 Bundle，LWW 与墓碑删除传播验证通过（待手动验证） |
+| ~~3. Git 传输~~   | **已永久放弃**                                                                                                                              | —                                                           |
+| 4. 收尾 ✅        | Web 模式验证 + `supabase-transport.ts`（已实现，见 §8.3）                                                                                   | 全范围可用；`cargo check` 通过                              |
 
 ## 12. 关键设计决策记录
 
-| 决策 | 结论 | 理由 |
-| --- | --- | --- |
-| 同步范围 | 只同步高价值业务实体；历史/快照/自定义语言不同步 | 减面、减量、减冲突；可重建数据用数据包覆盖 |
-| 传输分级 | Bundle 基线（已实现）→ ~~Git 连续~~（已放弃）→ Supabase BYO（已实现，单 JSON 行） | 零基建先落地；Git 免云自托管方案经评估放弃；Supabase 采用用户自建项目 + 单行整包，适配免费版配额 |
-| 卡组/清单/卡柜/对局 | 实体聚合同步（含子表） | 单实体原子合并，避免子表碎片化与版本漂移 |
-| 收藏/心愿/借还/联系人 | 行级同步 | 量大且跨设备交错编辑多，行级 LWW 更精细 |
-| 冲突策略 | LWW（updated_at）+ deviceId 决胜 | 个人应用可接受；snowflake 无 id 冲突；决胜规则确定性 |
-| 删除传播 | 本地硬删 + `sync_tombstones` 墓碑 | 不依赖软删改造全部表；复活语义按时间戳 |
-| 内容引用 | 稳定键（card_no / print_code），pull 后重链 | 内容重同步换 id 不破坏玩家数据 |
-| 增量标记 | 行 `updated_at > 游标`（需审计确保各表 bump） | 零显式脏标记；实施阶段审计补齐 |
-| 安全 | 同步配置永不随包；Supabase 默认收紧 RLS | 避免 v1 的 anon key 公开洞 |
-| 事务 | 一律 `withTransaction()`（串行槽 + FK 开启批量写） | 与全局串行队列一致，避免跨语句锁库/无效 COMMIT |
+| 决策                  | 结论                                                                              | 理由                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 同步范围              | 只同步高价值业务实体；历史/快照/自定义语言不同步                                  | 减面、减量、减冲突；可重建数据用数据包覆盖                                                       |
+| 传输分级              | Bundle 基线（已实现）→ ~~Git 连续~~（已放弃）→ Supabase BYO（已实现，单 JSON 行） | 零基建先落地；Git 免云自托管方案经评估放弃；Supabase 采用用户自建项目 + 单行整包，适配免费版配额 |
+| 卡组/清单/卡柜/对局   | 实体聚合同步（含子表）                                                            | 单实体原子合并，避免子表碎片化与版本漂移                                                         |
+| 收藏/心愿/借还/联系人 | 行级同步                                                                          | 量大且跨设备交错编辑多，行级 LWW 更精细                                                          |
+| 冲突策略              | LWW（updated_at）+ deviceId 决胜                                                  | 个人应用可接受；snowflake 无 id 冲突；决胜规则确定性                                             |
+| 删除传播              | 本地硬删 + `sync_tombstones` 墓碑                                                 | 不依赖软删改造全部表；复活语义按时间戳                                                           |
+| 内容引用              | 稳定键（card_no / print_code），pull 后重链                                       | 内容重同步换 id 不破坏玩家数据                                                                   |
+| 增量标记              | 行 `updated_at > 游标`（需审计确保各表 bump）                                     | 零显式脏标记；实施阶段审计补齐                                                                   |
+| 安全                  | 同步配置永不随包；Supabase 默认收紧 RLS                                           | 避免 v1 的 anon key 公开洞                                                                       |
+| 事务                  | 一律 `withTransaction()`（串行槽 + FK 开启批量写）                                | 与全局串行队列一致，避免跨语句锁库/无效 COMMIT                                                   |
 
 ## 13. 风险与注意事项
 

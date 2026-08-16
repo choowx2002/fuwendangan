@@ -144,7 +144,9 @@
       class="search-bar-input"
       type="text"
       bind:value={searchText}
-      placeholder={currentValue ? $t('cards.searching', { values: { q: currentValue } }) : $t('cards.searchPlaceholder')}
+      placeholder={currentValue
+        ? $t('cards.searching', { values: { q: currentValue } })
+        : $t('cards.searchPlaceholder')}
       onfocus={() => (isFocused = true)}
       onblur={() => setTimeout(() => (isFocused = false), 200)}
       onkeydown={handleKeydown}

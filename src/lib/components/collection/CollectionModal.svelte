@@ -6,10 +6,7 @@
   import { X, Plus, Trash2, Pencil } from '@lucide/svelte'
   import CachedImage from '../cards/CachedImage.svelte'
   import CustomPrintModal from './CustomPrintModal.svelte'
-  import {
-    type VariantBucket,
-    classifyVariant,
-  } from '$lib/cards/utils/variant-utils'
+  import { type VariantBucket, classifyVariant } from '$lib/cards/utils/variant-utils'
   import { isTauri } from '$lib/db/env'
   import { showToast } from '$lib/stores/ui-store.svelte'
   import { t } from '$lib/i18n'
@@ -192,15 +189,12 @@
     const confirmed = isTauri
       ? await (
           await import('@tauri-apps/plugin-dialog')
-        ).ask(
-          get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } }),
-          {
-            title: get(t)('collection.deleteCustomTitle'),
-            kind: 'warning',
-            okLabel: get(t)('collection.deleteAction'),
-            cancelLabel: get(t)('common.cancel'),
-          }
-        )
+        ).ask(get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } }), {
+          title: get(t)('collection.deleteCustomTitle'),
+          kind: 'warning',
+          okLabel: get(t)('collection.deleteAction'),
+          cancelLabel: get(t)('common.cancel'),
+        })
       : window.confirm(
           get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } })
         )
@@ -287,7 +281,8 @@
               <p class="empty-title">{$t('collection.noPrints')}</p>
               <p class="empty-sub">{$t('collection.noPrintsHint')}</p>
               <button class="btn-mini" onclick={openCreateCustom}>
-                <Plus size={13} /> {$t('collection.customPrint')}
+                <Plus size={13} />
+                {$t('collection.customPrint')}
               </button>
             </div>
           {:else if selectedVariant}
@@ -299,7 +294,9 @@
               {#if card.card_no && v.cardNoExtend.toUpperCase().slice(0, 3) !== card.card_no
                     .toUpperCase()
                     .slice(0, 3)}
-                <span class="chip proto">{$t('collection.protoChip', { values: { cardNo: card.card_no } })}</span>
+                <span class="chip proto"
+                  >{$t('collection.protoChip', { values: { cardNo: card.card_no } })}</span
+                >
               {/if}
               {#if v.isCustom}
                 <span class="chip promo">{$t('collection.customChip')}</span>
@@ -308,7 +305,11 @@
 
               {#if isTauri && v.isCustom}
                 <div class="head-actions">
-                  <button class="icon-btn" title={$t('collection.editCustomPrint')} onclick={() => openEdit(v)}>
+                  <button
+                    class="icon-btn"
+                    title={$t('collection.editCustomPrint')}
+                    onclick={() => openEdit(v)}
+                  >
                     <Pencil size={14} />
                   </button>
                   <button
@@ -329,7 +330,9 @@
               <strong>{summary.normal}</strong>
               · {$t('collection.foilSuffix')}
               <strong class="foil">{summary.foil}</strong>
-              · {$t('collection.langsSuffix')} <strong>{summary.langs}</strong>{$t('collection.langKindsUnit')}
+              · {$t('collection.langsSuffix')} <strong>{summary.langs}</strong>{$t(
+                'collection.langKindsUnit'
+              )}
             </div>
 
             {#if v.langs.length === 0}
@@ -366,7 +369,8 @@
 
           <div class="toolbar">
             <button class="btn-mini" onclick={openCreateCustom}>
-              <Plus size={13} /> {$t('collection.customPrint')}
+              <Plus size={13} />
+              {$t('collection.customPrint')}
             </button>
           </div>
         </div>
@@ -427,7 +431,8 @@
       onclick={() => selectedVariant && addLangTo(selectedVariant)}
       disabled={isAddDisabled}
     >
-      <Plus size={14} /> {$t('collection.addCardAction')}
+      <Plus size={14} />
+      {$t('collection.addCardAction')}
     </button>
   {/snippet}
 

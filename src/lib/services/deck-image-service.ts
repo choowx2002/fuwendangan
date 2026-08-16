@@ -413,7 +413,11 @@ export async function buildDeckImage(options: DeckImageOptions): Promise<string>
   ctx.textAlign = 'right'
   ctx.font = '400 20px "Noto Sans SC", sans-serif'
   ctx.fillStyle = theme.secondary
-  ctx.fillText(get(t)('deckDetail.imageTotalCards', { values: { count: totalCards } }), WIDTH - PAD, y + 22)
+  ctx.fillText(
+    get(t)('deckDetail.imageTotalCards', { values: { count: totalCards } }),
+    WIDTH - PAD,
+    y + 22
+  )
   ctx.strokeStyle = theme.divider
   ctx.lineWidth = 1
   ctx.beginPath()

@@ -29,7 +29,10 @@
   async function load() {
     loading = true
     try {
-      const [listRes, countRes] = await Promise.all([getPurchaseLists(), getPurchaseListItemCounts()])
+      const [listRes, countRes] = await Promise.all([
+        getPurchaseLists(),
+        getPurchaseListItemCounts(),
+      ])
       lists = listRes
       itemCounts = countRes
     } finally {

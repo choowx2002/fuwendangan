@@ -10,7 +10,17 @@
     findCardLocations,
     searchCards,
   } from '$lib/db'
-  import { Star, Plus, Search, X, Trash2, Pencil, ChevronRight, Download, Upload } from '@lucide/svelte'
+  import {
+    Star,
+    Plus,
+    Search,
+    X,
+    Trash2,
+    Pencil,
+    ChevronRight,
+    Download,
+    Upload,
+  } from '@lucide/svelte'
   import { ask } from '@tauri-apps/plugin-dialog'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { isTauri } from '$lib/db/env'
@@ -137,7 +147,13 @@
     finding = true
     findError = ''
     try {
-      const res = await searchCards({ page: 1, pageSize: 8, searchText: q, is_banned: false, ownership: 'owned' })
+      const res = await searchCards({
+        page: 1,
+        pageSize: 8,
+        searchText: q,
+        is_banned: false,
+        ownership: 'owned',
+      })
       findResults = res.data.map((c) => ({
         id: c.id,
         card_no: c.card_no ?? '',
@@ -335,47 +351,47 @@
     {/if}
   </div>
 
-    {#if findResults.length > 0}
-      <div class="find-results">
-        {#each findResults as r (r.id)}
-          <button class="find-item" onclick={() => selectLocatedCard(r)}>
-            <span class="find-no">{r.card_no}</span>
-            <span class="find-name">{r.name}</span>
+  {#if findResults.length > 0}
+    <div class="find-results">
+      {#each findResults as r (r.id)}
+        <button class="find-item" onclick={() => selectLocatedCard(r)}>
+          <span class="find-no">{r.card_no}</span>
+          <span class="find-name">{r.name}</span>
+        </button>
+      {/each}
+    </div>
+  {:else if finding}
+    <div class="find-hint">{$t('locker.searching')}</div>
+  {:else if findError}
+    <div class="find-hint error">{findError}</div>
+  {:else if findQuery && !locations}
+    <div class="find-hint">{$t('locker.noResults')}</div>
+  {/if}
+
+  {#if locations}
+    <div class="locations">
+      <div class="locations-title">
+        {$t('locker.foundLocations', { values: { name: locatedName } })}
+      </div>
+      {#if locations.length === 0}
+        <div class="locations-empty">{$t('locker.noLocation')}</div>
+      {:else}
+        {#each locations as loc (loc.lockerId + loc.sectionId + loc.quantity)}
+          <button
+            class="location-item"
+            onclick={() => void goto(`/locker/${loc.lockerId}/${loc.sectionId}`)}
+          >
+            <span class="location-path">
+              {loc.lockerName}
+              {#if loc.sectionName}· {loc.sectionName}{/if}
+            </span>
+            <span class="location-qty">×{loc.quantity}</span>
+            <ChevronRight size={14} class="location-arrow" />
           </button>
         {/each}
-      </div>
-    {:else if finding}
-      <div class="find-hint">{$t('locker.searching')}</div>
-    {:else if findError}
-      <div class="find-hint error">{findError}</div>
-    {:else if findQuery && !locations}
-      <div class="find-hint">{$t('locker.noResults')}</div>
-    {/if}
-
-    {#if locations}
-      <div class="locations">
-        <div class="locations-title">
-          {$t('locker.foundLocations', { values: { name: locatedName } })}
-        </div>
-        {#if locations.length === 0}
-          <div class="locations-empty">{$t('locker.noLocation')}</div>
-        {:else}
-          {#each locations as loc (loc.lockerId + loc.sectionId + loc.quantity)}
-            <button
-              class="location-item"
-              onclick={() => void goto(`/locker/${loc.lockerId}/${loc.sectionId}`)}
-            >
-              <span class="location-path">
-                {loc.lockerName}
-                {#if loc.sectionName}· {loc.sectionName}{/if}
-              </span>
-              <span class="location-qty">×{loc.quantity}</span>
-              <ChevronRight size={14} class="location-arrow" />
-            </button>
-          {/each}
-        {/if}
-      </div>
-    {/if}
+      {/if}
+    </div>
+  {/if}
 
   <div class="locker-list">
     {#if loading}
@@ -490,7 +506,11 @@
     </div>
     <label class="field">
       <span class="field-label">{$t('locker.tags')}</span>
-      <TagInput value={lockerTags} placeholder={$t('locker.tagPlaceholder')} onChange={(v) => (lockerTags = v)} />
+      <TagInput
+        value={lockerTags}
+        placeholder={$t('locker.tagPlaceholder')}
+        onChange={(v) => (lockerTags = v)}
+      />
     </label>
   </div>
 
@@ -536,7 +556,11 @@
   </div>
 
   {#snippet footer()}
-    <button class="button button-ghost" disabled={exporting} onclick={() => (exportModalOpen = false)}>
+    <button
+      class="button button-ghost"
+      disabled={exporting}
+      onclick={() => (exportModalOpen = false)}
+    >
       {$t('common.cancel')}
     </button>
     <button class="button button-primary" disabled={exporting} onclick={() => void handleExport()}>

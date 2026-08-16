@@ -97,7 +97,8 @@
           </button>
         {/each}
         <p class="result-hint">
-          <CornerDownLeft size={11} /> {$t('collection.enterFirst')}
+          <CornerDownLeft size={11} />
+          {$t('collection.enterFirst')}
         </p>
       {/if}
     </div>

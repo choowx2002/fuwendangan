@@ -60,7 +60,8 @@
             <th class="col-qty">{$t('collection.normalCol')}</th>
             <th class="col-qty">{$t('collection.foilCol')}</th>
             <th class="col-qty">{$t('collection.totalCol')}</th>
-            {#if quickEdit && !batchMode}<th class="col-actions">{$t('collection.actionsCol')}</th>{/if}
+            {#if quickEdit && !batchMode}<th class="col-actions">{$t('collection.actionsCol')}</th
+              >{/if}
           </tr>
         </thead>
         <tbody>
@@ -137,7 +138,8 @@
                           onQuickInc?.(card)
                         }}
                       >
-                        <Plus size={13} strokeWidth={'2'} /> {$t('collection.addAction')}
+                        <Plus size={13} strokeWidth={'2'} />
+                        {$t('collection.addAction')}
                       </button>
                     {/if}
                   </div>

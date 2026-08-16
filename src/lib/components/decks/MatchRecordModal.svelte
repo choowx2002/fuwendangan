@@ -525,7 +525,8 @@
           onclick={addGame}
           disabled={saving}
         >
-          <Plus size={14} /> {$t('match.addGame')}
+          <Plus size={14} />
+          {$t('match.addGame')}
         </button>
       </div>
 
@@ -538,7 +539,9 @@
       {#each games as game, index (index)}
         <div class="game-card">
           <div class="game-card-header">
-            <span class="game-number">{$t('match.gameNumber', { values: { number: index + 1 } })}</span>
+            <span class="game-number"
+              >{$t('match.gameNumber', { values: { number: index + 1 } })}</span
+            >
             <div class="game-end-type">
               <button
                 type="button"
@@ -717,9 +720,12 @@
 
   {#snippet footer()}
     {#if step === 1}
-      <button class="button button-ghost" onclick={onclose} disabled={saving}>{$t('common.cancel')}</button>
+      <button class="button button-ghost" onclick={onclose} disabled={saving}
+        >{$t('common.cancel')}</button
+      >
       <button class="button button-primary" onclick={goToStep2} disabled={saving}>
-        {$t('match.next')} <ChevronRight size={16} />
+        {$t('match.next')}
+        <ChevronRight size={16} />
       </button>
     {:else}
       <button
@@ -730,7 +736,8 @@
         }}
         disabled={saving}
       >
-        <ChevronLeft size={16} /> {$t('match.prev')}
+        <ChevronLeft size={16} />
+        {$t('match.prev')}
       </button>
       <button class="button button-primary" onclick={save} disabled={saving}>
         <Save size={16} />

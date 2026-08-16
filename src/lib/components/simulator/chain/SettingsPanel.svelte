@@ -33,20 +33,20 @@
     { key: 'discard', labelKey: 'simulator.zone.discard' },
     { key: 'banish', labelKey: 'simulator.zone.banish' },
   ]
-
 </script>
 
 <div class="settings-panel">
   <section class="field-group">
-    <span class="group-title">{$t('simulator.playerCount')} / {$t('simulator.battlefieldCount')}</span>
+    <span class="group-title"
+      >{$t('simulator.playerCount')} / {$t('simulator.battlefieldCount')}</span
+    >
     <div class="row">
       <label class="field">
         <span>{$t('simulator.playerCount')}</span>
         <select
           value={playerCount}
           onchange={(e) =>
-            onPlayerCountChange?.(Number((e.currentTarget as HTMLSelectElement).value) || 2)
-          }
+            onPlayerCountChange?.(Number((e.currentTarget as HTMLSelectElement).value) || 2)}
         >
           <option value="2">2 位玩家</option>
           <option value="3">3 位玩家</option>
@@ -58,8 +58,7 @@
         <select
           value={battlefieldCount}
           onchange={(e) =>
-            onBattlefieldCountChange?.(Number((e.currentTarget as HTMLSelectElement).value) || 2)
-          }
+            onBattlefieldCountChange?.(Number((e.currentTarget as HTMLSelectElement).value) || 2)}
         >
           <option value="1">1 个战场</option>
           <option value="2">2 个战场</option>
@@ -127,8 +126,7 @@
         onchange={(e) =>
           onchange?.({
             autoSnapshotIntervalSec: Number((e.currentTarget as HTMLInputElement).value) || 0,
-          })
-        }
+          })}
       />
     </label>
   </section>

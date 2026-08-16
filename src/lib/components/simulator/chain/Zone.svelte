@@ -59,7 +59,8 @@
 <div class="chain-zone">
   <div class="zone-header">
     <span class="zone-title">{title}</span>
-    <span class="zone-count">{$t('simulator.itemsCount', { values: { count: items.length } })}</span>
+    <span class="zone-count">{$t('simulator.itemsCount', { values: { count: items.length } })}</span
+    >
     <div class="zone-header-right">
       <button
         type="button"
@@ -98,7 +99,7 @@
           <Card
             {item}
             {zoneKey}
-            mode={mode}
+            {mode}
             card={item.cardNo ? cards[item.cardNo] : null}
             ownerColor={item.owner !== null && item.owner !== undefined
               ? (playerColors[item.owner] ?? '#888')
@@ -108,7 +109,7 @@
               : '未标记'}
             {onpreview}
             {onremovecard}
-            onremove={onremove}
+            {onremove}
             {onduplicate}
             {onrotate}
             {ontagchange}

@@ -171,7 +171,11 @@
       {/if}
     {:else if error}
       {#if errorImage}
-        <img src={errorImage} alt={$t('cards.imageLoadFailed')} style="width: 100%; height: 100%; {fitStyles[fit]};" />
+        <img
+          src={errorImage}
+          alt={$t('cards.imageLoadFailed')}
+          style="width: 100%; height: 100%; {fitStyles[fit]};"
+        />
       {:else if src && !src.startsWith('local://')}
         <div class="error-placeholder">
           <img
@@ -207,7 +211,9 @@
             <circle cx="8.5" cy="8.5" r="1.5" />
             <polyline points="21 15 16 10 5 21" />
           </svg>
-          <span style="color: var(--text-tertiary); font-size: 14px;">{$t('cards.imageLoadFailed')}</span>
+          <span style="color: var(--text-tertiary); font-size: 14px;"
+            >{$t('cards.imageLoadFailed')}</span
+          >
         </div>
       {/if}
     {:else if imageUrl}

@@ -16,7 +16,7 @@
   import Zone from '$lib/components/simulator/chain/Zone.svelte'
   import SettingsPanel from '$lib/components/simulator/chain/SettingsPanel.svelte'
   import SnapshotManager from '$lib/components/simulator/chain/SnapshotManager.svelte'
-    import {
+  import {
     chainSimulatorState,
     chainSimulatorSettings,
     chainSimulatorSnapshots,
@@ -171,7 +171,8 @@
     if (key === 'chain') return $t('simulator.zone.chain')
     if (key === 'resolving') return $t('simulator.zone.resolving')
     if (key === 'pending') return $t('simulator.zone.pending')
-    if (key.startsWith('bf')) return `${$t('simulator.zone.battlefield')} ${Number(key.slice(2)) + 1}`
+    if (key.startsWith('bf'))
+      return `${$t('simulator.zone.battlefield')} ${Number(key.slice(2)) + 1}`
     const pMatch = /^p(\d+)-(hand|base|discard|banish|deck)$/.exec(key)
     if (pMatch) {
       const names: Record<string, string> = {
@@ -246,7 +247,8 @@
 
   function handleZoneDrop(targetZone: string, state: DragDropState<ChainDragPayload>) {
     const { draggedItem } = state
-    const isPayload = typeof draggedItem === 'object' && draggedItem !== null && 'card' in draggedItem
+    const isPayload =
+      typeof draggedItem === 'object' && draggedItem !== null && 'card' in draggedItem
     const card = isPayload
       ? (draggedItem as { card: ChainItem; columnId: string }).card
       : (draggedItem as ChainItem)
@@ -328,7 +330,10 @@
   function removeCardInstance(zoneKey: string, item: CardInstance) {
     const shared = sharedTypeFromKey(zoneKey)
     if (shared) {
-      setSharedItems(shared, getSharedItems(shared).filter((c) => c.id !== item.id))
+      setSharedItems(
+        shared,
+        getSharedItems(shared).filter((c) => c.id !== item.id)
+      )
     } else {
       game.zones[zoneKey] = (game.zones[zoneKey] ?? []).filter((c) => c.id !== item.id)
     }
@@ -345,7 +350,10 @@
     }
     const targetItems = getSharedItems(target)
     setSharedItems(target, [...targetItems, { ...item, owner: item.owner ?? currentOwner }])
-    showToast(target === 'discard' ? $t('simulator.movedToDiscard') : $t('simulator.movedToBanish'), 'success')
+    showToast(
+      target === 'discard' ? $t('simulator.movedToDiscard') : $t('simulator.movedToBanish'),
+      'success'
+    )
   }
 
   function duplicateCard(zoneKey: string, item: CardInstance) {
@@ -389,9 +397,7 @@
   function updateTags(zoneKey: string, item: CardInstance, tags: string[]) {
     const shared = sharedTypeFromKey(zoneKey)
     if (shared) {
-      const items = getSharedItems(shared).map((c) =>
-        c.id === item.id ? { ...c, tags } : c
-      )
+      const items = getSharedItems(shared).map((c) => (c.id === item.id ? { ...c, tags } : c))
       setSharedItems(shared, items)
     } else {
       game.zones[zoneKey] = (game.zones[zoneKey] ?? []).map((c) =>
@@ -412,7 +418,10 @@
   function recordSnapshot(auto = false) {
     const snap = createSnapshot(currentSim, auto ? '自动保存' : undefined)
     game.snapshots = [...game.snapshots, snap].slice(-50)
-    showToast(auto ? $t('simulator.autoSnapshotSaved') : $t('simulator.snapshotRecorded'), 'success')
+    showToast(
+      auto ? $t('simulator.autoSnapshotSaved') : $t('simulator.snapshotRecorded'),
+      'success'
+    )
   }
 
   function applySnapshotById(id: string) {
@@ -499,9 +508,7 @@
       const items = getSharedItems(shared).map((c) => (c.id === item.id ? updated : c))
       setSharedItems(shared, items)
     } else {
-      game.zones[zoneKey] = (game.zones[zoneKey] ?? []).map((c) =>
-        c.id === item.id ? updated : c
-      )
+      game.zones[zoneKey] = (game.zones[zoneKey] ?? []).map((c) => (c.id === item.id ? updated : c))
     }
     editContext = null
     showToast($t('simulator.savedCardInfo'), 'success')
@@ -615,364 +622,368 @@
     </button>
   </div>
 {:else}
-<div class="chain-page">
-  {#if !demoMode}
-  <header class="chain-header">
-    <button
-      class="header-back-btn"
-      onclick={() => window.history.back()}
-      aria-label="返回"
-      title="返回"
-    >
-      <ChevronLeft size={18} />
-    </button>
-    <h1 class="chain-title">{$t('simulator.chainTitle')}</h1>
-    <div class="header-actions">
-      <button type="button" class="header-btn" onclick={() => recordSnapshot(false)}>
-        <Camera size={16} /> {$t('simulator.snapshot')}
-      </button>
-      <button type="button" class="header-btn" onclick={() => (historyOpen = true)}>
-        <History size={16} /> {$t('simulator.history')}
-      </button>
-      <button
-        type="button"
-        class="header-btn"
-        onclick={async () => {
-          const ok = await confirmAction($t('simulator.resetAllConfirm'), {
-            title: $t('simulator.resetAll'),
-          })
-          if (ok) resetGame()
-        }}
-      >
-        <RotateCcw size={16} /> {$t('simulator.resetAll')}
-      </button>
-      <button
-        type="button"
-        class="header-btn"
-        title={sidebarOpen ? $t('simulator.hideSidebar') : $t('simulator.showSidebar')}
-        onclick={() => (sidebarOpen = !sidebarOpen)}
-      >
-        {#if sidebarOpen}<PanelRight size={16} />{:else}<PanelLeft size={16} />{/if}
-      </button>
-      <button type="button" class="header-btn" onclick={() => (settingsOpen = true)}>
-        <Settings size={16} /> {$t('simulator.settings')}
-      </button>
-    </div>
-  </header>
-  {/if}
-
-  <div class="chain-body" class:sidebar-hidden={!sidebarOpen} class:demo-mode={demoMode}>
-    <main class="chain-main">
-      <div
-        class="board"
-        style="--bf-count: {baseSim.battlefieldCount}; --player-count: {baseSim.playerCount}"
-      >
-        <div class="board-pending">
-          <Zone
-            zoneKey="pending"
-            title={titleForZone('pending')}
-            items={zoneItems('pending')}
-            mode={modeForZone('pending')}
-            {cards}
-            playerColors={PLAYER_COLORS}
-            snapToGrid={game.settings.snapToGrid}
-            ondrop={handleZoneDrop}
-            onremove={removeCard}
-            onremovecard={removeCardInstance}
-            onclear={clearZone}
-            onduplicate={duplicateCard}
-            onpreview={(item) => (previewItem = item)}
-            onrotate={rotateCard}
-            ontagchange={updateTags}
-            onedit={openEdit}
-          />
-        </div>
-
-        <div class="board-mid">
-          <div class="mid-chain">
-            <Zone
-              zoneKey="chain"
-              title={titleForZone('chain')}
-              items={zoneItems('chain')}
-              mode={modeForZone('chain')}
-              {cards}
-              playerColors={PLAYER_COLORS}
-              snapToGrid={game.settings.snapToGrid}
-              ondrop={handleZoneDrop}
-              onremove={removeCard}
-              onremovecard={removeCardInstance}
-              onclear={clearZone}
-              onduplicate={duplicateCard}
-              onpreview={(item) => (previewItem = item)}
-              onrotate={rotateCard}
-              ontagchange={updateTags}
-              onedit={openEdit}
-            />
-          </div>
-          <div class="mid-resolving">
-            <Zone
-              zoneKey="resolving"
-              title={titleForZone('resolving')}
-              items={zoneItems('resolving')}
-              mode={modeForZone('resolving')}
-              {cards}
-              playerColors={PLAYER_COLORS}
-              snapToGrid={game.settings.snapToGrid}
-              ondrop={handleZoneDrop}
-              onremove={removeCard}
-              onremovecard={removeCardInstance}
-              onclear={clearZone}
-              onduplicate={duplicateCard}
-              onpreview={(item) => (previewItem = item)}
-              onrotate={rotateCard}
-              ontagchange={updateTags}
-              onedit={openEdit}
-            />
-          </div>
-        </div>
-
-        <div class="board-battlefields">
-          {#each battlefieldKeys as key (key)}
-            <Zone
-              zoneKey={key}
-              title={titleForZone(key)}
-              items={zoneItems(key)}
-              mode={modeForZone(key)}
-              {cards}
-              playerColors={PLAYER_COLORS}
-              snapToGrid={game.settings.snapToGrid}
-              ondrop={handleZoneDrop}
-              onremove={removeCard}
-              onremovecard={removeCardInstance}
-              onclear={clearZone}
-              onduplicate={duplicateCard}
-              onpreview={(item) => (previewItem = item)}
-              onrotate={rotateCard}
-              ontagchange={updateTags}
-              onedit={openEdit}
-            />
-          {/each}
-        </div>
-
-        <div class="board-shared">
-          <Zone
-            zoneKey="shared-base"
-            title={$t('simulator.zone.base')}
-            items={sharedBaseItems}
-            mode={modeForZone('base')}
-            {cards}
-            playerColors={PLAYER_COLORS}
-            snapToGrid={game.settings.snapToGrid}
-            ondrop={handleZoneDrop}
-            onremove={removeCard}
-            onremovecard={removeCardInstance}
-            onclear={clearZone}
-            onduplicate={duplicateCard}
-            onpreview={(item) => (previewItem = item)}
-            onrotate={rotateCard}
-            ontagchange={updateTags}
-            onedit={openEdit}
-          />
-          <Zone
-            zoneKey="shared-discard"
-            title={$t('simulator.zone.discard')}
-            items={sharedDiscardItems}
-            mode={modeForZone('discard')}
-            {cards}
-            playerColors={PLAYER_COLORS}
-            snapToGrid={game.settings.snapToGrid}
-            ondrop={handleZoneDrop}
-            onremove={removeCard}
-            onremovecard={removeCardInstance}
-            onclear={clearZone}
-            onduplicate={duplicateCard}
-            onpreview={(item) => (previewItem = item)}
-            onrotate={rotateCard}
-            ontagchange={updateTags}
-            onedit={openEdit}
-          />
-          <Zone
-            zoneKey="shared-banish"
-            title={$t('simulator.zone.banish')}
-            items={sharedBanishItems}
-            mode={modeForZone('banish')}
-            {cards}
-            playerColors={PLAYER_COLORS}
-            snapToGrid={game.settings.snapToGrid}
-            ondrop={handleZoneDrop}
-            onremove={removeCard}
-            onremovecard={removeCardInstance}
-            onclear={clearZone}
-            onduplicate={duplicateCard}
-            onpreview={(item) => (previewItem = item)}
-            onrotate={rotateCard}
-            ontagchange={updateTags}
-            onedit={openEdit}
-          />
-        </div>
-      </div>
-    </main>
-
+  <div class="chain-page">
     {#if !demoMode}
-    <aside
-      class="chain-side-col"
-      class:open={sidebarOpen}
-      class:mobile={!isDesktop}
-    >
-      {#if !isDesktop}
+      <header class="chain-header">
+        <button
+          class="header-back-btn"
+          onclick={() => window.history.back()}
+          aria-label="返回"
+          title="返回"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <h1 class="chain-title">{$t('simulator.chainTitle')}</h1>
+        <div class="header-actions">
+          <button type="button" class="header-btn" onclick={() => recordSnapshot(false)}>
+            <Camera size={16} />
+            {$t('simulator.snapshot')}
+          </button>
+          <button type="button" class="header-btn" onclick={() => (historyOpen = true)}>
+            <History size={16} />
+            {$t('simulator.history')}
+          </button>
+          <button
+            type="button"
+            class="header-btn"
+            onclick={async () => {
+              const ok = await confirmAction($t('simulator.resetAllConfirm'), {
+                title: $t('simulator.resetAll'),
+              })
+              if (ok) resetGame()
+            }}
+          >
+            <RotateCcw size={16} />
+            {$t('simulator.resetAll')}
+          </button>
+          <button
+            type="button"
+            class="header-btn"
+            title={sidebarOpen ? $t('simulator.hideSidebar') : $t('simulator.showSidebar')}
+            onclick={() => (sidebarOpen = !sidebarOpen)}
+          >
+            {#if sidebarOpen}<PanelRight size={16} />{:else}<PanelLeft size={16} />{/if}
+          </button>
+          <button type="button" class="header-btn" onclick={() => (settingsOpen = true)}>
+            <Settings size={16} />
+            {$t('simulator.settings')}
+          </button>
+        </div>
+      </header>
+    {/if}
+
+    <div class="chain-body" class:sidebar-hidden={!sidebarOpen} class:demo-mode={demoMode}>
+      <main class="chain-main">
+        <div
+          class="board"
+          style="--bf-count: {baseSim.battlefieldCount}; --player-count: {baseSim.playerCount}"
+        >
+          <div class="board-pending">
+            <Zone
+              zoneKey="pending"
+              title={titleForZone('pending')}
+              items={zoneItems('pending')}
+              mode={modeForZone('pending')}
+              {cards}
+              playerColors={PLAYER_COLORS}
+              snapToGrid={game.settings.snapToGrid}
+              ondrop={handleZoneDrop}
+              onremove={removeCard}
+              onremovecard={removeCardInstance}
+              onclear={clearZone}
+              onduplicate={duplicateCard}
+              onpreview={(item) => (previewItem = item)}
+              onrotate={rotateCard}
+              ontagchange={updateTags}
+              onedit={openEdit}
+            />
+          </div>
+
+          <div class="board-mid">
+            <div class="mid-chain">
+              <Zone
+                zoneKey="chain"
+                title={titleForZone('chain')}
+                items={zoneItems('chain')}
+                mode={modeForZone('chain')}
+                {cards}
+                playerColors={PLAYER_COLORS}
+                snapToGrid={game.settings.snapToGrid}
+                ondrop={handleZoneDrop}
+                onremove={removeCard}
+                onremovecard={removeCardInstance}
+                onclear={clearZone}
+                onduplicate={duplicateCard}
+                onpreview={(item) => (previewItem = item)}
+                onrotate={rotateCard}
+                ontagchange={updateTags}
+                onedit={openEdit}
+              />
+            </div>
+            <div class="mid-resolving">
+              <Zone
+                zoneKey="resolving"
+                title={titleForZone('resolving')}
+                items={zoneItems('resolving')}
+                mode={modeForZone('resolving')}
+                {cards}
+                playerColors={PLAYER_COLORS}
+                snapToGrid={game.settings.snapToGrid}
+                ondrop={handleZoneDrop}
+                onremove={removeCard}
+                onremovecard={removeCardInstance}
+                onclear={clearZone}
+                onduplicate={duplicateCard}
+                onpreview={(item) => (previewItem = item)}
+                onrotate={rotateCard}
+                ontagchange={updateTags}
+                onedit={openEdit}
+              />
+            </div>
+          </div>
+
+          <div class="board-battlefields">
+            {#each battlefieldKeys as key (key)}
+              <Zone
+                zoneKey={key}
+                title={titleForZone(key)}
+                items={zoneItems(key)}
+                mode={modeForZone(key)}
+                {cards}
+                playerColors={PLAYER_COLORS}
+                snapToGrid={game.settings.snapToGrid}
+                ondrop={handleZoneDrop}
+                onremove={removeCard}
+                onremovecard={removeCardInstance}
+                onclear={clearZone}
+                onduplicate={duplicateCard}
+                onpreview={(item) => (previewItem = item)}
+                onrotate={rotateCard}
+                ontagchange={updateTags}
+                onedit={openEdit}
+              />
+            {/each}
+          </div>
+
+          <div class="board-shared">
+            <Zone
+              zoneKey="shared-base"
+              title={$t('simulator.zone.base')}
+              items={sharedBaseItems}
+              mode={modeForZone('base')}
+              {cards}
+              playerColors={PLAYER_COLORS}
+              snapToGrid={game.settings.snapToGrid}
+              ondrop={handleZoneDrop}
+              onremove={removeCard}
+              onremovecard={removeCardInstance}
+              onclear={clearZone}
+              onduplicate={duplicateCard}
+              onpreview={(item) => (previewItem = item)}
+              onrotate={rotateCard}
+              ontagchange={updateTags}
+              onedit={openEdit}
+            />
+            <Zone
+              zoneKey="shared-discard"
+              title={$t('simulator.zone.discard')}
+              items={sharedDiscardItems}
+              mode={modeForZone('discard')}
+              {cards}
+              playerColors={PLAYER_COLORS}
+              snapToGrid={game.settings.snapToGrid}
+              ondrop={handleZoneDrop}
+              onremove={removeCard}
+              onremovecard={removeCardInstance}
+              onclear={clearZone}
+              onduplicate={duplicateCard}
+              onpreview={(item) => (previewItem = item)}
+              onrotate={rotateCard}
+              ontagchange={updateTags}
+              onedit={openEdit}
+            />
+            <Zone
+              zoneKey="shared-banish"
+              title={$t('simulator.zone.banish')}
+              items={sharedBanishItems}
+              mode={modeForZone('banish')}
+              {cards}
+              playerColors={PLAYER_COLORS}
+              snapToGrid={game.settings.snapToGrid}
+              ondrop={handleZoneDrop}
+              onremove={removeCard}
+              onremovecard={removeCardInstance}
+              onclear={clearZone}
+              onduplicate={duplicateCard}
+              onpreview={(item) => (previewItem = item)}
+              onrotate={rotateCard}
+              ontagchange={updateTags}
+              onedit={openEdit}
+            />
+          </div>
+        </div>
+      </main>
+
+      {#if !demoMode}
+        <aside class="chain-side-col" class:open={sidebarOpen} class:mobile={!isDesktop}>
+          {#if !isDesktop}
+            <button
+              type="button"
+              class="sheet-handle"
+              aria-label="收起侧栏"
+              onclick={() => (sidebarOpen = false)}
+            ></button>
+          {/if}
+          <Sidebar
+            zones={game.zones}
+            {cards}
+            currentState={currentSim}
+            bind:currentOwner
+            playerColors={PLAYER_COLORS}
+            onOwnerChange={(owner) => (currentOwner = owner)}
+            onDropToZone={handleZoneDrop}
+            onAddCustom={addCustom}
+            onpreview={(item) => (previewItem = item)}
+            onremove={removeCard}
+            onremovecard={removeCardInstance}
+            onclear={clearZone}
+            onduplicate={duplicateCard}
+            onrotate={rotateCard}
+            ontagchange={updateTags}
+            onedit={openEdit}
+          />
+        </aside>
+      {/if}
+    </div>
+
+    {#if !isDesktop && !demoMode}
+      {#if sidebarOpen}
         <button
           type="button"
-          class="sheet-handle"
-          aria-label="收起侧栏"
+          class="sheet-backdrop"
+          aria-label="关闭侧栏"
           onclick={() => (sidebarOpen = false)}
         ></button>
+      {:else}
+        <button class="fab" onclick={() => (sidebarOpen = true)} aria-label="打开侧栏">
+          <PanelRight size={22} />
+        </button>
       {/if}
-      <Sidebar
-        zones={game.zones}
-        {cards}
-        currentState={currentSim}
-        bind:currentOwner
-        playerColors={PLAYER_COLORS}
-        onOwnerChange={(owner) => (currentOwner = owner)}
-        onDropToZone={handleZoneDrop}
-        onAddCustom={addCustom}
-        onpreview={(item) => (previewItem = item)}
-        onremove={removeCard}
-        onremovecard={removeCardInstance}
-        onclear={clearZone}
-        onduplicate={duplicateCard}
-        onrotate={rotateCard}
-        ontagchange={updateTags}
-        onedit={openEdit}
-      />
-    </aside>
     {/if}
-  </div>
 
-  {#if !isDesktop && !demoMode}
-    {#if sidebarOpen}
-      <button
-        type="button"
-        class="sheet-backdrop"
-        aria-label="关闭侧栏"
-        onclick={() => (sidebarOpen = false)}
-      ></button>
-    {:else}
-      <button class="fab" onclick={() => (sidebarOpen = true)} aria-label="打开侧栏">
-        <PanelRight size={22} />
-      </button>
+    {#if nonMobileOs}
+      <div class="keyboard-help">
+        <span>{$t('simulator.keyboardCtrlHover')}</span>
+        {#if !demoMode}
+          <span>{$t('simulator.keyboardCtrlS')}</span>
+        {/if}
+        <span>{demoMode ? $t('simulator.keyboardCtrlVExit') : $t('simulator.keyboardCtrlV')}</span>
+        {#if demoMode}
+          <span>{$t('simulator.keyboardPrevNext')}</span>
+          <span>{$t('simulator.keyboardCtrlPrevNext')}</span>
+        {/if}
+      </div>
     {/if}
-  {/if}
 
-  {#if nonMobileOs}
-    <div class="keyboard-help">
-      <span>{$t('simulator.keyboardCtrlHover')}</span>
-      {#if !demoMode}
-        <span>{$t('simulator.keyboardCtrlS')}</span>
-      {/if}
-      <span>{demoMode ? $t('simulator.keyboardCtrlVExit') : $t('simulator.keyboardCtrlV')}</span>
-      {#if demoMode}
-        <span>{$t('simulator.keyboardPrevNext')}</span>
-        <span>{$t('simulator.keyboardCtrlPrevNext')}</span>
-      {/if}
-    </div>
-  {/if}
-
-  <SnapshotManager
-    open={historyOpen}
-    onClose={() => (historyOpen = false)}
-    snapshots={game.snapshots}
-    currentState={currentSim}
-    onRecord={() => recordSnapshot(false)}
-    onApply={applySnapshotById}
-    onDelete={removeSnapshot}
-    onImport={importState}
-  />
-
-  <CommonModal open={settingsOpen} title="设置" onclose={() => (settingsOpen = false)}>
-    <SettingsPanel
-      settings={game.settings}
-      playerCount={baseSim.playerCount}
-      battlefieldCount={baseSim.battlefieldCount}
-      onchange={(patch) => (game.settings = { ...game.settings, ...patch })}
-      onZoneModeChange={setZoneMode}
-      onAllZoneModeChange={setAllZoneModes}
-      onPlayerCountChange={setPlayerCount}
-      onBattlefieldCountChange={setBattlefieldCount}
-      onreset={resetGame}
+    <SnapshotManager
+      open={historyOpen}
+      onClose={() => (historyOpen = false)}
+      snapshots={game.snapshots}
+      currentState={currentSim}
+      onRecord={() => recordSnapshot(false)}
+      onApply={applySnapshotById}
+      onDelete={removeSnapshot}
+      onImport={importState}
     />
-  </CommonModal>
 
-  <CommonModal
-    open={!!previewItem}
-    title={previewItem
-      ? (previewItem.customName ||
+    <CommonModal open={settingsOpen} title="设置" onclose={() => (settingsOpen = false)}>
+      <SettingsPanel
+        settings={game.settings}
+        playerCount={baseSim.playerCount}
+        battlefieldCount={baseSim.battlefieldCount}
+        onchange={(patch) => (game.settings = { ...game.settings, ...patch })}
+        onZoneModeChange={setZoneMode}
+        onAllZoneModeChange={setAllZoneModes}
+        onPlayerCountChange={setPlayerCount}
+        onBattlefieldCountChange={setBattlefieldCount}
+        onreset={resetGame}
+      />
+    </CommonModal>
+
+    <CommonModal
+      open={!!previewItem}
+      title={previewItem
+        ? previewItem.customName ||
           cards[previewItem.cardNo ?? '']?.card_name_cn ||
           cards[previewItem.cardNo ?? '']?.card_name_en ||
           previewItem.cardNo ||
-          previewItem.id)
-      : ''}
-    onclose={() => (previewItem = null)}
-  >
-    {#if previewItem}
-      {@const card = previewItem.cardNo ? cards[previewItem.cardNo] : null}
-      {@const best = card ? getBestPrint(card) : null}
-      <div class="preview-body">
-        {#if best?.url}
-          <CardSimpleImage url={best.url} name={printCacheName(best)} className="preview-img" />
-        {/if}
-        <p class="preview-name">
-          {previewItem.customName ||
-            card?.card_name_cn ||
-            card?.card_name_en ||
-            previewItem.cardNo ||
-            previewItem.id}
-        </p>
-        {#if previewItem.subtitle}
-          <p class="preview-subtitle">{previewItem.subtitle}</p>
-        {/if}
-        {#if previewItem.customNote}
-          <p class="preview-note">{previewItem.customNote}</p>
-        {/if}
-      </div>
-    {/if}
-  </CommonModal>
-
-  <CommonModal
-    open={!!editContext}
-    title={$t('simulator.editCardInfo')}
-    onclose={() => (editContext = null)}
-  >
-    {#if editContext}
-      <div class="edit-form">
-        <label class="edit-field">
-          <span>{$t('simulator.editName')}</span>
-          <input type="text" bind:value={editName} placeholder="卡牌名称" />
-        </label>
-        <label class="edit-field">
-          <span>{$t('simulator.editSubtitle')}</span>
-          <input type="text" bind:value={editSubtitle} placeholder="副标题（可选）" />
-        </label>
-        <label class="edit-field">
-          <span>{$t('simulator.editNote')}</span>
-          <input type="text" bind:value={editNote} placeholder="备注（可选）" />
-        </label>
-        <label class="edit-field">
-          <span>{$t('simulator.editOwner')}</span>
-          <select bind:value={editOwner}>
-            {#each playerIndexes as p (p)}
-              <option value={p}>玩家 {p + 1}</option>
-            {/each}
-          </select>
-        </label>
-        <div class="edit-actions">
-          <button type="button" class="btn" onclick={() => (editContext = null)}>{$t('simulator.cancel')}</button>
-          <button type="button" class="btn primary" onclick={saveEdit}>{$t('simulator.save')}</button>
+          previewItem.id
+        : ''}
+      onclose={() => (previewItem = null)}
+    >
+      {#if previewItem}
+        {@const card = previewItem.cardNo ? cards[previewItem.cardNo] : null}
+        {@const best = card ? getBestPrint(card) : null}
+        <div class="preview-body">
+          {#if best?.url}
+            <CardSimpleImage url={best.url} name={printCacheName(best)} className="preview-img" />
+          {/if}
+          <p class="preview-name">
+            {previewItem.customName ||
+              card?.card_name_cn ||
+              card?.card_name_en ||
+              previewItem.cardNo ||
+              previewItem.id}
+          </p>
+          {#if previewItem.subtitle}
+            <p class="preview-subtitle">{previewItem.subtitle}</p>
+          {/if}
+          {#if previewItem.customNote}
+            <p class="preview-note">{previewItem.customNote}</p>
+          {/if}
         </div>
-      </div>
-    {/if}
-  </CommonModal>
-</div>
+      {/if}
+    </CommonModal>
+
+    <CommonModal
+      open={!!editContext}
+      title={$t('simulator.editCardInfo')}
+      onclose={() => (editContext = null)}
+    >
+      {#if editContext}
+        <div class="edit-form">
+          <label class="edit-field">
+            <span>{$t('simulator.editName')}</span>
+            <input type="text" bind:value={editName} placeholder="卡牌名称" />
+          </label>
+          <label class="edit-field">
+            <span>{$t('simulator.editSubtitle')}</span>
+            <input type="text" bind:value={editSubtitle} placeholder="副标题（可选）" />
+          </label>
+          <label class="edit-field">
+            <span>{$t('simulator.editNote')}</span>
+            <input type="text" bind:value={editNote} placeholder="备注（可选）" />
+          </label>
+          <label class="edit-field">
+            <span>{$t('simulator.editOwner')}</span>
+            <select bind:value={editOwner}>
+              {#each playerIndexes as p (p)}
+                <option value={p}>玩家 {p + 1}</option>
+              {/each}
+            </select>
+          </label>
+          <div class="edit-actions">
+            <button type="button" class="btn" onclick={() => (editContext = null)}
+              >{$t('simulator.cancel')}</button
+            >
+            <button type="button" class="btn primary" onclick={saveEdit}
+              >{$t('simulator.save')}</button
+            >
+          </div>
+        </div>
+      {/if}
+    </CommonModal>
+  </div>
 {/if}
 
 <style>
@@ -1315,7 +1326,7 @@
       grid-template-columns: 1fr;
     }
   }
-.keyboard-help {
+  .keyboard-help {
     position: fixed;
     left: 12px;
     bottom: calc(12px + env(safe-area-inset-bottom));
@@ -1337,4 +1348,5 @@
 
   .chain-body.demo-mode .chain-main {
     height: 100%;
-  }</style>
+  }
+</style>

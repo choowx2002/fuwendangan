@@ -143,7 +143,10 @@ export function parseWishlistCsv(content: string): WishlistCsvResult {
 
     rows.push({
       cardNoExtend: no,
-      languageCode: langIdx !== undefined ? cells[langIdx]?.trim() || get(defaultLanguage) : get(defaultLanguage),
+      languageCode:
+        langIdx !== undefined
+          ? cells[langIdx]?.trim() || get(defaultLanguage)
+          : get(defaultLanguage),
       finish: rawFinish as WishlistFinish,
       qtyWanted: qty,
       priority,

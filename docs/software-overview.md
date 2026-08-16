@@ -52,19 +52,19 @@
 
 ## 主要模块划分
 
-| 模块 | 路由 | 状态 |
-| --- | --- | --- |
-| 卡牌库（搜索/筛选/排序/卡图） | `/cards` | 已实现 |
-| 收藏（统计/系列/缺卡/历史/自定义打印） | `/collection`、`/[seriesCode]`、`/missing`、`/history` | 已实现 |
-| 心愿单 | `/collection/wishlist` | 已实现（较新） |
-| 借出/借入 + 联系人 | `/collection/loans` | 已实现（较新） |
-| 购买清单 | `/collection/purchase-lists`、`/[listId]`、`/new`、`/edit` | 已实现（较新） |
-| 卡组 + 构建器 + 持有检查 | `/decks`、`/decks/builder`、`/decks/[deckid]` | 已实现 |
-| 对局记录 | `/decks/[deckid]/records`、`.../records/[matchid]/logs` | 已实现 |
-| 卡柜（Locker） | `/locker` 及子路由 | 已实现 |
-| 规则书 | `/rules`、`/rules/[slug]` | 已实现 |
-| 对战工具（骰子 / 计分器） | `/tools/dice`、`/tools/gameCounter` | 已实现 |
-| 扫码导入 | `/scanner`（移动端） | 已实现 |
-| 开包模拟器 | `/simulator`（+404 彩蛋） | 已实现 |
-| 设置 / 备份 / 数据管理 / 日志 / 反馈 | `/settings` | 已实现 |
-| TTS 联动 | 侧栏入口（默认隐藏，`showTTSFeatures`） | 已实现（可选） |
+| 模块                                   | 路由                                                       | 状态           |
+| -------------------------------------- | ---------------------------------------------------------- | -------------- |
+| 卡牌库（搜索/筛选/排序/卡图）          | `/cards`                                                   | 已实现         |
+| 收藏（统计/系列/缺卡/历史/自定义打印） | `/collection`、`/[seriesCode]`、`/missing`、`/history`     | 已实现         |
+| 心愿单                                 | `/collection/wishlist`                                     | 已实现（较新） |
+| 借出/借入 + 联系人                     | `/collection/loans`                                        | 已实现（较新） |
+| 购买清单                               | `/collection/purchase-lists`、`/[listId]`、`/new`、`/edit` | 已实现（较新） |
+| 卡组 + 构建器 + 持有检查               | `/decks`、`/decks/builder`、`/decks/[deckid]`              | 已实现         |
+| 对局记录                               | `/decks/[deckid]/records`、`.../records/[matchid]/logs`    | 已实现         |
+| 卡柜（Locker）                         | `/locker` 及子路由                                         | 已实现         |
+| 规则书                                 | `/rules`、`/rules/[slug]`                                  | 已实现         |
+| 对战工具（骰子 / 计分器）              | `/tools/dice`、`/tools/gameCounter`                        | 已实现         |
+| 扫码导入                               | `/scanner`（移动端）                                       | 已实现         |
+| 开包模拟器                             | `/simulator`（+404 彩蛋）                                  | 已实现         |
+| 设置 / 备份 / 数据管理 / 日志 / 反馈   | `/settings`                                                | 已实现         |
+| TTS 联动                               | 侧栏入口（默认隐藏，`showTTSFeatures`）                    | 已实现（可选） |

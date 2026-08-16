@@ -67,10 +67,7 @@
     restoreScrollAnchor(captured)
   }
 
-  function captureScrollAnchor():
-    | { el: HTMLElement; offset: number }
-    | { toBottom: true }
-    | null {
+  function captureScrollAnchor(): { el: HTMLElement; offset: number } | { toBottom: true } | null {
     const el = mainEl
     if (!el) return null
     const viewTop = el.getBoundingClientRect().top
@@ -221,20 +218,32 @@
 <div class="page" data-theme={$rulesTheme}>
   <!-- 顶部阅读工具栏 -->
   <header class="toolbar">
-    <button class="tb-btn" onclick={goBack} aria-label={$t('common.back')} title={$t('common.back')}>
+    <button
+      class="tb-btn"
+      onclick={goBack}
+      aria-label={$t('common.back')}
+      title={$t('common.back')}
+    >
       <ChevronLeft size={18} />
     </button>
     <span class="tb-title">{page.params.slug}</span>
     <span class="tb-spacer"></span>
 
-    <button class="tb-btn" onclick={openSearch} aria-label={$t('common.search')} title={$t('common.search')}>
+    <button
+      class="tb-btn"
+      onclick={openSearch}
+      aria-label={$t('common.search')}
+      title={$t('common.search')}
+    >
       <Search size={18} />
     </button>
 
     <div class="lang-seg" role="group" aria-label={$t('rules.language')}>
       <button class:active={$lang === 'zh'} onclick={() => setLang('zh')}>中</button>
       <button class:active={$lang === 'en'} onclick={() => setLang('en')}>EN</button>
-      <button class:active={$lang === 'both'} onclick={() => setLang('both')}>{$t('rules.bothLang')}</button>
+      <button class:active={$lang === 'both'} onclick={() => setLang('both')}
+        >{$t('rules.bothLang')}</button
+      >
     </div>
 
     <button
@@ -269,7 +278,9 @@
             class:active={$rulesTheme === theme.id}
             onclick={() => applyTheme(theme.id)}
           >
-            <span class="theme-swatch" style="background: {theme.color}; color: {theme.text}">Aa</span>
+            <span class="theme-swatch" style="background: {theme.color}; color: {theme.text}"
+              >Aa</span
+            >
             <span class="theme-name">{$t(theme.labelKey)}</span>
           </button>
         {/each}
@@ -299,7 +310,9 @@
                   id="r-{rule.rule_number}"
                   data-rn={rule.rule_number}
                 >
-                  <div class="chapter-num">{$t('rules.chapterLabel', { values: { number: rule.rule_number } })}</div>
+                  <div class="chapter-num">
+                    {$t('rules.chapterLabel', { values: { number: rule.rule_number } })}
+                  </div>
                   <h2 class="chapter-title">{getDisplayText(rule, $lang)}</h2>
                   {#if $lang === 'both'}
                     <div class="chapter-title-en">{rule.text_en}</div>
@@ -358,9 +371,12 @@
   <!-- 多选复制浮动条 -->
   {#if copyMode && selectedCount > 0}
     <div class="multi-bar">
-      <span class="multi-count">{$t('rules.selectedCount', { values: { count: selectedCount } })}</span>
+      <span class="multi-count"
+        >{$t('rules.selectedCount', { values: { count: selectedCount } })}</span
+      >
       <button class="multi-copy" onclick={copySelected}>
-        <Copy size={14} /> {$t('rules.copyAll')}
+        <Copy size={14} />
+        {$t('rules.copyAll')}
       </button>
       <button class="multi-cancel" onclick={toggleCopyMode}>{$t('common.cancel')}</button>
     </div>
@@ -379,7 +395,11 @@
           class="search-bar-input"
         />
         {#if searchQuery}
-          <button class="search-modal-clear" onclick={clearSearch} aria-label={$t('rules.clearSearch')}>
+          <button
+            class="search-modal-clear"
+            onclick={clearSearch}
+            aria-label={$t('rules.clearSearch')}
+          >
             <X size={14} />
           </button>
         {/if}

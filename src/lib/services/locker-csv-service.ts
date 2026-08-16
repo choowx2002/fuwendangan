@@ -29,7 +29,9 @@ export interface LockerExportResult {
 }
 
 /** 导出储物柜清单 */
-export async function exportLockerCsv(opts?: { onlyUnplaced?: boolean }): Promise<LockerExportResult> {
+export async function exportLockerCsv(opts?: {
+  onlyUnplaced?: boolean
+}): Promise<LockerExportResult> {
   const variants = await getLockerExportVariants(opts)
   const content = buildLockerCsv(
     variants.map((v) => ({

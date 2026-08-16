@@ -28,21 +28,21 @@
 
 ### 2.1 共享区域（全局唯一）
 
-| 区域              | 语义                  | 展示           |
-| --------------- | ------------------- | ------------ |
-| 结算链 `chain`     | 已上链项（LIFO 栈，后放先结）   | 栈顶大卡 + 折叠栈列表 |
-| 结算中 `resolving` | 正在结算的单项             | 单格 + 归属玩家标记  |
-| 待处理效果 `pending` | 打出但未完成上链的项（FIFO 队列） | 队首 + 展开列表    |
+| 区域                 | 语义                              | 展示                  |
+| -------------------- | --------------------------------- | --------------------- |
+| 结算链 `chain`       | 已上链项（LIFO 栈，后放先结）     | 栈顶大卡 + 折叠栈列表 |
+| 结算中 `resolving`   | 正在结算的单项                    | 单格 + 归属玩家标记   |
+| 待处理效果 `pending` | 打出但未完成上链的项（FIFO 队列） | 队首 + 展开列表       |
 
 ### 2.2 每玩家区域（× 玩家数，2-4）
 
-| 区域            | 说明                            |
-| ------------- | ----------------------------- |
-| 手牌 `hand`     | 每人一组                          |
-| 基地 `base`     | 每人一组（4 人对局 → 基地最多 4 个）        |
-| 弃牌堆 `discard` | 每人一组（即"废牌"）                   |
-| 放逐 `banish`    | 每人一组                          |
-| 牌库 `deck`     | **可选区域，默认关闭**，设置里可开启（演示抽牌流程用） |
+| 区域             | 说明                                                   |
+| ---------------- | ------------------------------------------------------ |
+| 手牌 `hand`      | 每人一组                                               |
+| 基地 `base`      | 每人一组（4 人对局 → 基地最多 4 个）                   |
+| 弃牌堆 `discard` | 每人一组（即"废牌"）                                   |
+| 放逐 `banish`    | 每人一组                                               |
+| 牌库 `deck`      | **可选区域，默认关闭**，设置里可开启（演示抽牌流程用） |
 
 ### 2.3 战场与自定义
 
@@ -55,11 +55,11 @@
 
 ```ts
 interface ChainItem {
-  id: string                 // 雪花ID
-  cardNo?: string            // 引用本地卡牌（cards_base.card_no），空则纯自定义条目
-  customName?: string        // 自定义条目名称（效果/技能条目，如"光明未来"的多步效果）
-  owner?: 0 | 1 | 2 | 3      // 玩家归属（可空 = 未标记）
-  targetZone?: string        // 自定义条目「结算后去向」区域 key
+  id: string // 雪花ID
+  cardNo?: string // 引用本地卡牌（cards_base.card_no），空则纯自定义条目
+  customName?: string // 自定义条目名称（效果/技能条目，如"光明未来"的多步效果）
+  owner?: 0 | 1 | 2 | 3 // 玩家归属（可空 = 未标记）
+  targetZone?: string // 自定义条目「结算后去向」区域 key
 }
 
 interface SimState {
@@ -75,17 +75,17 @@ interface SimState {
     base: ChainItem[]
     discard: ChainItem[]
     banish: ChainItem[]
-  }[]                       // 按玩家下标 0..playerCount-1
-  battlefields: ChainItem[][]   // 下标 0..battlefieldCount-1
+  }[] // 按玩家下标 0..playerCount-1
+  battlefields: ChainItem[][] // 下标 0..battlefieldCount-1
   customZones: {
     id: string
     name: string
-    perPlayer: boolean      // true = 每玩家一组，false = 共享
+    perPlayer: boolean // true = 每玩家一组，false = 共享
     items: ChainItem[]
   }[]
-  customPool: ChainItem[]             // 侧栏自定义条目池（纯文本效果条目）
-  extra: { deck: ChainItem[] } | null   // 可选牌库，默认 null
-  displayMode: 'auto' | 'text' | 'image' | 'both'  // 全局显示偏好，默认 'auto'
+  customPool: ChainItem[] // 侧栏自定义条目池（纯文本效果条目）
+  extra: { deck: ChainItem[] } | null // 可选牌库，默认 null
+  displayMode: 'auto' | 'text' | 'image' | 'both' // 全局显示偏好，默认 'auto'
 }
 ```
 
@@ -181,14 +181,14 @@ interface SimState {
 
 ### 10.1 复用（不新增）
 
-| 能力        | 来源                                                                      |
-| --------- | ----------------------------------------------------------------------- |
-| 卡牌搜索 / 卡图 | `searchCards` / `getBestPrint` / 图片缓存（`$lib/db` 统一导出）                   |
-| 拖拽        | `@thisux/sveltednd`（`SortModal.svelte` 已有先例）                           |
-| 弹窗        | `CommonModal`                                                           |
-| 持久化       | `stores/tools.ts` 的 `persistentWritable`                                |
-| 剪贴板 / 文件  | `plugin-clipboard-manager` / `write_text_file`、`read_text_file` command |
-| 全屏工具页模式   | `gameCounter` / `dice` 页先例                                              |
+| 能力            | 来源                                                                     |
+| --------------- | ------------------------------------------------------------------------ |
+| 卡牌搜索 / 卡图 | `searchCards` / `getBestPrint` / 图片缓存（`$lib/db` 统一导出）          |
+| 拖拽            | `@thisux/sveltednd`（`SortModal.svelte` 已有先例）                       |
+| 弹窗            | `CommonModal`                                                            |
+| 持久化          | `stores/tools.ts` 的 `persistentWritable`                                |
+| 剪贴板 / 文件   | `plugin-clipboard-manager` / `write_text_file`、`read_text_file` command |
+| 全屏工具页模式  | `gameCounter` / `dice` 页先例                                            |
 
 ### 10.2 改动清单
 

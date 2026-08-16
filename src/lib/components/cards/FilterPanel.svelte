@@ -237,8 +237,11 @@
         <!-- 底部操作栏 (移动端极其友好) -->
         <footer class="modal-footer">
           <div>
-            <span class="count">{$t('cards.activeCount', { values: { count: activeFilters.length } })}</span>
-            <button class="button button-text" onclick={handleClearAll}>{$t('common.reset')}</button>
+            <span class="count"
+              >{$t('cards.activeCount', { values: { count: activeFilters.length } })}</span
+            >
+            <button class="button button-text" onclick={handleClearAll}>{$t('common.reset')}</button
+            >
           </div>
 
           <button class="button button-primary" onclick={onClose}>{$t('cards.done')}</button>

@@ -14,20 +14,20 @@
 
 ## 技术栈
 
-| 层 | 技术 | 版本 / 说明 |
-| --- | --- | --- |
-| 前端框架 | Svelte 5 | ^5.0.0，runes 语法（`$state` / `$props` / `$derived`） |
-| 元框架 | SvelteKit | ^2.9.0，SPA 模式（adapter-static fallback index.html，`ssr=false`） |
-| 构建 | Vite | ^6.0.3，端口 1420 `strictPort: true`（`vite.config.js`） |
-| 语言 | TypeScript | ~5.6.2，`strict: true`，`allowJs/checkJs` |
-| 桌面框架 | Tauri | v2（schema `/config/2`，`tauri = "2"`，CLI `@tauri-apps/cli@^2.11.4`），Rust edition 2021 |
-| 包管理 | pnpm | 锁文件 `pnpm-lock.yaml`（lockfileVersion 9 → **需 pnpm ≥ 9**）；`pnpm-workspace.yaml` 仅含 allowBuilds（core-js / es5-ext / esbuild），非 monorepo；**版本未锁定**（package.json 无 `packageManager` 字段） |
-| 远程数据 | Supabase | `@supabase/supabase-js ^2.108.2`，凭证在本地 `.env.local`（gitignored） |
-| 本地数据库 | SQLite | `tauri-plugin-sql ~2.4.0`（sqlx 连接池），库名 `sqlite:tcg_cards.db`（`src/lib/db/config/constants.ts`），落盘于 **`$APPCONFIG`**（见「如何运行」） |
-| 语言 | svelte-i18n | ^4.0.1，`src/locales/zh-CN.json` + `en.json`（各 1654 行）；`systemLocale()` 现恒返回 zh-CN（navigator 探测被注释，`src/lib/i18n.ts`） |
-| 其他关键依赖 | `@lucide/svelte`（图标）、`@theinternetfolks/snowflake`（ID）、`@thisux/sveltednd`（拖拽）、`@piltoverarchive/riftbound-deck-codes`（Deck Code）、`jspdf` / `qrcode` / `jsqr`（PDF / QR）、`@choochmeque/tauri-plugin-sharekit-api 0.4.0-rc.5`（分享文件）、`@tauri-apps/plugin-barcode-scanner`（仅移动端） | |
-| Rust 依赖（额外） | `tauri-plugin-prevent-default 5.0.2`（特例版本号）、`tauri-plugin-sharekit 0.4.0-rc.5`、`tauri-plugin-deep-link 2`、`rusqlite 0.32`（bundled，备份校验用）、`zip 2`、`base64 0.22` | `src-tauri/Cargo.toml` |
-| CI | GitHub Actions | 仅 `.github/workflows/release.yml`：tag `v*` 或手动触发；Windows NSIS / Linux all / Android（APK+AAB）；Node 20、Rust stable、Java 17、NDK 26.1.10909125。**只做发布构建，不跑任何静态检查** |
+| 层                | 技术                                                                                                                                                                                                                                                                                                         | 版本 / 说明                                                                                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 前端框架          | Svelte 5                                                                                                                                                                                                                                                                                                     | ^5.0.0，runes 语法（`$state` / `$props` / `$derived`）                                                                                                                                                      |
+| 元框架            | SvelteKit                                                                                                                                                                                                                                                                                                    | ^2.9.0，SPA 模式（adapter-static fallback index.html，`ssr=false`）                                                                                                                                         |
+| 构建              | Vite                                                                                                                                                                                                                                                                                                         | ^6.0.3，端口 1420 `strictPort: true`（`vite.config.js`）                                                                                                                                                    |
+| 语言              | TypeScript                                                                                                                                                                                                                                                                                                   | ~5.6.2，`strict: true`，`allowJs/checkJs`                                                                                                                                                                   |
+| 桌面框架          | Tauri                                                                                                                                                                                                                                                                                                        | v2（schema `/config/2`，`tauri = "2"`，CLI `@tauri-apps/cli@^2.11.4`），Rust edition 2021                                                                                                                   |
+| 包管理            | pnpm                                                                                                                                                                                                                                                                                                         | 锁文件 `pnpm-lock.yaml`（lockfileVersion 9 → **需 pnpm ≥ 9**）；`pnpm-workspace.yaml` 仅含 allowBuilds（core-js / es5-ext / esbuild），非 monorepo；**版本未锁定**（package.json 无 `packageManager` 字段） |
+| 远程数据          | Supabase                                                                                                                                                                                                                                                                                                     | `@supabase/supabase-js ^2.108.2`，凭证在本地 `.env.local`（gitignored）                                                                                                                                     |
+| 本地数据库        | SQLite                                                                                                                                                                                                                                                                                                       | `tauri-plugin-sql ~2.4.0`（sqlx 连接池），库名 `sqlite:tcg_cards.db`（`src/lib/db/config/constants.ts`），落盘于 **`$APPCONFIG`**（见「如何运行」）                                                         |
+| 语言              | svelte-i18n                                                                                                                                                                                                                                                                                                  | ^4.0.1，`src/locales/zh-CN.json` + `en.json`（各 1654 行）；`systemLocale()` 现恒返回 zh-CN（navigator 探测被注释，`src/lib/i18n.ts`）                                                                      |
+| 其他关键依赖      | `@lucide/svelte`（图标）、`@theinternetfolks/snowflake`（ID）、`@thisux/sveltednd`（拖拽）、`@piltoverarchive/riftbound-deck-codes`（Deck Code）、`jspdf` / `qrcode` / `jsqr`（PDF / QR）、`@choochmeque/tauri-plugin-sharekit-api 0.4.0-rc.5`（分享文件）、`@tauri-apps/plugin-barcode-scanner`（仅移动端） |                                                                                                                                                                                                             |
+| Rust 依赖（额外） | `tauri-plugin-prevent-default 5.0.2`（特例版本号）、`tauri-plugin-sharekit 0.4.0-rc.5`、`tauri-plugin-deep-link 2`、`rusqlite 0.32`（bundled，备份校验用）、`zip 2`、`base64 0.22`                                                                                                                           | `src-tauri/Cargo.toml`                                                                                                                                                                                      |
+| CI                | GitHub Actions                                                                                                                                                                                                                                                                                               | 仅 `.github/workflows/release.yml`：tag `v*` 或手动触发；Windows NSIS / Linux all / Android（APK+AAB）；Node 20、Rust stable、Java 17、NDK 26.1.10909125。**只做发布构建，不跑任何静态检查**                |
 
 ## 目录结构
 
@@ -226,16 +226,16 @@ cargo tauri android dev     # 推测：真机/模拟器开发模式（标准 tau
 
 ## 配置与环境变量
 
-| 配置 / 变量 | 位置 | 说明与缺失影响 |
-| --- | --- | --- |
+| 配置 / 变量                                           | 位置                                              | 说明与缺失影响                                                                                                                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | `.env.local`（gitignored；`.env.example` 为模板） | `remote-api.ts` 的 `import.meta.env` 读取；**构建期注入**（Vite 约定），值在 dev/build 时打入产物，发布包无运行时读取逻辑；缺失 → `createClient(undefined)` 报错，首次同步失败；`network.svelte.ts` 探测降级为 `navigator.onLine` |
-| `TAURI_DEV_HOST` | 环境变量（可选） | `vite.config.js`：远程真机/设备调试时设置 HMR host（端口 1421） |
-| 内容同步来源 | 云端 Supabase 项目 | 表：`version` / `cards_base` / `card_prints` / `card_icons` / `rules` / `series`；库内无建表/发布脚本（未确认发布方式） |
-| 玩家云同步 | 设置页填写 URL + anon key | 用户自建 Supabase 项目；建表 SQL 由 `buildSupabaseCreateTableSql()` 生成；会话存 `$APPDATA/session.json`（明文）；免费版闲置 7 天暂停后 URL 会变 |
-| Tauri 权限 | `src-tauri/capabilities/default.json` | 每个 API 调用都需权限；fs scope 仅 `$APPCACHE` / `$APPLOCALDATA` / `$RESOURCE/resources/external`；`http:allow-fetch` 含 `https://**`（过宽） |
-| 应用窗口 | `src-tauri/tauri.conf.json` | 单窗口 main，900×600，`csp: null`；Android 侧由 `gen/android` 维护 |
-| 运行时设置 | `$APPDATA/settings.json`（plugin-store） | 键见 `stores/settings.ts`；含备份提醒间隔、BYO URL/key、autoSync 开关等 |
-| TTS 端口 | 硬编码 `lib.rs` | 39999 发送 / 39998 接收，外部 Tabletop Simulator 约定，勿改 |
+| `TAURI_DEV_HOST`                                      | 环境变量（可选）                                  | `vite.config.js`：远程真机/设备调试时设置 HMR host（端口 1421）                                                                                                                                                                   |
+| 内容同步来源                                          | 云端 Supabase 项目                                | 表：`version` / `cards_base` / `card_prints` / `card_icons` / `rules` / `series`；库内无建表/发布脚本（未确认发布方式）                                                                                                           |
+| 玩家云同步                                            | 设置页填写 URL + anon key                         | 用户自建 Supabase 项目；建表 SQL 由 `buildSupabaseCreateTableSql()` 生成；会话存 `$APPDATA/session.json`（明文）；免费版闲置 7 天暂停后 URL 会变                                                                                  |
+| Tauri 权限                                            | `src-tauri/capabilities/default.json`             | 每个 API 调用都需权限；fs scope 仅 `$APPCACHE` / `$APPLOCALDATA` / `$RESOURCE/resources/external`；`http:allow-fetch` 含 `https://**`（过宽）                                                                                     |
+| 应用窗口                                              | `src-tauri/tauri.conf.json`                       | 单窗口 main，900×600，`csp: null`；Android 侧由 `gen/android` 维护                                                                                                                                                                |
+| 运行时设置                                            | `$APPDATA/settings.json`（plugin-store）          | 键见 `stores/settings.ts`；含备份提醒间隔、BYO URL/key、autoSync 开关等                                                                                                                                                           |
+| TTS 端口                                              | 硬编码 `lib.rs`                                   | 39999 发送 / 39998 接收，外部 Tabletop Simulator 约定，勿改                                                                                                                                                                       |
 
 ## 开发规范
 
@@ -264,19 +264,19 @@ cargo tauri android dev     # 推测：真机/模拟器开发模式（标准 tau
 
 ## 高风险区域
 
-| 区域 | 风险原因 |
-| --- | --- |
-| `src/lib/db/config/schema.ts` + `repository/database.ts` | 所有表结构与启动迁移。`CREATE TABLE IF NOT EXISTS` 不会为老库补列；误改迁移逻辑可能破坏存量用户数据（无测试兜底）。 |
-| `src/lib/db/service/sync-service.ts` | 内容同步按表全量替换；先清后插期间外键关闭；漏刷云端 version 行、打乱清理顺序会丢数据或损坏引用（`deck_cards` 引用、自定义打印保留逻辑）。 |
-| `src/lib/db/service/user-sync/engine.ts` 及 entities/ | LWW + 墓碑合并引擎；写回顺序有严格依赖（自定义打印 → 卡组 → 收藏 → 联系人 → 借还 → …），改错会外键失败或数据覆盖。 |
-| `src/lib/db/repository/deck-repository.ts` 的 `repointDeckCardReferences` | 内容同步后的卡组引用重链与删除，直接影响用户卡组完整性。 |
-| `src-tauri/capabilities/default.json` | 权限边界；`http:allow-fetch` 的 `https://**` 已过宽，新增域名注意收窄；fs scope 只覆盖 3 个目录。 |
-| `src-tauri/src/lib.rs` | 全部 command 与插件注册；TTS 端口 39998/39999 是外部约定勿改；Android SAF 分支（`content://`）改动需真机验证；`prevent-default` 5.x 版本特例。 |
-| `src-tauri/src/main.rs` | `windows_subsystem = "windows"` 行删除会导致 release 模式弹控制台窗口（文件注释明确 DON'T REMOVE）。 |
-| `src-tauri/gen/android/` | 生成目录但含**手写 Kotlin**（`MainActivity.kt`、`SAFPlugin.kt`，与 `lib.rs` 的 saf 插件配对）；`cargo tauri android init` 不会覆盖已存在目录，但整体重建有丢失风险；CI 依赖 keystore secrets（`ANDROID_KEYSTORE_BASE64` 等）。 |
-| `.env.local` / `$APPDATA/settings.json` / `$APPDATA/session.json` | 密钥与会话；`.env.local` 必须保持 gitignored；BYO 会话为明文存储（`vault.ts` 已注明因 Android 交叉编译放弃 Stronghold 加密）。 |
-| `.github/workflows/release.yml` | 发布通道。注意 android job 在仓库根目录跑 `npm ci`，但根目录**没有 package-lock.json**（只有 pnpm-lock.yaml）——该步骤可能实际失败（未确认，若 Android 发布异常先查这里）。 |
-| `src/routes/+layout.svelte` | 启动初始化错误会卡 LoadingModal；`uiState.status` 与同步状态的联动（loading → syncing → success/error）不要破坏。 |
+| 区域                                                                      | 风险原因                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/lib/db/config/schema.ts` + `repository/database.ts`                  | 所有表结构与启动迁移。`CREATE TABLE IF NOT EXISTS` 不会为老库补列；误改迁移逻辑可能破坏存量用户数据（无测试兜底）。                                                                                                            |
+| `src/lib/db/service/sync-service.ts`                                      | 内容同步按表全量替换；先清后插期间外键关闭；漏刷云端 version 行、打乱清理顺序会丢数据或损坏引用（`deck_cards` 引用、自定义打印保留逻辑）。                                                                                     |
+| `src/lib/db/service/user-sync/engine.ts` 及 entities/                     | LWW + 墓碑合并引擎；写回顺序有严格依赖（自定义打印 → 卡组 → 收藏 → 联系人 → 借还 → …），改错会外键失败或数据覆盖。                                                                                                             |
+| `src/lib/db/repository/deck-repository.ts` 的 `repointDeckCardReferences` | 内容同步后的卡组引用重链与删除，直接影响用户卡组完整性。                                                                                                                                                                       |
+| `src-tauri/capabilities/default.json`                                     | 权限边界；`http:allow-fetch` 的 `https://**` 已过宽，新增域名注意收窄；fs scope 只覆盖 3 个目录。                                                                                                                              |
+| `src-tauri/src/lib.rs`                                                    | 全部 command 与插件注册；TTS 端口 39998/39999 是外部约定勿改；Android SAF 分支（`content://`）改动需真机验证；`prevent-default` 5.x 版本特例。                                                                                 |
+| `src-tauri/src/main.rs`                                                   | `windows_subsystem = "windows"` 行删除会导致 release 模式弹控制台窗口（文件注释明确 DON'T REMOVE）。                                                                                                                           |
+| `src-tauri/gen/android/`                                                  | 生成目录但含**手写 Kotlin**（`MainActivity.kt`、`SAFPlugin.kt`，与 `lib.rs` 的 saf 插件配对）；`cargo tauri android init` 不会覆盖已存在目录，但整体重建有丢失风险；CI 依赖 keystore secrets（`ANDROID_KEYSTORE_BASE64` 等）。 |
+| `.env.local` / `$APPDATA/settings.json` / `$APPDATA/session.json`         | 密钥与会话；`.env.local` 必须保持 gitignored；BYO 会话为明文存储（`vault.ts` 已注明因 Android 交叉编译放弃 Stronghold 加密）。                                                                                                 |
+| `.github/workflows/release.yml`                                           | 发布通道。注意 android job 在仓库根目录跑 `npm ci`，但根目录**没有 package-lock.json**（只有 pnpm-lock.yaml）——该步骤可能实际失败（未确认，若 Android 发布异常先查这里）。                                                     |
+| `src/routes/+layout.svelte`                                               | 启动初始化错误会卡 LoadingModal；`uiState.status` 与同步状态的联动（loading → syncing → success/error）不要破坏。                                                                                                              |
 
 ## Agent 修改指南
 

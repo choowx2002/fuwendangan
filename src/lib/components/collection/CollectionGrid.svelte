@@ -131,7 +131,9 @@
             <span class="custom-chip">{$t('collection.customChip')}</span>
           {/if}
           {#if card.bucket !== 'base'}
-            <span class="bucket-chip">{$t('collection.bucket' + card.bucket[0].toUpperCase() + card.bucket.slice(1))}</span>
+            <span class="bucket-chip"
+              >{$t('collection.bucket' + card.bucket[0].toUpperCase() + card.bucket.slice(1))}</span
+            >
           {/if}
         </div>
         <!-- <div class="tile-owned" class:insufficient={card.ownedTotal === 0}>

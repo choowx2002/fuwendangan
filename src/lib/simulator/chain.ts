@@ -395,7 +395,8 @@ function isChainItem(v: unknown): v is ChainItem {
     (o.subtitle === undefined || o.subtitle === null || typeof o.subtitle === 'string') &&
     (o.owner === undefined || o.owner === null || typeof o.owner === 'number') &&
     (o.targetZone === undefined || o.targetZone === null || typeof o.targetZone === 'string') &&
-    (o.tags === undefined || (Array.isArray(o.tags) && o.tags.every((t) => typeof t === 'string'))) &&
+    (o.tags === undefined ||
+      (Array.isArray(o.tags) && o.tags.every((t) => typeof t === 'string'))) &&
     (o.rotated === undefined || typeof o.rotated === 'boolean') &&
     (o.faceDown === undefined || typeof o.faceDown === 'boolean')
   )
@@ -498,9 +499,9 @@ export function normalizeSimState(v: unknown): SimState | null {
     battlefieldCount,
     shared: sharedOk
       ? {
-          chain: dedupeItems((shared.chain as unknown[]) as ChainItem[]),
-          resolving: dedupeItems((shared.resolving as unknown[]) as ChainItem[]),
-          pending: dedupeItems((shared.pending as unknown[]) as ChainItem[]),
+          chain: dedupeItems(shared.chain as unknown[] as ChainItem[]),
+          resolving: dedupeItems(shared.resolving as unknown[] as ChainItem[]),
+          pending: dedupeItems(shared.pending as unknown[] as ChainItem[]),
         }
       : { chain: [], resolving: [], pending: [] },
     players,
@@ -578,7 +579,4 @@ export const chainSimulatorSettings = persistentWritable<SimulatorSettings>(
 )
 
 /** 链模拟器快照历史持久化（独立于 SimState 导入导出） */
-export const chainSimulatorSnapshots = persistentWritable<Snapshot[]>(
-  'chainSimulatorSnapshots',
-  []
-)
+export const chainSimulatorSnapshots = persistentWritable<Snapshot[]>('chainSimulatorSnapshots', [])

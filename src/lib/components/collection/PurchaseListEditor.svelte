@@ -61,7 +61,9 @@
   let showPicker = $state(false)
 
   const backUrl = $derived(
-    mode === 'edit' && listId ? `/collection/purchase-lists/${listId}` : '/collection/purchase-lists'
+    mode === 'edit' && listId
+      ? `/collection/purchase-lists/${listId}`
+      : '/collection/purchase-lists'
   )
 
   async function load() {
@@ -287,8 +289,7 @@
 
   $effect(() => {
     setTopbar({
-      title:
-        mode === 'edit' ? listName || $t('purchase.editList') : $t('purchase.editorNewTitle'),
+      title: mode === 'edit' ? listName || $t('purchase.editList') : $t('purchase.editorNewTitle'),
       onBack: () => void cancel(),
       actions: [
         {

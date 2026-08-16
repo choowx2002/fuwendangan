@@ -77,7 +77,10 @@ export function matchTokenMentions(
     const names = tokenCandidateNames(token)
     let count = 0
     for (const effect of effects) {
-      if (effectMentionsToken(effect.effect_cn, names) || effectMentionsToken(effect.effect_en, names)) {
+      if (
+        effectMentionsToken(effect.effect_cn, names) ||
+        effectMentionsToken(effect.effect_en, names)
+      ) {
         count++
       }
     }
@@ -96,7 +99,10 @@ export function tokenDisplayName(card: CardBase): string {
  * 同名指示物（可能多条 cards_base 记录）只保留第一条，避免重复展示。
  */
 export async function getDeckTokenSuggestions(deckId: string): Promise<TokenSuggestion[]> {
-  const [effects, allTokens] = await Promise.all([getLatestDeckCardEffects(deckId), getTokenCards()])
+  const [effects, allTokens] = await Promise.all([
+    getLatestDeckCardEffects(deckId),
+    getTokenCards(),
+  ])
 
   const seen = new Set<string>()
   const tokens = allTokens.filter((token) => {

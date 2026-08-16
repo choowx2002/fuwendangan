@@ -3,7 +3,12 @@
   import AppShell from '../lib/components/layout/AppShell.svelte'
   import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
   import Toast from '../lib/components/ui/Toast.svelte'
-  import { getVersion, initializeDatabase, checkForContentUpdates, checkAutoSyncOnLaunch } from '../lib/db'
+  import {
+    getVersion,
+    initializeDatabase,
+    checkForContentUpdates,
+    checkAutoSyncOnLaunch,
+  } from '../lib/db'
   import { uiState, setLoadStatus } from '../lib/stores/ui-store.svelte'
   import { darkMode } from '../lib/stores/settings'
   import { initLogService } from '$lib/services/log-service'
@@ -52,7 +57,10 @@
     } catch (error) {
       // DEBUG: 启动初始化失败的真实错误（plugin-sql reject 为普通字符串）
       console.error('[Layout] 初始化失败:', error)
-      console.error('[Layout] 初始化失败 string:', error instanceof Error ? error.message : String(error))
+      console.error(
+        '[Layout] 初始化失败 string:',
+        error instanceof Error ? error.message : String(error)
+      )
       setLoadStatus(
         'error',
         get(t)('loading.error'),
@@ -76,7 +84,10 @@
       await initializeDatabase({ skipMetered: false, confirm: false })
     } catch (error) {
       console.error('[Layout] 检查卡牌数据更新失败:', error)
-      console.error('[Layout] 检查卡牌数据更新失败 string:', error instanceof Error ? error.message : String(error))
+      console.error(
+        '[Layout] 检查卡牌数据更新失败 string:',
+        error instanceof Error ? error.message : String(error)
+      )
     }
   }
 

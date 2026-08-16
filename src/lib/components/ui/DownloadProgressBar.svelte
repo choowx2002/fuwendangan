@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { downloadState, dismissDownload, toggleDownloadExpanded } from '$lib/stores/ui-store.svelte'
+  import {
+    downloadState,
+    dismissDownload,
+    toggleDownloadExpanded,
+  } from '$lib/stores/ui-store.svelte'
   import { cancelCardImageDownload } from '$lib/services/card-image-download-service'
   import { t } from 'svelte-i18n'
   import { Download, Minus, X, CircleCheck, CircleAlert, Ban } from '@lucide/svelte'

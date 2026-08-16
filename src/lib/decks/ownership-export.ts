@@ -106,9 +106,7 @@ export async function saveOwnershipExport(
         defaultPath: defaultName,
         filters: [
           {
-            name: isCsv
-              ? get(t)('deckDetail.csvFileFilter')
-              : get(t)('deckDetail.textFileFilter'),
+            name: isCsv ? get(t)('deckDetail.csvFileFilter') : get(t)('deckDetail.textFileFilter'),
             extensions: isCsv ? ['csv'] : ['txt'],
           },
         ],

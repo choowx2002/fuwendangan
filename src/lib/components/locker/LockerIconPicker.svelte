@@ -7,8 +7,10 @@
   } from './locker-icons'
   import { t } from '$lib/i18n'
 
-  let { value = null as string | null, onChange = undefined as ((icon: string | null) => void) | undefined } =
-    $props()
+  let {
+    value = null as string | null,
+    onChange = undefined as ((icon: string | null) => void) | undefined,
+  } = $props()
 
   const categoryLabel = $derived<Record<string, string>>({
     rarities: $t('locker.iconRarities'),

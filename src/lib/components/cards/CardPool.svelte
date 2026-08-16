@@ -415,7 +415,9 @@
     </div>
     {#if expandedFilter || !isMobileSmall}
       {#if !showDeckCount}
-        <h2 style="font-size: var(--text-base);color: var(--text-secondary)">{$t('cards.countLabel')}：{totalCards}</h2>
+        <h2 style="font-size: var(--text-base);color: var(--text-secondary)">
+          {$t('cards.countLabel')}：{totalCards}
+        </h2>
       {/if}
       <SortModal bind:sortByList={sortList} onChangeSubmit={onChangeSort}></SortModal>
 

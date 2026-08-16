@@ -88,7 +88,12 @@
 </script>
 
 <div class="scanner-page">
-  <button class="exit-btn" onclick={exitScanner} aria-label={$t('scanner.exit')} title={$t('scanner.exit')}>
+  <button
+    class="exit-btn"
+    onclick={exitScanner}
+    aria-label={$t('scanner.exit')}
+    title={$t('scanner.exit')}
+  >
     <X size={22} />
   </button>
 
@@ -115,7 +120,9 @@
         </div>
       </div>
     {:else if nativeActive}
-      <span class="status-text"><span class="spin"><LoaderCircle size={16} /></span>{$t('scanner.recognizing')}</span>
+      <span class="status-text"
+        ><span class="spin"><LoaderCircle size={16} /></span>{$t('scanner.recognizing')}</span
+      >
     {:else}
       <div class="status-actions">
         <button class="button button-primary" onclick={startNative}>

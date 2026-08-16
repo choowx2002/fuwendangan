@@ -117,7 +117,10 @@ export async function extractSyncBody(): Promise<SyncBundleBody> {
       return await fn()
     } catch (e) {
       console.error(`[SYNC] extract ${label} 失败:`, e)
-      console.error(`[SYNC] extract ${label} 失败 string:`, e instanceof Error ? e.message : String(e))
+      console.error(
+        `[SYNC] extract ${label} 失败 string:`,
+        e instanceof Error ? e.message : String(e)
+      )
       throw e
     }
   }

@@ -68,13 +68,7 @@
   }
 </script>
 
-<CommonModal
-  {open}
-  {title}
-  {subtitle}
-  closeOnOverlay={false}
-  onclose={() => onClose?.()}
->
+<CommonModal {open} {title} {subtitle} closeOnOverlay={false} onclose={() => onClose?.()}>
   <div class="wb-card">
     <div class="wb-name">{cardName || cardNo}</div>
     <div class="wb-owned">

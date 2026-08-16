@@ -97,9 +97,7 @@
     applyLayout(
       regular,
       priority,
-      actions
-        .slice(regVisible, regCount)
-        .concat(actions.slice(regCount, actions.length - prioKept))
+      actions.slice(regVisible, regCount).concat(actions.slice(regCount, actions.length - prioKept))
     )
   }
 
@@ -129,7 +127,11 @@
       <Menu size={20} />
     </button>
     {#if topbarState.onBack}
-      <button class="icon-btn" onclick={() => topbarState.onBack?.()} aria-label={$t('common.back')}>
+      <button
+        class="icon-btn"
+        onclick={() => topbarState.onBack?.()}
+        aria-label={$t('common.back')}
+      >
         <ChevronLeft size={20} />
       </button>
     {/if}

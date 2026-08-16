@@ -13,19 +13,25 @@
 </script>
 
 <div class="batch-toolbar">
-  <span class="batch-info">{$t('collection.batchSelected', { values: { count: selectedCount } })}</span>
+  <span class="batch-info"
+    >{$t('collection.batchSelected', { values: { count: selectedCount } })}</span
+  >
   <div class="batch-actions">
     <button class="batch-btn" onclick={onMark} disabled={busy || selectedCount === 0}>
-      <Check size={14} /> {$t('collection.batchMark')}
+      <Check size={14} />
+      {$t('collection.batchMark')}
     </button>
     <button class="batch-btn" onclick={onIncrement} disabled={busy || selectedCount === 0}>
-      <Plus size={14} /> {$t('collection.batchNormalInc')}
+      <Plus size={14} />
+      {$t('collection.batchNormalInc')}
     </button>
     <button class="batch-btn danger" onclick={onDelete} disabled={busy || selectedCount === 0}>
-      <Trash2 size={14} /> {$t('collection.batchDelete')}
+      <Trash2 size={14} />
+      {$t('collection.batchDelete')}
     </button>
     <button class="batch-btn" onclick={onCancel} disabled={busy}>
-      <X size={14} /> {$t('common.cancel')}
+      <X size={14} />
+      {$t('common.cancel')}
     </button>
   </div>
 </div>

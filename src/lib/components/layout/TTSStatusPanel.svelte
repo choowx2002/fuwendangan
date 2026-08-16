@@ -22,7 +22,11 @@
   })
 
   const statusText = $derived(
-    $ttsState.checking ? $t('tts.checking') : $ttsState.sendPort ? $t('tts.connected') : $t('tts.disconnected')
+    $ttsState.checking
+      ? $t('tts.checking')
+      : $ttsState.sendPort
+        ? $t('tts.connected')
+        : $t('tts.disconnected')
   )
 
   const errorText = $derived(

@@ -25,9 +25,7 @@
   let isMobileOs = $state(false)
 
   const availableCards = $derived(
-    simulatorCards.filter(
-      (card) => card.href !== '/simulator/chainSimulator' || (!isMobileOs)
-    )
+    simulatorCards.filter((card) => card.href !== '/simulator/chainSimulator' || !isMobileOs)
   )
 
   $effect(() => {
@@ -53,10 +51,7 @@
   <div class="simulator-grid">
     {#each availableCards as tool}
       <button class="simulator-card" onclick={() => goto(tool.href)}>
-        <div
-          class="simulator-icon"
-          style="background: {tool.color}15; color: {tool.color}"
-        >
+        <div class="simulator-icon" style="background: {tool.color}15; color: {tool.color}">
           <tool.icon size={28} />
         </div>
         <div class="simulator-info">

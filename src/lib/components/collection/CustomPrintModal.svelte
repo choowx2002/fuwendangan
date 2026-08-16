@@ -179,7 +179,11 @@
     variantConflict =
       existing.length > 0
         ? get(t)('collection.variantConflict', {
-            values: { langs: [...new Set(existing.map((p) => p.language ?? get(t)('common.unknown')))].join('、') },
+            values: {
+              langs: [...new Set(existing.map((p) => p.language ?? get(t)('common.unknown')))].join(
+                '、'
+              ),
+            },
           })
         : ''
   }
@@ -202,7 +206,12 @@
   async function pickImage() {
     const selected = await open({
       multiple: false,
-      filters: [{ name: get(t)('collection.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+      filters: [
+        {
+          name: get(t)('collection.imageFilter'),
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+        },
+      ],
     })
     if (typeof selected !== 'string' || !selected) return
     const token = `custom-${Date.now()}`
@@ -294,7 +303,12 @@
       if (editPrint && originalImgToken && originalImgToken !== imgToken) {
         void deleteCachedImage(originalImgToken)
       }
-      showToast(editPrint ? get(t)('collection.customPrintUpdated') : get(t)('collection.customPrintCreated'), 'success')
+      showToast(
+        editPrint
+          ? get(t)('collection.customPrintUpdated')
+          : get(t)('collection.customPrintCreated'),
+        'success'
+      )
       onSaved(printId)
       onClose()
     } catch (err) {
@@ -366,7 +380,11 @@
               type="button"
               onclick={() => (showCardSearch = !showCardSearch)}
             >
-              {showCardSearch ? $t('collection.collapse') : baseCard ? $t('collection.changeBase') : $t('collection.selectBase')}
+              {showCardSearch
+                ? $t('collection.collapse')
+                : baseCard
+                  ? $t('collection.changeBase')
+                  : $t('collection.selectBase')}
             </button>
           </div>
           {#if showCardSearch}
@@ -383,7 +401,8 @@
                   />
                 </div>
                 <button class="btn-ghost" type="button" onclick={() => void searchBaseCards()}>
-                  <Search size={14} /> {$t('common.search')}
+                  <Search size={14} />
+                  {$t('common.search')}
                 </button>
               </div>
               <div class="card-search-results">
@@ -411,7 +430,9 @@
         <input
           id="cp-extend"
           bind:value={cardNoExtend}
-          placeholder={baseCard?.cardNo ? $t('collection.exampleNo', { values: { cardNo: baseCard.cardNo } }) : $t('collection.exampleNoShort')}
+          placeholder={baseCard?.cardNo
+            ? $t('collection.exampleNo', { values: { cardNo: baseCard.cardNo } })
+            : $t('collection.exampleNoShort')}
         />
         {#if variantConflict}
           <small class="conflict-msg">{variantConflict}</small>
@@ -440,7 +461,11 @@
 
       <div class="field">
         <label for="cp-artist">{$t('collection.artistOptional')}</label>
-        <input id="cp-artist" bind:value={artist} placeholder={$t('collection.artistPlaceholder')} />
+        <input
+          id="cp-artist"
+          bind:value={artist}
+          placeholder={$t('collection.artistPlaceholder')}
+        />
       </div>
 
       <div class="field">
@@ -455,11 +480,15 @@
                 ;(e.currentTarget as HTMLImageElement).style.display = 'none'
               }}
             />
-            <button class="btn-ghost" onclick={removeImage} type="button">{$t('collection.remove')}</button>
+            <button class="btn-ghost" onclick={removeImage} type="button"
+              >{$t('collection.remove')}</button
+            >
           </div>
         {:else}
           <div class="img-source">
-            <button class="btn-ghost" onclick={pickImage} type="button">{$t('collection.pickLocalImage')}</button>
+            <button class="btn-ghost" onclick={pickImage} type="button"
+              >{$t('collection.pickLocalImage')}</button
+            >
             <span class="img-or">{$t('collection.or')}</span>
             <div class="img-url-row">
               <input

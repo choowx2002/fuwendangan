@@ -206,7 +206,9 @@
               </span>
             </div>
             {#if card.ownedTotal > 0}
-              <span class="t-owned">{$t('locker.ownedBadge', { values: { count: card.ownedTotal } })}</span>
+              <span class="t-owned"
+                >{$t('locker.ownedBadge', { values: { count: card.ownedTotal } })}</span
+              >
             {/if}
             <span class="t-qty">×{card.quantity}</span>
           </div>

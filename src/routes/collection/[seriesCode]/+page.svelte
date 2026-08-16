@@ -235,15 +235,12 @@
     const confirmed = isTauri
       ? await (
           await import('@tauri-apps/plugin-dialog')
-        ).ask(
-          get(t)('collection.deleteConfirm', { values: { count: items.length } }),
-          {
-            title: get(t)('collection.deleteTitle'),
-            kind: 'warning',
-            okLabel: get(t)('common.delete'),
-            cancelLabel: get(t)('common.cancel'),
-          }
-        )
+        ).ask(get(t)('collection.deleteConfirm', { values: { count: items.length } }), {
+          title: get(t)('collection.deleteTitle'),
+          kind: 'warning',
+          okLabel: get(t)('common.delete'),
+          cancelLabel: get(t)('common.cancel'),
+        })
       : window.confirm(get(t)('collection.deleteConfirm', { values: { count: items.length } }))
     if (!confirmed) return
     batchBusy = true

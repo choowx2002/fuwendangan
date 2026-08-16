@@ -62,8 +62,7 @@
         console.error('[开包模拟] 加载系列失败:', error)
         packError = get(t)('simulator.loadSeriesFailed', {
           values: {
-            message:
-              error instanceof Error ? error.message : get(t)('common.unknownError'),
+            message: error instanceof Error ? error.message : get(t)('common.unknownError'),
           },
         })
       })
@@ -171,11 +170,7 @@
               <option value={s.code}>{s.nameCn ?? s.code}</option>
             {/each}
           </select>
-          <button
-            class="button button-primary"
-            onclick={handleOpenPack}
-            disabled={seriesLoading}
-          >
+          <button class="button button-primary" onclick={handleOpenPack} disabled={seriesLoading}>
             <Package size={16} />
             <span>{$t('simulator.openPack')}</span>
           </button>

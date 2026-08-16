@@ -218,7 +218,9 @@
             </div>
             <div class="meta-tags">
               {#if card.card_no}
-                <span class="chip">{$t('cards.cardNo')}: {selectedVersion[selectedIndex]?.card_no_extend}</span>
+                <span class="chip"
+                  >{$t('cards.cardNo')}: {selectedVersion[selectedIndex]?.card_no_extend}</span
+                >
               {/if}
               {#if card.rarity_name}
                 <span class="chip rarity"
@@ -313,7 +315,9 @@
 
             {#if card.advanced_tag && card.advanced_tag.length > 0}
               <div class="tags-row">
-                <span class="card-subtitle" style="padding: 4px 0px;">{$t('cards.advancedTags')}:</span>
+                <span class="card-subtitle" style="padding: 4px 0px;"
+                  >{$t('cards.advancedTags')}:</span
+                >
                 {#each card.advanced_tag as t (t)}
                   <span class="chip">{t}</span>
                 {/each}

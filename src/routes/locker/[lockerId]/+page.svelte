@@ -102,7 +102,8 @@
     <div class="empty-state">
       <span class="empty-title">{$t('locker.noSections')}</span>
       <button class="button button-primary" onclick={openSectionCreate}>
-        <Plus size={14} /> {$t('locker.newSection')}
+        <Plus size={14} />
+        {$t('locker.newSection')}
       </button>
     </div>
   {:else}
@@ -119,7 +120,11 @@
   <div class="form">
     <label class="field">
       <span class="field-label">{$t('locker.sectionName')}</span>
-      <input class="input" bind:value={sectionName} placeholder={$t('locker.sectionNamePlaceholder')} />
+      <input
+        class="input"
+        bind:value={sectionName}
+        placeholder={$t('locker.sectionNamePlaceholder')}
+      />
     </label>
     <label class="field">
       <span class="field-label">{$t('locker.sectionDesc')}</span>
@@ -153,7 +158,11 @@
     </div>
     <label class="field">
       <span class="field-label">{$t('locker.tags')}</span>
-      <TagInput value={sectionTags} placeholder={$t('locker.tagPlaceholder')} onChange={(v) => (sectionTags = v)} />
+      <TagInput
+        value={sectionTags}
+        placeholder={$t('locker.tagPlaceholder')}
+        onChange={(v) => (sectionTags = v)}
+      />
     </label>
   </div>
 

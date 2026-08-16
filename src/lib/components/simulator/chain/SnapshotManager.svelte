@@ -122,11 +122,7 @@
 </script>
 
 {#if open}
-  <div
-    class="snapshot-window"
-    class:minimized={minimized}
-    style="left: {pos.x}px; top: {pos.y}px;"
-  >
+  <div class="snapshot-window" class:minimized style="left: {pos.x}px; top: {pos.y}px;">
     <header class="window-header" role="button" tabindex="0" onpointerdown={onPointerDown}>
       <span class="window-title">{$t('simulator.history')}</span>
       <div class="window-actions">
@@ -147,7 +143,8 @@
       <div class="window-body">
         <div class="toolbar">
           <button type="button" class="btn" onclick={() => onRecord?.()}>
-            <Camera size={15} /> {$t('simulator.recordSnapshot')}
+            <Camera size={15} />
+            {$t('simulator.recordSnapshot')}
           </button>
         </div>
 
@@ -159,16 +156,32 @@
                 <span class="snapshot-time">{formatTime(snap.createdAt)}</span>
               </div>
               <div class="snapshot-actions">
-                <button type="button" title={$t('simulator.apply')} onclick={() => onApply?.(snap.id)}>
+                <button
+                  type="button"
+                  title={$t('simulator.apply')}
+                  onclick={() => onApply?.(snap.id)}
+                >
                   <RotateCcw size={13} />
                 </button>
-                <button type="button" title={$t('simulator.exportJson')} onclick={() => exportJson(snap)}>
+                <button
+                  type="button"
+                  title={$t('simulator.exportJson')}
+                  onclick={() => exportJson(snap)}
+                >
                   <Copy size={13} />
                 </button>
-                <button type="button" title={$t('simulator.exportBase64')} onclick={() => exportBase64(snap)}>
+                <button
+                  type="button"
+                  title={$t('simulator.exportBase64')}
+                  onclick={() => exportBase64(snap)}
+                >
                   <Download size={13} />
                 </button>
-                <button type="button" title={$t('simulator.delete')} onclick={() => onDelete?.(snap.id)}>
+                <button
+                  type="button"
+                  title={$t('simulator.delete')}
+                  onclick={() => onDelete?.(snap.id)}
+                >
                   <Trash2 size={13} />
                 </button>
               </div>
@@ -181,10 +194,7 @@
         </div>
 
         <div class="import-area">
-          <textarea
-            bind:value={importText}
-            placeholder={$t('simulator.importPlaceholder')}
-            rows="3"
+          <textarea bind:value={importText} placeholder={$t('simulator.importPlaceholder')} rows="3"
           ></textarea>
           <button type="button" class="btn" onclick={doImport}>{$t('simulator.import')}</button>
         </div>

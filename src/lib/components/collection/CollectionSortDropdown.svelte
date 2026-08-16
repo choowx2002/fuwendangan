@@ -18,7 +18,9 @@
 
   let open = $state(false)
 
-  const currentLabel = $derived($t(OPTIONS.find((o) => o.key === sort.key)?.labelKey ?? 'collection.sortCardNo'))
+  const currentLabel = $derived(
+    $t(OPTIONS.find((o) => o.key === sort.key)?.labelKey ?? 'collection.sortCardNo')
+  )
 </script>
 
 <div class="sort-dropdown">

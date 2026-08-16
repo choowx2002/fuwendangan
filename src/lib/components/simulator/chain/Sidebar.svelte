@@ -190,14 +190,19 @@
         bind:value={customNote}
       />
       <button type="button" class="add-custom-btn" onclick={submitCustom}>
-        <Plus size={14} /> {$t('simulator.addCustomCard')}
+        <Plus size={14} />
+        {$t('simulator.addCustomCard')}
       </button>
     </div>
   </section>
 
   <section class="side-section">
     <div class="section-header">
-      <span class="side-title">{$t('simulator.hand')}（{$t('simulator.playerLabel', { values: { n: currentOwner + 1 } })}）</span>
+      <span class="side-title"
+        >{$t('simulator.hand')}（{$t('simulator.playerLabel', {
+          values: { n: currentOwner + 1 },
+        })}）</span
+      >
       <button
         type="button"
         class="clear-icon"

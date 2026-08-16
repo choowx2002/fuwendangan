@@ -58,7 +58,9 @@
         <div class="series-metrics">
           <span class="metric-owned">{s.totalOwned}/{s.totalCount}</span>
           {#if missing > 0}
-            <span class="metric-missing">{$t('collection.missingCount', { values: { count: missing } })}</span>
+            <span class="metric-missing"
+              >{$t('collection.missingCount', { values: { count: missing } })}</span
+            >
           {:else if s.totalCount > 0}
             <span class="metric-done">{$t('collection.satisfied')}</span>
           {/if}

@@ -208,7 +208,9 @@
   onMount(() => {
     void load(true)
     void loadSnapshots()
-    void getRecentCollectionCards(6).then((r) => (recent = r)).catch(() => {})
+    void getRecentCollectionCards(6)
+      .then((r) => (recent = r))
+      .catch(() => {})
   })
 </script>
 
@@ -222,7 +224,12 @@
     </select>
     <div class="search-box search-bar search-bar--sm">
       <Search size={15} class="search-bar-icon" />
-      <input class="search-bar-input" bind:value={q} oninput={debouncedSearch} placeholder={$t('collection.historySearchPlaceholder')} />
+      <input
+        class="search-bar-input"
+        bind:value={q}
+        oninput={debouncedSearch}
+        placeholder={$t('collection.historySearchPlaceholder')}
+      />
     </div>
   </div>
 
@@ -233,7 +240,9 @@
   <div class="chart-card">
     <div class="chart-header">
       <span class="chart-title">{$t('collection.progressTrend')}</span>
-      <span class="chart-sub">{$t('collection.snapshotCount', { values: { count: snapshots.length } })}</span>
+      <span class="chart-sub"
+        >{$t('collection.snapshotCount', { values: { count: snapshots.length } })}</span
+      >
     </div>
     {#if chartLoading && snapshots.length === 0}
       <div class="chart-empty">{$t('common.loading')}</div>
@@ -307,7 +316,9 @@
                     {$t('collection.undo')}
                   </button>
                 {/if}
-                <span class="item-count">{$t('collection.itemCount', { values: { count: row.itemCount } })}</span>
+                <span class="item-count"
+                  >{$t('collection.itemCount', { values: { count: row.itemCount } })}</span
+                >
                 <span class="time">{formatTime(row.createdAt)}</span>
                 <span class={expandedId === row.id ? 'chevron rotate' : 'chevron'}>
                   <ChevronDown size={16} />
@@ -346,7 +357,9 @@
     {#if rows.length < total}
       <div class="load-more-wrap">
         <button class="button button-ghost" onclick={() => void load(false)} disabled={loading}>
-          {loading ? $t('common.loading') : $t('collection.loadMore', { values: { current: rows.length, total } })}
+          {loading
+            ? $t('common.loading')
+            : $t('collection.loadMore', { values: { current: rows.length, total } })}
         </button>
       </div>
     {/if}
