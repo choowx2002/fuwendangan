@@ -2,21 +2,25 @@
   import {
     getDeckList,
     getDeckVersions,
+    getMatchGroups,
     createMatch,
     searchCards,
     getBestPrint,
     printCacheName,
     type DeckListResult,
+    type DeckVersion,
   } from '$lib/db'
   import {
     scoreCounterState,
     matchTimerMinutes,
+    toolsStoreReady,
     type GameRecord,
     type ActionEntry,
   } from '$lib/stores/tools'
   import { playerName } from '$lib/stores/settings'
-  import type { CardBase } from '$lib/db/types'
+  import type { CardBase, MatchWinType } from '$lib/db/types'
   import { ask, message } from '@tauri-apps/plugin-dialog'
+  import { goto } from '$app/navigation'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import {
@@ -31,7 +35,10 @@
     X,
     FlipVertical2,
     ChevronLeft,
+    ChevronDown,
     Dice6,
+    Gamepad2,
+    Swords,
   } from '@lucide/svelte'
   import { onMount, onDestroy } from 'svelte'
   import { t } from '$lib/i18n'
@@ -42,27 +49,28 @@
 
   let historyOpen = $state(false)
 
-  let settingsOpen = $state(true)
+  let settingsOpen = $state(false)
   let diceOpen = $state(false)
   let oppFlipped = $state(true)
 
   let rngMode = $state<'dice' | 'coin'>('dice')
   let coinResult = $state<'正面' | '反面' | null>(null)
   let coinFlipping = $state(false)
-  let coinHistory = $state<string[]>([])
   let diceResult = $state<number | null>(null)
   let diceRolling = $state(false)
-  let diceHistory = $state<number[]>([])
 
   let allLegends = $state<CardBase[]>([])
   let legendLoading = $state(false)
   let oppLegendQuery = $state('')
+  let legendOpen = $state(false)
 
   const bestOfTarget: Record<string, number> = { '1': 1, '3': 2, '5': 3 }
 
   const games = $derived($scoreCounterState.games)
   const meWins = $derived(games.filter((g) => g.winner === 'me').length)
   const oppWins = $derived(games.filter((g) => g.winner === 'opp').length)
+  /** 平局也占一局：双方 dots 中均以深灰显示 */
+  const draws = $derived(games.filter((g) => g.winner === 'draw').length)
   const matchTargetWins = $derived(bestOfTarget[$scoreCounterState.bestOf] ?? 0)
   const mePoints = $derived($scoreCounterState.mePoints)
   const oppPoints = $derived($scoreCounterState.oppPoints)
@@ -72,21 +80,24 @@
   const oppReached = $derived($scoreCounterState.oppPoints >= $scoreCounterState.targetScore)
   const gameOver = $derived(meReached || oppReached)
 
-  const reachedInfo = $derived.by(() => {
-    if (meReached && oppReached) return 'both'
-    if (meReached) return 'me'
-    if (oppReached) return 'opp'
-    return 'none'
-  })
-
   const matchWinner = $derived.by(() => {
     const target = bestOfTarget[$scoreCounterState.bestOf] ?? 0
     if (target === 0) return null
+    const maxGames = Number($scoreCounterState.bestOf) || 1
     if (meWins >= target && oppWins >= target) return 'both'
+    // 延长模式（再打一局）：提前达标的一方不再立即结束，打到场次满或对方达标
+    if (extended) {
+      if (oppWins >= target) return 'opp'
+      if (games.length >= maxGames) {
+        if (meWins > oppWins) return 'me'
+        if (oppWins > meWins) return 'opp'
+        return 'draw'
+      }
+      return null
+    }
     if (meWins >= target) return 'me'
     if (oppWins >= target) return 'opp'
     // 平局也算一局：达到赛制总场次仍未分出胜负时结束，胜场多者胜，否则平局
-    const maxGames = Number($scoreCounterState.bestOf) || 1
     if (games.length >= maxGames) {
       if (meWins > oppWins) return 'me'
       if (oppWins > meWins) return 'opp'
@@ -96,6 +107,85 @@
   })
 
   const matchOver = $derived(matchWinner !== null)
+
+  /* ===== 对局阶段与引导 ===== */
+  const matchIdle = $derived(
+    $scoreCounterState.games.length === 0 &&
+      $scoreCounterState.mePoints === 0 &&
+      $scoreCounterState.oppPoints === 0 &&
+      ($scoreCounterState.currentActions?.length ?? 0) === 0 &&
+      $scoreCounterState.timerEndsAt == null &&
+      $scoreCounterState.timerRemaining == null
+  )
+  const draftSummary = $derived($scoreCounterState.pendingDraftSummary)
+
+  /* ===== 弹窗 ===== */
+  let startModalOpen = $state(false)
+  let startPrompted = $state(false)
+  let matchOverModalOpen = $state(false)
+  let matchOverPrompted = $state(false)
+
+  /* ===== 本局结算草稿（结算弹窗共用） ===== */
+  let settleWinType = $state<MatchWinType>('normal')
+  /** 特殊胜利/认输的胜者归属（默认我方） */
+  let settleWinner = $state<'me' | 'opp'>('me')
+  let settleFirst = $state<boolean | null>(null)
+  let settleReason = $state('')
+  let settleLog = $state('')
+  let settleError = $state('')
+  let settleModalOpen = $state(false)
+  let endBannerDismissed = $state(false)
+  /** 延长模式：提前达标后仍继续打 */
+  let extended = $state(false)
+
+  /* ===== 保存 ===== */
+  let saveModalOpen = $state(false)
+  let saveDate = $state('')
+  let saveDoneOpen = $state(false)
+  let savedDeckId = $state('')
+
+  /* ===== 设置弹窗附加数据 ===== */
+  let deckVersions = $state<DeckVersion[]>([])
+  let deckVersionLoading = $state(false)
+  let groupSuggestions = $state<string[]>([])
+
+  const deckNameLabel = $derived(decks.find((d) => d.id === $scoreCounterState.deckId)?.name ?? '')
+
+  function todayInput(): string {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+
+  async function loadDeckVersions() {
+    const deckId = $scoreCounterState.deckId
+    if (!deckId) {
+      deckVersions = []
+      return
+    }
+    deckVersionLoading = true
+    try {
+      const list = await getDeckVersions(deckId)
+      deckVersions = list
+      scoreCounterState.update((s) =>
+        s.deckVersionId && !list.some((v) => v.id === s.deckVersionId)
+          ? { ...s, deckVersionId: '' }
+          : s
+      )
+    } catch {
+      deckVersions = []
+    } finally {
+      deckVersionLoading = false
+    }
+  }
+
+  async function loadGroups() {
+    try {
+      groupSuggestions = await getMatchGroups()
+    } catch {
+      groupSuggestions = []
+    }
+  }
 
   const oppLegendFiltered = $derived.by(() => {
     const q = oppLegendQuery.trim().toLowerCase()
@@ -224,6 +314,8 @@
       oppLegendName: card.card_name_cn || card.card_name_en || '',
       oppLegendImage: print?.url || '',
     }))
+    legendOpen = false
+    oppLegendQuery = ''
   }
 
   function clearOppLegend() {
@@ -237,6 +329,7 @@
   }
 
   function adjustPoints(side: 'me' | 'opp', delta: number) {
+    endBannerDismissed = false
     scoreCounterState.update((s) => {
       const next = Math.max(0, (side === 'me' ? s.mePoints : s.oppPoints) + delta)
       if (next === (side === 'me' ? s.mePoints : s.oppPoints) && delta < 0) return s
@@ -258,7 +351,10 @@
     })
   }
 
-  function settleGame(winType: GameRecord['winType']) {
+  function settleGame(
+    winType: GameRecord['winType'],
+    extra?: { isFirst?: boolean | null; winReason?: string; log?: string; winner?: 'me' | 'opp' }
+  ) {
     scoreCounterState.update((s) => {
       const myScore = s.mePoints
       const oppScore = s.oppPoints
@@ -271,7 +367,7 @@
               : myScore < oppScore
                 ? 'opp'
                 : 'draw'
-            : 'me'
+            : (extra?.winner ?? 'me')
       const record: GameRecord = {
         gameNumber: s.games.length + 1,
         winner,
@@ -286,6 +382,9 @@
           minute: '2-digit',
         }),
         actions: s.currentActions ?? [],
+        isFirst: extra?.isFirst ?? null,
+        winReason: extra?.winReason?.trim() || null,
+        log: extra?.log?.trim() || null,
       }
       return {
         ...s,
@@ -297,13 +396,46 @@
     })
   }
 
-  function confirmNextGame() {
-    const s = $scoreCounterState
-    if (reachedInfo === 'both' && s.mePoints === s.oppPoints) {
-      settleGame('draw')
+  function resetSettleDraft(winType: MatchWinType = 'normal') {
+    settleWinType = winType
+    settleWinner = 'me'
+    settleFirst = null
+    settleReason = ''
+    settleLog = ''
+    settleError = ''
+  }
+
+  /** 结算弹窗里的"继续计分"：关闭弹窗并暂时隐藏浮动按钮 */
+  function dismissEndBanner() {
+    endBannerDismissed = true
+    settleModalOpen = false
+    resetSettleDraft()
+  }
+
+  function openSettleModal(winType: MatchWinType) {
+    resetSettleDraft(winType)
+    settleModalOpen = true
+  }
+
+  function confirmSettle() {
+    if (settleWinType === 'special' && !settleReason.trim()) {
+      settleError = get(t)('match.specialNeedsReason')
       return
     }
-    settleGame('normal')
+    settleGame(settleWinType, {
+      winner: settleWinner,
+      isFirst: settleFirst,
+      winReason: settleReason,
+      log: settleLog,
+    })
+    settleModalOpen = false
+    resetSettleDraft()
+  }
+
+  function playAgain() {
+    extended = true
+    endBannerDismissed = false
+    matchOverModalOpen = false
   }
 
   function revertLastGame() {
@@ -337,7 +469,14 @@
       timerEndsAt: null,
       timerRemaining: null,
       timerTotalMs: null,
+      pendingDraftSummary: null,
+      diceHistory: [],
+      coinHistory: [],
     }))
+    extended = false
+    endBannerDismissed = false
+    resetSettleDraft()
+    matchOverModalOpen = false
   }
 
   function flipCoin() {
@@ -346,7 +485,10 @@
     coinResult = null
     setTimeout(() => {
       coinResult = Math.random() < 0.5 ? '正面' : '反面'
-      coinHistory = [...coinHistory, coinResult as string]
+      scoreCounterState.update((s) => ({
+        ...s,
+        coinHistory: [...s.coinHistory, coinResult as string].slice(-100),
+      }))
       coinFlipping = false
     }, 600)
   }
@@ -358,15 +500,22 @@
     setTimeout(() => {
       const value = Math.floor(Math.random() * 20) + 1
       diceResult = value
-      diceHistory = [...diceHistory, value]
+      scoreCounterState.update((s) => ({
+        ...s,
+        diceHistory: [...s.diceHistory, value].slice(-100),
+      }))
       diceRolling = false
     }, 500)
   }
 
-  async function saveMatchRecord() {
+  function openSaveModal() {
+    saveDate = todayInput()
+    saveModalOpen = true
+  }
+
+  async function confirmSave() {
     const s = $scoreCounterState
-    if (!s.deckId) return
-    if (!matchWinner) return
+    if (!s.deckId || s.games.length === 0) return
 
     const gameInputs = s.games.map((g) => ({
       game_number: g.gameNumber,
@@ -374,29 +523,35 @@
       opp_score: g.oppScore,
       win_type: g.winner === 'draw' ? 'draw' : g.winType,
       is_win: g.winner === 'me',
-      is_first: null,
+      is_first: g.isFirst ?? null,
+      win_reason: g.winReason ?? null,
+      log: g.log ?? null,
     }))
 
     let deckVersionId: string | null = null
     let deckVersionNumber: number | null = null
-    try {
-      const versions = await getDeckVersions(s.deckId)
-      const latest = versions[0]
-      if (latest) {
-        deckVersionId = latest.id
-        deckVersionNumber = latest.version_number
+    if (s.deckVersionId) {
+      const v = deckVersions.find((ver) => ver.id === s.deckVersionId)
+      if (v) {
+        deckVersionId = v.id
+        deckVersionNumber = v.version_number
       }
-    } catch (error) {
-      deckVersionId = null
-      deckVersionNumber = null
+    }
+    if (!deckVersionId) {
+      try {
+        const versions = await getDeckVersions(s.deckId)
+        const latest = versions[0]
+        if (latest) {
+          deckVersionId = latest.id
+          deckVersionNumber = latest.version_number
+        }
+      } catch {
+        deckVersionId = null
+        deckVersionNumber = null
+      }
     }
 
-    const today = new Date()
-    const playedAt = new Date(
-      `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
-        today.getDate()
-      ).padStart(2, '0')}T00:00:00`
-    ).toISOString()
+    const playedAt = saveDate ? new Date(`${saveDate}T00:00:00`).toISOString() : null
 
     try {
       await createMatch(
@@ -412,21 +567,32 @@
           deck_version_id: deckVersionId,
           deck_version_number: deckVersionNumber,
           best_of: s.bestOf === '' ? null : Number(s.bestOf),
+          group_name: s.groupName.trim() || null,
+          note: s.note.trim() || null,
           played_at: playedAt,
         },
         gameInputs
       )
-      await message(get(t)('tools.matchSaved'), {
-        title: get(t)('tools.saveSuccessTitle'),
-        kind: 'info',
-      })
+      saveModalOpen = false
+      // 清空对局数据（含骰子/硬币历史），保留对手/卡组/传奇等设置便于打下一场
       scoreCounterState.update((st) => ({
         ...st,
         mePoints: 0,
         oppPoints: 0,
         games: [],
         currentActions: [],
+        timerEndsAt: null,
+        timerRemaining: null,
+        timerTotalMs: null,
+        pendingDraftSummary: null,
+        diceHistory: [],
+        coinHistory: [],
       }))
+      extended = false
+      endBannerDismissed = false
+      resetSettleDraft()
+      savedDeckId = s.deckId
+      saveDoneOpen = true
     } catch (error) {
       console.error('[Tools] 保存对局失败:', error)
       await message(get(t)('tools.saveFailedRetry'), {
@@ -436,15 +602,69 @@
     }
   }
 
+  function gotoRecords() {
+    saveDoneOpen = false
+    if (savedDeckId) goto(`/decks/${savedDeckId}/records`)
+  }
+
+  /** 从对局记录弹窗带入：确认开始后清除引导 */
+  function startFromDraft() {
+    scoreCounterState.update((s) => ({ ...s, pendingDraftSummary: null }))
+    startModalOpen = false
+  }
+
+  /** 取消带入：清掉带入的信息字段 */
+  function cancelDraft() {
+    scoreCounterState.update((s) => ({
+      ...s,
+      pendingDraftSummary: null,
+      deckId: '',
+      deckVersionId: '',
+      opponentName: '',
+      opponentDeck: '',
+      oppLegendId: null,
+      oppLegendPrintId: null,
+      oppLegendName: null,
+      oppLegendImage: null,
+      groupName: '',
+      note: '',
+      bestOf: '3',
+    }))
+    startModalOpen = false
+  }
+
+  let toolsReady = $state(false)
+
   onMount(() => {
     loadDecks()
     loadLegends()
     timerNow = Date.now()
     timerInterval = setInterval(() => (timerNow = Date.now()), 1000)
+    toolsStoreReady.then(() => (toolsReady = true))
   })
 
   onDestroy(() => {
     if (timerInterval) clearInterval(timerInterval)
+  })
+
+  /** 无进行中对局时，自动弹出"开始新对局"引导 */
+  $effect(() => {
+    if (toolsReady && matchIdle && !startPrompted) {
+      startPrompted = true
+      startModalOpen = true
+    }
+  })
+
+  /** 系列结束（一方达 BO 目标）时自动弹出结果弹窗 */
+  $effect(() => {
+    if (matchOver) {
+      if (!matchOverPrompted) {
+        matchOverPrompted = true
+        matchOverModalOpen = true
+      }
+    } else {
+      matchOverPrompted = false
+    }
   })
 
   $effect(() => {
@@ -452,6 +672,21 @@
     if (!name) return
     if ($scoreCounterState.meName === '我方') {
       scoreCounterState.update((s) => (s.meName === '我方' ? { ...s, meName: name } : s))
+    }
+  })
+
+  $effect(() => {
+    if ($scoreCounterState.deckId) {
+      loadDeckVersions()
+    } else {
+      deckVersions = []
+    }
+  })
+
+  $effect(() => {
+    if (settingsOpen) {
+      loadGroups()
+      if ($scoreCounterState.deckId) loadDeckVersions()
     }
   })
 </script>
@@ -468,6 +703,12 @@
         <ChevronLeft size={18} />
       </button>
       <div class="section-actions">
+        {#if games.length > 0}
+          <button class="button button-primary button-sm" onclick={openSaveModal}>
+            <Save size={16} />
+            {$t('tools.saveNow')}
+          </button>
+        {/if}
         <button class="button button-ghost button-sm" onclick={() => (settingsOpen = true)}>
           <SlidersHorizontal size={16} />
           {$t('tools.settings')}
@@ -484,80 +725,11 @@
       </div>
     </div>
 
-    {#if matchOver}
-      <div class="match-end-banner">
-        {#if matchWinner === 'both'}
-          <Trophy size={18} />
-          <span
-            >{$t('tools.bothMatchWins', {
-              values: { count: bestOfTarget[$scoreCounterState.bestOf] },
-            })}</span
-          >
-        {:else if matchWinner === 'me'}
-          <Trophy size={18} />
-          <span
-            >{$t('tools.playerWonMatch', {
-              values: { name: $scoreCounterState.meName, me: meWins, opp: oppWins },
-            })}</span
-          >
-        {:else if matchWinner === 'draw'}
-          <Trophy size={18} />
-          <span>{$t('tools.matchDraw', { values: { me: meWins, opp: oppWins } })}</span>
-        {:else}
-          <Trophy size={18} />
-          <span
-            >{$t('tools.playerWonMatch', {
-              values: { name: $scoreCounterState.oppName, me: meWins, opp: oppWins },
-            })}</span
-          >
-        {/if}
-        <div class="banner-actions">
-          {#if $scoreCounterState.deckId}
-            <button class="button button-primary button-sm" onclick={saveMatchRecord}>
-              <Save size={14} />
-              {$t('tools.saveToRecords')}
-            </button>
-          {:else}
-            <span class="banner-hint">{$t('tools.saveHint')}</span>
-          {/if}
-          <button class="button button-ghost button-sm" onclick={resetScore}>
-            {$t('tools.noSaveReset')}
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    {#if gameOver}
-      <div class="game-end-banner">
-        {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
-          <span>{$t('tools.tieNoWinner')}</span>
-        {:else if reachedInfo === 'me'}
-          <span
-            >{$t('tools.playerReached', {
-              values: { name: $scoreCounterState.meName, score: $scoreCounterState.targetScore },
-            })}</span
-          >
-        {:else if reachedInfo === 'opp'}
-          <span
-            >{$t('tools.playerReached', {
-              values: { name: $scoreCounterState.oppName, score: $scoreCounterState.targetScore },
-            })}</span
-          >
-        {:else}
-          <span>{$t('tools.bothReached')}</span>
-        {/if}
-        <div class="banner-actions">
-          {#if reachedInfo === 'both' && $scoreCounterState.mePoints === $scoreCounterState.oppPoints}
-            <button class="button button-primary button-sm" onclick={() => settleGame('draw')}>
-              {$t('tools.settleDraw')}
-            </button>
-          {:else}
-            <button class="button button-primary button-sm" onclick={confirmNextGame}>
-              {$t('tools.confirmNext')}
-            </button>
-          {/if}
-        </div>
-      </div>
+    {#if gameOver && !endBannerDismissed}
+      <button type="button" class="settle-fab" onclick={() => openSettleModal('normal')}>
+        <Flag size={18} />
+        {$t('tools.finishGame')}
+      </button>
     {/if}
 
     <div class="scoreboards">
@@ -577,9 +749,13 @@
               placeholder={$t('tools.mePlaceholder')}
               bind:value={$scoreCounterState.meName}
             />
-            <div class="match-dots">
+            <div class="match-dots" title="{$t('tools.win')} {meWins} · {$t('tools.draw')} {draws}">
               {#each Array(matchTargetWins) as _, i}
-                <span class="match-dot" class:won={i < meWins}></span>
+                <span
+                  class="match-dot"
+                  class:won={i < meWins}
+                  class:draw={i >= meWins && i < meWins + draws}
+                ></span>
               {/each}
             </div>
           </div>
@@ -651,9 +827,16 @@
                 placeholder={$t('tools.oppPlaceholder')}
                 bind:value={$scoreCounterState.oppName}
               />
-              <div class="match-dots">
+              <div
+                class="match-dots"
+                title="{$t('tools.win')} {oppWins} · {$t('tools.draw')} {draws}"
+              >
                 {#each Array(matchTargetWins) as _, i}
-                  <span class="match-dot" class:won={i < oppWins}></span>
+                  <span
+                    class="match-dot"
+                    class:won={i < oppWins}
+                    class:draw={i >= oppWins && i < oppWins + draws}
+                  ></span>
                 {/each}
               </div>
             </div>
@@ -667,15 +850,15 @@
     </div>
 
     <div class="score-tools-row">
-      <button class="button button-ghost button-sm" onclick={() => settleGame('special')}>
+      <button class="button button-ghost button-sm" onclick={() => openSettleModal('special')}>
         <Flag size={14} />
         {$t('tools.specialWin')}
       </button>
-      <button class="button button-ghost button-sm" onclick={() => settleGame('concede')}>
+      <button class="button button-ghost button-sm" onclick={() => openSettleModal('concede')}>
         <RotateCcw size={14} />
         {$t('tools.oppConcede')}
       </button>
-      <button class="button button-ghost button-sm" onclick={() => settleGame('draw')}>
+      <button class="button button-ghost button-sm" onclick={() => openSettleModal('draw')}>
         <Timer size={14} />
         {$t('tools.timeoutDraw')}
       </button>
@@ -691,103 +874,202 @@
     onclose={() => (settingsOpen = false)}
   >
     <div class="settings-form">
-      <label class="field">
-        <span class="field-label">{$t('tools.myDeck')}</span>
-        <select class="input select" bind:value={$scoreCounterState.deckId} disabled={!decksLoaded}>
-          <option value="">{$t('tools.noDeckAssoc')}</option>
-          {#each decks as deck (deck.id)}
-            <option value={deck.id}>{deck.name}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">{$t('tools.opponent')}</span>
-        <input
-          class="input"
-          type="text"
-          placeholder={$t('common.optional')}
-          maxlength="50"
-          bind:value={$scoreCounterState.opponentName}
-        />
-      </label>
-      <label class="field">
-        <span class="field-label">{$t('tools.opponentDeck')}</span>
-        <input
-          class="input"
-          type="text"
-          placeholder={$t('common.optional')}
-          maxlength="50"
-          bind:value={$scoreCounterState.opponentDeck}
-        />
-      </label>
-      <div class="field legend-field">
-        <span class="field-label">{$t('tools.oppLegend')}</span>
-        <div class="legend-search search-bar search-bar--sm">
-          <Search size={14} class="search-bar-icon" />
-          <input
-            class="search-bar-input"
-            type="text"
-            placeholder={$t('tools.searchLegendPlaceholder')}
-            maxlength="50"
-            bind:value={oppLegendQuery}
-          />
-          {#if $scoreCounterState.oppLegendName}
+      <div class="field-group">
+        <div class="field-group-title">{$t('match.sectionOpponent')}</div>
+        <label class="field">
+          <span class="field-label">{$t('tools.myDeck')}</span>
+          <select
+            class="input select"
+            bind:value={$scoreCounterState.deckId}
+            disabled={!decksLoaded}
+          >
+            <option value="">{$t('tools.noDeckAssoc')}</option>
+            {#each decks as deck (deck.id)}
+              <option value={deck.id}>{deck.name}</option>
+            {/each}
+          </select>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">{$t('tools.opponent')}</span>
+            <input
+              class="input"
+              type="text"
+              placeholder={$t('common.optional')}
+              maxlength="50"
+              bind:value={$scoreCounterState.opponentName}
+            />
+          </label>
+          <label class="field">
+            <span class="field-label">{$t('tools.opponentDeck')}</span>
+            <input
+              class="input"
+              type="text"
+              placeholder={$t('common.optional')}
+              maxlength="50"
+              bind:value={$scoreCounterState.opponentDeck}
+            />
+          </label>
+        </div>
+        <div class="legend-field">
+          <span class="field-label">{$t('tools.oppLegend')}</span>
+          {#if $scoreCounterState.oppLegendId}
+            <div class="legend-picked">
+              <CardSimpleImage
+                url={$scoreCounterState.oppLegendImage}
+                name={printCacheName({
+                  id: $scoreCounterState.oppLegendPrintId ?? $scoreCounterState.oppLegendId,
+                })}
+                className="legend-picked-thumb"
+              />
+              <span class="legend-picked-name">{$scoreCounterState.oppLegendName}</span>
+              <button
+                class="legend-picked-clear"
+                type="button"
+                title={$t('tools.clearSelection')}
+                onclick={clearOppLegend}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          {:else}
             <button
-              class="search-bar-clear"
               type="button"
-              title={$t('tools.clearSelection')}
-              onclick={clearOppLegend}
+              class="legend-trigger"
+              class:open={legendOpen}
+              onclick={() => (legendOpen = !legendOpen)}
             >
-              <X size={14} />
+              <Swords size={15} />
+              {$t('match.legendPick')}
+              <ChevronDown
+                size={14}
+                class={legendOpen ? 'legend-trigger-chevron flipped' : 'legend-trigger-chevron'}
+              />
             </button>
           {/if}
-        </div>
-        {#if legendLoading}
-          <span class="legend-hint">{$t('common.loading')}</span>
-        {:else if oppLegendFiltered.length === 0}
-          <span class="legend-hint">{$t('tools.noLegendFound')}</span>
-        {:else}
-          <div class="legend-row">
-            {#each oppLegendFiltered as card (card.id)}
-              {@const best = getBestPrint(card)}
-              <button
-                type="button"
-                class="legend-item"
-                class:selected={$scoreCounterState.oppLegendId === card.id}
-                title={card.card_name_cn || card.card_name_en || card.card_no}
-                onclick={() => pickOppLegend(card)}
-              >
-                <CardSimpleImage
-                  url={best?.url}
-                  name={printCacheName(best)}
-                  className="legend-thumb"
+          {#if legendOpen && !$scoreCounterState.oppLegendId}
+            <div class="legend-panel">
+              <div class="legend-search search-bar search-bar--sm">
+                <Search size={14} class="search-bar-icon" />
+                <input
+                  class="search-bar-input"
+                  type="text"
+                  placeholder={$t('tools.searchLegendPlaceholder')}
+                  maxlength="50"
+                  bind:value={oppLegendQuery}
                 />
-              </button>
-            {/each}
-          </div>
-        {/if}
-        {#if $scoreCounterState.oppLegendName}
-          <span class="legend-selected-label">
-            {$t('tools.selectedLegend', { values: { name: $scoreCounterState.oppLegendName } })}
-          </span>
-        {/if}
+                {#if oppLegendQuery}
+                  <button
+                    class="search-bar-clear"
+                    type="button"
+                    title={$t('tools.clearSelection')}
+                    onclick={() => (oppLegendQuery = '')}
+                  >
+                    <X size={14} />
+                  </button>
+                {/if}
+              </div>
+              {#if legendLoading}
+                <span class="legend-hint">{$t('common.loading')}</span>
+              {:else if oppLegendFiltered.length === 0}
+                <span class="legend-hint">{$t('tools.noLegendFound')}</span>
+              {:else}
+                <div class="legend-row">
+                  {#each oppLegendFiltered as card (card.id)}
+                    {@const best = getBestPrint(card)}
+                    <button
+                      type="button"
+                      class="legend-item"
+                      title={card.card_name_cn || card.card_name_en || card.card_no}
+                      onclick={() => pickOppLegend(card)}
+                    >
+                      <CardSimpleImage
+                        url={best?.url}
+                        name={printCacheName(best)}
+                        className="legend-thumb"
+                      />
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
-      <label class="field">
-        <span class="field-label">{$t('tools.bestOf')}</span>
-        <select class="input select" bind:value={$scoreCounterState.bestOf}>
-          <option value="1">{$t('tools.bo1')}</option>
-          <option value="3">{$t('tools.bo3')}</option>
-          <option value="5">{$t('tools.bo5')}</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">{$t('tools.targetScore')}</span>
-        <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
-      </label>
-      <label class="field">
-        <span class="field-label">{$t('tools.timerDurationLabel')}</span>
-        <input class="input" type="number" min="1" max="180" bind:value={$matchTimerMinutes} />
-      </label>
+
+      <div class="field-group">
+        <div class="field-group-title">{$t('match.sectionFormat')}</div>
+        <div class="format-pills">
+          {#each ['1', '3', '5'] as f (f)}
+            <button
+              type="button"
+              class="format-pill"
+              class:active={$scoreCounterState.bestOf === f}
+              onclick={() => ($scoreCounterState.bestOf = f)}
+            >
+              BO{f}
+            </button>
+          {/each}
+        </div>
+        <label class="field">
+          <span class="field-label">{$t('tools.targetScore')}</span>
+          <input class="input" type="number" min="1" bind:value={$scoreCounterState.targetScore} />
+        </label>
+        <label class="field">
+          <span class="field-label">{$t('tools.deckVersion')}</span>
+          {#if $scoreCounterState.deckId}
+            <select
+              class="input select"
+              bind:value={$scoreCounterState.deckVersionId}
+              disabled={deckVersionLoading || !decksLoaded}
+            >
+              <option value="">{$t('tools.latestVersion')}</option>
+              {#each deckVersions as v (v.id)}
+                <option value={v.id}>
+                  v{v.version_number}
+                  {new Date(v.created_at ?? '').toLocaleDateString()}
+                  {#if v.note}· {v.note}{/if}
+                </option>
+              {/each}
+            </select>
+          {:else}
+            <input class="input" type="text" value={$t('tools.noDeckAssoc')} disabled />
+          {/if}
+        </label>
+        <label class="field">
+          <span class="field-label">{$t('tools.group')}</span>
+          <input
+            class="input"
+            type="text"
+            maxlength="50"
+            list="gc-group-suggestions"
+            placeholder={$t('tools.groupPlaceholder')}
+            bind:value={$scoreCounterState.groupName}
+          />
+          <datalist id="gc-group-suggestions">
+            {#each groupSuggestions as g (g)}
+              <option value={g}></option>
+            {/each}
+          </datalist>
+        </label>
+        <label class="field">
+          <span class="field-label">{$t('tools.matchNote')}</span>
+          <textarea
+            class="input textarea"
+            rows="2"
+            maxlength="500"
+            placeholder={$t('tools.matchNotePlaceholder')}
+            bind:value={$scoreCounterState.note}></textarea>
+        </label>
+      </div>
+
+      <div class="field-group">
+        <div class="field-group-title">{$t('tools.sectionTimer')}</div>
+        <label class="field">
+          <span class="field-label">{$t('tools.timerDurationLabel')}</span>
+          <input class="input" type="number" min="1" max="180" bind:value={$matchTimerMinutes} />
+        </label>
+      </div>
     </div>
 
     {#snippet footer()}
@@ -813,7 +1095,7 @@
     width="min(600px, 100%)"
     onclose={() => (historyOpen = false)}
   >
-    {#if games.length === 0 && mePoints === 0 && oppPoints === 0 && currentActions.length === 0}
+    {#if games.length === 0 && mePoints === 0 && oppPoints === 0 && currentActions.length === 0 && $scoreCounterState.diceHistory.length === 0 && $scoreCounterState.coinHistory.length === 0}
       <p class="history-empty">{$t('tools.noGames')}</p>
     {:else}
       <ul class="history-list">
@@ -898,6 +1180,30 @@
             </li>
           {/if}
         {/each}
+        {#if $scoreCounterState.diceHistory.length > 0 || $scoreCounterState.coinHistory.length > 0}
+          <li class="history-rng">
+            {#if $scoreCounterState.diceHistory.length > 0}
+              <div class="rng-row">
+                <span class="rng-row-label">{$t('tools.dice')}</span>
+                <div class="rng-row-chips">
+                  {#each $scoreCounterState.diceHistory as item, i (i)}
+                    <span class="chip dice-chip">{item}</span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {#if $scoreCounterState.coinHistory.length > 0}
+              <div class="rng-row">
+                <span class="rng-row-label">{$t('tools.coin')}</span>
+                <div class="rng-row-chips">
+                  {#each $scoreCounterState.coinHistory as item, i (i)}
+                    <span class="chip coin-chip">{coinLabel(item)}</span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </li>
+        {/if}
       </ul>
     {/if}
 
@@ -961,11 +1267,11 @@
         </span>
         <div class="rng-history">
           <span class="rng-history-label">{$t('tools.dice')}</span>
-          {#if diceHistory.length === 0}
+          {#if $scoreCounterState.diceHistory.length === 0}
             <span class="rng-history-empty">—</span>
           {:else}
             <div class="rng-history-chips">
-              {#each diceHistory as item, i (i)}
+              {#each $scoreCounterState.diceHistory as item, i (i)}
                 <span class="chip dice-chip">{item}</span>
               {/each}
             </div>
@@ -987,11 +1293,11 @@
         </span>
         <div class="rng-history">
           <span class="rng-history-label">{$t('tools.coin')}</span>
-          {#if coinHistory.length === 0}
+          {#if $scoreCounterState.coinHistory.length === 0}
             <span class="rng-history-empty">—</span>
           {:else}
             <div class="rng-history-chips">
-              {#each coinHistory as item, i (i)}
+              {#each $scoreCounterState.coinHistory as item, i (i)}
                 <span class="chip coin-chip">{coinLabel(item)}</span>
               {/each}
             </div>
@@ -999,6 +1305,309 @@
         </div>
       {/if}
     </div>
+  </CommonModal>
+
+  <CommonModal
+    open={settleModalOpen}
+    title={$t('tools.settleTitle')}
+    subtitle={$t('tools.settleDesc')}
+    width="min(440px, 100%)"
+    onclose={() => (settleModalOpen = false)}
+  >
+    <div class="settle-form">
+      {#if gameOver}
+        <div class="settle-score-line">
+          <span>{$scoreCounterState.meName}</span>
+          <b>{$scoreCounterState.mePoints} : {$scoreCounterState.oppPoints}</b>
+          <span>{$scoreCounterState.oppName}</span>
+        </div>
+      {/if}
+      <div class="settle-type-row">
+        <button
+          type="button"
+          class="settle-type-btn"
+          class:active={settleWinType === 'normal'}
+          onclick={() => (settleWinType = 'normal')}
+        >
+          <Flag size={14} />
+          {$t('match.normalScore')}
+        </button>
+        <button
+          type="button"
+          class="settle-type-btn"
+          class:active={settleWinType === 'special'}
+          onclick={() => (settleWinType = 'special')}
+        >
+          <Flag size={14} />
+          {$t('tools.specialWin')}
+        </button>
+        <button
+          type="button"
+          class="settle-type-btn"
+          class:active={settleWinType === 'concede'}
+          onclick={() => (settleWinType = 'concede')}
+        >
+          <RotateCcw size={14} />
+          {$t('tools.oppConcede')}
+        </button>
+        <button
+          type="button"
+          class="settle-type-btn"
+          class:active={settleWinType === 'draw'}
+          onclick={() => (settleWinType = 'draw')}
+        >
+          <Timer size={14} />
+          {$t('tools.timeoutDraw')}
+        </button>
+      </div>
+      {#if settleWinType === 'special' || settleWinType === 'concede'}
+        <div class="settle-row">
+          <span class="settle-label">{$t('tools.settleOwner')}</span>
+          <button
+            type="button"
+            class="turn-btn"
+            class:active={settleWinner === 'me'}
+            onclick={() => (settleWinner = 'me')}
+          >
+            {$scoreCounterState.meName || $t('tools.mePlaceholder')}
+          </button>
+          <button
+            type="button"
+            class="turn-btn"
+            class:active={settleWinner === 'opp'}
+            onclick={() => (settleWinner = 'opp')}
+          >
+            {$scoreCounterState.oppName || $t('tools.oppPlaceholder')}
+          </button>
+        </div>
+        <input
+          class="input"
+          type="text"
+          maxlength="100"
+          placeholder={$t('tools.gameReasonPlaceholder')}
+          bind:value={settleReason}
+        />
+      {/if}
+      <div class="settle-row">
+        <span class="settle-label">{$t('match.turnOrder')}</span>
+        <button
+          type="button"
+          class="turn-btn"
+          class:active={settleFirst === true}
+          onclick={() => (settleFirst = settleFirst === true ? null : true)}
+        >
+          {$t('tools.firstTurn')}
+        </button>
+        <button
+          type="button"
+          class="turn-btn"
+          class:active={settleFirst === false}
+          onclick={() => (settleFirst = settleFirst === false ? null : false)}
+        >
+          {$t('tools.secondTurn')}
+        </button>
+        <button type="button" class="turn-btn" onclick={() => (settleFirst = null)}>
+          {$t('tools.skipTurn')}
+        </button>
+      </div>
+      <textarea
+        class="input textarea"
+        rows="2"
+        maxlength="2000"
+        placeholder={$t('tools.reviewPlaceholder')}
+        bind:value={settleLog}></textarea>
+      {#if settleError}
+        <div class="settle-error">{settleError}</div>
+      {/if}
+    </div>
+
+    {#snippet footer()}
+      {#if gameOver && !endBannerDismissed}
+        <button class="button button-ghost" onclick={dismissEndBanner}>
+          {$t('tools.keepScoring')}
+        </button>
+      {:else}
+        <button class="button button-ghost" onclick={() => (settleModalOpen = false)}>
+          {$t('common.cancel')}
+        </button>
+      {/if}
+      <button class="button button-primary" onclick={confirmSettle}>
+        {$t('tools.settleConfirm')}
+      </button>
+    {/snippet}
+  </CommonModal>
+
+  <CommonModal
+    open={startModalOpen}
+    title={$t('tools.startNewMatch')}
+    width="min(440px, 100%)"
+    onclose={() => (startModalOpen = false)}
+  >
+    {#if draftSummary}
+      <div class="start-draft-body">
+        <div class="draft-banner">
+          <Gamepad2 size={16} />
+          <span>{$t('tools.broughtFromDraft', { values: { summary: draftSummary } })}</span>
+        </div>
+        <p class="start-draft-hint">{$t('tools.emptyStateHint')}</p>
+      </div>
+
+      {#snippet footer()}
+        <button class="button button-ghost" onclick={cancelDraft}>
+          {$t('tools.cancelImport')}
+        </button>
+        <button class="button button-primary" onclick={startFromDraft}>
+          <Gamepad2 size={16} />
+          {$t('tools.startMatchBtn')}
+        </button>
+      {/snippet}
+    {:else}
+      <div class="start-empty-body">
+        <Gamepad2 size={40} class="empty-icon" />
+        <p class="empty-hint">{$t('tools.emptyStateHint')}</p>
+      </div>
+
+      {#snippet footer()}
+        <button class="button button-ghost" onclick={() => (startModalOpen = false)}>
+          {$t('common.cancel')}
+        </button>
+        <button
+          class="button button-primary"
+          onclick={() => {
+            startModalOpen = false
+            settingsOpen = true
+          }}
+        >
+          <SlidersHorizontal size={16} />
+          {$t('tools.emptyStateCta')}
+        </button>
+      {/snippet}
+    {/if}
+  </CommonModal>
+
+  <CommonModal
+    open={matchOverModalOpen}
+    title={$t('tools.matchOverTitle')}
+    width="min(460px, 100%)"
+    onclose={() => (matchOverModalOpen = false)}
+  >
+    <div class="match-over-body">
+      <Trophy size={40} class="match-over-trophy" />
+      <div class="match-over-text">
+        {#if matchWinner === 'both'}
+          {$t('tools.bothMatchWins', {
+            values: { count: bestOfTarget[$scoreCounterState.bestOf] },
+          })}
+        {:else if matchWinner === 'me'}
+          {$t('tools.playerWonMatch', {
+            values: { name: $scoreCounterState.meName, me: meWins, opp: oppWins },
+          })}
+        {:else if matchWinner === 'draw'}
+          {$t('tools.matchDraw', { values: { me: meWins, opp: oppWins } })}
+        {:else}
+          {$t('tools.playerWonMatch', {
+            values: { name: $scoreCounterState.oppName, me: meWins, opp: oppWins },
+          })}
+        {/if}
+      </div>
+    </div>
+
+    {#snippet footer()}
+      <button class="button button-danger-outline footer-left" onclick={resetScore}>
+        {$t('tools.noSaveReset')}
+      </button>
+      {#if !$scoreCounterState.deckId}
+        <span class="banner-hint footer-hint">{$t('tools.saveHint')}</span>
+      {/if}
+      <button class="button button-ghost" onclick={playAgain}>
+        <RotateCcw size={16} />
+        {$t('tools.playAgain')}
+      </button>
+      <button
+        class="button button-primary"
+        disabled={!$scoreCounterState.deckId}
+        onclick={() => {
+          matchOverModalOpen = false
+          openSaveModal()
+        }}
+      >
+        <Save size={16} />
+        {$t('tools.saveToRecords')}
+      </button>
+    {/snippet}
+  </CommonModal>
+
+  <CommonModal
+    open={saveModalOpen}
+    title={$t('tools.saveConfirmTitle')}
+    width="min(480px, 100%)"
+    onclose={() => (saveModalOpen = false)}
+  >
+    <div class="save-summary">
+      <div class="save-line">
+        {$scoreCounterState.opponentName.trim() || $t('match.opponent')}
+        <span class="save-sep">·</span>
+        {deckNameLabel || $t('tools.noDeckAssoc')}
+        {#if $scoreCounterState.oppLegendName}
+          <span class="save-sep">·</span>
+          {$scoreCounterState.oppLegendName}
+        {/if}
+      </div>
+      <div class="save-line">
+        {$t('tools.saveFormatLine', {
+          values: {
+            bestOf: $scoreCounterState.bestOf || '—',
+            me: meWins,
+            opp: oppWins,
+            count: games.length,
+          },
+        })}
+      </div>
+      {#if !matchOver}
+        <div class="save-warn">
+          {$t('tools.savePartialWarn', {
+            values: {
+              bestOf: $scoreCounterState.bestOf || '—',
+              me: meWins,
+              opp: oppWins,
+              count: games.length,
+            },
+          })}
+        </div>
+      {/if}
+      <label class="field">
+        <span class="field-label">{$t('match.date')}</span>
+        <input class="input" type="date" bind:value={saveDate} />
+      </label>
+    </div>
+
+    {#snippet footer()}
+      <button class="button button-ghost" onclick={() => (saveModalOpen = false)}>
+        {$t('tools.notNow')}
+      </button>
+      <button class="button button-primary" onclick={confirmSave}>
+        <Save size={16} />
+        {$t('tools.confirmSave')}
+      </button>
+    {/snippet}
+  </CommonModal>
+
+  <CommonModal
+    open={saveDoneOpen}
+    title={$t('tools.savedTitle')}
+    width="min(420px, 100%)"
+    onclose={() => (saveDoneOpen = false)}
+  >
+    <p class="save-done-message">{$t('tools.savedMessage')}</p>
+
+    {#snippet footer()}
+      <button class="button button-ghost" onclick={() => (saveDoneOpen = false)}>
+        {$t('tools.finishLater')}
+      </button>
+      <button class="button button-primary" onclick={gotoRecords}>
+        {$t('tools.viewRecords')}
+      </button>
+    {/snippet}
   </CommonModal>
 </div>
 
@@ -1080,7 +1689,34 @@
   .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
+  }
+
+  /* 字段分组（与 MatchRecordModal 风格一致） */
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .field-group-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .field-row {
+    display: flex;
+    gap: 12px;
+  }
+
+  .field-row .field {
+    flex: 1;
+    min-width: 0;
   }
 
   .legend-field {
@@ -1088,6 +1724,99 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  /* 传奇触发式选择（与 MatchRecordModal 风格一致） */
+  .legend-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-start;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    border: 1.5px dashed var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+
+  .legend-trigger:hover,
+  .legend-trigger.open {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: color-mix(in oklab, var(--accent-color) 6%, transparent);
+  }
+
+  :global(.legend-trigger-chevron) {
+    transition: transform 0.2s;
+  }
+
+  :global(.legend-trigger-chevron.flipped) {
+    transform: rotate(180deg);
+  }
+
+  .legend-picked {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 6px 10px 6px 6px;
+    background: var(--bg-hover);
+    border: 1px solid color-mix(in oklab, var(--accent-color) 35%, transparent);
+    border-radius: 10px;
+  }
+
+  :global(.legend-picked-thumb) {
+    width: 30px;
+    aspect-ratio: 744 / 1040;
+    object-fit: cover;
+    border-radius: 5px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+  }
+
+  .legend-picked-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  .legend-picked-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .legend-picked-clear:hover {
+    background: var(--bg-active);
+    color: var(--danger-color, #dc2626);
+  }
+
+  .legend-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
   }
 
   .legend-search {
@@ -1138,11 +1867,6 @@
     background: var(--bg-hover);
   }
 
-  .legend-item.selected {
-    border-color: var(--primary-color, #4f46e5);
-    background: var(--bg-hover);
-  }
-
   :global(.legend-thumb) {
     width: 44px;
     aspect-ratio: 744 / 1040;
@@ -1152,10 +1876,35 @@
     background: var(--bg-hover);
   }
 
-  .legend-selected-label {
-    font-size: 12px;
+  /* 赛制分段（与 MatchRecordModal 风格一致） */
+  .format-pills {
+    display: flex;
+    gap: 8px;
+  }
+
+  .format-pill {
+    flex: 1;
+    padding: 9px 0;
+    font-size: 14px;
     font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+
+  .format-pill:hover {
+    border-color: var(--accent-color);
     color: var(--accent-color);
+  }
+
+  .format-pill.active {
+    color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--accent-color) 30%, transparent);
   }
 
   .field {
@@ -1180,11 +1929,14 @@
     border-radius: 8px;
     outline: none;
     box-sizing: border-box;
-    transition: border-color 0.15s;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
   }
 
   .input:focus {
     border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-color) 15%, transparent);
   }
 
   .input:disabled {
@@ -1195,53 +1947,10 @@
     appearance: auto;
   }
 
-  .match-end-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    border: 1px solid var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-    border-radius: var(--radius-lg);
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .match-end-banner span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .banner-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
   .banner-hint {
     font-size: 12px;
     font-weight: 400;
     color: var(--text-secondary);
-  }
-
-  .game-end-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    border: 1px solid #d9730d;
-    background: color-mix(in srgb, #d9730d 12%, transparent);
-    border-radius: var(--radius-lg);
-    color: var(--text-primary);
-    font-weight: 600;
   }
 
   .score-tools-row {
@@ -1377,6 +2086,11 @@
   }
 
   @media (max-width: 620px) {
+    .field-row {
+      flex-direction: column;
+      gap: 14px;
+    }
+
     .tools-page {
       height: 100%;
       padding: 0;
@@ -1406,16 +2120,6 @@
 
     .section-actions {
       flex-wrap: wrap;
-    }
-
-    .match-end-banner,
-    .game-end-banner {
-      flex-shrink: 0;
-      margin: 0;
-      padding: 10px 12px;
-      border-left: none;
-      border-right: none;
-      border-radius: 0;
     }
 
     .timer-bar {
@@ -1592,6 +2296,11 @@
   .match-dot.won {
     background: var(--accent-color);
     border-color: var(--accent-color);
+  }
+
+  .match-dot.draw {
+    background: var(--text-tertiary);
+    border-color: var(--text-tertiary);
   }
 
   .opp-board .match-dot.won {
@@ -1798,6 +2507,37 @@
     flex-shrink: 0;
   }
 
+  /* 历史弹窗：骰子/硬币记录 */
+  .history-rng {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid rgba(205, 205, 203, 0.3);
+  }
+
+  .rng-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .rng-row-label {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    min-width: 32px;
+  }
+
+  .rng-row-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
   .rng-body {
     display: flex;
     flex-direction: column;
@@ -1961,5 +2701,273 @@
     background: color-mix(in srgb, var(--accent-color) 15%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
     color: var(--accent-color);
+  }
+
+  /* ---------------- 空状态引导 ---------------- */
+
+  :global(.empty-icon) {
+    color: var(--text-tertiary);
+  }
+
+  .empty-hint {
+    margin: 0;
+    max-width: 420px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .draft-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  :global(.draft-banner svg) {
+    color: var(--accent-color);
+    flex-shrink: 0;
+  }
+
+  /* ---------------- 开始对局弹窗 ---------------- */
+
+  .start-draft-body,
+  .start-empty-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+
+  .start-draft-body {
+    align-items: stretch;
+    text-align: left;
+  }
+
+  .start-draft-hint {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  /* ---------------- 系列结束弹窗 ---------------- */
+
+  .match-over-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    text-align: center;
+  }
+
+  :global(.match-over-trophy) {
+    color: var(--accent-color);
+  }
+
+  .match-over-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+
+  /* 系列结束弹窗 footer：危险按钮（+提示）贴左，其余靠右 */
+  .footer-left {
+    margin-right: auto;
+  }
+
+  /* ---------------- 结束本局浮动按钮 ---------------- */
+
+  .settle-fab {
+    position: fixed;
+    right: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    z-index: 5000;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    background: #d9730d;
+    border: none;
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(217, 115, 13, 0.4);
+    cursor: pointer;
+    transition: transform 0.15s;
+    animation: fab-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .settle-fab:hover {
+    transform: translateY(-2px);
+  }
+
+  .settle-fab:active {
+    transform: scale(0.96);
+  }
+
+  @keyframes fab-in {
+    from {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* ---------------- 结算弹窗 ---------------- */
+
+  .settle-score-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-hover);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .settle-score-line b {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .settle-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .settle-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .turn-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .turn-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .turn-btn.active {
+    color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    font-weight: 600;
+  }
+
+  /* ---------------- 手动结算弹窗 ---------------- */
+
+  .settle-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .settle-type-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .settle-type-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+
+  .settle-type-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .settle-type-btn.active {
+    color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .settle-error {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.08);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: 8px;
+  }
+
+  /* ---------------- 保存确认 / 保存成功 ---------------- */
+
+  .save-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .save-line {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .save-sep {
+    margin: 0 4px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+  }
+
+  .save-warn {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #d9730d;
+    background: color-mix(in srgb, #d9730d 12%, transparent);
+    border: 1px solid color-mix(in srgb, #d9730d 30%, transparent);
+    border-radius: 8px;
+  }
+
+  .save-done-message {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-primary);
   }
 </style>

@@ -1680,7 +1680,7 @@
                         </span>
                       </li>
                       {#if game.log}
-                        <li class="game-log">📝 {game.log}</li>
+                        <li class="game-log">{game.log}</li>
                       {/if}
                     {/each}
                   </ul>

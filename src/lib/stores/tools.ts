@@ -81,6 +81,12 @@ export interface GameRecord {
   winType: 'normal' | 'special' | 'concede' | 'draw'
   time: string
   actions?: ActionEntry[]
+  /** 先后手：true=我方先手，false=对方先手，null=未记 */
+  isFirst?: boolean | null
+  /** 认输/特殊胜利原因 */
+  winReason?: string | null
+  /** 本局复盘 */
+  log?: string | null
 }
 
 export interface ScoreCounterState {
@@ -102,6 +108,15 @@ export interface ScoreCounterState {
   timerEndsAt: number | null
   timerRemaining: number | null
   timerTotalMs: number | null
+  /** 卡组版本（空=最新） */
+  deckVersionId: string
+  groupName: string
+  note: string
+  /** 从对局记录弹窗带入的摘要（非空时显示"已带入"引导） */
+  pendingDraftSummary: string | null
+  /** 骰子 / 硬币历史（持久化，随对局重置清除） */
+  diceHistory: number[]
+  coinHistory: string[]
 }
 
 const DEFAULT_SCORE_STATE: ScoreCounterState = {
@@ -123,6 +138,12 @@ const DEFAULT_SCORE_STATE: ScoreCounterState = {
   timerEndsAt: null,
   timerRemaining: null,
   timerTotalMs: null,
+  deckVersionId: '',
+  groupName: '',
+  note: '',
+  pendingDraftSummary: null,
+  diceHistory: [],
+  coinHistory: [],
 }
 
 /** 对战计分器默认倒计时时长（分钟） */
@@ -159,6 +180,12 @@ getStore().then(async (store) => {
       timerEndsAt: value.timerEndsAt ?? null,
       timerRemaining: value.timerRemaining ?? null,
       timerTotalMs: value.timerTotalMs ?? null,
+      deckVersionId: value.deckVersionId ?? '',
+      groupName: value.groupName ?? '',
+      note: value.note ?? '',
+      pendingDraftSummary: value.pendingDraftSummary ?? null,
+      diceHistory: Array.isArray(value.diceHistory) ? value.diceHistory : [],
+      coinHistory: Array.isArray(value.coinHistory) ? value.coinHistory : [],
     }
     scoreCounterState.set(normalized)
   }

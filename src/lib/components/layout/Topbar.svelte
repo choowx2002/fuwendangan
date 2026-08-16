@@ -32,11 +32,24 @@
 
   function sameActions(a: TopbarAction[], b: TopbarAction[]): boolean {
     if (a.length !== b.length) return false
-    return a.every((x, i) => x.key === b[i].key)
+    return a.every(
+      (x, i) =>
+        x.key === b[i].key &&
+        x.label === b[i].label &&
+        x.icon === b[i].icon &&
+        x.variant === b[i].variant &&
+        x.disabled === b[i].disabled &&
+        x.active === b[i].active &&
+        x.title === b[i].title &&
+        x.priority === b[i].priority &&
+        x.onClick === b[i].onClick
+    )
   }
 
   function applyLayout(reg: TopbarAction[], prio: TopbarAction[], over: TopbarAction[]) {
-    // 幂等：结果未变则跳过，避免无意义的 DOM 增删喂养 ResizeObserver 环
+    // 幂等：内容未变则跳过，避免无意义的 DOM 增删喂养 ResizeObserver 环。
+    // 注意不能只比 key：页面重新挂载后 setTopbar 会带上绑定新实例的 onClick，
+    // 只比 key 会沿用旧实例的闭包，导致 topbar 按钮点不动（弹窗状态写到已销毁实例上）。
     if (!sameActions(visibleRegActions, reg)) visibleRegActions = reg
     if (!sameActions(visiblePrioActions, prio)) visiblePrioActions = prio
     if (!sameActions(overflowActions, over)) overflowActions = over
