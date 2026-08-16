@@ -70,7 +70,7 @@
 
   beforeNavigate(({ from, cancel, type, delta }) => {
     // 核心判断：只有当导航类型是浏览器后退(popstate) 且 delta 为负数时才触发
-    const isBackward = type === 'popstate' && delta && delta < 0
+    const isBackward = delta && delta < 0
 
     if (isBackward && from && from.url) {
       // console.log(isBackward, $state.snapshot(isFilterOpen))

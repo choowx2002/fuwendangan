@@ -1158,7 +1158,7 @@
   }
 
   beforeNavigate(({ from, cancel, type, delta }) => {
-    const isBackward = type === 'popstate' && delta && delta < 0
+    const isBackward = delta && delta < 0
 
     if (isBackward) {
       cancel()

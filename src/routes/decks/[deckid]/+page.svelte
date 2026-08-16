@@ -46,7 +46,6 @@
     buildOwnershipCsv,
     saveOwnershipExport,
     type OwnershipExportFormat,
-    type OwnershipExportRow,
   } from '$lib/decks/ownership-export'
   import { getDeckTokenSuggestions, type TokenSuggestion } from '$lib/decks/token-suggestion'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -90,8 +89,6 @@
     History,
     Dices,
     Pencil,
-    Download,
-    Settings2,
     Check,
     Square,
     Image as ImageIcon,
@@ -734,7 +731,7 @@
   )
 
   beforeNavigate(({ from, cancel, type, delta }) => {
-    const isBackward = type === 'popstate' && delta && delta < 0
+    const isBackward = delta && delta < 0
     if (isBackward) goto('/decks')
   })
 
@@ -772,10 +769,8 @@
           title: $t('deckDetail.shareDeck'),
           label: $t('common.export'),
           onClick: () => {
-            console.log("click");
             shareFormat = 'text'
             showShareModal = true
-            console.log("clicked", showShareModal);
           },
           priority: 2,
         },

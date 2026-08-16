@@ -66,7 +66,7 @@
   }
 
   beforeNavigate(({ type, delta }) => {
-    const isBackward = type === 'popstate' && delta && delta < 0
+    const isBackward = delta && delta < 0
     if (isBackward) goto(`/decks/${page.params.deckid}/records`)
   })
 

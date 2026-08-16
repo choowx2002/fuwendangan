@@ -22,20 +22,17 @@
     Plus,
     Search,
     Funnel,
-    Copy,
     Trash2,
     Folder,
     HeartIcon,
-    Import,
     Download,
-    Send,
     LoaderCircle,
     CopyPlus,
     Pin,
   } from '@lucide/svelte'
   import { ask, message } from '@tauri-apps/plugin-dialog'
   import { isMobile } from '$lib/utils/os'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { get } from 'svelte/store'
   import { t } from '$lib/i18n'
 
@@ -181,9 +178,6 @@
   onMount(async () => {
     init()
     mobilePlatform = await isMobile()
-  })
-
-  $effect(() => {
     setTopbar({
       title: $t('decks.title'),
       description: $t('decks.topbarDesc', { values: { count: allDecks.length } }),
@@ -201,14 +195,16 @@
           label: $t('decks.importDeck'),
           icon: Download,
           variant: 'ghost',
-          onClick: () => (showImportModal = true),
+          onClick: () => {
+            showImportModal = true
+          },
         },
       ],
     })
   })
 
   beforeNavigate(({ from, cancel, type, delta }) => {
-    const isBackward = type === 'popstate' && delta && delta < 0
+    const isBackward =  delta && delta < 0
     if (isBackward) {
       cancel()
       goto('/')
