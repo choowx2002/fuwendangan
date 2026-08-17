@@ -57,7 +57,7 @@ function classifyZone(
  * 库默认把签名卡解码为 `s`；本应用卡号存储用 `*`（见 tts-communication-service 的 `*`→`S` 替换）。
  * 结尾的 `s`/`S`（签名变体）统一替换为 `*`，保证无论代码来源都能命中本地打印。
  */
-function normalizeSignedSuffix(code: string): string {
+export function normalizeSignedSuffix(code: string): string {
   if (!code) return code
   const last = code[code.length - 1]
   if (last === 's' || last === 'S') return `${code.slice(0, -1)}*`

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { setTopbar } from '$lib/stores/ui-store.svelte'
-  import { Layers, ChevronRight, FileArchiveIcon } from '@lucide/svelte'
+  import { Layers, ChevronRight, FileArchiveIcon, MonitorPlay } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { t } from '$lib/i18n'
   import { isMobile } from '$lib/utils/os'
@@ -19,6 +19,13 @@
       descKey: 'simulator.packDesc',
       color: '#d9730d',
       href: '/simulator/packOpener',
+    },
+    {
+      icon: MonitorPlay,
+      labelKey: 'simulator.replayTitle',
+      descKey: 'simulator.replayDesc',
+      color: '#0ea5e9',
+      href: '/replay',
     },
   ]
 

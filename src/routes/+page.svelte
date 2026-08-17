@@ -19,6 +19,7 @@
     BookOpen,
     ClipboardList,
     MoreHorizontal,
+    MonitorPlay,
   } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
@@ -78,6 +79,13 @@
       labelKey: 'nav.simulator',
       href: '/simulator',
       color: '#7c3aed',
+    },
+    {
+      id: 'replay',
+      icon: MonitorPlay,
+      labelKey: 'replay.title',
+      href: '/replay',
+      color: '#0284c7',
     },
     {
       id: 'purchase',

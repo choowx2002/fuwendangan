@@ -25,6 +25,8 @@ export const routeBackConfig: Record<string, RouteConfig> = {
   '/settings': { backTo: '/', description: '设置 → 首页' },
 
   // 可以扩展嵌套页面
+  '/replay': { backTo: '/', description: '对局复盘 → 首页' },
+  '/replay/:key': { backTo: '/replay', description: '复盘查看 → 对局复盘' },
   '/decks/builder': { backTo: '/decks', description: '编辑卡组 → 我的卡组' },
   '/decks/:deckid/records': { backTo: '/decks', description: '对局记录 → 我的卡组' },
   '/decks/:deckid/records/:matchid/logs': { backTo: '/decks', description: '对局日志 → 对局记录' },
