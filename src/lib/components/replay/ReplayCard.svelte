@@ -82,7 +82,7 @@
     data-name={name}
   >
     <div class="rc-art">
-      <img src={artSrc} alt={name} loading="lazy" draggable="false" onerror={onArtError} />
+      <img src={artSrc} alt={name} draggable="false" onerror={onArtError} />
     </div>
     {#if energyCost !== null}
       <span class="rc-cost">{energyCost}</span>
@@ -202,6 +202,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .rc.bf .rc-name {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 12px 4px 2px;
+    background: linear-gradient(180deg, transparent, rgba(7, 19, 47, 0.94));
   }
   .rc-type {
     position: absolute;

@@ -37,13 +37,7 @@
 {#if isLandscape}
   <div class="landscape-container {className}">
     <div class="rotate-wrapper">
-      <img
-        src={imageUrl}
-        alt={name || 'Card Image'}
-        draggable="false"
-        class:loading={isLoading}
-        loading="lazy"
-      />
+      <img src={imageUrl} alt={name || 'Card Image'} draggable="false" class:loading={isLoading} />
     </div>
   </div>
 {:else}
@@ -53,7 +47,6 @@
     draggable="false"
     class={className}
     class:loading={isLoading}
-    loading="lazy"
   />
 {/if}
 

@@ -69,27 +69,37 @@ function normalizeSections(raw: unknown): DeckSections | null {
   return sections
 }
 
+/** 快照玩家信息（含从 board 兜底的传奇/英雄，用于对手卡组不可见时） */
+interface SnapshotPlayerInfo {
+  id: string
+  name: string | null
+  decklistRaw: string | null
+  sections: DeckSections | null
+  boardLegend: DeckSectionEntry | null
+  boardChampion: DeckSectionEntry | null
+}
+
+/** 快照 board 里的卡对象（name/cardCode） → 卡组条目 */
+function boardEntry(v: unknown): DeckSectionEntry | null {
+  if (!isRecord(v)) return null
+  const cardCode = typeof v.cardCode === 'string' ? v.cardCode : ''
+  if (!cardCode) return null
+  return { count: 1, name: typeof v.name === 'string' && v.name ? v.name : cardCode, cardCode }
+}
+
 /** 扫描全部事件的 payload，收集首个快照的玩家信息与匹配会话元数据 */
 function scanSessions(sessions: ReplaySession[]): {
-  snapshotPlayers: {
-    id: string
-    name: string | null
-    decklistRaw: string | null
-    sections: DeckSections | null
-  }[]
+  snapshotPlayers: SnapshotPlayerInfo[]
   mmPlayerId: string | null
   mmPlayerName: string | null
   queueFormat: string | null
+  snapshotCount: number
 } {
-  const players: {
-    id: string
-    name: string | null
-    decklistRaw: string | null
-    sections: DeckSections | null
-  }[] = []
+  const players: SnapshotPlayerInfo[] = []
   let mmPlayerId: string | null = null
   let mmPlayerName: string | null = null
   let queueFormat: string | null = null
+  let snapshotCount = 0
 
   for (const s of sessions) {
     for (const ev of s.events) {
@@ -102,35 +112,60 @@ function scanSessions(sessions: ReplaySession[]): {
         }
         if (typeof p.matchFormat === 'string' && !queueFormat) queueFormat = p.matchFormat
       } else if (p.type === 'authoritative_snapshot') {
+        snapshotCount++
         const snap = isRecord(p.snapshot) ? p.snapshot : null
         const rawPlayers = snap && Array.isArray(snap.players) ? snap.players : []
         for (const rp of rawPlayers) {
           if (!isRecord(rp) || typeof rp.id !== 'string') continue
           if (players.some((x) => x.id === rp.id)) continue
           const deck = isRecord(rp.deck) ? rp.deck : null
+          const board = isRecord(rp.board) ? rp.board : null
+          const legendList = board && Array.isArray(board.legend) ? board.legend : []
+          const champList = board && Array.isArray(board.champion) ? board.champion : []
           players.push({
             id: rp.id,
             name: typeof rp.name === 'string' ? rp.name : null,
             decklistRaw: typeof rp.decklistRaw === 'string' ? rp.decklistRaw : null,
             sections: normalizeSections(deck?.sections),
+            boardLegend: legendList[0] ? boardEntry(legendList[0]) : null,
+            boardChampion: champList[0] ? boardEntry(champList[0]) : null,
           })
         }
       }
     }
   }
-  return { snapshotPlayers: players, mmPlayerId, mmPlayerName, queueFormat }
+  return { snapshotPlayers: players, mmPlayerId, mmPlayerName, queueFormat, snapshotCount }
 }
 
-function pickOpponent(
-  players: {
-    id: string
-    name: string | null
-    decklistRaw: string | null
-    sections: DeckSections | null
-  }[],
-  selfId: string | null
-) {
+function pickOpponent(players: SnapshotPlayerInfo[], selfId: string | null) {
   return players.find((p) => p.id !== selfId) ?? null
+}
+
+/**
+ * 从已存 sessions 重新推导双方传奇（sections.legend 优先，快照 board.legend 兜底）。
+ * 用于旧库迁移：selfLegend/opponentLegend 字段加入前保存的文件可直接补全，无需重新导入。
+ */
+export function deriveGroupLegends(group: Pick<ReplayGroup, 'sessions' | 'selfPlayerId'>): {
+  selfLegend: DeckSectionEntry | null
+  opponentLegend: DeckSectionEntry | null
+} {
+  const { snapshotPlayers, mmPlayerId } = scanSessions(group.sessions)
+  let selfId = group.selfPlayerId ?? mmPlayerId
+  if (!selfId) {
+    const byDeck = snapshotPlayers.find((p) => p.decklistRaw)
+    selfId = byDeck?.id ?? snapshotPlayers[0]?.id ?? null
+  }
+  const selfInfo = snapshotPlayers.find((p) => p.id === selfId) ?? snapshotPlayers[0] ?? null
+  const oppInfo = pickOpponent(snapshotPlayers, selfId)
+  const selfLegend =
+    selfInfo?.sections?.legend && selfInfo.sections.legend.length > 0
+      ? selfInfo.sections.legend[0]
+      : (selfInfo?.boardLegend ?? null)
+  const opponentLegend =
+    oppInfo?.sections?.legend && oppInfo.sections.legend.length > 0
+      ? oppInfo.sections.legend[0]
+      : (oppInfo?.boardLegend ?? null)
+  return { selfLegend, opponentLegend }
 }
 
 // ==================== 主入口 ====================
@@ -220,8 +255,11 @@ export function parseRiftExport(
       selfId: g.selfPlayerId,
     })
     g.parseFailures = build?.parseFailures ?? 0
-    g.hasReplayableData = build !== null || g.gameSessions.some((s) => s.events.length > 0)
+    g.hasReplayableData = build !== null
     if (g.parseFailures > 0) warnings.push(`${g.key}：${g.parseFailures} 个事件 payload 解析失败`)
+    if (!build && g.snapshotCount > 0) {
+      warnings.push(`${g.key}：只有快照没有补丁帧，数据不完整，无法回放`)
+    }
     if (build) {
       const state = finalState(build)
       if (state) {
@@ -286,7 +324,8 @@ function buildGroup(
   const endedAt = last.endedAt ?? null
   const durationMs = endedAt !== null ? endedAt - startedAt : null
 
-  const { snapshotPlayers, mmPlayerId, mmPlayerName, queueFormat } = scanSessions(sessions)
+  const { snapshotPlayers, mmPlayerId, mmPlayerName, queueFormat, snapshotCount } =
+    scanSessions(sessions)
 
   // 我方识别：匹配会话 playerId → 快照中带 decklistRaw 的玩家 → seat 0 → 第一个玩家
   let selfId = mmPlayerId
@@ -299,11 +338,15 @@ function buildGroup(
 
   const selfDecklistRaw = selfInfo?.decklistRaw ?? null
   const selfSections = selfInfo?.sections ?? null
+  const selfLegend =
+    selfSections?.legend && selfSections.legend.length > 0
+      ? selfSections.legend[0]
+      : (selfInfo?.boardLegend ?? null)
   const opponentDecklistRaw = oppInfo?.decklistRaw ?? null
   const opponentLegend =
     oppInfo?.sections?.legend && oppInfo.sections.legend.length > 0
       ? oppInfo.sections.legend[0]
-      : null
+      : (oppInfo?.boardLegend ?? null)
 
   return {
     key: keyOverride ?? roomCode ?? 'unknown',
@@ -321,6 +364,7 @@ function buildGroup(
     opponentName: oppInfo?.name ?? null,
     selfDecklistRaw,
     selfSections,
+    selfLegend,
     opponentDecklistRaw,
     opponentLegend,
     totalEvents: sessions.reduce((sum, s) => sum + s.events.length, 0),
@@ -330,5 +374,6 @@ function buildGroup(
     finalScore: null,
     firstPlayerId: null,
     parseFailures: 0,
+    snapshotCount,
   }
 }

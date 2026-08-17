@@ -3,47 +3,65 @@
   import { goto } from '$app/navigation'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
-  import {
-    peekReplayBundle,
-    setReplayBundle,
-    setBoundDeckId,
-    clearReplayBundle,
-  } from '$lib/stores/replay-import.svelte'
+  import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
+  import { setReplayBundle } from '$lib/stores/replay-import.svelte'
+  import { isTauri } from '$lib/db/env'
   import { parseRiftExport, ReplayImportError } from '$lib/replay/import-parser'
-  import type { ImportBundle } from '$lib/replay/types'
+  import type { ImportBundle, ReplayGroup } from '$lib/replay/types'
+  import {
+    loadLibrary,
+    saveLibraryFile,
+    removeRoom,
+    removeFile,
+    hashText,
+    type StoredReplayFile,
+  } from '$lib/services/replay-library-service'
   import ReplayImportDropzone from '$lib/components/replay/ReplayImportDropzone.svelte'
-  import DeckBindPanel, {
-    type DeckBindSelection,
-  } from '$lib/components/replay/DeckBindPanel.svelte'
   import ReplayGroupCard from '$lib/components/replay/ReplayGroupCard.svelte'
-  import { FileUp, X } from '@lucide/svelte'
 
-  let bundle = $state<ImportBundle | null>(null)
-  let fileName = $state<string | null>(null)
+  interface MergedGroup {
+    group: ReplayGroup
+    fileId: string
+  }
+
+  let files = $state<StoredReplayFile[]>([])
+  let brokenIds = $state<string[]>([])
   let errorText = $state<string | null>(null)
-  let overlapsByGroup = $state<Map<string, number>>(new Map())
+  let loaded = $state(false)
+  let deleting = $state(false)
+
+  // 跨文件按 room 去重（库按导入时间倒序，先扫到的即最新文件）
+  const mergedGroups = $derived.by<MergedGroup[]>(() => {
+    const seen = new Set<string>()
+    const out: MergedGroup[] = []
+    for (const f of files) {
+      for (const g of f.groups) {
+        if (seen.has(g.key)) continue
+        seen.add(g.key)
+        out.push({ group: g, fileId: f.id })
+      }
+    }
+    return out
+  })
 
   $effect(() => {
     setTopbar({ title: $t('replay.title'), onBack: () => void goto('/') })
   })
 
-  onMount(() => {
-    const existing = peekReplayBundle()
-    if (existing) {
-      bundle = existing
-    }
-  })
+  onMount(refresh)
+
+  async function refresh() {
+    const res = await loadLibrary()
+    files = res.files
+    brokenIds = res.brokenIds
+    loaded = true
+  }
 
   function onFile(text: string, name: string) {
     errorText = null
+    let bundle: ImportBundle
     try {
-      const parsed = parseRiftExport(text, { fileName: name })
-      bundle = parsed
-      fileName = name
-      setReplayBundle(parsed)
-      setBoundDeckId(null)
-      overlapsByGroup = new Map()
+      bundle = parseRiftExport(text, { fileName: name })
     } catch (e) {
       if (e instanceof ReplayImportError) {
         errorText = get(t)(
@@ -57,71 +75,106 @@
       } else {
         errorText = get(t)('replay.parseFailed', { values: { error: String(e) } })
       }
-      bundle = null
+      return
+    }
+    setReplayBundle(bundle)
+    void (async () => {
+      const saved = await saveLibraryFile(name, text, bundle.groups)
+      if (saved) {
+        await refresh()
+      } else {
+        // 非桌面环境无持久化：以会话内伪文件展示本次导入
+        const sessionFile: StoredReplayFile = {
+          id: `session-${Date.now()}`,
+          fileName: name,
+          importedAt: Date.now(),
+          hash: hashText(text),
+          groups: bundle.groups,
+        }
+        files = [sessionFile, ...files]
+        loaded = true
+      }
+      showToast(
+        get(t)('replay.importSaved', { values: { count: bundle.groups.length } }),
+        'success'
+      )
+    })()
+  }
+
+  async function onDelete(fileId: string, key: string, label: string) {
+    if (deleting) return
+    const message = get(t)('replay.deleteConfirm', { values: { room: label } })
+    let ok = false
+    if (isTauri) {
+      const { ask } = await import('@tauri-apps/plugin-dialog')
+      ok = await ask(message, {
+        title: get(t)('replay.deleteReplay'),
+        kind: 'warning',
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+      })
+    } else {
+      ok = window.confirm(message)
+    }
+    if (!ok) return
+    deleting = true
+    try {
+      const removed = await removeRoom(fileId, key)
+      if (!removed) {
+        files = files
+          .map((f) =>
+            f.id === fileId ? { ...f, groups: f.groups.filter((g) => g.key !== key) } : f
+          )
+          .filter((f) => f.groups.length > 0)
+      } else {
+        await refresh()
+      }
+      showToast(get(t)('replay.deleted'), 'success')
+    } finally {
+      deleting = false
     }
   }
 
-  function onBindChanged(selection: DeckBindSelection) {
-    setBoundDeckId(selection.deckId)
-    overlapsByGroup = selection.overlaps
-  }
-
-  function resetImport() {
-    bundle = null
-    fileName = null
-    errorText = null
-    overlapsByGroup = new Map()
-    clearReplayBundle()
-  }
-
-  const totalEvents = $derived(bundle ? bundle.groups.reduce((s, g) => s + g.totalEvents, 0) : 0)
-
-  function fileInfoText(): string {
-    if (!bundle) return ''
-    const time = bundle.meta.exportedAt ? new Date(bundle.meta.exportedAt).toLocaleString() : '-'
-    return get(t)('replay.fileInfo', {
-      values: { file: fileName ?? '-', games: bundle.groups.length, events: totalEvents, time },
-    })
+  async function onRemoveBroken(id: string) {
+    await removeFile(id)
+    await refresh()
   }
 </script>
 
 <div class="page">
-  {#if !bundle}
-    <ReplayImportDropzone {onFile} />
-    {#if errorText}
-      <div class="error-box">{errorText}</div>
-    {/if}
+  <ReplayImportDropzone {onFile} />
+  {#if errorText}
+    <div class="error-box">{errorText}</div>
+  {/if}
+
+  {#if !loaded}
+    <div class="empty-hint">{$t('replay.libraryLoading')}</div>
+  {:else if mergedGroups.length === 0 && brokenIds.length === 0}
+    <div class="empty-hint">{$t('replay.emptySaved')}</div>
   {:else}
-    <div class="file-bar">
-      <span class="file-info">{fileInfoText()}</span>
-      <button class="reset-btn" onclick={resetImport} title={$t('replay.resetImport')}>
-        <FileUp size={14} />
-        <X size={14} />
-      </button>
-    </div>
-
-    <DeckBindPanel groups={bundle.groups} onChanged={onBindChanged} />
-
-    <div class="group-title">{$t('replay.groupTitle')} · {bundle.groups.length}</div>
+    <div class="group-title">{$t('replay.savedTitle')} · {mergedGroups.length}</div>
     <div class="group-list">
-      {#each bundle.groups as g (g.key)}
+      {#each mergedGroups as m (m.group.key)}
         <ReplayGroupCard
-          group={g}
-          deckOverlap={overlapsByGroup.get(g.key) ?? null}
-          onReplay={() => goto(`/replay/${encodeURIComponent(g.key)}`)}
+          group={m.group}
+          deckOverlap={null}
+          onReplay={() => goto(`/replay/${encodeURIComponent(m.group.key)}`)}
+          onDelete={() => onDelete(m.fileId, m.group.key, m.group.roomCode ?? m.group.key)}
         />
       {/each}
     </div>
-
-    {#if bundle.warnings.length > 0}
-      <details class="warnings">
-        <summary>{$t('replay.warnings')} ({bundle.warnings.length})</summary>
-        <ul>
-          {#each bundle.warnings as w (w)}
-            <li>{w}</li>
+    {#if brokenIds.length > 0}
+      <div class="broken-box">
+        <div class="broken-title">{$t('replay.libraryBrokenTitle')}</div>
+        <div class="broken-hint">{$t('replay.libraryBrokenHint')}</div>
+        <div class="broken-list">
+          {#each brokenIds as id (id)}
+            <button class="broken-del" onclick={() => onRemoveBroken(id)}>
+              {id} · {$t('replay.deleteReplay')}
+            </button>
           {/each}
-        </ul>
-      </details>
+        </div>
+      </div>
     {/if}
   {/if}
 </div>
@@ -136,7 +189,6 @@
     margin: 0 auto;
   }
   .error-box {
-    margin-top: 10px;
     background: #fdecea;
     color: #b42318;
     border: 1px solid #f5b5ad;
@@ -144,34 +196,11 @@
     padding: 10px 12px;
     font-size: 13px;
   }
-  .file-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 8px 12px;
-  }
-  .file-info {
-    font-size: 12px;
-    color: var(--text-secondary);
-    flex: 1;
-  }
-  .reset-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: var(--surface-muted);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 4px 10px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .reset-btn:hover {
-    background: var(--bg-hover);
+  .empty-hint {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    padding: 16px 0;
   }
   .group-title {
     font-size: 14px;
@@ -184,15 +213,37 @@
     flex-direction: column;
     gap: 8px;
   }
-  .warnings {
+  .broken-box {
+    background: #fff8ec;
+    border: 1px solid #fcd9a8;
+    border-radius: var(--radius-lg);
+    padding: 10px 12px;
     font-size: 12px;
+  }
+  .broken-title {
+    font-weight: 600;
+    color: #b45309;
+  }
+  .broken-hint {
     color: var(--text-tertiary);
+    margin: 2px 0 8px;
   }
-  .warnings summary {
+  .broken-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .broken-del {
+    background: var(--surface-muted);
+    color: #b42318;
+    border: 1px solid #f5b5ad;
+    border-radius: var(--radius-md);
+    padding: 3px 10px;
     cursor: pointer;
+    font-size: 12px;
   }
-  .warnings ul {
-    margin: 6px 0 0;
-    padding-left: 18px;
+  .broken-del:hover {
+    background: #fdecea;
   }
 </style>

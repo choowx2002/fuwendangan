@@ -1,16 +1,39 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
   import type { ReplayGroup } from '$lib/replay/types'
-  import { PlayCircle } from '@lucide/svelte'
+  import { CirclePlay, Trash2 } from '@lucide/svelte'
+  import { resolveCardMetas, type ReplayCardMeta } from '$lib/replay/card-meta'
+  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
 
   interface Props {
     group: ReplayGroup
     /** 与已绑定卡组的主牌重叠率（0-1），未绑定/无卡组数据时为 null */
     deckOverlap: number | null
     onReplay: () => void
+    /** 单局删除回调（传入则显示删除按钮） */
+    onDelete?: () => void
   }
-  let { group, deckOverlap, onReplay }: Props = $props()
+  let { group, deckOverlap, onReplay, onDelete }: Props = $props()
+
+  // 旧库文件可能缺 selfLegend 字段
+  const selfLegend = $derived(group.selfLegend ?? null)
+  const oppLegend = $derived(group.opponentLegend ?? null)
+
+  let metas = $state(new Map<string, ReplayCardMeta>())
+
+  // 挂载即搜索双方传奇卡元数据（本地库），用 CardSimpleImage 展示卡图
+  onMount(() => {
+    const codes = [selfLegend?.cardCode, oppLegend?.cardCode].filter(
+      (c): c is string => typeof c === 'string' && c.length > 0
+    )
+    if (codes.length === 0) return
+    resolveCardMetas(codes).then((m) => {
+      metas.clear()
+      for (const [k, v] of m) metas.set(k, v)
+    })
+  })
 
   const scoreText = $derived(
     group.finalScore && (group.finalScore.my !== null || group.finalScore.opp !== null)
@@ -50,6 +73,20 @@
         </span>
       {/if}
     </div>
+    <div class="g-legend">
+      <div class="legend-card">
+        <CardSimpleImage
+          url={oppLegend ? (metas.get(oppLegend.cardCode)?.imgCdn ?? '') : ''}
+          name={oppLegend ? (metas.get(oppLegend.cardCode)?.cacheName ?? '') : ''}
+        />
+      </div>
+      <div class="legend-card">
+        <CardSimpleImage
+          url={selfLegend ? (metas.get(selfLegend.cardCode)?.imgCdn ?? '') : ''}
+          name={selfLegend ? (metas.get(selfLegend.cardCode)?.cacheName ?? '') : ''}
+        />
+      </div>
+    </div>
     <div class="g-meta">
       <span
         >{$t('replay.vs', {
@@ -60,13 +97,6 @@
       {#if durationMin !== null}
         <span>{$t('replay.groupDuration', { values: { minutes: durationMin } })}</span>
       {/if}
-      <span>
-        {$t('replay.groupSessions', { values: { n: group.sessionCount } })}
-        {#if group.reconnectCount > 0}
-          · {$t('replay.groupReconnects', { values: { n: group.reconnectCount } })}
-        {/if}
-      </span>
-      <span>{$t('replay.events', { values: { count: group.totalEvents } })}</span>
       {#if scoreText}
         <span class="score-hint">{scoreText}</span>
       {/if}
@@ -75,10 +105,15 @@
   <div class="g-action">
     {#if group.hasReplayableData}
       <button class="g-btn" onclick={onReplay}
-        ><PlayCircle size={15} /> {$t('replay.replayAction')}</button
+        ><CirclePlay size={15} /> {$t('replay.replayAction')}</button
       >
     {:else}
       <span class="g-warn">{$t('replay.groupNotReplayable')}</span>
+    {/if}
+    {#if onDelete}
+      <button class="g-del" onclick={onDelete} title={$t('replay.deleteReplay')}>
+        <Trash2 size={14} />
+      </button>
     {/if}
   </div>
 </div>
@@ -134,6 +169,26 @@
     color: #b45309;
     border: 1px solid #fcd9a8;
   }
+  .g-legend {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .legend-card {
+    width: 34px;
+    aspect-ratio: 744 / 1039;
+    flex: none;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--surface-muted);
+  }
+  .legend-card :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
   .g-meta {
     display: flex;
     flex-wrap: wrap;
@@ -145,7 +200,26 @@
     color: var(--text-tertiary);
   }
   .g-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     flex: none;
+  }
+  .g-del {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .g-del:hover {
+    color: #b42318;
+    background: #fdecea;
+    border-color: #f5b5ad;
   }
   .g-btn {
     display: inline-flex;

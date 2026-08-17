@@ -5,8 +5,10 @@
   interface Props {
     entries: NarrationEntry[]
     current: number
+    collapsed?: boolean
+    onToggle?: () => void
   }
-  let { entries, current }: Props = $props()
+  let { entries, current, collapsed = false, onToggle }: Props = $props()
 
   let listEl = $state<HTMLElement | null>(null)
 
@@ -14,6 +16,7 @@
 
   $effect(() => {
     if (listEl) listEl.scrollTop = listEl.scrollHeight
+    visible.length
   })
 
   function fmtClock(ms: number): string {
@@ -24,22 +27,34 @@
   }
 </script>
 
-<div class="narration">
-  <h3>{$t('replay.narrationTitle')}</h3>
-  <div class="nlist" bind:this={listEl}>
-    {#if visible.length === 0}
-      <span class="empty">{$t('replay.noNarration')}</span>
-    {/if}
-    {#each visible as n (n.ts + n.text)}
-      {#if n.kind === 'reconnect'}
-        <div class="nl reconnect"><span>{$t('replay.reconnectedMark')}</span></div>
-      {:else}
-        <div class="nl {n.kind === 'chat' ? 'chat' : ''}">
-          <span class="nlt">{fmtClock(n.ts)}</span>{n.text}
-        </div>
-      {/if}
-    {/each}
+<div class="narration" class:collapsed>
+  <div class="nh">
+    <h3>{$t('replay.narrationTitle')}</h3>
+    <button
+      class="ntoggle"
+      onclick={onToggle}
+      title={$t(collapsed ? 'replay.narrationExpand' : 'replay.narrationCollapse')}
+      aria-label={$t(collapsed ? 'replay.narrationExpand' : 'replay.narrationCollapse')}
+    >
+      {collapsed ? '▲' : '▼'}
+    </button>
   </div>
+  {#if !collapsed}
+    <div class="nlist" bind:this={listEl}>
+      {#if visible.length === 0}
+        <span class="empty">{$t('replay.noNarration')}</span>
+      {/if}
+      {#each visible as n (n.ts + n.text)}
+        {#if n.kind === 'reconnect'}
+          <div class="nl reconnect"><span>{$t('replay.reconnectedMark')}</span></div>
+        {:else}
+          <div class="nl {n.kind === 'chat' ? 'chat' : ''}">
+            <span class="nlt">{fmtClock(n.ts)}</span>{n.text}
+          </div>
+        {/if}
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -52,9 +67,35 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex: 1 1 auto;
+    max-height: 45vh;
+  }
+  .narration.collapsed {
+    flex: 0 0 auto;
+  }
+  .nh {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .nh h3 {
+    margin: 0;
+  }
+  .ntoggle {
+    background: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1;
+    padding: 3px 6px;
+    cursor: pointer;
+  }
+  .ntoggle:hover {
+    color: var(--text-primary);
   }
   h3 {
-    margin: 0 0 8px;
     font-size: 13px;
     color: var(--text-secondary);
   }

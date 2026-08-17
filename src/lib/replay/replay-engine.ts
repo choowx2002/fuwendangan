@@ -387,7 +387,7 @@ export function buildReplay(input: BuildReplayInput): ReplayBuild | null {
       if (isBoundary) {
         narration.push({
           ts: ev.ts,
-          text: '— connection interrupted · reconnected —',
+          text: '',
           at: frames.length - 1,
           kind: 'reconnect',
           sessionId,

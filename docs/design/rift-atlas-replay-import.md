@@ -74,18 +74,19 @@
 同一 `roomCode` 下的多条记录 = **同一局游戏的不同 websocket session**（断线重连）。
 证据（`5HMU3` 房间，按 startedAt 排序）：
 
-| # | sessionId | 类型 | 快照 sequence 范围 | 末补丁 seq | 与前一条间隔 |
-|---|---|---|---|---|---|
-| 0 | `s-mswt6kny-1-…` | matchmaking | 无 | — | — |
-| 1 | `s-mswt6lay-2-…` | game | 0 → 89 | **155** | 匹配结束后 0.5s |
-| 2 | `s-mswtk9nn-3-…` | game | **155** | **175** | 上一条结束后 **1.1s** |
-| 3 | `s-mswtm08x-4-…` | game | **175** → 312 | **388** | 上一条结束后 **1.1s** |
+| #   | sessionId        | 类型        | 快照 sequence 范围 | 末补丁 seq | 与前一条间隔          |
+| --- | ---------------- | ----------- | ------------------ | ---------- | --------------------- |
+| 0   | `s-mswt6kny-1-…` | matchmaking | 无                 | —          | —                     |
+| 1   | `s-mswt6lay-2-…` | game        | 0 → 89             | **155**    | 匹配结束后 0.5s       |
+| 2   | `s-mswtk9nn-3-…` | game        | **155**            | **175**    | 上一条结束后 **1.1s** |
+| 3   | `s-mswtm08x-4-…` | game        | **175** → 312      | **388**    | 上一条结束后 **1.1s** |
 
 - **sequence 无缝衔接**：session 2 首快照 seq=155 = session 1 末补丁 seq；session 3 首快照 seq=175 = session 2 末补丁 seq —— 是同一局状态的延续。
 - **间隔 ≈1.1s**：即时重连，非新开一局。
 - **双方 playerId 完全一致**（`plr_23e100f1` / `plr_d445bfd8`）。
 
 结论：
+
 - **分组键 = roomCode**；组内所有 game session 的 events **合并、按 ts 排序** 后作为一局回放
   （demo 的 `buildReplay` 正是这么做的，直接复用）。
 - `matchCount=6` 只代表 6 条会话 = **2 局游戏**（EMSBW 1 局 / 5HMU3 1 局）。
@@ -99,8 +100,8 @@
     `snapshot` 含 `phase / players / roomMode / gameVariant / playMode / chainEntries` 等。
   - `authoritative_patch_commit`：增量补丁 `{baseSequence, sequence, action, patch:{operations}, clientActionId}`。
     operation 类型实测：`zone_insert / zone_remove / zone_move / zone_reorder / patch_card_fields /
-    unset_card_fields / set_player_fields / set_board_fields / set_room_fields / unset_room_fields /
-    chain_insert / chain_remove / chain_replace / log_insert / log_remove`。
+unset_card_fields / set_player_fields / set_board_fields / set_room_fields / unset_room_fields /
+chain_insert / chain_remove / chain_replace / log_insert / log_remove`。
   - `log_insert` 的 `entries[].text`：**英文游戏解说**（narration 数据源）。
 - 重连后服务器会重发全量快照（新 session 的首个快照），所以**多 session 合并后 base 快照天然衔接**，
   回放算法无需特殊处理；仅在 narration 里插入「连接中断/重连」标记（§6.2）。
@@ -108,7 +109,7 @@
   - 有卡组信息的玩家带 `decklistRaw`（官方文本格式）、`deck.sections`
     （`legend / champion / mainDeck / battlefield / rune / sideboard`，每项 `{count, name, cardCode}`）、
     `board`（`score / floatingEnergy / floatingPower / legendXp / deck / hand / base / trash / banished /
-    battlefieldA|B|C / battlefieldToken / champion / legend / runeDeck / runeArea / deckPeek`）。
+battlefieldA|B|C / battlefieldToken / champion / legend / runeDeck / runeArea / deckPeek`）。
   - 无卡组信息的玩家只有 `id / seat / name / joinedAt / sealedFormatId / board`（对手卡组不可见时）。
   - 卡对象：`{id, name, source, ownerPlayerId, exhausted, createdAt, cardCode, type, isPlaceholder, ...}`；
     隐藏区为 `__hidden_zone__:{playerId}:{zone}:{index}` 占位。
@@ -125,15 +126,15 @@
 
 ### 2.5 demo replay.html 的可复用逻辑
 
-| 模块 | 说明 | 去向 |
-|---|---|---|
-| `groupByRoom` | 按 roomCode 分组（= 一局） | 直接复用（TS 化） |
-| `buildReplay` | 合并组内全部 events 按 ts 排序 → snapshot/patch 帧 + narration | 复用核心（+ 重连标记） |
-| `applyOp` / `applyFrame` / `stateAt` | 快照 + 补丁回放，任意帧还原状态 | 复用核心 |
-| `selfIdFromState` / matchmaking playerId | 我方识别 | 复用 |
-| `cardHTML` / `zoneRow` / `boardHTML` / `renderChain` | 卡牌与版面渲染 | 重写为 Svelte 组件（§7） |
-| 播放器（play/pause/step/scrub/速度/键盘） | 帧推进 | 重写为 Svelte 组件 |
-| `cards-data.js` | 卡号静态映射 | **不引入仓库**；本地 SC prints + 远端回退（§7） |
+| 模块                                                 | 说明                                                           | 去向                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------- |
+| `groupByRoom`                                        | 按 roomCode 分组（= 一局）                                     | 直接复用（TS 化）                               |
+| `buildReplay`                                        | 合并组内全部 events 按 ts 排序 → snapshot/patch 帧 + narration | 复用核心（+ 重连标记）                          |
+| `applyOp` / `applyFrame` / `stateAt`                 | 快照 + 补丁回放，任意帧还原状态                                | 复用核心                                        |
+| `selfIdFromState` / matchmaking playerId             | 我方识别                                                       | 复用                                            |
+| `cardHTML` / `zoneRow` / `boardHTML` / `renderChain` | 卡牌与版面渲染                                                 | 重写为 Svelte 组件（§7）                        |
+| 播放器（play/pause/step/scrub/速度/键盘）            | 帧推进                                                         | 重写为 Svelte 组件                              |
+| `cards-data.js`                                      | 卡号静态映射                                                   | **不引入仓库**；本地 SC prints + 远端回退（§7） |
 
 ### 2.6 应用现有能力（可大量复用）
 
@@ -194,28 +195,28 @@
 
 并入走现有 `createMatch`：
 
-| `match_records` 字段 | 来源 |
-|---|---|
-| `deck_id` | 玩家绑定的已有卡组；不绑定则不允许并入 |
-| `player_name` | 我方名字（snapshot 玩家 name，如 `UMA`） |
-| `group_name` | 房间号（如 `5HMU3`），或合并系列时自定义 |
-| `opponent_name` | 对手玩家 name |
-| `opponent_deck` | 对手 `decklistRaw`（存在时）或「未知」 |
-| `opp_legend_id / _print_id / _name / _image` | 对手 `deck.sections.legend[0].cardCode` → 本地 SC print 解析，失败仅存 name |
-| `deck_version_id / number` | 绑定卡组当前版本（确认弹窗可改） |
-| `best_of` | **恒为 1**（本期只做 BO1） |
-| `note` | 预填：`Rift Atlas 导入 · {roomCode} · 队列{queueFormat} · {exporterVersion}` |
-| `played_at` | 组内最早 `startedAt`（ISO） |
+| `match_records` 字段                         | 来源                                                                         |
+| -------------------------------------------- | ---------------------------------------------------------------------------- |
+| `deck_id`                                    | 玩家绑定的已有卡组；不绑定则不允许并入                                       |
+| `player_name`                                | 我方名字（snapshot 玩家 name，如 `UMA`）                                     |
+| `group_name`                                 | 房间号（如 `5HMU3`），或合并系列时自定义                                     |
+| `opponent_name`                              | 对手玩家 name                                                                |
+| `opponent_deck`                              | 对手 `decklistRaw`（存在时）或「未知」                                       |
+| `opp_legend_id / _print_id / _name / _image` | 对手 `deck.sections.legend[0].cardCode` → 本地 SC print 解析，失败仅存 name  |
+| `deck_version_id / number`                   | 绑定卡组当前版本（确认弹窗可改）                                             |
+| `best_of`                                    | **恒为 1**（本期只做 BO1）                                                   |
+| `note`                                       | 预填：`Rift Atlas 导入 · {roomCode} · 队列{queueFormat} · {exporterVersion}` |
+| `played_at`                                  | 组内最早 `startedAt`（ISO）                                                  |
 
-| `match_games` 字段 | 来源 |
-|---|---|
-| `game_number` | 恒为 1（每局一条记录、一个小局） |
-| `my_score / opp_score` | 该局最终重建状态双方 `board.score`（预填，可改） |
-| `win_type` | `'normal'` |
-| `is_win` | **用户确认结果**（推断只做预填） |
-| `is_first` | 快照 `room.firstPlayerId === 我方 id`；缺失留 NULL |
-| `win_reason` | 备注：`user-confirmed` / `score:{my}:{opp}` 等 |
-| `log` | 该局 narration（英文解说）截断存储 |
+| `match_games` 字段     | 来源                                               |
+| ---------------------- | -------------------------------------------------- |
+| `game_number`          | 恒为 1（每局一条记录、一个小局）                   |
+| `my_score / opp_score` | 该局最终重建状态双方 `board.score`（预填，可改）   |
+| `win_type`             | `'normal'`                                         |
+| `is_win`               | **用户确认结果**（推断只做预填）                   |
+| `is_first`             | 快照 `room.firstPlayerId === 我方 id`；缺失留 NULL |
+| `win_reason`           | 备注：`user-confirmed` / `score:{my}:{opp}` 等     |
+| `log`                  | 该局 narration（英文解说）截断存储                 |
 
 ---
 
@@ -332,11 +333,11 @@ store(ImportBundle) ──[sessionKey=roomCode]──▶ ReplayViewer
 
 对每局（每房间）做**最终状态重建**（末快照 + 后续补丁）：
 
-| 信号 | 规则 |
-|---|---|
-| 比分 | 最终 `board.score` 双方数值 → 预填 `my_score/opp_score`（**对局卡片 + 并入弹窗两处展示**），结果默认「待确认」 |
-| 显式结果 | 若扩展未来版本加 `result?: {winnerPlayerId, reason}` 字段 → 直接采用（预留读取位） |
-| 无信号 | 当前格式下全部如此 → 默认 `未完成（待确认）`，带显眼提示 |
+| 信号     | 规则                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------- |
+| 比分     | 最终 `board.score` 双方数值 → 预填 `my_score/opp_score`（**对局卡片 + 并入弹窗两处展示**），结果默认「待确认」 |
+| 显式结果 | 若扩展未来版本加 `result?: {winnerPlayerId, reason}` 字段 → 直接采用（预留读取位）                             |
+| 无信号   | 当前格式下全部如此 → 默认 `未完成（待确认）`，带显眼提示                                                       |
 
 ### 8.3 并入记录（records-builder.ts + RecordImportModal）
 
@@ -425,23 +426,23 @@ store(ImportBundle) ──[sessionKey=roomCode]──▶ ReplayViewer
 
 ## 10. 边界情况与风险
 
-| # | 情况 | 处理 |
-|---|---|---|
-| 1 | 房间只有 matchmaking 记录 | 卡片显示「无可回放的对局记录」，禁用复盘 |
-| 2 | 一局多次重连（本样本 5HMU3 重连 2 次） | 事件合并回放 + narration 重连标记；卡片显示 session/重连数 |
-| 3 | session 间隔异常大（>2h，房间号疑似复用） | 提示「可能是两局」，允许手动拆分为两条记录 |
-| 4 | 所有对局中途断开（本样本即如此） | 不静默剔除：并入弹窗里显示显眼提示「未完成 — 请确认结果」，确认后并入 |
-| 5 | 对手卡组/卡图本地缺失 | 名称用事件数据兜底，卡图走 CDN/占位 |
-| 6 | 重复导入同一文件/房间 | `source_replay_id` 去重 + 「更新或跳过」 |
-| 7 | 大文件/大对局（千级帧） | 帧重建惰性（base + 增量），scrub 用 rAF 节流 |
-| 8 | 未绑定卡组却点并入 | 禁用 + 引导绑定 |
-| 9 | 扩展版本升级改变 payload 结构 | 解析层版本门（meta.version），宽容解析 + 提示 |
-| 10 | 补丁 op 出现未覆盖类型（如 `chain_replace`） | `applyOp` 补全 + 未知 op 静默跳过并计入「忽略数」 |
-| 11 | 我方识别失败 | 回退 seat 0 / 玩家名匹配设置页玩家名；仍失败让用户选 |
-| 12 | 老库无 `source_replay_id` 列 | `ensureColumn()` 补列（符合迁移规范） |
-| 13 | Web 模式（无 Tauri） | `isTauri` 分支：`<input type=file>`；复盘可跑，记录写入依赖本地库 |
-| 14 | i18n 键漏配 | 双语言键对校验纳入自检清单 |
-| 15 | 比分预填的展示 | **对局卡片摘要 + 并入弹窗逐局行两处都展示** |
+| #   | 情况                                         | 处理                                                                  |
+| --- | -------------------------------------------- | --------------------------------------------------------------------- |
+| 1   | 房间只有 matchmaking 记录                    | 卡片显示「无可回放的对局记录」，禁用复盘                              |
+| 2   | 一局多次重连（本样本 5HMU3 重连 2 次）       | 事件合并回放 + narration 重连标记；卡片显示 session/重连数            |
+| 3   | session 间隔异常大（>2h，房间号疑似复用）    | 提示「可能是两局」，允许手动拆分为两条记录                            |
+| 4   | 所有对局中途断开（本样本即如此）             | 不静默剔除：并入弹窗里显示显眼提示「未完成 — 请确认结果」，确认后并入 |
+| 5   | 对手卡组/卡图本地缺失                        | 名称用事件数据兜底，卡图走 CDN/占位                                   |
+| 6   | 重复导入同一文件/房间                        | `source_replay_id` 去重 + 「更新或跳过」                              |
+| 7   | 大文件/大对局（千级帧）                      | 帧重建惰性（base + 增量），scrub 用 rAF 节流                          |
+| 8   | 未绑定卡组却点并入                           | 禁用 + 引导绑定                                                       |
+| 9   | 扩展版本升级改变 payload 结构                | 解析层版本门（meta.version），宽容解析 + 提示                         |
+| 10  | 补丁 op 出现未覆盖类型（如 `chain_replace`） | `applyOp` 补全 + 未知 op 静默跳过并计入「忽略数」                     |
+| 11  | 我方识别失败                                 | 回退 seat 0 / 玩家名匹配设置页玩家名；仍失败让用户选                  |
+| 12  | 老库无 `source_replay_id` 列                 | `ensureColumn()` 补列（符合迁移规范）                                 |
+| 13  | Web 模式（无 Tauri）                         | `isTauri` 分支：`<input type=file>`；复盘可跑，记录写入依赖本地库     |
+| 14  | i18n 键漏配                                  | 双语言键对校验纳入自检清单                                            |
+| 15  | 比分预填的展示                               | **对局卡片摘要 + 并入弹窗逐局行两处都展示**                           |
 
 ---
 
@@ -449,7 +450,8 @@ store(ImportBundle) ──[sessionKey=roomCode]──▶ ReplayViewer
 
 **M0 — 解析与引擎（纯函数，可先行）**
 `import-parser.ts`（分组=房间、session 合并、比分预填）、`replay-engine.ts`（demo 逻辑 TS 化
-+ `chain_replace` 补齐 + 重连边界标记）、类型与自检脚本（用本样本文件对照输出）。
+
+- `chain_replace` 补齐 + 重连边界标记）、类型与自检脚本（用本样本文件对照输出）。
 
 **M1 — 导入页 + 查看器**
 路由 `/replay`、store、Dropzone、对局卡片、DeckBindPanel（仅绑定已有/不绑定）、
@@ -461,6 +463,7 @@ ReplayViewer 全家桶、i18n 键（zh/en）、route-config 登记（backTo: '/'
 （逐局确认 + 未完成显眼提示 + 去重）、完成反馈与跳转、战绩页无改动验证。
 
 **M3（可选二期）**
+
 - 回放持久化：`replay_sessions` 表（原始 JSON 存 `$APPCACHE`），历史回放入口；
 - `source_replay_id` 纳入 user-sync 实体；
 - 扩展导出 `result` 字段后接入直读；
@@ -470,27 +473,27 @@ ReplayViewer 全家桶、i18n 键（zh/en）、route-config 登记（backTo: '/'
 
 ## 12. 已确认决策
 
-| 项 | 结论 |
-|---|---|
+| 项           | 结论                                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------- |
 | session 语义 | **房间 = 一局**；组内多条 game 记录 = 同一局的重连 session（sequence 无缝衔接 + 间隔≈1s 证据） |
-| 胜负判定 | 导出无胜负字段、无基地 HP → **用户确认为唯一依据**，比分仅预填 |
-| 自建卡组 | **不需要**；卡组绑定只有「绑定已有 / 不绑定」 |
-| BO 判定 | **每局 → 一条 BO1 记录**（best_of=1 + 一个小局）；BO1 以上合并本期不做 |
-| 未完成局 | **不静默剔除**：并入弹窗显示显眼提示「未完成 — 请确认结果」，确认后可并入 |
-| 比分预填 | **对局卡片 + 并入弹窗两处展示** |
-| 局序 | session 内事件按 ts 合并排序（跨 session 无缝回放） |
-| i18n 母版 | **中文为主**（zh-CN 母版，en 对照）；游戏内容英文原样展示 |
-| 入口 | 首页「更多」网格 + `/simulator` 页 + `/replay` 路由 |
-| 去重 | `source_replay_id = ra:{roomCode}:{最早 startedAt}`（本地列，不参与同步） |
+| 胜负判定     | 导出无胜负字段、无基地 HP → **用户确认为唯一依据**，比分仅预填                                 |
+| 自建卡组     | **不需要**；卡组绑定只有「绑定已有 / 不绑定」                                                  |
+| BO 判定      | **每局 → 一条 BO1 记录**（best_of=1 + 一个小局）；BO1 以上合并本期不做                         |
+| 未完成局     | **不静默剔除**：并入弹窗显示显眼提示「未完成 — 请确认结果」，确认后可并入                      |
+| 比分预填     | **对局卡片 + 并入弹窗两处展示**                                                                |
+| 局序         | session 内事件按 ts 合并排序（跨 session 无缝回放）                                            |
+| i18n 母版    | **中文为主**（zh-CN 母版，en 对照）；游戏内容英文原样展示                                      |
+| 入口         | 首页「更多」网格 + `/simulator` 页 + `/replay` 路由                                            |
+| 去重         | `source_replay_id = ra:{roomCode}:{最早 startedAt}`（本地列，不参与同步）                      |
 
 ## 13. 设计定稿说明
 
 本轮已确认的全部决策：
 
-| 确认项 | 结论 |
-|---|---|
-| BO1 以上赛制 | **本期不做**（多局合并 BO3 等移到 M3 后续） |
+| 确认项       | 结论                                                            |
+| ------------ | --------------------------------------------------------------- |
+| BO1 以上赛制 | **本期不做**（多局合并 BO3 等移到 M3 后续）                     |
 | 未完成局处理 | **显示显眼提示**「未完成 — 请确认结果」，确认后并入，不静默剔除 |
-| 比分预填展示 | **对局卡片 + 并入弹窗两处都展示** |
+| 比分预填展示 | **对局卡片 + 并入弹窗两处都展示**                               |
 
 设计定稿。可进入实施（M0 → M1 → M2，见 §11）。

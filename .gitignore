@@ -6,6 +6,7 @@ node_modules
 /build
 /.svelte-kit
 /package
+/.m0-out
 .env
 
 # Build artifacts

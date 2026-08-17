@@ -28,11 +28,6 @@
 
   const pills = $derived([
     {
-      key: 'replay.score',
-      value: typeof board.score === 'number' ? Number(board.score) : 0,
-      cls: '',
-    },
-    {
       key: 'replay.energy',
       value: typeof board.floatingEnergy === 'number' ? Number(board.floatingEnergy) : 0,
       cls: 'g',
@@ -78,21 +73,6 @@
           <div class="zc">
             {#each zoneCards(row.zone) as c (c.id)}
               <ReplayCard card={c} meta={metaOf(c)} width={52} />
-            {/each}
-          </div>
-        </div>
-      {/if}
-    {/each}
-  </div>
-
-  <div class="lane">
-    {#each [{ zone: 'battlefieldA', label: $t( 'replay.battlefield', { values: { lane: 'A' } } ) }, { zone: 'battlefieldB', label: $t( 'replay.battlefield', { values: { lane: 'B' } } ) }, { zone: 'battlefieldC', label: $t( 'replay.battlefield', { values: { lane: 'C' } } ) }, { zone: 'battlefieldToken', label: $t('replay.battlefieldToken') }] as row (row.zone)}
-      {#if zoneCards(row.zone).length > 0}
-        <div class="zone">
-          <span class="zlabel">{row.label}</span>
-          <div class="zc">
-            {#each zoneCards(row.zone) as c (c.id)}
-              <ReplayCard card={c} meta={metaOf(c)} width={64} />
             {/each}
           </div>
         </div>
@@ -235,16 +215,6 @@
     flex-wrap: wrap;
     gap: 8px 18px;
     align-items: flex-start;
-    margin-bottom: 6px;
-  }
-  .lane {
-    background: var(--surface-muted);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 6px 8px;
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
     margin-bottom: 6px;
   }
   .zone {

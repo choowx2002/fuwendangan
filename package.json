@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "replay:check": "tsc --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck --lib es2022,dom --outDir .m0-out src/lib/replay/types.ts src/lib/replay/replay-engine.ts src/lib/replay/import-parser.ts scripts/m0-replay-check.ts && node .m0-out/scripts/m0-replay-check.js",
     "tauri": "tauri",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -2,11 +2,13 @@
  * M0 自检脚本：用 Rift Atlas 样本文件对照验证解析器与回放引擎。
  *
  * 运行（编译为 CJS 后执行，无需额外依赖）：
+ *   pnpm replay:check -- <rift-atlas 导出 JSON 路径>
+ *   等价于：
  *   pnpm exec tsc --module nodenext --moduleResolution nodenext --target es2022 \
- *     --strict --skipLibCheck --lib es2022,dom --outDir /tmp/m0-out \
+ *     --strict --skipLibCheck --lib es2022,dom --outDir .m0-out \
  *     src/lib/replay/types.ts src/lib/replay/replay-engine.ts src/lib/replay/import-parser.ts \
  *     scripts/m0-replay-check.ts
- *   node /tmp/m0-out/scripts/m0-replay-check.js [json 路径]
+ *   node .m0-out/scripts/m0-replay-check.js <json 路径>
  *
  * 断言基于设计文档 v2.1 的实测结论：
  *   - 6 条会话 = 2 局（EMSBW / 5HMU3）
@@ -24,8 +26,13 @@ import {
   type GameState,
 } from '../src/lib/replay/replay-engine.js'
 
-const JSON_PATH =
-  process.argv[2] ?? '/home/TianYue/.dsh/uploads/rift-atlas_all_2026-08-17T06-38-40-766Z.json'
+const JSON_PATH = process.argv[2]
+
+if (!JSON_PATH) {
+  console.error('用法: node m0-replay-check.js <rift-atlas 导出 JSON 路径>')
+  console.error('（需 Rift Atlas 导出的样本文件，见 docs/design/rift-atlas-replay-import.md §2）')
+  process.exit(1)
+}
 
 let failures = 0
 function assert(cond: unknown, label: string): void {

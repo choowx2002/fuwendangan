@@ -1807,9 +1807,17 @@
   "replay": {
     "title": "对局复盘",
     "viewerTitle": "复盘查看",
-    "importTitle": "导入 Rift Atlas 复盘",
     "dropHint": "将 Rift Atlas 导出的 JSON 文件拖到这里\n或点击选择文件",
     "chooseFile": "选择文件",
+    "libraryLoading": "正在加载已保存的复盘…",
+    "emptySaved": "还没有已保存的复盘，拖入或点击上方导入",
+    "savedTitle": "已保存复盘",
+    "importSaved": "已保存 {count} 局",
+    "deleted": "已删除",
+    "deleteReplay": "删除该局",
+    "deleteConfirm": "确认删除这局 {room}？",
+    "libraryBrokenTitle": "以下已保存文件读取失败",
+    "libraryBrokenHint": "文件损坏或已被移动，可整份删除。",
     "parseFailed": "解析失败：{error}",
     "parseNotJson": "文件不是合法的 JSON",
     "noMatches": "文件中没有对局记录（缺少 matches 数组）",
@@ -1828,7 +1836,7 @@
     "groupSessions": "{n} 个 session",
     "groupReconnects": "重连 {n} 次",
     "groupDuration": "{minutes} 分钟",
-    "groupScoreHint": "比分 {my} : {opp}（待确认）",
+    "groupScoreHint": "比分 {my} : {opp}",
     "groupNotReplayable": "无可回放的对局记录",
     "replayAction": "复盘",
     "vs": "{self} vs {opp}",
@@ -1836,7 +1844,6 @@
     "warnings": "导入提示",
     "frame": "帧 {current} / {total}",
     "turn": "回合 {number}",
-    "phase": "阶段",
     "chain": "Chain（{count}）",
     "chainEmpty": "空",
     "activeTurn": "行动",
@@ -1856,6 +1863,8 @@
     "power": "法力",
     "legendXp": "传奇经验",
     "narrationTitle": "对局记录",
+    "narrationCollapse": "收起对局记录",
+    "narrationExpand": "展开对局记录",
     "noNarration": "暂无解说",
     "reconnectedMark": "—— 连接中断 · 已重连 ——",
     "play": "播放",
@@ -1869,6 +1878,7 @@
     "resultWin": "胜",
     "resultLoss": "负",
     "resultDraw": "平",
-    "viewerEmpty": "该对局无可回放内容"
+    "viewerEmpty": "该对局无可回放内容",
+    "viewerIncomplete": "数据不完整：只有快照没有补丁帧，只能看到开局状态"
   }
 }

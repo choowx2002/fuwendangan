@@ -96,6 +96,8 @@ export interface ReplayGroup {
   selfDecklistRaw: string | null
   /** 我方卡组分区（从快照 deck.sections 规范化，无则为 null） */
   selfSections: DeckSections | null
+  /** 我方传奇（卡组 sections 优先，快照 board.legend 兜底） */
+  selfLegend: DeckSectionEntry | null
   opponentDecklistRaw: string | null
   opponentLegend: DeckSectionEntry | null
   totalEvents: number
@@ -110,6 +112,8 @@ export interface ReplayGroup {
   firstPlayerId: string | null
   /** 本局事件 payload 解析失败数 */
   parseFailures: number
+  /** 权威快照事件数（无补丁帧但存在快照 = 数据不完整） */
+  snapshotCount: number
 }
 
 export interface ImportBundle {

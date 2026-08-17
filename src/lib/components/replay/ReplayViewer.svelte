@@ -20,6 +20,7 @@
     type ReplayResultMark,
   } from '$lib/stores/replay-import.svelte'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import ReplayBattlefield from './ReplayBattlefield.svelte'
   import ReplayBoard from './ReplayBoard.svelte'
   import ReplayCard from './ReplayCard.svelte'
   import ReplayNarration from './ReplayNarration.svelte'
@@ -30,12 +31,16 @@
   }
   let { group }: Props = $props()
 
-  let build = $state<ReplayBuild | null>(null)
+  // build 是一次性构造的只读回放数据，用 $state.raw 避免深代理：
+  // applyOp 会把 op 携带的卡/条目对象塞进克隆的 state，深代理下这些是 Svelte proxy，
+  // 在 $derived 里再被 patch 操作写入会触发 state_unsafe_mutation。
+  let build = $state.raw<ReplayBuild | null>(null)
   const metas = $state(new Map<string, ReplayCardMeta>())
 
   let current = $state(0)
   let playing = $state(false)
   let speed = $state(1)
+  let narrationCollapsed = $state(false)
   let timer: ReturnType<typeof setInterval> | null = null
 
   $effect(() => {
@@ -64,6 +69,12 @@
   const isEnd = $derived(total > 0 && safeCurrent >= total - 1)
   const marks = $derived(getReplayResultMarks())
   const resultKey = $derived(group.key)
+  const selfName = $derived(group.selfName ?? me?.name ?? me?.id ?? '?')
+  const oppName = $derived(group.opponentName ?? opp?.name ?? opp?.id ?? '?')
+  const selfLegendCode = $derived(group.selfLegend?.cardCode ?? null)
+  const oppLegendCode = $derived(group.opponentLegend?.cardCode ?? null)
+  const selfScore = $derived(typeof me?.board?.score === 'number' ? Number(me.board.score) : 0)
+  const oppScore = $derived(typeof opp?.board?.score === 'number' ? Number(opp.board.score) : 0)
 
   function schedule() {
     if (timer) clearInterval(timer)
@@ -82,8 +93,12 @@
     if (playing) return
     playing = true
     if (current >= total - 1) current = 0
-    schedule()
   }
+
+  // 播放中切换速度时重建 interval，否则仍按旧速度走
+  $effect(() => {
+    if (playing) schedule()
+  })
   function pause() {
     playing = false
     if (timer) {
@@ -100,6 +115,17 @@
   }
   function jump(end: boolean) {
     current = end ? total - 1 : 0
+  }
+
+  // 进度条拖动用 rAF 节流：大回放下 stateAt 每次要重放整段补丁，逐像素触发会卡顿
+  let rafPending = false
+  function scrubTo(v: number) {
+    if (rafPending) return
+    rafPending = true
+    requestAnimationFrame(() => {
+      rafPending = false
+      if (isFinite(v)) current = Math.max(0, Math.min(v, total - 1))
+    })
   }
 
   function markResult(mark: ReplayResultMark) {
@@ -150,70 +176,114 @@
 </script>
 
 {#if !build || total === 0}
-  <div class="empty-box">{$t('replay.viewerEmpty')}</div>
+  <div class="empty-box">
+    {#if group.snapshotCount > 0}
+      {$t('replay.viewerIncomplete')}
+    {:else}
+      {$t('replay.viewerEmpty')}
+    {/if}
+  </div>
 {:else}
   <div class="viewer">
     <header class="v-head">
-      <span class="room">{group.roomCode ?? group.key}</span>
-      <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
-      {#if group.queueFormat}
-        <span class="badge queue"
-          >{$t('replay.groupQueueFormat', { values: { format: group.queueFormat } })}</span
-        >
-      {/if}
-      <span class="meta">
-        {$t('replay.vs', {
-          values: { self: group.selfName ?? '-', opp: group.opponentName ?? '-' },
-        })}
-      </span>
-      <span class="meta">
-        {$t('replay.groupSessions', { values: { n: group.sessionCount } })}
-        {#if group.reconnectCount > 0}
-          · {$t('replay.groupReconnects', { values: { n: group.reconnectCount } })}
+      <div class="head-players">
+        <div class="pchip">
+          {#if oppLegendCode}
+            <ReplayCard
+              card={{ cardCode: oppLegendCode, name: oppName }}
+              meta={metas.get(oppLegendCode) ?? null}
+              width={30}
+              showType={false}
+            />
+          {:else}
+            <span class="chip-ph"></span>
+          {/if}
+          <span class="pname">{oppName}</span>
+        </div>
+        <div class="score">
+          <span class="snum">{oppScore}</span>
+          <span class="scol">:</span>
+          <span class="snum">{selfScore}</span>
+        </div>
+        <div class="pchip self">
+          <span class="pname">{selfName}</span>
+          {#if selfLegendCode}
+            <ReplayCard
+              card={{ cardCode: selfLegendCode, name: selfName }}
+              meta={metas.get(selfLegendCode) ?? null}
+              width={30}
+              showType={false}
+            />
+          {:else}
+            <span class="chip-ph"></span>
+          {/if}
+        </div>
+      </div>
+      <div class="head-meta">
+        <span class="room">{group.roomCode ?? group.key}</span>
+        <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
+        {#if group.queueFormat}
+          <span class="badge queue"
+            >{$t('replay.groupQueueFormat', { values: { format: group.queueFormat } })}</span
+          >
         {/if}
-      </span>
-      {#if durationMin !== null}
-        <span class="meta">{$t('replay.groupDuration', { values: { minutes: durationMin } })}</span>
-      {/if}
+        <span class="meta">
+          {$t('replay.groupSessions', { values: { n: group.sessionCount } })}
+          {#if group.reconnectCount > 0}
+            · {$t('replay.groupReconnects', { values: { n: group.reconnectCount } })}
+          {/if}
+        </span>
+        {#if durationMin !== null}
+          <span class="meta"
+            >{$t('replay.groupDuration', { values: { minutes: durationMin } })}</span
+          >
+        {/if}
+      </div>
     </header>
 
     <div class="v-body">
       <div class="v-col">
         <ReplayBoard player={opp} side="opp" activeTurn={activeTurnPlayerId === opp?.id} {metas} />
-        <div class="v-center">
-          <div class="turn-pill">
-            <span class="tt"
-              >{$t('replay.turn', { values: { number: gameState?.turnNumber ?? '-' } })}</span
-            >
-            <span class="tp">{gameState?.phase ?? '-'}</span>
-          </div>
-          <div class="chain {chainEntries.length === 0 ? 'empty' : ''}">
-            {#if chainEntries.length === 0}
-              <span class="chain-label">{$t('replay.chain', { values: { count: 0 } })}</span>
-              <span class="chain-empty">{$t('replay.chainEmpty')}</span>
-            {:else}
-              <span class="chain-label"
-                >{$t('replay.chain', { values: { count: chainEntries.length } })}</span
-              >
-              <div class="chain-cards">
-                {#each chainEntries as en (en.id)}
-                  {@const c = en.card as Record<string, unknown> | undefined}
-                  <ReplayCard
-                    card={c}
-                    meta={c && typeof c.cardCode === 'string'
-                      ? (metas.get(String(c.cardCode)) ?? null)
-                      : null}
-                    width={44}
-                    showType={false}
-                  />
-                {/each}
-              </div>
-            {/if}
-          </div>
-        </div>
+        <ReplayBattlefield
+          {me}
+          {opp}
+          {metas}
+          turnNumber={gameState?.turnNumber}
+          phase={gameState?.phase}
+        />
         <ReplayBoard player={me} side="self" activeTurn={activeTurnPlayerId === me?.id} {metas} />
       </div>
-      <ReplayNarration entries={build.narration} current={safeCurrent} />
+      <div class="side-col">
+        <ReplayNarration
+          entries={build.narration}
+          current={safeCurrent}
+          collapsed={narrationCollapsed}
+          onToggle={() => (narrationCollapsed = !narrationCollapsed)}
+        />
+        <div class="chain-panel {chainEntries.length === 0 ? 'empty' : ''}">
+          {#if chainEntries.length === 0}
+            <span class="chain-label">{$t('replay.chain', { values: { count: 0 } })}</span>
+            <span class="chain-empty">{$t('replay.chainEmpty')}</span>
+          {:else}
+            <span class="chain-label"
+              >{$t('replay.chain', { values: { count: chainEntries.length } })}</span
+            >
+            <div class="chain-cards">
+              {#each chainEntries as en (en.id)}
+                {@const c = en.card as Record<string, unknown> | undefined}
+                <ReplayCard
+                  card={c}
+                  meta={c && typeof c.cardCode === 'string'
+                    ? (metas.get(String(c.cardCode)) ?? null)
+                    : null}
+                  width={44}
+                  showType={false}
+                />
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
     </div>
 
     <footer class="v-transport">
@@ -239,7 +309,7 @@
         value={safeCurrent}
         oninput={(e) => {
           const v = Number((e.currentTarget as HTMLInputElement).value)
-          if (isFinite(v)) current = Math.max(0, Math.min(v, total - 1))
+          scrubTo(v)
         }}
       />
       <span class="tframe">{frameLabel}</span>
@@ -293,14 +363,66 @@
   }
   .v-head {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
-    align-items: center;
     padding: 8px 12px;
     background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     font-size: 13px;
+  }
+  .head-players {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pchip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .pchip.self {
+    justify-content: flex-end;
+  }
+  .pname {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip-ph {
+    width: 30px;
+    height: 42px;
+    flex: 0 0 auto;
+    background: var(--surface-muted);
+    border-radius: 4px;
+  }
+  .score {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 2px 14px;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text-primary);
+  }
+  .scol {
+    color: var(--text-tertiary);
+  }
+  .head-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
   }
   .room {
     font-weight: 700;
@@ -326,7 +448,7 @@
   }
   .v-body {
     display: grid;
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: 1fr 240px;
     gap: 10px;
     align-items: start;
   }
@@ -336,33 +458,21 @@
     gap: 8px;
     min-width: 0;
   }
-  .v-center {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 6px 10px;
-  }
-  .turn-pill {
+  .side-col {
     display: flex;
     flex-direction: column;
-    font-size: 12px;
-    color: var(--text-secondary);
+    gap: 8px;
+    min-width: 0;
   }
-  .turn-pill .tt {
-    color: var(--text-primary);
-    font-weight: 700;
-    font-size: 13px;
-  }
-  .chain {
+  .chain-panel {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1;
-    min-width: 0;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 10px;
   }
   .chain-label {
     color: var(--text-tertiary);
@@ -374,9 +484,8 @@
   }
   .chain-cards {
     display: flex;
+    flex-wrap: wrap;
     gap: 3px;
-    overflow-x: auto;
-    padding-bottom: 2px;
   }
   .v-transport {
     position: sticky;

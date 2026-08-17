@@ -1807,9 +1807,17 @@
   "replay": {
     "title": "Match Replay",
     "viewerTitle": "Replay Viewer",
-    "importTitle": "Import Rift Atlas Replay",
     "dropHint": "Drop the Rift Atlas export JSON here\nor click to choose a file",
     "chooseFile": "Choose file",
+    "libraryLoading": "Loading saved replays…",
+    "emptySaved": "No saved replays yet — drop a file or click above to import",
+    "savedTitle": "Saved replays",
+    "importSaved": "Saved {count} games",
+    "deleted": "Deleted",
+    "deleteReplay": "Delete this game",
+    "deleteConfirm": "Delete this game ({room})?",
+    "libraryBrokenTitle": "These saved files could not be read",
+    "libraryBrokenHint": "The file is corrupt or was moved; you can remove it entirely.",
     "parseFailed": "Failed to parse: {error}",
     "parseNotJson": "The file is not valid JSON",
     "noMatches": "No match records in this file (missing matches array)",
@@ -1828,7 +1836,7 @@
     "groupSessions": "{n} sessions",
     "groupReconnects": "Reconnected {n} times",
     "groupDuration": "{minutes} min",
-    "groupScoreHint": "Score {my} : {opp} (pending)",
+    "groupScoreHint": "Score {my} : {opp}",
     "groupNotReplayable": "No playable game records",
     "replayAction": "Review",
     "vs": "{self} vs {opp}",
@@ -1836,7 +1844,6 @@
     "warnings": "Import notes",
     "frame": "Frame {current} / {total}",
     "turn": "Turn {number}",
-    "phase": "Phase",
     "chain": "Chain ({count})",
     "chainEmpty": "Empty",
     "activeTurn": "Acting",
@@ -1856,6 +1863,8 @@
     "power": "Power",
     "legendXp": "Legend XP",
     "narrationTitle": "Game Log",
+    "narrationCollapse": "Collapse game log",
+    "narrationExpand": "Expand game log",
     "noNarration": "No narration yet",
     "reconnectedMark": "— connection interrupted · reconnected —",
     "play": "Play",
@@ -1869,6 +1878,7 @@
     "resultWin": "Win",
     "resultLoss": "Loss",
     "resultDraw": "Draw",
-    "viewerEmpty": "This game has no replayable content"
+    "viewerEmpty": "This game has no replayable content",
+    "viewerIncomplete": "Incomplete data: only snapshots, no patch frames. You can only see the opening state"
   }
 }

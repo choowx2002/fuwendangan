@@ -83,7 +83,7 @@ export async function resolveCardMetas(codes: string[]): Promise<Map<string, Rep
           const card = await getCardAndPrintByPrintCode(cand)
           if (!card) continue
           const best = getBestPrint(card)
-          meta.name = card.card_name_en ?? card.card_name_cn ?? null
+          meta.name = card.card_name_cn ?? null
           meta.type = Array.isArray(card.card_category)
             ? card.card_category.join(' / ')
             : typeof card.card_category === 'string'
