@@ -6,16 +6,16 @@
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { peekReplayBundle } from '$lib/stores/replay-import.svelte'
   import { loadLibrary } from '$lib/services/replay-library-service'
-  import type { ReplayGroup } from '$lib/replay/types'
+  import type { RiftAtlasMatchRecord } from '$lib/replay/types'
   import ReplayViewer from '$lib/components/replay/ReplayViewer.svelte'
 
-  let group = $state<ReplayGroup | null>(null)
+  let group = $state<RiftAtlasMatchRecord | null>(null)
   let ready = $state(false)
 
   $effect(() => {
     setTopbar({
       title: $t('replay.viewerTitle'),
-      description: group?.roomCode ?? undefined,
+      description: group?.meta?.roomCode ?? undefined,
       onBack: () => void goto('/replay'),
     })
   })

@@ -2,7 +2,7 @@
  * 复盘本地库服务（桌面持久化）
  *
  * 拖入的复盘文件保存到 $APPLOCALDATA/replays/<id>.json（每份导入一个文件，
- * 内容为规范化后的 ReplayGroup[]），元信息维护在 replays/index.json。
+ * 内容为规范化后的 RiftAtlasMatchRecord[]，version: 2），元信息维护在 replays/index.json。
  * 仅 Tauri 环境持久化；web 环境返回空库（该模式数据页本就不可用）。
  * 去重：按文件内容 hash，相同文件重复导入 → 覆盖替换。
  * 单局删除：过滤目标 group.key 后重写文件；文件清空则整删并更新索引。
@@ -17,15 +17,17 @@ import {
   remove,
   BaseDirectory,
 } from '@tauri-apps/plugin-fs'
-import { deriveGroupLegends } from '$lib/replay/import-parser'
-import type { ReplayGroup } from '$lib/replay/types'
+import { migrateV1Group, type V1ReplayGroup } from '$lib/replay/import-parser'
+import type { RiftAtlasMatchRecord } from '$lib/replay/types'
 
 export interface StoredReplayFile {
   id: string
   fileName: string
   importedAt: number
   hash: string
-  groups: ReplayGroup[]
+  /** 磁盘格式版本：2 = Schema v2（RiftAtlasMatchRecord） */
+  version: 2
+  groups: RiftAtlasMatchRecord[]
 }
 
 export interface LibraryResult {
@@ -94,21 +96,15 @@ async function writeIndex(entries: IndexEntry[]): Promise<void> {
   await writeTextFile(INDEX_PATH, JSON.stringify(entries), { baseDir: BaseDirectory.AppLocalData })
 }
 
-/** 旧库迁移：补全 selfLegend/opponentLegend（加入前保存的文件缺失），有改动则返回 true */
-function migrateGroupLegends(group: ReplayGroup): boolean {
-  let changed = false
-  if (group.selfLegend == null || group.opponentLegend == null) {
-    const derived = deriveGroupLegends(group)
-    if (derived.selfLegend && group.selfLegend == null) {
-      group.selfLegend = derived.selfLegend
-      changed = true
-    }
-    if (derived.opponentLegend && group.opponentLegend == null) {
-      group.opponentLegend = derived.opponentLegend
-      changed = true
-    }
-  }
-  return changed
+/** 判别磁盘记录是否为 v1 格式（无 players/perspective 即旧版） */
+function isV1Group(g: unknown): g is V1ReplayGroup {
+  return typeof g === 'object' && g !== null && !('players' in g)
+}
+
+/** 旧库迁移：v1（ReplayGroup）→ v2（RiftAtlasMatchRecord），一次性 */
+function migrateGroupToV2(g: unknown): RiftAtlasMatchRecord | null {
+  if (!isV1Group(g)) return null
+  return migrateV1Group(g)
 }
 
 /** 读取全部已保存复盘（按导入时间倒序；损坏/缺失的文件在 brokenIds 中列出） */
@@ -122,17 +118,24 @@ export async function loadLibrary(): Promise<LibraryResult> {
       const raw = await readTextFile(`replays/${entry.id}.json`, {
         baseDir: BaseDirectory.AppLocalData,
       })
-      const parsed = JSON.parse(raw) as { groups?: unknown }
+      const parsed = JSON.parse(raw) as { version?: number; groups?: unknown }
       if (!Array.isArray(parsed.groups)) throw new Error('bad shape')
-      const groups = parsed.groups as ReplayGroup[]
-      const migrated = groups.some(migrateGroupLegends)
+      let migrated = parsed.version !== 2
+      const groups = parsed.groups.map((g) => {
+        const v2 = migrateGroupToV2(g)
+        if (v2) {
+          migrated = true
+          return v2
+        }
+        return g
+      }) as RiftAtlasMatchRecord[]
       if (migrated) {
         writeChain = writeChain
           .then(async () => {
             if (await ensureDir()) {
               await writeTextFile(
                 `replays/${entry.id}.json`,
-                JSON.stringify({ ...parsed, groups }),
+                JSON.stringify({ ...parsed, version: 2, groups }),
                 { baseDir: BaseDirectory.AppLocalData }
               )
             }
@@ -144,6 +147,7 @@ export async function loadLibrary(): Promise<LibraryResult> {
         fileName: entry.fileName,
         importedAt: entry.importedAt,
         hash: entry.hash,
+        version: 2,
         groups,
       })
     } catch {
@@ -158,7 +162,7 @@ export async function loadLibrary(): Promise<LibraryResult> {
 export async function saveLibraryFile(
   fileName: string | null,
   text: string,
-  groups: ReplayGroup[]
+  groups: RiftAtlasMatchRecord[]
 ): Promise<StoredReplayFile | null> {
   if (!isTauri) return null
   const hash = hashText(text)
@@ -169,6 +173,7 @@ export async function saveLibraryFile(
     fileName: fileName ?? 'replay.json',
     importedAt: Date.now(),
     hash,
+    version: 2,
     groups,
   }
   const entry: IndexEntry = {
@@ -206,7 +211,7 @@ export async function removeRoom(fileId: string, groupKey: string): Promise<bool
           baseDir: BaseDirectory.AppLocalData,
         })
         const parsed = JSON.parse(raw) as { groups?: unknown }
-        const groups = Array.isArray(parsed.groups) ? (parsed.groups as ReplayGroup[]) : []
+        const groups = Array.isArray(parsed.groups) ? (parsed.groups as RiftAtlasMatchRecord[]) : []
         const rest = groups.filter((g) => g.key !== groupKey)
         if (rest.length === 0) {
           await remove(`replays/${fileId}.json`, { baseDir: BaseDirectory.AppLocalData })

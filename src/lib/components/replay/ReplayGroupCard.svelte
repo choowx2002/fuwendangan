@@ -1,14 +1,18 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
-  import type { ReplayGroup } from '$lib/replay/types'
+  import type { RiftAtlasMatchRecord } from '$lib/replay/types'
+  import { resolveCardMetas, resolveNameMetas, type ReplayCardMeta } from '$lib/replay/card-meta'
+  import { baseCardCode } from '$lib/replay/card-meta'
+  import { normalizeSignedSuffix } from '$lib/decks/deck-import'
+  import { getCardAndPrintByPrintCode, getCardAndPrintByEnglishName } from '$lib/db'
+  import type { CardBase, CardPrint } from '$lib/db'
   import { CirclePlay, Trash2 } from '@lucide/svelte'
-  import { resolveCardMetas, type ReplayCardMeta } from '$lib/replay/card-meta'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
+  import CardModal from '$lib/components/cards/CardModal.svelte'
 
   interface Props {
-    group: ReplayGroup
+    group: RiftAtlasMatchRecord
     /** 与已绑定卡组的主牌重叠率（0-1），未绑定/无卡组数据时为 null */
     deckOverlap: number | null
     onReplay: () => void
@@ -17,34 +21,56 @@
   }
   let { group, deckOverlap, onReplay, onDelete }: Props = $props()
 
-  // 旧库文件可能缺 selfLegend 字段
-  const selfLegend = $derived(group.selfLegend ?? null)
-  const oppLegend = $derived(group.opponentLegend ?? null)
-
-  let metas = $state(new Map<string, ReplayCardMeta>())
-
-  // 挂载即搜索双方传奇卡元数据（本地库），用 CardSimpleImage 展示卡图
-  onMount(() => {
-    const codes = [selfLegend?.cardCode, oppLegend?.cardCode].filter(
-      (c): c is string => typeof c === 'string' && c.length > 0
-    )
-    if (codes.length === 0) return
-    resolveCardMetas(codes).then((m) => {
-      metas.clear()
-      for (const [k, v] of m) metas.set(k, v)
-    })
+  // 视角解耦：我方 = perspective.localPlayerId，对方 = 剩余玩家（未来可扩展 2v2/观战）
+  const players = $derived(group.players ?? {})
+  const selfPlayer = $derived(
+    group.perspective?.localPlayerId ? (players[group.perspective.localPlayerId] ?? null) : null
+  )
+  const oppPlayer = $derived.by(() => {
+    for (const [pid, p] of Object.entries(players)) {
+      if (pid !== (group.perspective?.localPlayerId ?? null)) return p
+    }
+    return null
   })
 
-  const scoreText = $derived(
-    group.finalScore && (group.finalScore.my !== null || group.finalScore.opp !== null)
-      ? get(t)('replay.groupScoreHint', {
-          values: {
-            my: group.finalScore.my ?? '-',
-            opp: group.finalScore.opp ?? '-',
-          },
-        })
-      : null
-  )
+  const selfLegend = $derived(selfPlayer?.legend ?? null)
+  const oppLegend = $derived(oppPlayer?.legend ?? null)
+
+  // 本局最终战场：解析期已从 set_player_fields 提取并持久化，渲染直接读取
+  const selfBattlefield = $derived(selfPlayer?.battlefield?.finalPick ?? null)
+  const oppBattlefield = $derived(oppPlayer?.battlefield?.finalPick ?? null)
+
+  // 卡图元数据渲染期直查本地库（与其他页面一致）：传奇按卡号、战场按英文名，
+  // 图片文件由 CardSimpleImage 按需命中/下载；查询失败自然走占位卡背
+  let metas = $state(new Map<string, ReplayCardMeta>())
+  $effect(() => {
+    const codes = [selfLegend?.cardCode, oppLegend?.cardCode].filter(
+      (c): c is string => typeof c === 'string'
+    )
+    const names = [selfBattlefield, oppBattlefield].filter(
+      (n): n is string => typeof n === 'string'
+    )
+    let active = true
+    void (async () => {
+      const [cm, nm] = await Promise.all([
+        codes.length > 0 ? resolveCardMetas(codes) : Promise.resolve(new Map()),
+        names.length > 0 ? resolveNameMetas(names) : Promise.resolve(new Map()),
+      ])
+      if (!active) return
+      metas = new Map([...cm, ...nm])
+    })()
+    return () => {
+      active = false
+    }
+  })
+
+  const scoreText = $derived.by(() => {
+    const score = group.result?.score ?? {}
+    const my = selfPlayer ? (score[selfPlayer.id] ?? null) : null
+    const opp = oppPlayer ? (score[oppPlayer.id] ?? null) : null
+    if (my === null && opp === null) return null
+    return get(t)('replay.groupScoreHint', { values: { my: my ?? '-', opp: opp ?? '-' } })
+  })
 
   function fmtTime(ts: number): string {
     const d = new Date(ts)
@@ -53,77 +79,146 @@
   }
 
   const durationMin = $derived(
-    group.durationMs != null ? Math.max(1, Math.round(group.durationMs / 60000)) : null
+    group.meta?.durationMs != null ? Math.max(1, Math.round(group.meta.durationMs / 60000)) : null
   )
+
+  // 点击缩略图 → 复用全局 CardModal 查看完整卡牌详情（含印刷版本/效果/TTS）
+  let selectedCard = $state<(CardBase & { card_prints?: CardPrint[] }) | null>(null)
+  const cardModalCache = new Map<string, CardBase & { card_prints?: CardPrint[] }>()
+
+  async function openCard(key: string, kind: 'code' | 'name') {
+    const cached = cardModalCache.get(key)
+    if (cached) {
+      selectedCard = cached
+      return
+    }
+    let card: (CardBase & { card_prints: CardPrint[] }) | null = null
+    if (kind === 'code') {
+      for (const cand of [...new Set([key, normalizeSignedSuffix(key), baseCardCode(key)])]) {
+        card = await getCardAndPrintByPrintCode(cand)
+        if (card) break
+      }
+    } else {
+      card = await getCardAndPrintByEnglishName(key)
+      if (!card) {
+        for (const cand of [...new Set([key, normalizeSignedSuffix(key), baseCardCode(key)])]) {
+          card = await getCardAndPrintByPrintCode(cand)
+          if (card) break
+        }
+      }
+    }
+    if (!card) return
+    const full = { ...card, card_prints: card.card_prints }
+    cardModalCache.set(key, full)
+    selectedCard = full
+  }
 </script>
 
-<div class="gcard" class:unplayable={!group.hasReplayableData}>
-  <div class="g-main">
-    <div class="g-title">
-      <span class="room">{group.roomCode ?? group.key}</span>
-      <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
-      {#if group.queueFormat}
-        <span class="badge queue"
-          >{$t('replay.groupQueueFormat', { values: { format: group.queueFormat } })}</span
-        >
-      {/if}
-      {#if deckOverlap !== null && deckOverlap >= 0.7}
-        <span class="badge match">
-          {$t('replay.deckMatchScore', { values: { pct: Math.round(deckOverlap * 100) } })}
-        </span>
-      {/if}
-    </div>
-    <div class="g-legend">
-      <div class="legend-card">
-        <CardSimpleImage
-          url={oppLegend ? (metas.get(oppLegend.cardCode)?.imgCdn ?? '') : ''}
-          name={oppLegend ? (metas.get(oppLegend.cardCode)?.cacheName ?? '') : ''}
-        />
-      </div>
-      <div class="legend-card">
+<div class="gcard" class:unplayable={!group.telemetry?.hasReplayableData}>
+  <div class="g-title">
+    <span class="room">{group.meta?.roomCode ?? group.key}</span>
+    <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
+    {#if group.meta?.format}
+      <span class="badge queue"
+        >{$t('replay.groupQueueFormat', { values: { format: group.meta.format } })}</span
+      >
+    {/if}
+    {#if deckOverlap !== null && deckOverlap >= 0.7}
+      <span class="badge match">
+        {$t('replay.deckMatchScore', { values: { pct: Math.round(deckOverlap * 100) } })}
+      </span>
+    {/if}
+  </div>
+  <div class="g-cols">
+    <div class="col">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="legend-card card-hit"
+        onclick={() => (selfLegend ? openCard(selfLegend.cardCode, 'code') : undefined)}
+      >
         <CardSimpleImage
           url={selfLegend ? (metas.get(selfLegend.cardCode)?.imgCdn ?? '') : ''}
           name={selfLegend ? (metas.get(selfLegend.cardCode)?.cacheName ?? '') : ''}
         />
       </div>
+      {#if selfBattlefield}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="bf-card card-hit" onclick={() => openCard(selfBattlefield, 'name')}>
+          <CardSimpleImage
+            url={metas.get(selfBattlefield)?.imgCdn ?? ''}
+            name={metas.get(selfBattlefield)?.cacheName ?? ''}
+            isLandscape
+          />
+        </div>
+      {/if}
+      <span class="pname">{selfPlayer?.name ?? '-'}</span>
     </div>
-    <div class="g-meta">
-      <span
-        >{$t('replay.vs', {
-          values: { self: group.selfName ?? '-', opp: group.opponentName ?? '-' },
-        })}</span
+    <div class="vs-badge">
+      {#if scoreText}
+        <span class="score-hint">{scoreText}</span>
+      {:else}
+        <span>{$t('replay.versus')}</span>
+      {/if}
+    </div>
+    <div class="col">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="legend-card card-hit"
+        onclick={() => (oppLegend ? openCard(oppLegend.cardCode, 'code') : undefined)}
       >
-      <span>{fmtTime(group.startedAt)}</span>
+        <CardSimpleImage
+          url={oppLegend ? (metas.get(oppLegend.cardCode)?.imgCdn ?? '') : ''}
+          name={oppLegend ? (metas.get(oppLegend.cardCode)?.cacheName ?? '') : ''}
+        />
+      </div>
+      {#if oppBattlefield}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="bf-card card-hit" onclick={() => openCard(oppBattlefield, 'name')}>
+          <CardSimpleImage
+            url={metas.get(oppBattlefield)?.imgCdn ?? ''}
+            name={metas.get(oppBattlefield)?.cacheName ?? ''}
+            isLandscape
+          />
+        </div>
+      {/if}
+      <span class="pname">{oppPlayer?.name ?? '-'}</span>
+    </div>
+  </div>
+  <div class="g-footer">
+    <div class="g-meta">
+      <span>{fmtTime(group.meta?.startedAt ?? 0)}</span>
       {#if durationMin !== null}
         <span>{$t('replay.groupDuration', { values: { minutes: durationMin } })}</span>
       {/if}
-      {#if scoreText}
-        <span class="score-hint">{scoreText}</span>
+    </div>
+    <div class="g-action">
+      {#if group.telemetry?.hasReplayableData}
+        <button class="g-btn" onclick={onReplay}
+          ><CirclePlay size={15} /> {$t('replay.replayAction')}</button
+        >
+      {:else}
+        <span class="g-warn">{$t('replay.groupNotReplayable')}</span>
+      {/if}
+      {#if onDelete}
+        <button class="g-del" onclick={onDelete} title={$t('replay.deleteReplay')}>
+          <Trash2 size={14} />
+        </button>
       {/if}
     </div>
   </div>
-  <div class="g-action">
-    {#if group.hasReplayableData}
-      <button class="g-btn" onclick={onReplay}
-        ><CirclePlay size={15} /> {$t('replay.replayAction')}</button
-      >
-    {:else}
-      <span class="g-warn">{$t('replay.groupNotReplayable')}</span>
-    {/if}
-    {#if onDelete}
-      <button class="g-del" onclick={onDelete} title={$t('replay.deleteReplay')}>
-        <Trash2 size={14} />
-      </button>
-    {/if}
-  </div>
 </div>
+
+<CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
 <style>
   .gcard {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
     background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
@@ -132,11 +227,41 @@
   .gcard.unplayable {
     opacity: 0.65;
   }
-  .g-main {
+  .g-cols {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+  .col {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: space-around;
+  }
+  .vs-badge {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--accent-color);
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    min-width: 0;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+  }
+  .pname {
+    font-size: var(--text-md);
+    color: var(--text-secondary);
+    font-weight: 800;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 0 0 100%;
+    text-align: center;
   }
   .g-title {
     display: flex;
@@ -146,11 +271,11 @@
   }
   .room {
     font-weight: 700;
-    font-size: 15px;
+    font-size: var(--text-md);
     color: var(--text-primary);
   }
   .badge {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     border-radius: 8px;
     padding: 1px 8px;
@@ -169,13 +294,8 @@
     color: #b45309;
     border: 1px solid #fcd9a8;
   }
-  .g-legend {
-    display: flex;
-    gap: 6px;
-    align-items: flex-start;
-  }
   .legend-card {
-    width: 34px;
+    width: 42px;
     aspect-ratio: 744 / 1039;
     flex: none;
     border-radius: 4px;
@@ -189,21 +309,46 @@
     object-fit: cover;
     display: block;
   }
+  .card-hit {
+    cursor: pointer;
+    transition: filter 0.12s ease;
+  }
+  .card-hit:hover {
+    filter: brightness(1.06);
+  }
+  .bf-card {
+    width: 72px;
+    aspect-ratio: 1040 / 744;
+    flex: none;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--surface-muted);
+  }
   .g-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 14px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
   .score-hint {
-    color: var(--text-tertiary);
+    color: var(--accent-color);
+  }
+
+  .g-footer {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: end;
   }
   .g-action {
     display: flex;
     align-items: center;
     gap: 6px;
     flex: none;
+    justify-content: end;
   }
   .g-del {
     display: inline-flex;
@@ -214,7 +359,7 @@
     border-radius: var(--radius-md);
     padding: 5px 8px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .g-del:hover {
     color: #b42318;
@@ -231,13 +376,13 @@
     border-radius: var(--radius-md);
     padding: 6px 14px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .g-btn:hover {
     filter: brightness(1.08);
   }
   .g-warn {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 </style>

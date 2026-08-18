@@ -1,21 +1,31 @@
 /**
  * Rift Atlas 导入解析器（M0 纯函数层）
  *
- * 职责：原始导出 JSON → 规范化 ImportBundle。
+ * 职责：原始导出 JSON → 规范化 ImportBundle（Schema v2）。
  * - 分组：roomCode = 一局；组内多条记录 = 断线重连 session（按 startedAt 排序）
  * - 我方识别：匹配会话 payload 的 playerId / playerName → 快照带 decklistRaw 的玩家兜底
  * - 比分预填：用回放引擎重建最终状态取双方 board.score
  * - 赛制标注：payload matchFormat（如 "bo1"）→ URL bo{n} 兜底，仅展示用
+ * - 战场选择：解析期一次提取（候选池 / 最终锁定 / 随机标记 / 时间戳），随记录持久化
+ * - v1 → v2 迁移：旧磁盘文件（selfXXX/opponentXXX 字段爆炸版）→ RiftAtlasMatchRecord
  */
 
-import { buildReplay, finalState, parsePayload, resolveSelfPlayer } from './replay-engine.js'
+import {
+  buildReplay,
+  finalState,
+  parsePayload,
+  resolveSelfPlayer,
+  extractBattlefieldSelections,
+} from './replay-engine.js'
 import {
   ReplayImportError,
-  type DeckSectionEntry,
-  type DeckSections,
+  type BattlefieldSelection,
+  type CardEntry,
+  type Decklist,
   type ImportBundle,
-  type ReplayGroup,
+  type ReplayPlayer,
   type ReplaySession,
+  type RiftAtlasMatchRecord,
   type RiftExport,
   type RiftMatchRecord,
 } from './types.js'
@@ -39,20 +49,13 @@ function queueFormatFromUrl(url: string | null | undefined): string | null {
 }
 
 /** 规范化卡组分区结构（宽容：缺分区给空数组；实测服务端键为复数 battlefields/runes） */
-function normalizeSections(raw: unknown): DeckSections | null {
+function normalizeSections(raw: unknown): Decklist | null {
   if (!isRecord(raw)) return null
-  const zoneKeys = [
-    ['legend', 'legend'],
-    ['champion', 'champion'],
-    ['mainDeck', 'mainDeck'],
-    ['battlefields', 'battlefield'],
-    ['runes', 'rune'],
-    ['sideboard', 'sideboard'],
-  ] as const
-  const sections = {} as DeckSections
-  for (const [rawKey, canonKey] of zoneKeys) {
-    const list: DeckSectionEntry[] = []
-    const rawList = raw[rawKey]
+  const zoneKeys = ['legend', 'champion', 'mainDeck', 'battlefields', 'runes', 'sideboard'] as const
+  const sections = {} as Decklist
+  for (const key of zoneKeys) {
+    const list: CardEntry[] = []
+    const rawList = raw[key]
     if (Array.isArray(rawList)) {
       for (const item of rawList) {
         if (isRecord(item) && typeof item.name === 'string' && typeof item.cardCode === 'string') {
@@ -64,7 +67,7 @@ function normalizeSections(raw: unknown): DeckSections | null {
         }
       }
     }
-    sections[canonKey] = list
+    sections[key] = list
   }
   return sections
 }
@@ -74,13 +77,13 @@ interface SnapshotPlayerInfo {
   id: string
   name: string | null
   decklistRaw: string | null
-  sections: DeckSections | null
-  boardLegend: DeckSectionEntry | null
-  boardChampion: DeckSectionEntry | null
+  sections: Decklist | null
+  boardLegend: CardEntry | null
+  boardChampion: CardEntry | null
 }
 
 /** 快照 board 里的卡对象（name/cardCode） → 卡组条目 */
-function boardEntry(v: unknown): DeckSectionEntry | null {
+function boardEntry(v: unknown): CardEntry | null {
   if (!isRecord(v)) return null
   const cardCode = typeof v.cardCode === 'string' ? v.cardCode : ''
   if (!cardCode) return null
@@ -141,31 +144,12 @@ function pickOpponent(players: SnapshotPlayerInfo[], selfId: string | null) {
   return players.find((p) => p.id !== selfId) ?? null
 }
 
-/**
- * 从已存 sessions 重新推导双方传奇（sections.legend 优先，快照 board.legend 兜底）。
- * 用于旧库迁移：selfLegend/opponentLegend 字段加入前保存的文件可直接补全，无需重新导入。
- */
-export function deriveGroupLegends(group: Pick<ReplayGroup, 'sessions' | 'selfPlayerId'>): {
-  selfLegend: DeckSectionEntry | null
-  opponentLegend: DeckSectionEntry | null
-} {
-  const { snapshotPlayers, mmPlayerId } = scanSessions(group.sessions)
-  let selfId = group.selfPlayerId ?? mmPlayerId
-  if (!selfId) {
-    const byDeck = snapshotPlayers.find((p) => p.decklistRaw)
-    selfId = byDeck?.id ?? snapshotPlayers[0]?.id ?? null
-  }
-  const selfInfo = snapshotPlayers.find((p) => p.id === selfId) ?? snapshotPlayers[0] ?? null
-  const oppInfo = pickOpponent(snapshotPlayers, selfId)
-  const selfLegend =
-    selfInfo?.sections?.legend && selfInfo.sections.legend.length > 0
-      ? selfInfo.sections.legend[0]
-      : (selfInfo?.boardLegend ?? null)
-  const opponentLegend =
-    oppInfo?.sections?.legend && oppInfo.sections.legend.length > 0
-      ? oppInfo.sections.legend[0]
-      : (oppInfo?.boardLegend ?? null)
-  return { selfLegend, opponentLegend }
+/** 战场选择缺失兜底值 */
+const EMPTY_BATTLEFIELD: BattlefieldSelection = {
+  options: [],
+  finalPick: null,
+  isRandom: null,
+  pickTimestamp: null,
 }
 
 // ==================== 主入口 ====================
@@ -239,31 +223,32 @@ export function parseRiftExport(
     }
   }
 
-  const groups: ReplayGroup[] = []
+  const groups: RiftAtlasMatchRecord[] = []
   for (const [roomCode, list] of byRoom) {
     groups.push(buildGroup(roomCode, list))
   }
   roomless.forEach((list, i) => groups.push(buildGroup(null, list, `roomless-${i + 1}`)))
 
-  groups.sort((a, b) => a.startedAt - b.startedAt || a.key.localeCompare(b.key))
+  groups.sort((a, b) => a.meta.startedAt - b.meta.startedAt || a.key.localeCompare(b.key))
 
   // 3. 每组的比分预填与统计（用回放引擎重建最终状态）
   for (const g of groups) {
     const build = buildReplay({
-      roomCode: g.roomCode,
-      sessions: g.sessions,
-      selfId: g.selfPlayerId,
+      roomCode: g.meta.roomCode,
+      sessions: g.telemetry.sessions,
+      selfId: g.perspective.localPlayerId,
     })
-    g.parseFailures = build?.parseFailures ?? 0
-    g.hasReplayableData = build !== null
-    if (g.parseFailures > 0) warnings.push(`${g.key}：${g.parseFailures} 个事件 payload 解析失败`)
-    if (!build && g.snapshotCount > 0) {
+    g.telemetry.parseFailures = build?.parseFailures ?? 0
+    g.telemetry.hasReplayableData = build !== null
+    if (g.telemetry.parseFailures > 0)
+      warnings.push(`${g.key}：${g.telemetry.parseFailures} 个事件 payload 解析失败`)
+    if (!build && g.telemetry.snapshotCount > 0) {
       warnings.push(`${g.key}：只有快照没有补丁帧，数据不完整，无法回放`)
     }
     if (build) {
       const state = finalState(build)
       if (state) {
-        const self = resolveSelfPlayer(state, g.selfPlayerId)
+        const self = resolveSelfPlayer(state, g.perspective.localPlayerId)
         const opp = (state.players ?? []).find((p) => p !== self) ?? null
         const scoreOf = (
           p: { board?: Record<string, unknown> } | null | undefined
@@ -272,14 +257,23 @@ export function parseRiftExport(
           const v = p.board?.score
           return typeof v === 'number' ? v : null
         }
-        g.finalScore = { my: scoreOf(self), opp: scoreOf(opp) }
+        const score: Record<string, number> = {}
+        if (self?.id) {
+          const v = scoreOf(self)
+          if (v !== null) score[self.id] = v
+        }
+        if (opp?.id) {
+          const v = scoreOf(opp)
+          if (v !== null) score[opp.id] = v
+        }
+        g.result.score = score
         // 先手（room.firstPlayerId 可能在后来的快照里才出现，取最后一个非空）
         let firstPlayerId: string | null = null
         for (const snap of build.snapshots) {
           const v = snap.state.firstPlayerId
           if (typeof v === 'string' && v) firstPlayerId = v
         }
-        g.firstPlayerId = firstPlayerId
+        g.meta.firstPlayerId = firstPlayerId
       }
       const ignored = Object.keys(build.ignoredOps)
       if (ignored.length > 0) {
@@ -288,7 +282,7 @@ export function parseRiftExport(
         )
       }
     }
-    if (g.gameSessions.length === 0) {
+    if (g.telemetry.sessions.every((s) => s.isMatchmaking)) {
       warnings.push(`${g.key}：只有匹配记录，无可回放的对局内容`)
     }
   }
@@ -306,12 +300,12 @@ export function parseRiftExport(
   }
 }
 
-/** 一组（一局）的规范化：session 排序、自我/对手识别、卡组与传奇信息 */
-function buildGroup(
+/** 一组（一局）的规范化：session 排序、自我/对手识别、卡组与传奇信息（Schema v2） */
+export function buildGroup(
   roomCode: string | null,
   list: ReplaySession[],
   keyOverride?: string
-): ReplayGroup {
+): RiftAtlasMatchRecord {
   const sessions = [...list].sort(
     (a, b) => a.startedAt - b.startedAt || a.sessionId.localeCompare(b.sessionId)
   )
@@ -333,47 +327,106 @@ function buildGroup(
     const byDeck = snapshotPlayers.find((p) => p.decklistRaw)
     selfId = byDeck?.id ?? snapshotPlayers[0]?.id ?? null
   }
-  const selfInfo = snapshotPlayers.find((p) => p.id === selfId) ?? snapshotPlayers[0] ?? null
-  const oppInfo = pickOpponent(snapshotPlayers, selfId)
 
-  const selfDecklistRaw = selfInfo?.decklistRaw ?? null
-  const selfSections = selfInfo?.sections ?? null
-  const selfLegend =
-    selfSections?.legend && selfSections.legend.length > 0
-      ? selfSections.legend[0]
-      : (selfInfo?.boardLegend ?? null)
-  const opponentDecklistRaw = oppInfo?.decklistRaw ?? null
-  const opponentLegend =
-    oppInfo?.sections?.legend && oppInfo.sections.legend.length > 0
-      ? oppInfo.sections.legend[0]
-      : (oppInfo?.boardLegend ?? null)
+  // 本局战场选择：解析期只算一次（候选池/最终锁定/随机标记/时间戳），随记录持久化，
+  // 渲染/预热直接读取；不依赖 Chat/Log 文本
+  const battlefieldMap = extractBattlefieldSelections(sessions.flatMap((s) => s.events))
+
+  // 玩家数据池（与视角解耦；1v1，未来可扩展 2v2/观战）
+  const players: Record<string, ReplayPlayer> = {}
+  for (const info of snapshotPlayers) {
+    const legend =
+      info.sections?.legend && info.sections.legend.length > 0
+        ? info.sections.legend[0]
+        : (info.boardLegend ?? null)
+    const sel = battlefieldMap.get(info.id)
+    players[info.id] = {
+      id: info.id,
+      name: info.name,
+      legend,
+      deck: info.sections,
+      decklistRaw: info.decklistRaw,
+      battlefield: sel ?? EMPTY_BATTLEFIELD,
+    }
+  }
+  if (selfId && players[selfId]) {
+    players[selfId].name = mmPlayerName ?? players[selfId].name
+  }
 
   return {
     key: keyOverride ?? roomCode ?? 'unknown',
-    roomCode,
-    sessions,
-    gameSessions,
-    matchmakingSession,
-    startedAt,
-    endedAt,
-    durationMs,
-    queueFormat: queueFormat ?? queueFormatFromUrl(matchmakingSession?.raw.url) ?? null,
-    selfPlayerId: selfId,
-    selfName: mmPlayerName ?? selfInfo?.name ?? null,
-    opponentPlayerId: oppInfo?.id ?? null,
-    opponentName: oppInfo?.name ?? null,
-    selfDecklistRaw,
-    selfSections,
-    selfLegend,
-    opponentDecklistRaw,
-    opponentLegend,
-    totalEvents: sessions.reduce((sum, s) => sum + s.events.length, 0),
-    sessionCount: sessions.length,
-    reconnectCount: Math.max(0, gameSessions.length - 1),
-    hasReplayableData: false,
-    finalScore: null,
-    firstPlayerId: null,
-    parseFailures: 0,
-    snapshotCount,
+    meta: {
+      roomCode,
+      format: queueFormat ?? queueFormatFromUrl(matchmakingSession?.raw.url) ?? null,
+      startedAt,
+      endedAt,
+      durationMs,
+      firstPlayerId: null,
+    },
+    perspective: { localPlayerId: selfId },
+    players,
+    result: { winnerId: null, score: {} },
+    telemetry: {
+      totalEvents: sessions.reduce((sum, s) => sum + s.events.length, 0),
+      snapshotCount,
+      reconnectCount: Math.max(0, gameSessions.length - 1),
+      parseFailures: 0,
+      hasReplayableData: false,
+      sessions,
+      matchmakingSession,
+    },
   }
+}
+
+// ==================== v1 → v2 迁移（一次性，仅旧磁盘文件） ====================
+
+/** v1 磁盘文件中的对局记录形态（schema v2 之前：selfXXX/opponentXXX 字段爆炸版） */
+export interface V1ReplayGroup {
+  key: string
+  roomCode: string | null
+  sessions: ReplaySession[]
+  selfPlayerId: string | null
+  opponentPlayerId: string | null
+  selfName: string | null
+  opponentName: string | null
+  queueFormat: string | null
+  selfBattlefield?: string | null
+  opponentBattlefield?: string | null
+  totalEvents: number
+  reconnectCount: number
+  hasReplayableData: boolean
+  finalScore: { my: number | null; opp: number | null } | null
+  firstPlayerId: string | null
+  parseFailures: number
+  snapshotCount: number
+  [key: string]: unknown
+}
+
+/** 旧库迁移：v1 对局记录 → v2 RiftAtlasMatchRecord（基于 sessions 重建，语义与重新导入一致） */
+export function migrateV1Group(g: V1ReplayGroup): RiftAtlasMatchRecord {
+  const v2 = buildGroup(g.roomCode, g.sessions, g.key)
+  const selfId = v2.perspective.localPlayerId
+  let oppId: string | null = null
+  for (const pid of Object.keys(v2.players)) {
+    if (pid !== selfId) {
+      oppId = pid
+      break
+    }
+  }
+
+  // 保留 v1 已算好的结果（与重建等价，但含当时已识别的名字等）
+  if (selfId && g.selfName && v2.players[selfId]) v2.players[selfId].name = g.selfName
+  if (oppId && g.opponentName && v2.players[oppId]) v2.players[oppId].name = g.opponentName
+  if (g.queueFormat) v2.meta.format = g.queueFormat
+  if (g.firstPlayerId) v2.meta.firstPlayerId = g.firstPlayerId
+  v2.telemetry.hasReplayableData = g.hasReplayableData
+  v2.telemetry.parseFailures = g.parseFailures
+  v2.telemetry.snapshotCount = g.snapshotCount
+  v2.telemetry.totalEvents = g.totalEvents
+  v2.telemetry.reconnectCount = g.reconnectCount
+  const score: Record<string, number> = {}
+  if (selfId && typeof g.finalScore?.my === 'number') score[selfId] = g.finalScore.my
+  if (oppId && typeof g.finalScore?.opp === 'number') score[oppId] = g.finalScore.opp
+  v2.result.score = score
+  return v2
 }

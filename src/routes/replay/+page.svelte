@@ -7,7 +7,7 @@
   import { setReplayBundle } from '$lib/stores/replay-import.svelte'
   import { isTauri } from '$lib/db/env'
   import { parseRiftExport, ReplayImportError } from '$lib/replay/import-parser'
-  import type { ImportBundle, ReplayGroup } from '$lib/replay/types'
+  import type { ImportBundle, RiftAtlasMatchRecord } from '$lib/replay/types'
   import {
     loadLibrary,
     saveLibraryFile,
@@ -18,9 +18,11 @@
   } from '$lib/services/replay-library-service'
   import ReplayImportDropzone from '$lib/components/replay/ReplayImportDropzone.svelte'
   import ReplayGroupCard from '$lib/components/replay/ReplayGroupCard.svelte'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import { Upload, LoaderCircle } from '@lucide/svelte'
 
   interface MergedGroup {
-    group: ReplayGroup
+    group: RiftAtlasMatchRecord
     fileId: string
   }
 
@@ -29,6 +31,7 @@
   let errorText = $state<string | null>(null)
   let loaded = $state(false)
   let deleting = $state(false)
+  let importOpen = $state(false)
 
   // 跨文件按 room 去重（库按导入时间倒序，先扫到的即最新文件）
   const mergedGroups = $derived.by<MergedGroup[]>(() => {
@@ -45,7 +48,23 @@
   })
 
   $effect(() => {
-    setTopbar({ title: $t('replay.title'), onBack: () => void goto('/') })
+    setTopbar({
+      title: $t('replay.title'),
+      onBack: () => void goto('/'),
+      // 已有复盘时导入入口收敛到 topbar 按钮（空库时页面内直接显示导入区）
+      actions:
+        mergedGroups.length > 0 || brokenIds.length > 0
+          ? [
+              {
+                key: 'import',
+                label: $t('replay.importAction'),
+                icon: Upload,
+                variant: 'primary',
+                onClick: () => (importOpen = true),
+              },
+            ]
+          : [],
+    })
   })
 
   onMount(refresh)
@@ -57,7 +76,8 @@
     loaded = true
   }
 
-  function onFile(text: string, name: string) {
+  /** 解析 + 保存一份导入；成功返回 true（供 modal 成功后自动关闭） */
+  async function onFile(text: string, name: string): Promise<boolean> {
     errorText = null
     let bundle: ImportBundle
     try {
@@ -75,30 +95,32 @@
       } else {
         errorText = get(t)('replay.parseFailed', { values: { error: String(e) } })
       }
-      return
+      return false
     }
     setReplayBundle(bundle)
-    void (async () => {
-      const saved = await saveLibraryFile(name, text, bundle.groups)
-      if (saved) {
-        await refresh()
-      } else {
-        // 非桌面环境无持久化：以会话内伪文件展示本次导入
-        const sessionFile: StoredReplayFile = {
-          id: `session-${Date.now()}`,
-          fileName: name,
-          importedAt: Date.now(),
-          hash: hashText(text),
-          groups: bundle.groups,
-        }
-        files = [sessionFile, ...files]
-        loaded = true
+    // 卡图渲染期直接查本地库（与其他页面一致），导入期无需预热/持久化快照
+    const saved = await saveLibraryFile(name, text, bundle.groups)
+    if (saved) {
+      await refresh()
+    } else {
+      // 非桌面环境无持久化：以会话内伪文件展示本次导入
+      const sessionFile: StoredReplayFile = {
+        id: `session-${Date.now()}`,
+        fileName: name,
+        importedAt: Date.now(),
+        hash: hashText(text),
+        version: 2,
+        groups: bundle.groups,
       }
-      showToast(
-        get(t)('replay.importSaved', { values: { count: bundle.groups.length } }),
-        'success'
-      )
-    })()
+      files = [sessionFile, ...files]
+      loaded = true
+    }
+    showToast(get(t)('replay.importSaved', { values: { count: bundle.groups.length } }), 'success')
+    return true
+  }
+
+  async function onFileFromModal(text: string, name: string) {
+    if (await onFile(text, name)) importOpen = false
   }
 
   async function onDelete(fileId: string, key: string, label: string) {
@@ -142,14 +164,17 @@
 </script>
 
 <div class="page">
-  <ReplayImportDropzone {onFile} />
-  {#if errorText}
-    <div class="error-box">{errorText}</div>
-  {/if}
-
   {#if !loaded}
-    <div class="empty-hint">{$t('replay.libraryLoading')}</div>
+    <div class="loading-hint">
+      <span class="spin"><LoaderCircle size={18} /></span>
+      <span>{$t('replay.libraryLoading')}</span>
+    </div>
   {:else if mergedGroups.length === 0 && brokenIds.length === 0}
+    <!-- 空库引导：页面内直接显示导入区；已有复盘时入口收敛到 topbar 按钮 + Modal -->
+    <ReplayImportDropzone {onFile} />
+    {#if errorText}
+      <div class="error-box">{errorText}</div>
+    {/if}
     <div class="empty-hint">{$t('replay.emptySaved')}</div>
   {:else}
     <div class="group-title">{$t('replay.savedTitle')} · {mergedGroups.length}</div>
@@ -159,7 +184,7 @@
           group={m.group}
           deckOverlap={null}
           onReplay={() => goto(`/replay/${encodeURIComponent(m.group.key)}`)}
-          onDelete={() => onDelete(m.fileId, m.group.key, m.group.roomCode ?? m.group.key)}
+          onDelete={() => onDelete(m.fileId, m.group.key, m.group.meta?.roomCode ?? m.group.key)}
         />
       {/each}
     </div>
@@ -179,13 +204,25 @@
   {/if}
 </div>
 
+<CommonModal
+  open={importOpen}
+  title={$t('replay.importTitle')}
+  width="min(560px, 100%)"
+  onclose={() => (importOpen = false)}
+>
+  <ReplayImportDropzone onFile={onFileFromModal} />
+  {#if errorText}
+    <div class="error-box">{errorText}</div>
+  {/if}
+</CommonModal>
+
 <style>
   .page {
     display: flex;
     flex-direction: column;
     gap: 10px;
     padding: 12px;
-    max-width: 860px;
+    max-width: 1200px;
     margin: 0 auto;
   }
   .error-box {
@@ -194,31 +231,49 @@
     border: 1px solid #f5b5ad;
     border-radius: var(--radius-lg);
     padding: 10px 12px;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .empty-hint {
     text-align: center;
     color: var(--text-tertiary);
-    font-size: 13px;
+    font-size: var(--text-base);
     padding: 16px 0;
   }
+  .loading-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-tertiary);
+    font-size: var(--text-base);
+    padding: 48px 0;
+  }
+  .spin {
+    animation: loading-spin 0.9s linear infinite;
+  }
+  @keyframes loading-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .group-title {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-primary);
     margin-top: 4px;
   }
   .group-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    padding: 4px 2px 24px;
   }
   .broken-box {
     background: #fff8ec;
     border: 1px solid #fcd9a8;
     border-radius: var(--radius-lg);
     padding: 10px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .broken-title {
     font-weight: 600;
@@ -241,7 +296,7 @@
     border-radius: var(--radius-md);
     padding: 3px 10px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .broken-del:hover {
     background: #fdecea;

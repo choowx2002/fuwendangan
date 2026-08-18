@@ -13,7 +13,7 @@
     resolveCardMetas,
     type ReplayCardMeta,
   } from '$lib/replay/card-meta'
-  import type { ReplayGroup } from '$lib/replay/types'
+  import type { RiftAtlasMatchRecord } from '$lib/replay/types'
   import {
     getReplayResultMarks,
     markReplayResult,
@@ -27,7 +27,7 @@
   import { ChevronLeft, ChevronRight, Pause, Play, SkipBack, SkipForward } from '@lucide/svelte'
 
   interface Props {
-    group: ReplayGroup
+    group: RiftAtlasMatchRecord
   }
   let { group }: Props = $props()
 
@@ -69,10 +69,21 @@
   const isEnd = $derived(total > 0 && safeCurrent >= total - 1)
   const marks = $derived(getReplayResultMarks())
   const resultKey = $derived(group.key)
-  const selfName = $derived(group.selfName ?? me?.name ?? me?.id ?? '?')
-  const oppName = $derived(group.opponentName ?? opp?.name ?? opp?.id ?? '?')
-  const selfLegendCode = $derived(group.selfLegend?.cardCode ?? null)
-  const oppLegendCode = $derived(group.opponentLegend?.cardCode ?? null)
+  // 视角解耦：我方 = perspective.localPlayerId，对方 = 剩余玩家（渲染期只读，零计算）
+  const players = $derived(group.players ?? {})
+  const selfPlayer = $derived(
+    group.perspective?.localPlayerId ? (players[group.perspective.localPlayerId] ?? null) : null
+  )
+  const oppPlayer = $derived.by(() => {
+    for (const [pid, p] of Object.entries(players)) {
+      if (pid !== (group.perspective?.localPlayerId ?? null)) return p
+    }
+    return null
+  })
+  const selfName = $derived(selfPlayer?.name ?? me?.name ?? me?.id ?? '?')
+  const oppName = $derived(oppPlayer?.name ?? opp?.name ?? opp?.id ?? '?')
+  const selfLegendCode = $derived(selfPlayer?.legend?.cardCode ?? null)
+  const oppLegendCode = $derived(oppPlayer?.legend?.cardCode ?? null)
   const selfScore = $derived(typeof me?.board?.score === 'number' ? Number(me.board.score) : 0)
   const oppScore = $derived(typeof opp?.board?.score === 'number' ? Number(opp.board.score) : 0)
 
@@ -141,9 +152,9 @@
 
   onMount(() => {
     build = buildReplay({
-      roomCode: group.roomCode,
-      sessions: group.sessions,
-      selfId: group.selfPlayerId,
+      roomCode: group.meta?.roomCode,
+      sessions: group.telemetry?.sessions ?? [],
+      selfId: group.perspective?.localPlayerId,
     })
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -171,13 +182,13 @@
   })
 
   const durationMin = $derived(
-    group.durationMs != null ? Math.max(1, Math.round(group.durationMs / 60000)) : null
+    group.meta?.durationMs != null ? Math.max(1, Math.round(group.meta.durationMs / 60000)) : null
   )
 </script>
 
 {#if !build || total === 0}
   <div class="empty-box">
-    {#if group.snapshotCount > 0}
+    {#if (group.telemetry?.snapshotCount ?? 0) > 0}
       {$t('replay.viewerIncomplete')}
     {:else}
       {$t('replay.viewerEmpty')}
@@ -220,17 +231,17 @@
         </div>
       </div>
       <div class="head-meta">
-        <span class="room">{group.roomCode ?? group.key}</span>
+        <span class="room">{group.meta?.roomCode ?? group.key}</span>
         <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
-        {#if group.queueFormat}
+        {#if group.meta?.format}
           <span class="badge queue"
-            >{$t('replay.groupQueueFormat', { values: { format: group.queueFormat } })}</span
+            >{$t('replay.groupQueueFormat', { values: { format: group.meta.format } })}</span
           >
         {/if}
         <span class="meta">
-          {$t('replay.groupSessions', { values: { n: group.sessionCount } })}
-          {#if group.reconnectCount > 0}
-            · {$t('replay.groupReconnects', { values: { n: group.reconnectCount } })}
+          {$t('replay.groupSessions', { values: { n: group.telemetry?.sessions.length ?? 1 } })}
+          {#if (group.telemetry?.reconnectCount ?? 0) > 0}
+            · {$t('replay.groupReconnects', { values: { n: group.telemetry.reconnectCount } })}
           {/if}
         </span>
         {#if durationMin !== null}
@@ -369,7 +380,7 @@
     background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .head-players {
     display: flex;
@@ -390,7 +401,7 @@
   .pname {
     font-weight: 700;
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: var(--text-base);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -411,7 +422,7 @@
     border-radius: 10px;
     padding: 2px 14px;
     font-weight: 800;
-    font-size: 18px;
+    font-size: var(--text-xl);
     color: var(--text-primary);
   }
   .scol {
@@ -422,14 +433,14 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .room {
     font-weight: 700;
     color: var(--text-primary);
   }
   .badge {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     border-radius: 8px;
     padding: 1px 8px;
@@ -476,11 +487,11 @@
   }
   .chain-label {
     color: var(--text-tertiary);
-    font-size: 10px;
+    font-size: var(--text-xs);
   }
   .chain-empty {
     color: var(--text-tertiary);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .chain-cards {
     display: flex;
@@ -510,7 +521,7 @@
     border-radius: var(--radius-md);
     padding: 4px 10px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .tbtn:hover {
     background: var(--bg-hover);
@@ -531,7 +542,7 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 3px 6px;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .tscrub {
     flex: 1;
@@ -539,7 +550,7 @@
     accent-color: var(--accent-color);
   }
   .tframe {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     white-space: nowrap;
   }
@@ -562,12 +573,12 @@
   }
   .end-box h4 {
     margin: 0 0 8px;
-    font-size: 15px;
+    font-size: var(--text-md);
     color: var(--text-primary);
   }
   .end-box p {
     margin: 0 0 14px;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     line-height: 1.5;
   }

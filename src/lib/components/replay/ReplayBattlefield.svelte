@@ -93,7 +93,7 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     margin-top: -8px;
     margin-bottom: 2px;
@@ -101,7 +101,7 @@
   .bf-turn .tt {
     color: var(--text-primary);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .bf-turn .tp {
     background: var(--surface-muted);
@@ -123,7 +123,7 @@
     padding-top: 2px;
   }
   .bf-owner {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     color: var(--text-secondary);
     min-width: 64px;
@@ -136,7 +136,7 @@
     gap: 3px;
   }
   .zlabel {
-    font-size: 10px;
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
   .zc {

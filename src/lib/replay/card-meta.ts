@@ -8,7 +8,12 @@
  * 元数据（名称/费用/战力/类型）优先本地 cards_base，缺失时由事件数据自带字段兜底。
  */
 
-import { getBestPrint, getCardAndPrintByPrintCode, printCacheName } from '$lib/db'
+import {
+  getBestPrint,
+  getCardAndPrintByPrintCode,
+  getCardAndPrintByEnglishName,
+  printCacheName,
+} from '$lib/db'
 import { isTauri } from '$lib/db/env'
 import { normalizeSignedSuffix } from '$lib/decks/deck-import'
 import type { GameState } from './replay-engine.js'
@@ -54,6 +59,26 @@ function fallbackMeta(code: string): ReplayCardMeta {
   }
 }
 
+/** 命中本地库卡牌 → 填充元数据字段（名称/类别/费用/战力/卡图） */
+type CardWithPrints = NonNullable<Awaited<ReturnType<typeof getCardAndPrintByPrintCode>>>
+
+function applyCardMeta(meta: ReplayCardMeta, card: CardWithPrints): void {
+  const best = getBestPrint(card)
+  meta.name = card.card_name_cn ?? null
+  meta.type = Array.isArray(card.card_category)
+    ? card.card_category.join(' / ')
+    : typeof card.card_category === 'string'
+      ? card.card_category
+      : null
+  meta.energyCost = typeof card.energy === 'number' ? card.energy : null
+  meta.might = typeof card.power === 'number' ? card.power : null
+  if (best?.url) {
+    meta.imgCdn = best.url
+    meta.cacheName = printCacheName(best)
+  }
+  meta.found = true
+}
+
 /**
  * 批量解析卡号 → 元数据，全部来自本地库（card_prints + cards_base）。
  * Web 模式无本地库，返回全兜底（仅展示事件数据自带的名称/类型，卡图占位）。
@@ -82,26 +107,56 @@ export async function resolveCardMetas(codes: string[]): Promise<Map<string, Rep
         for (const cand of candidates) {
           const card = await getCardAndPrintByPrintCode(cand)
           if (!card) continue
-          const best = getBestPrint(card)
-          meta.name = card.card_name_cn ?? null
-          meta.type = Array.isArray(card.card_category)
-            ? card.card_category.join(' / ')
-            : typeof card.card_category === 'string'
-              ? card.card_category
-              : null
-          meta.energyCost = typeof card.energy === 'number' ? card.energy : null
-          meta.might = typeof card.power === 'number' ? card.power : null
-          if (best?.url) {
-            meta.imgCdn = best.url
-            meta.cacheName = printCacheName(best)
-          }
-          meta.found = true
+          applyCardMeta(meta, card)
           break
         }
       } catch {
         // 本地查询失败时保持 CDN 回退
       }
       map.set(code, meta)
+    })
+  )
+  return map
+}
+
+/**
+ * 批量解析英文卡名 → 元数据，全部来自本地库（card_prints + cards_base）。
+ * Web 模式无本地库，返回全兜底。
+ *
+ * 主通道：按英文名反查（getCardAndPrintByEnglishName，支持「名称, 副标题」拆分与兜底）；
+ * 兜底：部分数据可能直接是卡号形态，按卡号候选再试一次。
+ * key = 原始名称 trim 后的值（与战场选择 finalPick 对齐）。
+ */
+export async function resolveNameMetas(names: string[]): Promise<Map<string, ReplayCardMeta>> {
+  const map = new Map<string, ReplayCardMeta>()
+  const unique = [
+    ...new Set(names.map((n) => (typeof n === 'string' ? n.trim() : '')).filter(Boolean)),
+  ]
+
+  if (!isTauri) {
+    for (const name of unique) map.set(name, fallbackMeta(name))
+    return map
+  }
+
+  await Promise.all(
+    unique.map(async (name) => {
+      const meta = fallbackMeta(name)
+      try {
+        let card = await getCardAndPrintByEnglishName(name)
+        // 兜底：数据形态可能是卡号（非英文名）
+        if (!card) {
+          for (const cand of [
+            ...new Set([name, normalizeSignedSuffix(name), baseCardCode(name)]),
+          ]) {
+            card = await getCardAndPrintByPrintCode(cand)
+            if (card) break
+          }
+        }
+        if (card) applyCardMeta(meta, card)
+      } catch {
+        // 本地查询失败时保持占位
+      }
+      map.set(name, meta)
     })
   )
   return map

@@ -87,7 +87,7 @@
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: var(--text-xs);
     line-height: 1;
     padding: 3px 6px;
     cursor: pointer;
@@ -96,12 +96,12 @@
     color: var(--text-primary);
   }
   h3 {
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
   }
   .nlist {
     overflow-y: auto;
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.5;
     min-height: 0;
     flex: 1;
@@ -119,7 +119,7 @@
   .nlt {
     color: var(--text-tertiary);
     margin-right: 6px;
-    font-size: 10px;
+    font-size: var(--text-xs);
   }
   .nl.reconnect {
     text-align: center;

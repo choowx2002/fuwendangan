@@ -9,7 +9,7 @@
  * sequence 无缝衔接，回放天然连续；在 session 边界处标记帧并插入 reconnect 解说条目。
  */
 
-import type { ReplaySession } from './types.js'
+import type { BattlefieldSelection, ReplaySession } from './types.js'
 
 // ==================== 状态与操作类型 ====================
 
@@ -139,6 +139,19 @@ export function parsePayload(raw: string): unknown {
   } catch {
     return null
   }
+}
+
+/** 宽容解析 payload：字符串走 JSON.parse（失败返 null），已解析对象直接用 */
+function parsePayloadObject(payload: unknown): Record<string, unknown> | null {
+  if (typeof payload === 'string') {
+    try {
+      const v = JSON.parse(payload)
+      return isRecord(v) ? v : null
+    } catch {
+      return null
+    }
+  }
+  return isRecord(payload) ? payload : null
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -475,4 +488,157 @@ export function resolveSelfPlayer(state: GameState, selfId: string | null): Game
   return (
     players.find((p) => !!p.decklistRaw) ?? players.find((p) => p.seat === 0) ?? players[0] ?? null
   )
+}
+
+// ==================== 战场选择提取 ====================
+
+/** 可参与事件扫描的最简事件形态（RiftEvent 及自定义 { payload: string } 均兼容） */
+export interface SnapshotCandidateEvent {
+  payload?: unknown
+  ts?: number
+  seq?: number
+}
+
+/** 战场候选池的结构化字段候选名（服务端无稳定契约，宽容探测） */
+const BATTLEFIELD_OPTION_FIELDS = [
+  'battlefieldOptions',
+  'options',
+  'battlefieldPool',
+  'candidates',
+] as const
+
+/** 战场值归一化（兼容 string 与 { cardCode }）；string 顺手 trim 统一 key */
+function toBattlefieldCode(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (isRecord(value) && typeof value.cardCode === 'string' && value.cardCode.trim()) {
+    return value.cardCode.trim()
+  }
+  return null
+}
+
+/** 候选池归一化（兼容 string[] 与 { cardCode }[]） */
+function toOptionCodes(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const item of value) {
+    const code = toBattlefieldCode(item)
+    if (code) out.push(code)
+  }
+  return out
+}
+
+/** 结构化候选池探测：按候选字段名依次取，第一个非空生效（缺失兜底为空数组） */
+function probeOptionCodes(fields: Record<string, unknown>): string[] {
+  for (const key of BATTLEFIELD_OPTION_FIELDS) {
+    if (key in fields) {
+      const options = toOptionCodes(fields[key])
+      if (options.length > 0) return options
+    }
+  }
+  return []
+}
+
+/**
+ * 从一堆 events 提取某局（可选按 gameInstanceId 过滤）每位玩家的战场选择过程数据
+ * （候选池 / 最终锁定 / 随机标记 / 锁定时间戳）。
+ *
+ * 数据源（结构化为主）：authoritative_patch_commit 中 op='set_player_fields' 且 fields 含
+ * selectedBattlefield（或候选池字段）的块（不依赖 Chat/Log 文本，无截断/延迟问题）。
+ * 兜底：op 流缺失时扫描快照 payload 的 players[]（服务端权威状态）。
+ * 同一玩家多次出现时以最后一条生效为准：先按 (ts → seq → 原数组下标) 排序副本
+ * （不改原数组），再逐条覆盖，后写胜出。
+ * 推断为辅：isRandom 无结构化标记但 finalPick 不在候选池时推断为 true；缺失兜底不抛错。
+ */
+export function extractBattlefieldSelections(
+  events: ReadonlyArray<SnapshotCandidateEvent>,
+  gameInstanceId?: string | null
+): Map<string, BattlefieldSelection> {
+  interface Pick {
+    ts: number | null
+    seq: number | null
+    index: number
+    playerId: string
+    battlefield: string | null
+    options: string[]
+    isRandom: boolean | null
+  }
+  const picks: Pick[] = []
+
+  const pushPick = (index: number, playerId: unknown, value: unknown, raw: unknown) => {
+    if (typeof playerId !== 'string' || !playerId) return
+    const battlefield = toBattlefieldCode(value)
+    const fields = isRecord(raw) ? raw : {}
+    const options = probeOptionCodes(fields)
+    if (battlefield === null && options.length === 0) return
+    const randomFlag = fields.random ?? fields.isRandom
+    const isRandom = typeof randomFlag === 'boolean' ? randomFlag : null
+    const ev = events[index]
+    picks.push({
+      ts: typeof ev?.ts === 'number' ? ev.ts : null,
+      seq: typeof ev?.seq === 'number' ? ev.seq : null,
+      index,
+      playerId,
+      battlefield,
+      options,
+      isRandom,
+    })
+  }
+
+  events.forEach((ev, index) => {
+    const p = parsePayloadObject(ev.payload)
+    if (!p) return
+    if (gameInstanceId != null && p.gameInstanceId !== gameInstanceId) return
+
+    // 主路径：patch.operations 里的 set_player_fields 块
+    if (isRecord(p.patch) && Array.isArray(p.patch.operations)) {
+      for (const raw of p.patch.operations as unknown[]) {
+        if (!isRecord(raw)) continue
+        if (raw.op !== 'set_player_fields' || !isRecord(raw.fields)) continue
+        if (!('selectedBattlefield' in raw.fields)) continue
+        pushPick(index, raw.playerId, raw.fields.selectedBattlefield, raw.fields)
+      }
+    }
+
+    // 防御性：顶层 op 形态
+    if (p.op === 'set_player_fields' && isRecord(p.fields) && 'selectedBattlefield' in p.fields) {
+      pushPick(index, p.playerId, p.fields.selectedBattlefield, p.fields)
+    }
+    // 兜底：权威快照 players[] 自带（服务端全量状态）
+    if (
+      p.type === 'authoritative_snapshot' &&
+      isRecord(p.snapshot) &&
+      Array.isArray(p.snapshot.players)
+    ) {
+      for (const pl of p.snapshot.players as unknown[]) {
+        if (isRecord(pl)) pushPick(index, pl.id, pl.selectedBattlefield, pl)
+      }
+    }
+  })
+
+  if (picks.length === 0) return new Map()
+  picks.sort((a, b) => {
+    if (a.ts !== null && b.ts !== null && a.ts !== b.ts) return a.ts - b.ts
+    if (a.seq !== null && b.seq !== null && a.seq !== b.seq) return a.seq - b.seq
+    return a.index - b.index
+  })
+
+  // 后写胜出：同玩家多条只保留最后一条
+  const last = new Map<string, Pick>()
+  for (const pick of picks) last.set(pick.playerId, pick)
+
+  const result = new Map<string, BattlefieldSelection>()
+  for (const [playerId, pick] of last) {
+    let isRandom = pick.isRandom
+    // 推断为辅：无结构化标记但最终锁定不在候选池 → 视为随机
+    if (isRandom === null && pick.options.length > 0 && pick.battlefield !== null) {
+      if (!pick.options.includes(pick.battlefield)) isRandom = true
+    }
+    result.set(playerId, {
+      options: pick.options,
+      finalPick: pick.battlefield,
+      isRandom,
+      pickTimestamp: pick.ts,
+    })
+  }
+  return result
 }

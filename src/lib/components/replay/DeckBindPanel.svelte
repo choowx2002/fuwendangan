@@ -5,7 +5,7 @@
   import { isTauri } from '$lib/db/env'
   import { getDecks, getLatestDeckCards, type Deck, type DeckCardDetail } from '$lib/db'
   import { normalizeSignedSuffix } from '$lib/decks/deck-import'
-  import type { ReplayGroup } from '$lib/replay/types'
+  import type { RiftAtlasMatchRecord } from '$lib/replay/types'
 
   export interface DeckBindSelection {
     deckId: string | null
@@ -14,7 +14,7 @@
   }
 
   interface Props {
-    groups: ReplayGroup[]
+    groups: RiftAtlasMatchRecord[]
     onChanged: (selection: DeckBindSelection) => void
   }
   let { groups, onChanged }: Props = $props()
@@ -31,10 +31,11 @@
   let loading = $state(true)
   let selectedId = $state<string | null>(null)
 
-  function mainDeckCodes(group: ReplayGroup): Set<string> {
+  function mainDeckCodes(group: RiftAtlasMatchRecord): Set<string> {
     const codes = new Set<string>()
-    for (const en of group.selfSections?.mainDeck ?? [])
-      codes.add(normalizeSignedSuffix(en.cardCode))
+    const selfId = group.perspective?.localPlayerId
+    const self = selfId ? (group.players?.[selfId] ?? null) : null
+    for (const en of self?.deck?.mainDeck ?? []) codes.add(normalizeSignedSuffix(en.cardCode))
     return codes
   }
 
@@ -148,19 +149,19 @@
   }
   h4 {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-secondary);
   }
   .hint {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
   .opt {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--text-primary);
     cursor: pointer;
     padding: 4px 6px;
@@ -173,11 +174,11 @@
     font-weight: 500;
   }
   .opt-hint {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
   .badge.match {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     border-radius: 8px;
     padding: 1px 8px;

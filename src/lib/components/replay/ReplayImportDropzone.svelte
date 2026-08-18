@@ -103,7 +103,7 @@
     padding: 40px 32px;
     cursor: pointer;
     width: min(520px, 92%);
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 2;
     background: var(--surface);
     display: flex;
@@ -129,7 +129,7 @@
     border-radius: var(--radius-md);
     padding: 5px 14px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--text-base);
   }
   .dz-btn:hover {
     background: var(--bg-hover);

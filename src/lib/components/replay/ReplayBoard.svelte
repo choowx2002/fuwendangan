@@ -177,7 +177,7 @@
     gap: 8px;
   }
   .turn-badge {
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: #fff;
     background: var(--accent-color);
@@ -185,7 +185,7 @@
     border-radius: 8px;
   }
   .pills {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
     display: flex;
     gap: 8px;
@@ -223,7 +223,7 @@
     gap: 3px;
   }
   .zlabel {
-    font-size: 10px;
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
   .zlabel.dim {
@@ -235,7 +235,7 @@
     flex-wrap: wrap;
   }
   .count {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
     align-self: center;
     padding-left: 2px;
