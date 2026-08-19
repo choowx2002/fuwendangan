@@ -2,10 +2,11 @@
  * 复盘本地库服务（桌面持久化）
  *
  * 拖入的复盘文件保存到 $APPLOCALDATA/replays/<id>.json（每份导入一个文件，
- * 内容为规范化后的 RiftAtlasMatchRecord[]，version: 2），元信息维护在 replays/index.json。
+ * 内容为规范化后的 RiftAtlasMatchRecord[]，version: 3），元信息维护在 replays/index.json。
  * 仅 Tauri 环境持久化；web 环境返回空库（该模式数据页本就不可用）。
  * 去重：按文件内容 hash，相同文件重复导入 → 覆盖替换。
- * 单局删除：过滤目标 group.key 后重写文件；文件清空则整删并更新索引。
+ * 单系列删除：过滤目标 group.key 后重写文件；文件清空则整删并更新索引。
+ * 手动指定先手选择者：updateGameStarterChooser 直接改写磁盘记录并回写。
  */
 
 import { isTauri } from '$lib/db/env'
@@ -17,7 +18,7 @@ import {
   remove,
   BaseDirectory,
 } from '@tauri-apps/plugin-fs'
-import { migrateV1Group, type V1ReplayGroup } from '$lib/replay/import-parser'
+import { migrateV1Group, migrateV2ToV3, type V1ReplayGroup } from '$lib/replay/import-parser'
 import type { RiftAtlasMatchRecord } from '$lib/replay/types'
 
 export interface StoredReplayFile {
@@ -25,8 +26,8 @@ export interface StoredReplayFile {
   fileName: string
   importedAt: number
   hash: string
-  /** 磁盘格式版本：2 = Schema v2（RiftAtlasMatchRecord） */
-  version: 2
+  /** 磁盘格式版本：3 = Schema v3（RiftAtlasMatchRecord，series 化） */
+  version: 3
   groups: RiftAtlasMatchRecord[]
 }
 
@@ -101,10 +102,10 @@ function isV1Group(g: unknown): g is V1ReplayGroup {
   return typeof g === 'object' && g !== null && !('players' in g)
 }
 
-/** 旧库迁移：v1（ReplayGroup）→ v2（RiftAtlasMatchRecord），一次性 */
-function migrateGroupToV2(g: unknown): RiftAtlasMatchRecord | null {
-  if (!isV1Group(g)) return null
-  return migrateV1Group(g)
+/** 旧库迁移：v1（ReplayGroup）→ v3（RiftAtlasMatchRecord），一次性 */
+function migrateGroupToV3(g: unknown): RiftAtlasMatchRecord | null {
+  if (isV1Group(g)) return migrateV1Group(g)
+  return migrateV2ToV3(g as RiftAtlasMatchRecord)
 }
 
 /** 读取全部已保存复盘（按导入时间倒序；损坏/缺失的文件在 brokenIds 中列出） */
@@ -120,12 +121,12 @@ export async function loadLibrary(): Promise<LibraryResult> {
       })
       const parsed = JSON.parse(raw) as { version?: number; groups?: unknown }
       if (!Array.isArray(parsed.groups)) throw new Error('bad shape')
-      let migrated = parsed.version !== 2
+      let migrated = parsed.version !== 3
       const groups = parsed.groups.map((g) => {
-        const v2 = migrateGroupToV2(g)
-        if (v2) {
+        const v3 = migrateGroupToV3(g)
+        if (v3) {
           migrated = true
-          return v2
+          return v3
         }
         return g
       }) as RiftAtlasMatchRecord[]
@@ -135,7 +136,7 @@ export async function loadLibrary(): Promise<LibraryResult> {
             if (await ensureDir()) {
               await writeTextFile(
                 `replays/${entry.id}.json`,
-                JSON.stringify({ ...parsed, version: 2, groups }),
+                JSON.stringify({ ...parsed, version: 3, groups }),
                 { baseDir: BaseDirectory.AppLocalData }
               )
             }
@@ -147,7 +148,7 @@ export async function loadLibrary(): Promise<LibraryResult> {
         fileName: entry.fileName,
         importedAt: entry.importedAt,
         hash: entry.hash,
-        version: 2,
+        version: 3,
         groups,
       })
     } catch {
@@ -173,7 +174,7 @@ export async function saveLibraryFile(
     fileName: fileName ?? 'replay.json',
     importedAt: Date.now(),
     hash,
-    version: 2,
+    version: 3,
     groups,
   }
   const entry: IndexEntry = {
@@ -252,4 +253,45 @@ export async function removeFile(fileId: string): Promise<boolean> {
     .catch(() => {})
   await writeChain
   return removed
+}
+
+/**
+ * 手动指定某局先手选择者并持久化到磁盘记录（播放页 starterChooser 提示条使用）。
+ * 返回是否写回成功（非桌面 / 文件不存在 / 未找到目标局 → false）。
+ */
+export async function updateGameStarterChooser(
+  fileId: string,
+  groupKey: string,
+  gameNumber: number,
+  playerId: string | null
+): Promise<boolean> {
+  if (!isTauri) return false
+  const index = await readIndex()
+  if (!index.some((e) => e.id === fileId)) return false
+  let updated = false
+  writeChain = writeChain
+    .then(async () => {
+      try {
+        const raw = await readTextFile(`replays/${fileId}.json`, {
+          baseDir: BaseDirectory.AppLocalData,
+        })
+        const parsed = JSON.parse(raw) as { groups?: unknown }
+        const groups = Array.isArray(parsed.groups) ? (parsed.groups as RiftAtlasMatchRecord[]) : []
+        const group = groups.find((g) => g.key === groupKey)
+        const game = group?.games?.find((gg) => gg.gameNumber === gameNumber)
+        if (!group || !game) return
+        game.starterChooserPlayerId = playerId
+        await writeTextFile(
+          `replays/${fileId}.json`,
+          JSON.stringify({ ...parsed, version: 3, groups }),
+          { baseDir: BaseDirectory.AppLocalData }
+        )
+        updated = true
+      } catch {
+        // 读取/写入失败：不更新
+      }
+    })
+    .catch(() => {})
+  await writeChain
+  return updated
 }

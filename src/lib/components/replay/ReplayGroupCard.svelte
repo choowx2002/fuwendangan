@@ -36,9 +36,22 @@
   const selfLegend = $derived(selfPlayer?.legend ?? null)
   const oppLegend = $derived(oppPlayer?.legend ?? null)
 
-  // 本局最终战场：解析期已从 set_player_fields 提取并持久化，渲染直接读取
-  const selfBattlefield = $derived(selfPlayer?.battlefield?.finalPick ?? null)
-  const oppBattlefield = $derived(oppPlayer?.battlefield?.finalPick ?? null)
+  // 系列首局（展示用：传奇跨局稳定，战场取第 1 局选择）
+  const firstGame = $derived((group.games ?? [])[0] ?? null)
+
+  // 战场缩略图：优先首局战场选择，玩家池兜底
+  const selfBattlefield = $derived.by(() => {
+    const fromGame = selfPlayer
+      ? (firstGame?.battlefieldSelections?.[selfPlayer.id]?.finalPick ?? null)
+      : null
+    return fromGame ?? selfPlayer?.battlefield?.finalPick ?? null
+  })
+  const oppBattlefield = $derived.by(() => {
+    const fromGame = oppPlayer
+      ? (firstGame?.battlefieldSelections?.[oppPlayer.id]?.finalPick ?? null)
+      : null
+    return fromGame ?? oppPlayer?.battlefield?.finalPick ?? null
+  })
 
   // 卡图元数据渲染期直查本地库（与其他页面一致）：传奇按卡号、战场按英文名，
   // 图片文件由 CardSimpleImage 按需命中/下载；查询失败自然走占位卡背
@@ -72,6 +85,15 @@
     return get(t)('replay.groupScoreHint', { values: { my: my ?? '-', opp: opp ?? '-' } })
   })
 
+  // 每局比分（未比完局 = 解析期按最后状态预填的最后分数；该局无任何比分数据 → 行显示 -）
+  const perGameScores = $derived.by(() =>
+    (group.games ?? []).map((g) => {
+      const my = selfPlayer ? (g.score?.[selfPlayer.id] ?? null) : null
+      const opp = oppPlayer ? (g.score?.[oppPlayer.id] ?? null) : null
+      return { my, opp }
+    })
+  )
+
   function fmtTime(ts: number): string {
     const d = new Date(ts)
     const p = (n: number) => String(n).padStart(2, '0')
@@ -81,6 +103,12 @@
   const durationMin = $derived(
     group.meta?.durationMs != null ? Math.max(1, Math.round(group.meta.durationMs / 60000)) : null
   )
+
+  // 真实赛制局数（bo{n} → n；未知 1）
+  const boTotal = $derived.by(() => {
+    const m = /bo(\d+)/i.exec(group.meta?.format ?? '')
+    return m ? parseInt(m[1], 10) : 1
+  })
 
   // 点击缩略图 → 复用全局 CardModal 查看完整卡牌详情（含印刷版本/效果/TTS）
   let selectedCard = $state<(CardBase & { card_prints?: CardPrint[] }) | null>(null)
@@ -117,7 +145,12 @@
 <div class="gcard" class:unplayable={!group.telemetry?.hasReplayableData}>
   <div class="g-title">
     <span class="room">{group.meta?.roomCode ?? group.key}</span>
-    <span class="badge bo">{$t('replay.groupBo', { values: { n: 1 } })}</span>
+    <span class="badge bo">{$t('replay.groupBo', { values: { n: boTotal } })}</span>
+    {#if (group.games?.length ?? 0) > 1}
+      <span class="badge games"
+        >{$t('replay.seriesGames', { values: { n: group.games.length } })}</span
+      >
+    {/if}
     {#if group.meta?.format}
       <span class="badge queue"
         >{$t('replay.groupQueueFormat', { values: { format: group.meta.format } })}</span
@@ -156,7 +189,13 @@
       <span class="pname">{selfPlayer?.name ?? '-'}</span>
     </div>
     <div class="vs-badge">
-      {#if scoreText}
+      {#if (group.games?.length ?? 0) > 1}
+        {#each perGameScores as s, i (i)}
+          <span class="game-score" title={$t('replay.gameTab', { values: { n: i + 1 } })}
+            >{s.my ?? '-'}:{s.opp ?? '-'}</span
+          >
+        {/each}
+      {:else if scoreText}
         <span class="score-hint">{scoreText}</span>
       {:else}
         <span>{$t('replay.versus')}</span>
@@ -289,6 +328,11 @@
     color: var(--text-secondary);
     border: 1px solid var(--border-subtle);
   }
+  .badge.games {
+    background: var(--surface-subtle);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+  }
   .badge.match {
     background: #fff3e0;
     color: #b45309;
@@ -334,6 +378,10 @@
   }
   .score-hint {
     color: var(--accent-color);
+  }
+  .game-score {
+    line-height: 1.3;
+    white-space: nowrap;
   }
 
   .g-footer {

@@ -23,6 +23,12 @@ export interface ReplayCardMeta {
   name: string | null
   /** 本地库卡牌类别（中文，可作兜底展示） */
   type: string | null
+  /** 副标题（如 "Ahri, Nine-Tailed Fox" 的逗号后半） */
+  subtitle: string | null
+  /** 技能效果文本（中文优先，英文兜底） */
+  description: string | null
+  /** 风味文本（中文优先，英文兜底） */
+  flavor: string | null
   energyCost: number | null
   might: number | null
   /** 本地 SC 卡图地址（经 loadImageFromAppFolder 加载；null 表示本地无图） */
@@ -51,6 +57,9 @@ function fallbackMeta(code: string): ReplayCardMeta {
   return {
     name: null,
     type: null,
+    subtitle: null,
+    description: null,
+    flavor: null,
     energyCost: null,
     might: null,
     imgCdn: null,
@@ -59,7 +68,7 @@ function fallbackMeta(code: string): ReplayCardMeta {
   }
 }
 
-/** 命中本地库卡牌 → 填充元数据字段（名称/类别/费用/战力/卡图） */
+/** 命中本地库卡牌 → 填充元数据字段（名称/类别/费用/战力/效果/卡图） */
 type CardWithPrints = NonNullable<Awaited<ReturnType<typeof getCardAndPrintByPrintCode>>>
 
 function applyCardMeta(meta: ReplayCardMeta, card: CardWithPrints): void {
@@ -70,6 +79,9 @@ function applyCardMeta(meta: ReplayCardMeta, card: CardWithPrints): void {
     : typeof card.card_category === 'string'
       ? card.card_category
       : null
+  meta.subtitle = card.sub_title_cn ?? card.sub_title_en ?? null
+  meta.description = card.effect_cn ?? card.effect_en ?? null
+  meta.flavor = card.flavor_text_cn ?? card.flavor_text_en ?? null
   meta.energyCost = typeof card.energy === 'number' ? card.energy : null
   meta.might = typeof card.power === 'number' ? card.power : null
   if (best?.url) {

@@ -4,8 +4,10 @@
  * 数据来源：Rift Atlas 扩展导出的 JSON（meta.version 0.2.x 实测）。
  * 关键认知：一个 roomCode = 一局游戏；同一房间内多条记录 = 断线重连的多个 session。
  *
- * Schema v2：视角解耦（players + perspective），战场选择保留过程数据（候选池/随机/时间戳），
- * 静态资源（卡图元数据）与对局业务数据分离。
+ * Schema v3：系列（Series）化——同一 BO3 的多个 room 通过服务器权威字段
+ * seriesId/gameNumber/previousRoomCode/nextRoomCode 合并成一条记录（games[]），
+ * 不再依赖 Battlefield/sequence 推断局数；胜负（winsByPlayerId/pendingGameResult）
+ * 与先手选择者（starterChooserPlayerId）取服务器权威值，缺失时玩家可手动指定。
  */
 
 // ==================== 原始导出格式（尽量宽松，容忍未知字段） ====================
@@ -93,10 +95,13 @@ export interface ReplayPlayer {
   battlefield: BattlefieldSelection
 }
 
-/** 对局元数据 */
+/** 对局元数据（series 级汇总；单局详情见 RiftAtlasGame） */
 export interface MatchMeta {
+  /** 系列标识（服务器权威，如 series_xxx）；无则单局独立 */
+  seriesId: string | null
+  /** 系列首局房间号（v2 迁移兼容；v3 新导入仅 games 内有效） */
   roomCode: string | null
-  /** 队列赛制（payload matchFormat 或 URL bo{n}；实测恒为 bo1，仅展示用） */
+  /** 赛制（sessionDoc.matchFormat 权威，如 bo3；兜底 matchmaking payload 或 URL bo{n}，仅展示用） */
   format: string | null
   startedAt: number
   endedAt: number | null
@@ -104,10 +109,10 @@ export interface MatchMeta {
   firstPlayerId: string | null
 }
 
-/** 对局结果（winnerId 保持 null，胜负由用户手动标记 ReplayResultMark，不做自动推断） */
+/** 对局结果（winnerId 为服务器权威系列胜者；仍允许用户手动覆盖 ReplayResultMark） */
 export interface MatchResult {
   winnerId: string | null
-  /** playerId → 最终比分（无数据时缺省） */
+  /** playerId → 最终比分（系列：winsByPlayerId 累计；无数据时缺省） */
   score: Record<string, number>
 }
 
@@ -122,7 +127,34 @@ export interface MatchTelemetry {
   matchmakingSession: ReplaySession | null
 }
 
-/** 一个房间 = 一局游戏（可能包含多个重连 session）；顶层对局记录（Schema v2） */
+/** 一局游戏（原 v2 单局记录的大部分内容下沉至此） */
+export interface RiftAtlasGame {
+  gameNumber: number
+  roomCode: string | null
+  gameInstanceId: string | null
+  previousRoomCode: string | null
+  nextRoomCode: string | null
+  /** 服务器权威本局胜者（pendingGameResult / winsByPlayerId 差分推断）；无则 null */
+  winnerId: string | null
+  /** 先手选择者（服务器权威字段；null = 未知，播放页可手动指定并持久化） */
+  starterChooserPlayerId: string | null
+  startedAt: number
+  endedAt: number | null
+  durationMs: number | null
+  /** 本局最终比分（final board.score） */
+  score: Record<string, number>
+  /** 每玩家本局战场选择过程数据 */
+  battlefieldSelections: Record<string, BattlefieldSelection>
+  telemetry: MatchTelemetry
+}
+
+/**
+ * 顶层对局记录（Schema v3）：一个系列（BO3）= 一条记录。
+ * key = seriesId（服务器权威；无 seriesId 的单局以 roomCode 为 key）。
+ * 视角解耦：players + perspective（渲染时决定我方/对方）。
+ * 注意：卡图元数据不持久化到记录里——渲染期直接查本地数据库
+ * （传奇按 cardCode、战场按英文名，与全应用其他页面行为一致）。
+ */
 export interface RiftAtlasMatchRecord {
   key: string
   meta: MatchMeta
@@ -130,12 +162,12 @@ export interface RiftAtlasMatchRecord {
   perspective: {
     localPlayerId: string | null
   }
-  /** 玩家数据池（1v1；未来可扩展 2v2/观战） */
+  /** 玩家数据池（series 级跨局稳定信息；1v1，未来可扩展 2v2/观战） */
   players: Record<string, ReplayPlayer>
   result: MatchResult
+  /** 系列内各局（按 gameNumber 升序）；单局回放数据在 game.telemetry */
+  games: RiftAtlasGame[]
   telemetry: MatchTelemetry
-  // 注意：卡图元数据不持久化到记录里——渲染期直接查本地数据库
-  // （传奇按 cardCode、战场按英文名，与全应用其他页面行为一致）
 }
 
 export interface ReplaySession {

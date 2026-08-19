@@ -109,7 +109,7 @@
         fileName: name,
         importedAt: Date.now(),
         hash: hashText(text),
-        version: 2,
+        version: 3,
         groups: bundle.groups,
       }
       files = [sessionFile, ...files]

@@ -10,6 +10,7 @@
   import ReplayViewer from '$lib/components/replay/ReplayViewer.svelte'
 
   let group = $state<RiftAtlasMatchRecord | null>(null)
+  let fileId = $state<string | null>(null)
   let ready = $state(false)
 
   $effect(() => {
@@ -35,6 +36,7 @@
       const g = f.groups.find((x) => x.key === key)
       if (g) {
         group = g
+        fileId = f.id
         ready = true
         return
       }
@@ -44,5 +46,20 @@
 </script>
 
 {#if ready && group}
-  <ReplayViewer {group} />
+  <div class="replay-page">
+    <ReplayViewer {group} {fileId} />
+  </div>
 {/if}
+
+<style>
+  .replay-page {
+    height: var(--replay-page-h, calc(100dvh - var(--topbar-height, 48px)));
+    display: flex;
+    flex-direction: column;
+  }
+  @media (max-width: 767.99px) {
+    .replay-page {
+      height: var(--replay-page-h, calc(100dvh - var(--topbar-height, 48px) - 56px));
+    }
+  }
+</style>

@@ -146,6 +146,8 @@ export const topbarState = $state({
   badges: [] as TopbarBadge[],
   actions: [] as TopbarAction[],
   onBack: null as (() => void) | null,
+  /** 全屏/剧场模式下隐藏顶栏（回放查看器使用） */
+  hidden: false,
 })
 
 export function setTopbar(config: {

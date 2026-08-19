@@ -134,7 +134,7 @@
   })
 </script>
 
-<header class="topbar">
+<header class="topbar" class:hidden={topbarState.hidden}>
   <div class="left">
     <button class="icon-btn menu-btn" onclick={toggleSidebar} aria-label={$t('common.toggleMenu')}>
       <Menu size={20} />
@@ -266,6 +266,10 @@
     z-index: 30;
     padding-top: env(safe-area-inset-top);
     position: relative;
+  }
+
+  .topbar.hidden {
+    display: none;
   }
 
   .left {

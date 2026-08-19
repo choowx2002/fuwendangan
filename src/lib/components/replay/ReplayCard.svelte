@@ -13,6 +13,8 @@
     width?: number
     nameOverride?: string | null
     showType?: boolean
+    /** 宽度由父容器（flex）决定，忽略 width（用于自适应撑满） */
+    fluid?: boolean
   }
   let {
     card = null,
@@ -21,6 +23,7 @@
     width = 58,
     nameOverride = null,
     showType = true,
+    fluid = false,
   }: Props = $props()
 
   const code = $derived(typeof card?.cardCode === 'string' ? String(card.cardCode) : '')
@@ -29,15 +32,11 @@
   const name = $derived(nameOverride ?? resolved?.name ?? (eventName || '?'))
   const eventType = $derived(typeof card?.type === 'string' ? String(card.type) : '')
   const typeLabel = $derived(eventType || resolved?.type || '')
-  const isUnit = $derived(eventType === 'unit' || (resolved?.type ?? '').includes('单位'))
   const isBattlefield = $derived(
     eventType === 'battlefield' || (resolved?.type ?? '').includes('战场')
   )
   const exhausted = $derived(card?.exhausted === true)
   const placeholder = $derived(card?.isPlaceholder === true)
-  const energyCost = $derived(
-    resolved?.energyCost ?? (typeof card?.energyCost === 'number' ? card.energyCost : null)
-  )
   const might = $derived(resolved?.might ?? (typeof card?.might === 'number' ? card.might : null))
   const whiteCounter = $derived(
     typeof card?.whiteCounter === 'number' ? Number(card.whiteCounter) : null
@@ -71,23 +70,20 @@
 </script>
 
 {#if back || placeholder || !card}
-  <div class="rc back" style="width:{width}px">
+  <div class="rc back" style="width: {fluid ? '100%' : width + 'px'}">
     <img src="/blue.jpg" alt="" draggable="false" />
   </div>
 {:else}
   <div
     class="rc face {isBattlefield ? 'bf' : ''} {exhausted ? 'exhausted' : ''}"
-    style="width:{width}px"
+    style="width: {fluid ? '100%' : width + 'px'}"
     data-code={code}
     data-name={name}
   >
     <div class="rc-art">
       <img src={artSrc} alt={name} draggable="false" onerror={onArtError} />
     </div>
-    {#if energyCost !== null}
-      <span class="rc-cost">{energyCost}</span>
-    {/if}
-    {#if isUnit && might !== null}
+    {#if might !== null}
       <span class="rc-might">{might}</span>
     {/if}
     {#if whiteCounter !== null || redCounter !== null}
@@ -96,7 +92,6 @@
         {#if redCounter !== null}<span class="rc-badge r">{redCounter}</span>{/if}
       </span>
     {/if}
-    <div class="rc-name">{name}</div>
     {#if showType && typeLabel}
       <div class="rc-type">{typeLabel}</div>
     {/if}
@@ -114,6 +109,7 @@
     font-size: 10px;
     line-height: 1.15;
     overflow: hidden;
+    container-type: inline-size;
   }
   .rc.bf {
     aspect-ratio: 800 / 573;
@@ -141,47 +137,41 @@
   .rc.face.exhausted {
     transform: rotate(90deg);
   }
-  .rc-cost,
+  /* 战力：左上角，尺寸随卡宽（cqw = 卡宽百分比） */
   .rc-might {
     position: absolute;
-    width: 16px;
-    height: 16px;
+    top: 4%;
+    left: 4%;
+    width: 24cqw;
+    height: 24cqw;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 14cqw;
+    font-weight: 800;
     color: #0a1a33;
+    background: #ffbb6e;
     border: 1px solid rgba(255, 255, 255, 0.5);
   }
-  .rc-cost {
-    top: 3px;
-    left: 3px;
-    background: #78ddb7;
-  }
-  .rc-might {
-    right: 3px;
-    bottom: 3px;
-    background: #ffbb6e;
-  }
+  /* 白/红计数器：左下角 */
   .rc-badges {
     position: absolute;
-    top: 3px;
-    right: 3px;
+    left: 4%;
+    bottom: 4%;
     display: flex;
     gap: 2px;
   }
   .rc-badge {
-    width: 13px;
-    height: 13px;
+    width: 17cqw;
+    height: 17cqw;
     border-radius: 50%;
-    font-size: 9px;
+    font-size: 10cqw;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #000;
-    font-weight: 700;
+    font-weight: 800;
   }
   .rc-badge.w {
     background: #f4f4f4;
@@ -189,38 +179,18 @@
   .rc-badge.r {
     background: #e05252;
   }
-  .rc-name {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(180deg, transparent, rgba(7, 19, 47, 0.92));
-    color: #fff;
-    text-align: center;
-    font-size: 9px;
-    padding: 10px 3px 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .rc.bf .rc-name {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 12px 4px 2px;
-    background: linear-gradient(180deg, transparent, rgba(7, 19, 47, 0.94));
-  }
   .rc-type {
     position: absolute;
-    top: 3px;
-    right: 3px;
-    font-size: 7px;
+    top: 3%;
+    right: 3%;
+    font-size: clamp(6px, 9cqw, 11px);
     font-weight: 600;
     letter-spacing: 0.04em;
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.85);
     border-radius: 5px;
     padding: 1px 4px;
-    max-width: 80%;
+    max-width: 70%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

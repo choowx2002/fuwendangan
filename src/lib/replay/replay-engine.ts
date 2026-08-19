@@ -30,6 +30,8 @@ export interface GamePlayer {
   decklistRaw?: string | null
   deck?: { sections?: unknown } | null
   board?: Record<string, unknown>
+  /** 本局选定的战场（英文卡名，如 "Shadow Temple"） */
+  selectedBattlefield?: string | null
   [key: string]: unknown
 }
 

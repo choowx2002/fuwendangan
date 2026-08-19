@@ -2,23 +2,43 @@
   import { t } from '$lib/i18n'
   import type { ReplayCardMeta } from '$lib/replay/card-meta'
   import type { GamePlayer } from '$lib/replay/replay-engine'
+  import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import ReplayCard from './ReplayCard.svelte'
 
   interface Props {
     me: GamePlayer | null
     opp: GamePlayer | null
     metas: Map<string, ReplayCardMeta>
+    /** 战场名元数据（key=英文名，如 "Shadow Temple"） */
+    nameMetas: Map<string, ReplayCardMeta>
     turnNumber: number | null | undefined
     phase: string | null | undefined
+    /** 当前行动玩家 id（用于横幅高亮） */
+    activeTurnPlayerId?: string | null
+    onHover?: (
+      card: Record<string, unknown>,
+      meta: ReplayCardMeta | null,
+      side: 'self' | 'opp',
+      zone: string
+    ) => void
+    onPick?: (
+      card: Record<string, unknown>,
+      meta: ReplayCardMeta | null,
+      side: 'self' | 'opp',
+      zone: string
+    ) => void
   }
-  let { me, opp, metas, turnNumber, phase }: Props = $props()
-
-  const lanes = [
-    { zone: 'battlefieldA', label: $t('replay.battlefield', { values: { lane: 'A' } }) },
-    { zone: 'battlefieldB', label: $t('replay.battlefield', { values: { lane: 'B' } }) },
-    { zone: 'battlefieldC', label: $t('replay.battlefield', { values: { lane: 'C' } }) },
-    { zone: 'battlefieldToken', label: $t('replay.battlefieldToken') },
-  ]
+  let {
+    me,
+    opp,
+    metas,
+    nameMetas,
+    turnNumber,
+    phase,
+    activeTurnPlayerId = null,
+    onHover,
+    onPick,
+  }: Props = $props()
 
   function zoneCards(player: GamePlayer | null, zone: string): Record<string, unknown>[] {
     const z = player?.board?.[zone]
@@ -34,52 +54,137 @@
   function rowName(player: GamePlayer | null): string {
     return player?.name || player?.id || '?'
   }
+
+  /** 玩家选定的战场（英文名 → 本地库元数据，含中文名与最佳卡图） */
+  function bfMeta(player: GamePlayer | null): ReplayCardMeta | null {
+    const n = player?.selectedBattlefield
+    if (typeof n !== 'string' || !n.trim()) return null
+    return nameMetas.get(n.trim()) ?? null
+  }
+
+  function bfName(player: GamePlayer | null, fallback: string): string {
+    const meta = bfMeta(player)
+    if (meta?.name) return meta.name
+    const n = player?.selectedBattlefield
+    if (typeof n === 'string' && n.trim()) return n.trim()
+    return fallback
+  }
+
+  const meScore = $derived(typeof me?.board?.score === 'number' ? Number(me.board.score) : 0)
+  const oppScore = $derived(typeof opp?.board?.score === 'number' ? Number(opp.board.score) : 0)
+  const meActive = $derived(me?.id != null && me.id === activeTurnPlayerId)
+  const oppActive = $derived(opp?.id != null && opp.id === activeTurnPlayerId)
+
+  // 列布局：A 左（对方战场）、C 中（有用才显示）、B 右（我方战场）、Token 兜底
+  const columns = $derived.by(() => {
+    const out: { zone: string; label: string; meta: ReplayCardMeta | null }[] = [
+      {
+        zone: 'battlefieldA',
+        label: bfName(opp, $t('replay.battlefield', { values: { lane: 'A' } })),
+        meta: bfMeta(opp),
+      },
+    ]
+    if (
+      zoneCards(opp, 'battlefieldC').length > 0 ||
+      zoneCards(me, 'battlefieldC').length > 0
+    ) {
+      out.push({
+        zone: 'battlefieldC',
+        label: $t('replay.battlefield', { values: { lane: 'C' } }),
+        meta: null,
+      })
+    }
+    out.push({
+      zone: 'battlefieldB',
+      label: bfName(me, $t('replay.battlefield', { values: { lane: 'B' } })),
+      meta: bfMeta(me),
+    })
+    if (
+      zoneCards(opp, 'battlefieldToken').length > 0 ||
+      zoneCards(me, 'battlefieldToken').length > 0
+    ) {
+      out.push({ zone: 'battlefieldToken', label: $t('replay.battlefieldToken'), meta: null })
+    }
+    return out
+  })
+
+  function pick(card: Record<string, unknown>, side: 'self' | 'opp', zone: string, click: boolean) {
+    const fn = click ? onPick : onHover
+    fn?.(card, metaOf(card), side, zone)
+  }
 </script>
 
 <div class="bf">
-  <div class="bf-turn">
-    {#if turnNumber != null || phase}
-      <span class="tt">{$t('replay.turn', { values: { number: turnNumber ?? '-' } })}</span>
-      {#if phase}<span class="tp">{phase}</span>{/if}
-    {/if}
+  <div class="bf-banner">
+    <span class="b-name opp" class:active={oppActive}>{rowName(opp)}</span>
+    <span class="b-score">
+      <b class="opp">{oppScore}</b>
+      <i>:</i>
+      <b class="self">{meScore}</b>
+    </span>
+    <span class="b-name self" class:active={meActive}>{rowName(me)}</span>
+    <span class="b-turn">
+      {#if turnNumber != null || phase}
+        {#if turnNumber != null}
+          <span class="tt">{$t('replay.turn', { values: { number: turnNumber } })}</span>
+        {/if}
+        {#if phase}<span class="tp">{phase}</span>{/if}
+      {/if}
+    </span>
   </div>
 
-  <div class="bf-row opp">
-    <span class="bf-owner">{rowName(opp)}</span>
-    {#each lanes as row (row.zone)}
-      {#if zoneCards(opp, row.zone).length > 0}
-        <div class="zone">
-          <span class="zlabel">{row.label}</span>
+  <div class="bf-cols">
+    {#each columns as col (col.zone)}
+      <div class="bf-col">
+        <div class="col-head">
+          {#if col.meta?.imgCdn}
+            <div class="bf-thumb">
+              <CardSimpleImage
+                url={col.meta.imgCdn}
+                name={col.meta.cacheName ?? 'battlefield'}
+                isLandscape
+              />
+            </div>
+          {/if}
+          <span class="col-name">{col.label}</span>
+        </div>
+        <div class="col-half opp">
+          <span class="bf-owner">{rowName(opp)}</span>
           <div class="zc">
-            {#each zoneCards(opp, row.zone) as c (c.id)}
-              <ReplayCard card={c} meta={metaOf(c)} width={64} />
+            {#each zoneCards(opp, col.zone) as c (c.id)}
+              <button
+                type="button"
+                class="slot"
+                onmouseenter={() => pick(c, 'opp', col.zone, false)}
+                onclick={() => pick(c, 'opp', col.zone, true)}
+              >
+                <ReplayCard card={c} meta={metaOf(c)} fluid />
+              </button>
             {/each}
           </div>
         </div>
-      {/if}
-    {/each}
-  </div>
-
-  <div class="bf-row self">
-    <span class="bf-owner">{rowName(me)}</span>
-    {#each lanes as row (row.zone)}
-      {#if zoneCards(me, row.zone).length > 0}
-        <div class="zone">
-          <span class="zlabel">{row.label}</span>
+        <div class="col-half self">
+          <span class="bf-owner">{rowName(me)}</span>
           <div class="zc">
-            {#each zoneCards(me, row.zone) as c (c.id)}
-              <ReplayCard card={c} meta={metaOf(c)} width={64} />
+            {#each zoneCards(me, col.zone) as c (c.id)}
+              <button
+                type="button"
+                class="slot"
+                onmouseenter={() => pick(c, 'self', col.zone, false)}
+                onclick={() => pick(c, 'self', col.zone, true)}
+              >
+                <ReplayCard card={c} meta={metaOf(c)} fluid />
+              </button>
             {/each}
           </div>
         </div>
-      {/if}
+      </div>
     {/each}
   </div>
 </div>
 
 <style>
   .bf {
-    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -88,60 +193,149 @@
     border-radius: var(--radius-lg);
     padding: 8px 10px;
   }
-  .bf-turn {
+  .bf-banner {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+    gap: 12px;
     margin-top: -8px;
     margin-bottom: 2px;
+    flex-wrap: wrap;
   }
-  .bf-turn .tt {
+  .b-name {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-secondary);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .b-name.active {
+    color: var(--accent-color);
+  }
+  .b-name.active::after {
+    content: ' •';
+  }
+  .b-score {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 2px 14px;
+    font-weight: 800;
+    font-size: var(--text-lg);
+    color: var(--text-primary);
+  }
+  .b-score b.opp {
+    color: #e05252;
+  }
+  .b-score b.self {
+    color: #4d9de0;
+  }
+  .b-score i {
+    color: var(--text-tertiary);
+    font-style: normal;
+  }
+  .b-turn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+  .b-turn .tt {
     color: var(--text-primary);
     font-weight: 700;
     font-size: var(--text-base);
   }
-  .bf-turn .tp {
+  .b-turn .tp {
     background: var(--surface-muted);
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 1px 8px;
+    font-size: var(--text-xs);
   }
-  .bf-row {
+  .bf-cols {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 18px;
-    align-items: flex-start;
+    gap: 10px;
+    align-items: stretch;
   }
-  .bf-row.opp {
-    border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 6px;
+  .bf-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 6px 8px;
   }
-  .bf-row.self {
-    padding-top: 2px;
+  .col-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bf-thumb {
+    width: 64px;
+    aspect-ratio: 1040 / 744;
+    flex: none;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--surface-muted);
+  }
+  .col-name {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .col-half {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .col-half.opp {
+    border-bottom: 1px dashed var(--border-subtle);
+    padding-bottom: 4px;
   }
   .bf-owner {
     font-size: var(--text-xs);
     font-weight: 700;
     color: var(--text-secondary);
-    min-width: 64px;
-    padding-top: 2px;
-    align-self: center;
   }
-  .zone {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .zlabel {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
+  .slot {
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    display: block;
+    flex: 1 1 0;
+    min-width: 92px;
+    max-width: 150px;
   }
   .zc {
     display: flex;
-    gap: 3px;
+    gap: 6px;
     flex-wrap: wrap;
+    align-items: flex-start;
+    width: 100%;
+  }
+  .slot:hover {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+    z-index: 3;
   }
 </style>
