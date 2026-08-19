@@ -11,7 +11,6 @@
     ChevronRight,
     UserRound,
     Boxes,
-    Gamepad2,
     Settings,
     Heart,
     ArrowLeftRight,
@@ -20,6 +19,8 @@
     ClipboardList,
     MoreHorizontal,
     MonitorPlay,
+    Layers,
+    FileArchiveIcon,
   } from '@lucide/svelte'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
@@ -28,6 +29,7 @@
   import { draggable, droppable, type DragDropState } from '@thisux/sveltednd'
   import { flip } from 'svelte/animate'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
+  import { isMobile } from '$lib/utils/os'
 
   interface HomeDeck {
     id: string
@@ -46,6 +48,7 @@
     labelKey: string
     href: string
     color: string
+    desktopOnly?: boolean
   }
 
   const MORE_ENTRIES: MoreEntry[] = [
@@ -74,11 +77,19 @@
       color: '#0ea5e9',
     },
     {
-      id: 'simulator',
-      icon: Gamepad2,
-      labelKey: 'nav.simulator',
-      href: '/simulator',
-      color: '#7c3aed',
+      id: 'chainSimulator',
+      icon: Layers,
+      labelKey: 'simulator.chainTitle',
+      href: '/simulator/chainSimulator',
+      color: '#128378',
+      desktopOnly: true,
+    },
+    {
+      id: 'packOpener',
+      icon: FileArchiveIcon,
+      labelKey: 'simulator.packTitle',
+      href: '/simulator/packOpener',
+      color: '#d9730d',
     },
     {
       id: 'replay',
@@ -86,6 +97,7 @@
       labelKey: 'replay.title',
       href: '/replay',
       color: '#0284c7',
+      desktopOnly: true,
     },
     {
       id: 'purchase',
@@ -109,6 +121,21 @@
   let recentDecks = $state<HomeDeck[]>([])
   let homeName = $state('')
   let settingsReady = $state(false)
+  let isMobileOs = $state(false)
+
+  $effect(() => {
+    let cancelled = false
+    isMobile()
+      .then((mobile) => {
+        if (!cancelled) isMobileOs = mobile
+      })
+      .catch(() => {
+        isMobileOs = false
+      })
+    return () => {
+      cancelled = true
+    }
+  })
 
   // --- 更多功能：可见数量与排序 ---
   let moreGridEl = $state<HTMLElement | null>(null)
@@ -308,12 +335,23 @@
   <section class="section">
     <div class="more-grid" bind:this={moreGridEl}>
       {#each visibleEntries as entry (entry.id)}
-        <a href={entry.href} class="more-tile">
-          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
-            <entry.icon size={18} />
-          </span>
-          <span class="more-tile-label">{$t(entry.labelKey)}</span>
-        </a>
+        {@const locked = isMobileOs && entry.desktopOnly}
+        {#if locked}
+          <button class="more-tile locked" title={$t('common.desktopOnly')}>
+            <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+              <entry.icon size={18} />
+            </span>
+            <span class="more-tile-label">{$t(entry.labelKey)}</span>
+            <span class="more-locked">{$t('common.desktopOnly')}</span>
+          </button>
+        {:else}
+          <a href={entry.href} class="more-tile">
+            <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+              <entry.icon size={18} />
+            </span>
+            <span class="more-tile-label">{$t(entry.labelKey)}</span>
+          </a>
+        {/if}
       {/each}
       {#if hiddenEntries.length > 0}
         <button class="more-tile more-more" onclick={openMoreModal}>
@@ -419,12 +457,23 @@
   {:else}
     <div class="more-modal-grid">
       {#each hiddenEntries as entry (entry.id)}
-        <a href={entry.href} class="more-tile" onclick={() => (showMoreModal = false)}>
-          <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
-            <entry.icon size={18} />
-          </span>
-          <span class="more-tile-label">{$t(entry.labelKey)}</span>
-        </a>
+        {@const locked = isMobileOs && entry.desktopOnly}
+        {#if locked}
+          <button class="more-tile locked" title={$t('common.desktopOnly')}>
+            <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+              <entry.icon size={18} />
+            </span>
+            <span class="more-tile-label">{$t(entry.labelKey)}</span>
+            <span class="more-locked">{$t('common.desktopOnly')}</span>
+          </button>
+        {:else}
+          <a href={entry.href} class="more-tile" onclick={() => (showMoreModal = false)}>
+            <span class="more-tile-icon" style="background: {entry.color}15; color: {entry.color}">
+              <entry.icon size={18} />
+            </span>
+            <span class="more-tile-label">{$t(entry.labelKey)}</span>
+          </a>
+        {/if}
       {/each}
     </div>
     <div class="modal-actions">
@@ -772,6 +821,22 @@
   .more-tile:hover {
     background: var(--bg-secondary);
     transform: translateY(-1px);
+  }
+
+  .more-tile.locked {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .more-tile.locked:hover {
+    background: var(--bg-primary);
+    transform: none;
+  }
+
+  .more-locked {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    white-space: nowrap;
   }
 
   .more-tile-icon {

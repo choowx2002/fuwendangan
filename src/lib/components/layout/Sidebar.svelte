@@ -265,6 +265,10 @@
     text-align: center;
   }
 
+  .sidebar.isMinimized .sidebar-footer {
+    display: none;
+  }
+
   .sidebar-header {
     padding: 12px;
     display: flex;

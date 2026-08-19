@@ -2,8 +2,6 @@
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { t } from '$lib/i18n'
-  import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { peekReplayBundle } from '$lib/stores/replay-import.svelte'
   import { loadLibrary } from '$lib/services/replay-library-service'
   import type { RiftAtlasMatchRecord } from '$lib/replay/types'
@@ -12,14 +10,6 @@
   let group = $state<RiftAtlasMatchRecord | null>(null)
   let fileId = $state<string | null>(null)
   let ready = $state(false)
-
-  $effect(() => {
-    setTopbar({
-      title: $t('replay.viewerTitle'),
-      description: group?.meta?.roomCode ?? undefined,
-      onBack: () => void goto('/replay'),
-    })
-  })
 
   onMount(async () => {
     const key = decodeURIComponent(page.params.key ?? '')
@@ -47,19 +37,14 @@
 
 {#if ready && group}
   <div class="replay-page">
-    <ReplayViewer {group} {fileId} />
+    <ReplayViewer {group} {fileId} onBack={() => goto('/replay')} />
   </div>
 {/if}
 
 <style>
   .replay-page {
-    height: var(--replay-page-h, calc(100dvh - var(--topbar-height, 48px)));
+    height: 100dvh;
     display: flex;
     flex-direction: column;
-  }
-  @media (max-width: 767.99px) {
-    .replay-page {
-      height: var(--replay-page-h, calc(100dvh - var(--topbar-height, 48px) - 56px));
-    }
   }
 </style>

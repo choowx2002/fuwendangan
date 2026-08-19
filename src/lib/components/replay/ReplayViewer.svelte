@@ -6,7 +6,9 @@
     buildReplay,
     resolveSelfPlayer,
     stateAt,
+    collectKeyframes,
     type ReplayBuild,
+    type ReplayKeyframe,
   } from '$lib/replay/replay-engine'
   import {
     collectCardCodesFromStates,
@@ -20,7 +22,7 @@
     markReplayResult,
     type ReplayResultMark,
   } from '$lib/stores/replay-import.svelte'
-  import { showToast, topbarState } from '$lib/stores/ui-store.svelte'
+  import { showToast } from '$lib/stores/ui-store.svelte'
   import { isTauri } from '$lib/db/env'
   import { updateGameStarterChooser } from '$lib/services/replay-library-service'
   import ReplayBattlefield from './ReplayBattlefield.svelte'
@@ -46,8 +48,10 @@
     group: RiftAtlasMatchRecord
     /** 所在库文件 id（手动指定先手选择者需写回磁盘；会话内导入为 null） */
     fileId?: string | null
+    /** 页内工具栏返回按钮回调（无则隐藏） */
+    onBack?: (() => void) | null
   }
-  let { group, fileId = null }: Props = $props()
+  let { group, fileId = null, onBack = null }: Props = $props()
 
   // build 是一次性构造的只读回放数据，用 $state.raw 避免深代理：
   // applyOp 会把 op 携带的卡/条目对象塞进克隆的 state，深代理下这些是 Svelte proxy，
@@ -159,7 +163,7 @@
   const selfName = $derived(selfPlayer?.name ?? me?.name ?? me?.id ?? '?')
   const oppName = $derived(oppPlayer?.name ?? opp?.name ?? opp?.id ?? '?')
 
-  // 阶段书签：开局 / 回合切换 / 阶段切换 / 重连 / 终局
+  // 关键帧书签：回合切换 / 阶段切换 / 得分变化（同帧多事件合并成一条），外加开局/终局锚点
   interface Bookmark {
     label: string
     frame: number
@@ -173,27 +177,39 @@
       if (!out.some((b) => b.frame === f)) out.push({ label, frame: f })
     }
     push(g('replay.jumpStart'), 0)
-    let lastTurn: number | null = null
-    let lastPhase: string | null = null
-    for (const s of build.snapshots) {
-      const st = s.state
-      const tn = typeof st.turnNumber === 'number' ? st.turnNumber : null
-      if (tn !== null && tn !== lastTurn) {
-        lastTurn = tn
-        push(g('replay.jumpTurn', { values: { n: tn } }), s.atFrame)
-      }
-      const ph = typeof st.phase === 'string' && st.phase ? st.phase : null
-      if (ph !== null && ph !== lastPhase) {
-        lastPhase = ph
-        push(g('replay.jumpPhase', { values: { p: ph } }), s.atFrame)
-      }
+
+    const nameOf = (playerId?: string | null) => {
+      if (!playerId) return ''
+      if (me && playerId === me.id) return selfName
+      if (opp && playerId === opp.id) return oppName
+      return players[playerId]?.name ?? playerId
     }
-    build.frames.forEach((f, i) => {
-      if (f.isSessionBoundary) push(g('replay.jumpReconnect'), i)
-    })
+
+    const byFrame = new Map<number, ReplayKeyframe[]>()
+    for (const kf of collectKeyframes(build)) {
+      const list = byFrame.get(kf.frame) ?? []
+      list.push(kf)
+      byFrame.set(kf.frame, list)
+    }
+    for (const [frame, kfs] of [...byFrame.entries()].sort((a, b) => a[0] - b[0])) {
+      const parts: string[] = []
+      for (const kf of kfs) {
+        if (kf.kind === 'turn') {
+          parts.push(g('replay.jumpTurn', { values: { n: kf.value } }))
+        } else if (kf.kind === 'phase') {
+          parts.push(g('replay.jumpPhase', { values: { p: kf.value } }))
+        } else if (kf.kind === 'score') {
+          parts.push(
+            g('replay.jumpScore', { values: { delta: kf.delta ?? 0, name: nameOf(kf.playerId) } })
+          )
+        }
+      }
+      if (parts.length > 0) push(parts.join(' · '), frame)
+    }
+
     push(g('replay.jumpEnd'), total - 1)
     out.sort((a, b) => a.frame - b.frame)
-    return out.slice(0, 60)
+    return out.slice(0, 200)
   })
 
   function zoneLabel(zone: string | null | undefined): string {
@@ -323,14 +339,7 @@
     pinned = null
   }
 
-  // ==================== 全屏 / 剧场模式 ====================
-
-  function applyTheater() {
-    topbarState.hidden = isFullscreen
-    const root = document.documentElement
-    if (isFullscreen) root.style.setProperty('--replay-page-h', '100dvh')
-    else root.style.removeProperty('--replay-page-h')
-  }
+  // ==================== 全屏 ====================
 
   async function toggleFullscreen() {
     if (isTauri) {
@@ -355,7 +364,6 @@
         isFullscreen = false
       }
     }
-    applyTheater()
   }
 
   async function syncFullscreen() {
@@ -369,45 +377,7 @@
     } else {
       isFullscreen = document.fullscreenElement != null
     }
-    applyTheater()
   }
-
-  // 顶栏动作按钮（替代原内嵌 toolbar）：左栏/右栏开关 + 全屏。
-  // 依赖 game 以在父页面 setTopbar 清空 actions 后重新断言。
-  $effect(() => {
-    game
-    const actions = [
-      {
-        key: 'toggle-left',
-        icon: PanelLeft,
-        variant: 'ghost' as const,
-        active: showLeft,
-        title: $t('replay.toggleLeft'),
-        onClick: () => {
-          showLeft = !showLeft
-        },
-      },
-      {
-        key: 'toggle-right',
-        icon: PanelRight,
-        variant: 'ghost' as const,
-        active: showRight,
-        title: $t('replay.toggleRight'),
-        onClick: () => {
-          showRight = !showRight
-        },
-      },
-      {
-        key: 'fullscreen',
-        icon: isFullscreen ? Minimize : Maximize,
-        variant: 'ghost' as const,
-        active: isFullscreen,
-        title: $t(isFullscreen ? 'replay.exitFullscreen' : 'replay.enterFullscreen'),
-        onClick: () => void toggleFullscreen(),
-      },
-    ]
-    topbarState.actions = actions
-  })
 
   // ==================== 结果标记 ====================
 
@@ -465,11 +435,8 @@
     return () => {
       window.removeEventListener('keydown', onKey)
       document.removeEventListener('fullscreenchange', syncFullscreen)
-      topbarState.actions = []
       if (timer) clearInterval(timer)
       if (isFullscreen) {
-        topbarState.hidden = false
-        document.documentElement.style.removeProperty('--replay-page-h')
         if (isTauri) {
           import('@tauri-apps/api/window')
             .then(({ getCurrentWindow }) => getCurrentWindow().setFullscreen(false))
@@ -502,6 +469,50 @@
   </div>
 {:else}
   <div class="viewer">
+    <header class="toolbar">
+      {#if onBack}
+        <button
+          class="tb-btn"
+          onclick={onBack}
+          aria-label={$t('common.back')}
+          title={$t('common.back')}
+        >
+          <ChevronLeft size={18} />
+        </button>
+      {/if}
+      <span class="tb-title" title={group.meta?.roomCode ?? undefined}
+        >{group.meta?.roomCode ?? $t('replay.viewerTitle')}</span
+      >
+      <span class="tb-spacer"></span>
+      <button
+        class="tb-btn"
+        class:active={showLeft}
+        onclick={() => (showLeft = !showLeft)}
+        aria-pressed={showLeft}
+        title={$t('replay.toggleLeft')}
+      >
+        <PanelLeft size={18} />
+      </button>
+      <button
+        class="tb-btn"
+        class:active={showRight}
+        onclick={() => (showRight = !showRight)}
+        aria-pressed={showRight}
+        title={$t('replay.toggleRight')}
+      >
+        <PanelRight size={18} />
+      </button>
+      <button
+        class="tb-btn"
+        class:active={isFullscreen}
+        onclick={() => void toggleFullscreen()}
+        aria-pressed={isFullscreen}
+        title={$t(isFullscreen ? 'replay.exitFullscreen' : 'replay.enterFullscreen')}
+      >
+        {#if isFullscreen}<Minimize size={18} />{:else}<Maximize size={18} />{/if}
+      </button>
+    </header>
+
     <div class="main">
       <!-- 左栏：头部 + 卡牌阅读器 + 控制 -->
       <aside class="inspector" class:hidden={!showLeft}>
@@ -795,6 +806,64 @@
     padding: 40px;
     text-align: center;
     color: var(--text-tertiary);
+  }
+
+  /* ============ 页内工具栏 ============ */
+  .toolbar {
+    flex: none;
+    height: calc(48px + env(safe-area-inset-top));
+    min-height: calc(48px + env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: env(safe-area-inset-top) 12px 0;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    z-index: 30;
+  }
+
+  .tb-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .tb-btn:hover {
+    background: var(--bg-hover);
+  }
+  .tb-btn.active {
+    background: color-mix(in srgb, var(--accent-color) 16%, transparent);
+    color: var(--accent-color);
+  }
+
+  .tb-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tb-spacer {
+    flex: 1;
+  }
+
+  @media (max-width: 767.99px) {
+    .tb-title {
+      max-width: 140px;
+    }
   }
 
   /* ============ 主区三栏 ============ */

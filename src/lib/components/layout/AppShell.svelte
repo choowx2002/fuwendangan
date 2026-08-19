@@ -51,7 +51,8 @@
       page.url.pathname.startsWith('/rules/') ||
       page.url.pathname === '/tools/gameCounter' ||
       page.url.pathname === '/tools/dice' ||
-      page.url.pathname === '/simulator/chainSimulator'
+      page.url.pathname === '/simulator/chainSimulator' ||
+      page.url.pathname.startsWith('/replay/')
   )
 </script>
 

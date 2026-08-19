@@ -131,6 +131,17 @@ export interface BuildReplayInput {
   selfId?: string | null
 }
 
+/** 回放关键帧（回合切换 / 阶段切换 / 得分变化） */
+export interface ReplayKeyframe {
+  frame: number
+  kind: 'turn' | 'phase' | 'score'
+  value: number | string
+  /** score 专用：得分玩家 id */
+  playerId?: string | null
+  /** score 专用：本次获得/变化的分数 */
+  delta?: number | null
+}
+
 // ==================== 工具 ====================
 
 /** 解析事件 payload（字符串 JSON），失败返回 null */
@@ -478,6 +489,60 @@ export function stateAt(build: ReplayBuild, index: number): GameState | null {
 export function finalState(build: ReplayBuild): GameState | null {
   if (build.frames.length === 0) return null
   return stateAt(build, build.frames.length - 1)
+}
+
+/**
+ * 收集关键帧：回合切换 / 阶段切换 / 得分变化。
+ * 逐帧增量推演（base 快照变化时重置运行态），比只扫快照更精确，
+ * 能在补丁帧之间检测到变化。复杂度 O(总 ops)，每局只算一次。
+ */
+export function collectKeyframes(build: ReplayBuild): ReplayKeyframe[] {
+  const frames = build.frames
+  if (frames.length === 0) return []
+  const out: ReplayKeyframe[] = []
+  let state: GameState | null = null
+  let lastBase = -1
+  let lastTurn: number | null = null
+  let lastPhase: string | null = null
+  const scores = new Map<string, number>()
+
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i]
+    const baseKey = f.base ? f.base.atFrame : -1
+    if (baseKey !== lastBase) {
+      lastBase = baseKey
+      state = cloneState(f.base ? f.base.state : { players: [] })
+      lastTurn = typeof state.turnNumber === 'number' ? state.turnNumber : null
+      lastPhase = typeof state.phase === 'string' && state.phase ? state.phase : null
+      scores.clear()
+      for (const pl of state.players ?? []) {
+        const s = typeof pl.board?.score === 'number' ? pl.board.score : 0
+        scores.set(pl.id, s)
+      }
+    }
+    if (!state) continue
+    applyFrame(state, f)
+
+    const tn = typeof state.turnNumber === 'number' ? state.turnNumber : null
+    if (tn !== null && tn !== lastTurn) {
+      lastTurn = tn
+      out.push({ frame: i, kind: 'turn', value: tn })
+    }
+    const ph = typeof state.phase === 'string' && state.phase ? state.phase : null
+    if (ph !== null && ph !== lastPhase) {
+      lastPhase = ph
+      out.push({ frame: i, kind: 'phase', value: ph })
+    }
+    for (const pl of state.players ?? []) {
+      const s = typeof pl.board?.score === 'number' ? pl.board.score : 0
+      const prev = scores.get(pl.id)
+      if (prev !== undefined && s !== prev) {
+        scores.set(pl.id, s)
+        out.push({ frame: i, kind: 'score', value: s, playerId: pl.id, delta: s - prev })
+      }
+    }
+  }
+  return out
 }
 
 /** 从状态中解析「我方」：优先 selfId，其次带 decklistRaw 的玩家，再 seat 0，最后第一个玩家 */

@@ -12,6 +12,7 @@
       descKey: 'simulator.chainDesc',
       color: '#128378',
       href: '/simulator/chainSimulator',
+      desktopOnly: true,
     },
     {
       icon: FileArchiveIcon,
@@ -26,14 +27,11 @@
       descKey: 'simulator.replayDesc',
       color: '#0ea5e9',
       href: '/replay',
+      desktopOnly: true,
     },
   ]
 
   let isMobileOs = $state(false)
-
-  const availableCards = $derived(
-    simulatorCards.filter((card) => card.href !== '/simulator/chainSimulator' || !isMobileOs)
-  )
 
   $effect(() => {
     let cancelled = false
@@ -56,8 +54,9 @@
 
 <div class="simulator-page">
   <div class="simulator-grid">
-    {#each availableCards as tool}
-      <button class="simulator-card" onclick={() => goto(tool.href)}>
+    {#each simulatorCards as tool}
+      {@const locked = isMobileOs && tool.desktopOnly}
+      <button class="simulator-card" class:locked disabled={locked} onclick={() => goto(tool.href)}>
         <div class="simulator-icon" style="background: {tool.color}15; color: {tool.color}">
           <tool.icon size={28} />
         </div>
@@ -66,6 +65,9 @@
           <span class="simulator-desc">{$t(tool.descKey)}</span>
         </div>
         <span class="simulator-arrow"><ChevronRight size={18} /></span>
+        {#if locked}
+          <span class="sim-locked">{$t('common.desktopOnly')}</span>
+        {/if}
       </button>
     {/each}
   </div>
@@ -109,6 +111,15 @@
     transform: translateY(-2px);
   }
 
+  .simulator-card.locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .simulator-card.locked:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
   .simulator-icon {
     display: flex;
     align-items: center;
@@ -144,5 +155,17 @@
     display: flex;
     align-items: center;
     color: var(--text-tertiary);
+  }
+
+  .sim-locked {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: var(--bg-hover);
+    border-radius: 999px;
+    padding: 2px 8px;
   }
 </style>
