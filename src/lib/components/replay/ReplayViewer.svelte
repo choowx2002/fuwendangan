@@ -149,12 +149,17 @@
   const marks = $derived(getReplayResultMarks())
   const resultKey = $derived(group.key)
 
-  // 视角解耦：我方 = perspective.localPlayerId，对方 = 剩余玩家
+  // 视角解耦：我方 = perspective.localPlayerId，对方 = 剩余玩家；观战无「我方」，按玩家池顺序铺两名玩家
   const players = $derived(group.players ?? {})
-  const selfPlayer = $derived(
-    group.perspective?.localPlayerId ? (players[group.perspective.localPlayerId] ?? null) : null
-  )
+  const playerList = $derived(Object.values(players))
+  const selfPlayer = $derived.by(() => {
+    if (group.perspective?.isSpectator) return playerList[0] ?? null
+    return group.perspective?.localPlayerId
+      ? (players[group.perspective.localPlayerId] ?? null)
+      : null
+  })
   const oppPlayer = $derived.by(() => {
+    if (group.perspective?.isSpectator) return playerList[1] ?? null
     for (const [pid, p] of Object.entries(players)) {
       if (pid !== (group.perspective?.localPlayerId ?? null)) return p
     }
@@ -537,6 +542,9 @@
                 · {$t('replay.groupReconnects', { values: { n: reconnectCount } })}
               {/if}
             </span>
+            {#if group.perspective?.isSpectator}
+              <span class="badge spectator">{$t('replay.spectatorView')}</span>
+            {/if}
           </div>
           <div class="starter-row">
             <span class="starter-label">{$t('replay.starterChooserLabel')}:</span>
@@ -916,6 +924,11 @@
     background: var(--surface-muted);
     color: var(--text-secondary);
     border: 1px solid var(--border-subtle);
+  }
+  .badge.spectator {
+    background: #f5eefb;
+    color: #7c3aed;
+    border: 1px solid #ddd0f5;
   }
   .starter-row {
     display: flex;

@@ -739,6 +739,51 @@ export async function getDeckList(
   return { decks, total }
 }
 
+export interface DeckLegendInfo {
+  id: string
+  name: string
+  updated_at: string
+  /** 最新版本传奇的卡号（card_prints.card_no_extend） */
+  legend_print_code: string | null
+  legend_name: string | null
+  legend_image: string | null
+}
+
+/**
+ * 返回所有卡组 + 其【最新版本】的传奇信息（卡号/中文名/卡图）。
+ * 供复盘对局资料按玩家传奇过滤候选卡组。
+ */
+export async function getAllDecksWithLegend(): Promise<DeckLegendInfo[]> {
+  const db = await getDatabase()
+  const sql = `
+    WITH LatestVersions AS (
+      SELECT deck_id, id AS version_id
+      FROM (
+        SELECT deck_id, id, version_number,
+               ROW_NUMBER() OVER(PARTITION BY deck_id ORDER BY version_number DESC) AS rn
+        FROM deck_versions
+      ) WHERE rn = 1
+    ),
+    LegendInfo AS (
+      SELECT
+        lv.deck_id,
+        cp.card_no_extend AS legend_print_code,
+        cb.card_name_cn AS legend_name,
+        cp.img_cdn AS legend_image
+      FROM LatestVersions lv
+      JOIN deck_cards dc ON lv.version_id = dc.deck_version_id AND dc.zone = 'legend'
+      JOIN card_prints cp ON dc.card_id = cp.id
+      JOIN cards_base cb ON cp.card_id = cb.id
+    )
+    SELECT d.id, d.name, d.updated_at, li.legend_print_code, li.legend_name, li.legend_image
+    FROM decks d
+    LEFT JOIN LegendInfo li ON d.id = li.deck_id
+    ORDER BY d.updated_at DESC
+  `
+  const rows = await db.select<DeckLegendInfo[]>(sql)
+  return (rows ?? []).map((r) => ({ ...r, updated_at: r.updated_at ?? '' }))
+}
+
 /**
  * Duplicate a deck (copy latest version)
  */

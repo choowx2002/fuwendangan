@@ -103,6 +103,8 @@ export interface MatchMeta {
   roomCode: string | null
   /** 赛制（sessionDoc.matchFormat 权威，如 bo3；兜底 matchmaking payload 或 URL bo{n}，仅展示用） */
   format: string | null
+  /** 模拟器来源网站 host（由 match 记录级 url 探测，如 realtime.riftatlas-workers.com） */
+  source: string | null
   startedAt: number
   endedAt: number | null
   durationMs: number | null
@@ -161,6 +163,8 @@ export interface RiftAtlasMatchRecord {
   /** 视角：标识这份日志是哪个客户端导出的（渲染时决定我方/对方） */
   perspective: {
     localPlayerId: string | null
+    /** 观战视角导出：无本地玩家，localPlayerId 恒 null */
+    isSpectator?: boolean
   }
   /** 玩家数据池（series 级跨局稳定信息；1v1，未来可扩展 2v2/观战） */
   players: Record<string, ReplayPlayer>
@@ -168,6 +172,21 @@ export interface RiftAtlasMatchRecord {
   /** 系列内各局（按 gameNumber 升序）；单局回放数据在 game.telemetry */
   games: RiftAtlasGame[]
   telemetry: MatchTelemetry
+}
+
+/**
+ * 对局资料注解（复盘文件顶层 annotations[key]，纯本地、随 json 文件走）。
+ * 未绑定卡组时，每小局结果/备注/视角写入此结构；绑定时以 match_records 为准。
+ */
+export interface ReplayGroupAnnotation {
+  /** 用户选定的「我方」playerId（决定分数方向与胜负判定）；null = 未选定 */
+  myPlayerId: string | null
+  /** gameNumber → 结果；仅含用户标记过的小局 */
+  results: Record<number, 'win' | 'loss' | 'draw'>
+  /** 备注（null = 无） */
+  note: string | null
+  /** 最后更新毫秒时间戳 */
+  updatedAt: number
 }
 
 export interface ReplaySession {
@@ -189,7 +208,7 @@ export interface ImportBundle {
   warnings: string[]
 }
 
-export type ReplayImportErrorCode = 'not-json' | 'bad-shape' | 'no-matches'
+export type ReplayImportErrorCode = 'not-json' | 'bad-shape' | 'no-matches' | 'no-replay-data'
 
 export class ReplayImportError extends Error {
   code: ReplayImportErrorCode

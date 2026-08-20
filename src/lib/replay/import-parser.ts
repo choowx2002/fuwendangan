@@ -45,6 +45,21 @@ export function isMatchmakingUrl(url: string | null | undefined): boolean {
   return /\/matchmaking\//i.test(url ?? '')
 }
 
+/** 从 match 记录级 url 探测模拟器来源网站 host（如 realtime.riftatlas-workers.com）。
+ * 注意：room_shell_sync 等 payload 内没有 url，来源只存在于 rec.url；宽容解析任意域名。 */
+export function detectSourceHost(url: string | null | undefined): string | null {
+  const u = (url ?? '').trim()
+  if (!u) return null
+  try {
+    const parsed = new URL(u)
+    return parsed.hostname || null
+  } catch {
+    // 非标准 scheme（wss:// 等）时手工剥离协议与路径
+    const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/?#]+)/i.exec(u)
+    return m?.[1] || null
+  }
+}
+
 /** 从 URL 提取队列赛制（如 "...-bo1?..." → "bo1"） */
 function queueFormatFromUrl(url: string | null | undefined): string | null {
   const m = /(?:^|[\/\-?&])bo(\d+)/i.exec(url ?? '')
@@ -100,12 +115,17 @@ function scanSessions(sessions: ReplaySession[]): {
   mmPlayerName: string | null
   queueFormat: string | null
   snapshotCount: number
+  isSpectator: boolean
 } {
   const players: SnapshotPlayerInfo[] = []
   let mmPlayerId: string | null = null
   let mmPlayerName: string | null = null
   let queueFormat: string | null = null
   let snapshotCount = 0
+  let isSpectator = false
+  let joinShellPlayerId: string | null = null
+  let joinShellViewerRole: string | null = null
+  let viewerRole: string | null = null
 
   for (const s of sessions) {
     for (const ev of s.events) {
@@ -123,30 +143,107 @@ function scanSessions(sessions: ReplaySession[]): {
       } else if (s.isMatchmaking && !queueFormat && typeof p.matchFormat === 'string') {
         queueFormat = p.matchFormat
       }
+      // 观战判定：join_shell.playerId/viewerRole + sessionDoc.viewer（任一命中即观战）
+      if (p.type === 'join_shell') {
+        if (typeof p.playerId === 'string' && p.playerId) {
+          joinShellPlayerId = p.playerId
+          if (p.playerId === 'spectator') isSpectator = true
+        }
+        if (typeof p.viewerRole === 'string' && p.viewerRole) {
+          joinShellViewerRole = p.viewerRole
+          if (p.viewerRole === 'spectator') isSpectator = true
+        }
+      }
+      if (isRecord(p.sessionDoc)) {
+        const viewer = isRecord(p.sessionDoc.viewer) ? p.sessionDoc.viewer : null
+        if (viewer) {
+          if (typeof viewer.role === 'string' && viewer.role) {
+            viewerRole = viewer.role
+            if (viewer.role === 'spectator') isSpectator = true
+          }
+          if (typeof viewer.playerId === 'string' && viewer.playerId === 'spectator') {
+            isSpectator = true
+          }
+        }
+      }
       if (p.type === 'authoritative_snapshot') {
         snapshotCount++
         const snap = isRecord(p.snapshot) ? p.snapshot : null
         const rawPlayers = snap && Array.isArray(snap.players) ? snap.players : []
         for (const rp of rawPlayers) {
           if (!isRecord(rp) || typeof rp.id !== 'string') continue
-          if (players.some((x) => x.id === rp.id)) continue
           const deck = isRecord(rp.deck) ? rp.deck : null
           const board = isRecord(rp.board) ? rp.board : null
           const legendList = board && Array.isArray(board.legend) ? board.legend : []
           const champList = board && Array.isArray(board.champion) ? board.champion : []
-          players.push({
+          const fresh: SnapshotPlayerInfo = {
             id: rp.id,
             name: typeof rp.name === 'string' ? rp.name : null,
             decklistRaw: typeof rp.decklistRaw === 'string' ? rp.decklistRaw : null,
             sections: normalizeSections(deck?.sections),
             boardLegend: legendList[0] ? boardEntry(legendList[0]) : null,
             boardChampion: champList[0] ? boardEntry(champList[0]) : null,
-          })
+          }
+          // 已记录玩家只补缺失字段（对手传奇靠快照 board 兜底），已有值不覆盖
+          const existing = players.find((x) => x.id === rp.id)
+          if (existing) {
+            if (existing.name === null) existing.name = fresh.name
+            if (existing.decklistRaw === null) existing.decklistRaw = fresh.decklistRaw
+            if (existing.sections === null) existing.sections = fresh.sections
+            if (existing.boardLegend === null) existing.boardLegend = fresh.boardLegend
+            if (existing.boardChampion === null) existing.boardChampion = fresh.boardChampion
+          } else {
+            players.push(fresh)
+          }
+        }
+      }
+      // room_shell_sync：sessionDoc 里自带 selfPlayer/publicPlayers，
+      // 作为快照玩家的早期兜底来源（更早拿到传奇信息）
+      if (p.type === 'room_shell_sync' && isRecord(p.sessionDoc)) {
+        const self = isRecord(p.sessionDoc.selfPlayer) ? p.sessionDoc.selfPlayer : null
+        const pub = Array.isArray(p.sessionDoc.publicPlayers) ? p.sessionDoc.publicPlayers : []
+        for (const rp of [self, ...pub]) {
+          if (!isRecord(rp) || typeof rp.id !== 'string') continue
+          const deck = isRecord(rp.deck) ? rp.deck : null
+          const sections = normalizeSections(deck?.sections)
+          const fresh: SnapshotPlayerInfo = {
+            id: rp.id,
+            name: typeof rp.name === 'string' ? rp.name : null,
+            decklistRaw: typeof rp.decklistRaw === 'string' ? rp.decklistRaw : null,
+            sections,
+            boardLegend: sections?.legend && sections.legend.length > 0 ? sections.legend[0] : null,
+            boardChampion:
+              sections?.champion && sections.champion.length > 0 ? sections.champion[0] : null,
+          }
+          const existing = players.find((x) => x.id === rp.id)
+          if (existing) {
+            if (existing.name === null) existing.name = fresh.name
+            if (existing.decklistRaw === null) existing.decklistRaw = fresh.decklistRaw
+            if (existing.sections === null) existing.sections = fresh.sections
+            if (existing.boardLegend === null) existing.boardLegend = fresh.boardLegend
+            if (existing.boardChampion === null) existing.boardChampion = fresh.boardChampion
+          } else {
+            players.push(fresh)
+          }
         }
       }
     }
   }
-  return { snapshotPlayers: players, mmPlayerId, mmPlayerName, queueFormat, snapshotCount }
+  console.log('[replay-import] 视角识别', {
+    isSpectator,
+    joinShellPlayerId,
+    joinShellViewerRole,
+    viewerRole,
+    sessionCount: sessions.length,
+  })
+  return {
+    snapshotPlayers: players,
+    mmPlayerId,
+    mmPlayerName,
+    queueFormat,
+    snapshotCount,
+    isSpectator,
+  }
 }
 
 function pickOpponent(players: SnapshotPlayerInfo[], selfId: string | null) {
@@ -343,6 +440,10 @@ export interface BuiltGame {
   snapshotCount: number
   /** 回放统计阶段回填（快照最后非空先手） */
   firstPlayerId: string | null
+  /** 模拟器来源网站 host（match 记录级 url 探测） */
+  source: string | null
+  /** 观战视角（无本地玩家） */
+  isSpectator: boolean
 }
 
 // ==================== 主入口 ====================
@@ -402,6 +503,60 @@ export function parseRiftExport(
     })
   }
   if (skipped > 0) warnings.push(`${skipped} 条记录缺少 events 数组，已跳过`)
+  console.log('[replay-import] 解析：session 化完成', {
+    sessions: sessions.length,
+    skipped,
+    matchmakingCount: sessions.filter((s) => s.isMatchmaking).length,
+  })
+
+  // 校验文件是否含可识别的对局数据（room_shell_sync / authoritative_snapshot / authoritative_patch_commit）
+  const signalCounts = { roomShellSync: 0, snapshot: 0, patchCommit: 0 }
+  for (const s of sessions) {
+    for (const ev of s.events) {
+      const t = typeof ev.type === 'string' ? ev.type : null
+      if (
+        t === 'room_shell_sync' ||
+        t === 'authoritative_snapshot' ||
+        t === 'authoritative_patch_commit'
+      ) {
+        signalCounts[
+          t === 'room_shell_sync'
+            ? 'roomShellSync'
+            : t === 'authoritative_snapshot'
+              ? 'snapshot'
+              : 'patchCommit'
+        ]++
+        continue
+      }
+      try {
+        const p = JSON.parse(ev.payload)
+        if (isRecord(p) && typeof p.type === 'string') {
+          const pt = p.type
+          if (
+            pt === 'room_shell_sync' ||
+            pt === 'authoritative_snapshot' ||
+            pt === 'authoritative_patch_commit'
+          ) {
+            signalCounts[
+              pt === 'room_shell_sync'
+                ? 'roomShellSync'
+                : pt === 'authoritative_snapshot'
+                  ? 'snapshot'
+                  : 'patchCommit'
+            ]++
+          }
+        }
+      } catch {
+        // 单个 payload 解析失败不影响信号统计
+      }
+    }
+  }
+  const replaySignalCount =
+    signalCounts.roomShellSync + signalCounts.snapshot + signalCounts.patchCommit
+  console.log('[replay-import] 解析：对局信号统计', signalCounts)
+  if (replaySignalCount === 0) {
+    throw new ReplayImportError('no-replay-data', '文件中未检测到可识别的对局数据')
+  }
 
   // 按房间分组（roomCode 为空的分到独立组）
   const byRoom = new Map<string, ReplaySession[]>()
@@ -415,6 +570,15 @@ export function parseRiftExport(
       roomless.push([s])
     }
   }
+  console.log('[replay-import] 解析：按房间分组', {
+    rooms: byRoom.size,
+    roomless: roomless.length,
+    roomsDetail: [...byRoom.entries()].map(([room, list]) => ({
+      room,
+      sessions: list.length,
+      url: list[0]?.raw.url ?? null,
+    })),
+  })
 
   // 2. 按房间构建一局（session 排序、权威字段探测、玩家/战场/胜负）
   const builtByRoom: { roomKey: string; built: BuiltGame }[] = []
@@ -424,6 +588,27 @@ export function parseRiftExport(
   roomless.forEach((list, i) =>
     builtByRoom.push({ roomKey: `roomless-${i + 1}`, built: buildGame(null, list) })
   )
+  builtByRoom.forEach(({ roomKey, built }) => {
+    console.log('[replay-import] 构建一局', {
+      roomKey,
+      gameNumber: built.game.gameNumber,
+      source: built.source,
+      selfId: built.selfId,
+      players: Object.entries(built.players).map(([pid, p]) => ({
+        pid,
+        name: p.name,
+        legend: p.legend?.cardCode ?? null,
+      })),
+      seriesFields: {
+        seriesId: built.series.seriesId,
+        gameNumber: built.series.gameNumber,
+        winsByPlayerId: built.series.winsByPlayerId,
+        pendingGameWinner: built.series.pendingGameWinner,
+      },
+      sessions: built.game.telemetry.sessions.length,
+      events: built.game.telemetry.totalEvents,
+    })
+  })
 
   // 3. 每局的比分预填与统计（用回放引擎重建最终状态）
   for (const { built } of builtByRoom) {
@@ -515,8 +700,22 @@ export function parseRiftExport(
       })
     )
   }
+  console.log('[replay-import] 解析：series 聚合完成', {
+    seriesGroups: bySeries.size,
+    bySeries: [...bySeries.entries()].map(([aggKey, item]) => ({
+      aggKey,
+      seriesId: item.seriesId,
+      format: item.format,
+      gameNumbers: item.built.map((b) => b.game.gameNumber),
+      rooms: item.built.map((b) => b.game.roomCode),
+    })),
+  })
 
   groups.sort((a, b) => a.meta.startedAt - b.meta.startedAt || a.key.localeCompare(b.key))
+  console.log('[replay-import] 解析：最终 groups', {
+    count: groups.length,
+    keys: groups.map((g) => g.key),
+  })
 
   return {
     fileName: opts?.fileName ?? null,
@@ -548,13 +747,23 @@ export function buildGame(roomCode: string | null, list: ReplaySession[]): Built
   const startedAt = first.startedAt
   const endedAt = last.endedAt ?? null
   const durationMs = endedAt !== null ? endedAt - startedAt : null
+  const source = detectSourceHost(first.raw.url ?? last.raw.url)
+  console.log('[replay-import] 来源探测', { roomCode, url: first.raw.url ?? null, source })
 
-  const { snapshotPlayers, mmPlayerId, mmPlayerName, queueFormat, snapshotCount } =
+  const { snapshotPlayers, mmPlayerId, mmPlayerName, queueFormat, snapshotCount, isSpectator } =
     scanSessions(sessions)
 
-  // 我方识别：匹配会话 playerId → 快照中带 decklistRaw 的玩家 → seat 0 → 第一个玩家
-  let selfId = mmPlayerId
-  if (!selfId) {
+  // URL 兜底观战判定（导出 URL 显式 playerId=spectator）
+  const urlSpectator =
+    /(?:[?&])playerId=spectator(?:&|$)/.test(first.raw.url ?? '') ||
+    /(?:[?&])playerId=spectator(?:&|$)/.test(last.raw.url ?? '')
+  const spectator = isSpectator || urlSpectator
+  if (urlSpectator) console.log('[replay-import] 视角识别 URL 兜底命中', { urlSpectator })
+
+  // 我方识别：匹配会话 playerId → 快照中带 decklistRaw 的玩家 → seat 0 → 第一个玩家；
+  // 观战导出无本地玩家，selfId 恒 null
+  let selfId = spectator ? null : mmPlayerId
+  if (!selfId && !spectator) {
     const byDeck = snapshotPlayers.find((p) => p.decklistRaw)
     selfId = byDeck?.id ?? snapshotPlayers[0]?.id ?? null
   }
@@ -622,7 +831,17 @@ export function buildGame(roomCode: string | null, list: ReplaySession[]): Built
     },
   }
 
-  return { game, series, players, selfId, queueFormat, snapshotCount, firstPlayerId: null }
+  return {
+    game,
+    series,
+    players,
+    selfId,
+    queueFormat,
+    snapshotCount,
+    firstPlayerId: null,
+    source,
+    isSpectator: spectator,
+  }
 }
 
 /**
@@ -636,8 +855,9 @@ export function buildSeriesRecord(opts: {
   built: BuiltGame[]
   firstPlayerId: string | null
   warnings: string[]
+  source?: string | null
 }): RiftAtlasMatchRecord {
-  const { key, seriesId, format, built, firstPlayerId, warnings } = opts
+  const { key, seriesId, format, built, firstPlayerId, warnings, source } = opts
   const games = [...built].sort(
     (a, b) => a.game.gameNumber - b.game.gameNumber || a.game.startedAt - b.game.startedAt
   )
@@ -717,8 +937,12 @@ export function buildSeriesRecord(opts: {
           ? last.game.endedAt - first.game.startedAt
           : null,
       firstPlayerId,
+      source: source ?? built[0]?.source ?? null,
     },
-    perspective: { localPlayerId: built[0]?.selfId ?? null },
+    perspective: {
+      localPlayerId: built[0]?.selfId ?? null,
+      isSpectator: built[0]?.isSpectator ?? false,
+    },
     players,
     result: { winnerId: seriesWinnerId, score },
     games: games.map((b) => b.game),
@@ -828,6 +1052,7 @@ export function migrateV2ToV3(g: RiftAtlasMatchRecord): RiftAtlasMatchRecord {
       endedAt: g.meta?.endedAt ?? null,
       durationMs: g.meta?.durationMs ?? null,
       firstPlayerId: g.meta?.firstPlayerId ?? null,
+      source: g.meta?.source ?? null,
     },
     perspective: g.perspective,
     players: g.players,

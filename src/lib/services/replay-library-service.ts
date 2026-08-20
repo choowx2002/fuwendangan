@@ -7,19 +7,25 @@
  * 去重：按文件内容 hash，相同文件重复导入 → 覆盖替换。
  * 单系列删除：过滤目标 group.key 后重写文件；文件清空则整删并更新索引。
  * 手动指定先手选择者：updateGameStarterChooser 直接改写磁盘记录并回写。
+ *
+ * 导入两段式（新流程）：解析后每个 series 先写 replays/tmp/{key}-{ts}.json 暂存
+ * （writeImportTmp），用户选择要导入的 series 后逐系列写入真实文件
+ * （saveSeriesFile，每 series 一个文件、按 key 替换更新），确认/取消后
+ * cleanupImportTmp 清空暂存目录。
  */
 
 import { isTauri } from '$lib/db/env'
 import {
   writeTextFile,
   readTextFile,
+  readDir,
   mkdir,
   exists,
   remove,
   BaseDirectory,
 } from '@tauri-apps/plugin-fs'
 import { migrateV1Group, migrateV2ToV3, type V1ReplayGroup } from '$lib/replay/import-parser'
-import type { RiftAtlasMatchRecord } from '$lib/replay/types'
+import type { ReplayGroupAnnotation, RiftAtlasMatchRecord } from '$lib/replay/types'
 
 export interface StoredReplayFile {
   id: string
@@ -46,6 +52,8 @@ interface IndexEntry {
 
 const REPLAYS_DIR = 'replays'
 const INDEX_PATH = 'replays/index.json'
+/** 导入暂存目录：解析后按 series 暂存，用户确认后写入真实文件并清理 */
+const TMP_DIR = 'replays/tmp'
 
 let dirReady: Promise<boolean> | null = null
 let writeChain: Promise<void> = Promise.resolve()
@@ -56,6 +64,9 @@ function ensureDir(): Promise<boolean> {
       try {
         if (!(await exists(REPLAYS_DIR, { baseDir: BaseDirectory.AppLocalData }))) {
           await mkdir(REPLAYS_DIR, { baseDir: BaseDirectory.AppLocalData, recursive: true })
+        }
+        if (!(await exists(TMP_DIR, { baseDir: BaseDirectory.AppLocalData }))) {
+          await mkdir(TMP_DIR, { baseDir: BaseDirectory.AppLocalData, recursive: true })
         }
         return true
       } catch {
@@ -199,6 +210,158 @@ export async function saveLibraryFile(
   return file
 }
 
+/** 文件名安全化：seriesId/key 中的非法字符替换为下划线 */
+function sanitizeName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
+}
+
+/**
+ * 写入一个 series 的导入暂存文件（$APPLOCALDATA/replays/tmp/{key}-{ts}.json）。
+ * 供导入流程的「解析 → 选择」阶段暂存，确认后写入真实文件并清理。
+ * 非桌面环境返回 null。
+ */
+export async function writeImportTmp(
+  key: string,
+  group: RiftAtlasMatchRecord
+): Promise<string | null> {
+  if (!isTauri) {
+    console.warn('[replay-import] writeImportTmp: 非桌面环境，跳过暂存', { key })
+    return null
+  }
+  const name = `${sanitizeName(key)}-${Date.now()}.json`
+  writeChain = writeChain
+    .then(async () => {
+      if (!(await ensureDir())) {
+        console.error('[replay-import] writeImportTmp: 目录初始化失败', { name })
+        return
+      }
+      await writeTextFile(`${TMP_DIR}/${name}`, JSON.stringify(group, null, 2), {
+        baseDir: BaseDirectory.AppLocalData,
+      })
+      console.log('[replay-import] 暂存文件已写入', `${TMP_DIR}/${name}`)
+    })
+    .catch((e) => {
+      console.error('[replay-import] 暂存文件写入失败', { name }, e)
+    })
+  await writeChain
+  return name
+}
+
+/** 清空导入暂存目录（确认后 / 取消时调用） */
+export async function cleanupImportTmp(): Promise<void> {
+  if (!isTauri) return
+  writeChain = writeChain
+    .then(async () => {
+      if (!(await ensureDir())) return
+      let entries = []
+      try {
+        entries = await readDir(TMP_DIR, { baseDir: BaseDirectory.AppLocalData })
+      } catch (e) {
+        console.error('[replay-import] 读取暂存目录失败', e)
+        return
+      }
+      let removedCount = 0
+      for (const e of entries) {
+        if (!e.isDirectory) {
+          try {
+            await remove(`${TMP_DIR}/${e.name}`, { baseDir: BaseDirectory.AppLocalData })
+            removedCount++
+          } catch (err) {
+            console.warn('[replay-import] 清理单个暂存文件失败', { name: e.name }, err)
+          }
+        }
+      }
+      console.log('[replay-import] 暂存目录已清理', { removedCount })
+    })
+    .catch((e) => {
+      console.error('[replay-import] 清理暂存目录异常', e)
+    })
+  await writeChain
+}
+
+/**
+ * 按 series 写入一个真实文件：
+ * - 按 group.key 去重：库中已存在同 key 的 series → 复用其 id 替换更新并刷新 importedAt；
+ *   （若命中旧版多 series 文件，仅替换同 key 的组，保留同文件内的其他组避免丢数据）
+ * - 否则新建 uuid 文件。
+ * 文件内容为可读的 pretty JSON。非桌面环境返回 null。
+ */
+export async function saveSeriesFile(
+  group: RiftAtlasMatchRecord,
+  fileName: string | null
+): Promise<StoredReplayFile | null> {
+  if (!isTauri) {
+    console.warn('[replay-import] saveSeriesFile: 非桌面环境，跳过落盘', { key: group.key })
+    return null
+  }
+  const index = await readIndex()
+  let existingId: string | null = null
+  let existingGroups: RiftAtlasMatchRecord[] | null = null
+  for (const e of index) {
+    try {
+      const raw = await readTextFile(`replays/${e.id}.json`, {
+        baseDir: BaseDirectory.AppLocalData,
+      })
+      const parsed = JSON.parse(raw) as { groups?: unknown }
+      const groups = Array.isArray(parsed.groups) ? (parsed.groups as RiftAtlasMatchRecord[]) : []
+      if (groups.some((g) => g.key === group.key)) {
+        existingId = e.id
+        existingGroups = groups
+        console.log('[replay-import] 命中同 key 已存在文件（替换更新）', {
+          key: group.key,
+          fileId: e.id,
+          existingGroups: groups.length,
+        })
+        break
+      }
+    } catch {
+      // 读取失败的文件不参与去重，保持 broken 状态
+    }
+  }
+  const file: StoredReplayFile = {
+    id: existingId ?? newId(),
+    fileName: fileName ?? 'replay.json',
+    importedAt: Date.now(),
+    hash: hashText(JSON.stringify(group)),
+    version: 3,
+    groups:
+      existingGroups && existingGroups.some((g) => g.key === group.key)
+        ? existingGroups.map((g) => (g.key === group.key ? group : g))
+        : [group],
+  }
+  const entry: IndexEntry = {
+    id: file.id,
+    fileName: file.fileName,
+    importedAt: file.importedAt,
+    hash: file.hash,
+  }
+  writeChain = writeChain
+    .then(async () => {
+      if (!(await ensureDir())) {
+        console.error('[replay-import] saveSeriesFile: 目录初始化失败', { id: file.id })
+        return
+      }
+      await writeTextFile(`replays/${file.id}.json`, JSON.stringify(file, null, 2), {
+        baseDir: BaseDirectory.AppLocalData,
+      })
+      console.log('[replay-import] 真实文件已写入', {
+        fileId: file.id,
+        key: group.key,
+        groupsInFile: file.groups.length,
+      })
+      const next = index.filter((e) => e.id !== file.id)
+      next.push(entry)
+      next.sort((a, b) => b.importedAt - a.importedAt)
+      await writeIndex(next)
+      console.log('[replay-import] index.json 已更新', { totalEntries: next.length })
+    })
+    .catch((e) => {
+      console.error('[replay-import] 真实文件写入失败', { fileId: file.id }, e)
+    })
+  await writeChain
+  return file
+}
+
 /** 从指定文件删除一局（按 group.key）；文件清空则整份删除并移除索引项 */
 export async function removeRoom(fileId: string, groupKey: string): Promise<boolean> {
   if (!isTauri) return false
@@ -253,6 +416,72 @@ export async function removeFile(fileId: string): Promise<boolean> {
     .catch(() => {})
   await writeChain
   return removed
+}
+
+export async function readGroupAnnotation(groupKey: string): Promise<ReplayGroupAnnotation | null> {
+  if (!isTauri) return null
+  const index = await readIndex()
+  for (const e of index) {
+    try {
+      const raw = await readTextFile(`replays/${e.id}.json`, {
+        baseDir: BaseDirectory.AppLocalData,
+      })
+      const parsed = JSON.parse(raw) as { annotations?: Record<string, ReplayGroupAnnotation> }
+      const ann = parsed.annotations?.[groupKey]
+      if (ann) return ann
+    } catch {
+      // 跳过损坏/缺失文件
+    }
+  }
+  return null
+}
+
+/**
+ * 将对局资料注解写入复盘文件（顶层 annotations[key]，纯本地、随 json 走）。
+ * 返回是否写入成功（非桌面 / 库中无该 group → false）。
+ */
+export async function saveGroupAnnotation(
+  groupKey: string,
+  annotation: ReplayGroupAnnotation
+): Promise<boolean> {
+  if (!isTauri) return false
+  const index = await readIndex()
+  if (index.length === 0) return false
+  let saved = false
+  writeChain = writeChain
+    .then(async () => {
+      for (const e of index) {
+        try {
+          const raw = await readTextFile(`replays/${e.id}.json`, {
+            baseDir: BaseDirectory.AppLocalData,
+          })
+          const parsed = JSON.parse(raw) as {
+            groups?: unknown
+            annotations?: Record<string, ReplayGroupAnnotation>
+          }
+          const groups = Array.isArray(parsed.groups) ? parsed.groups : []
+          const found = groups.some(
+            (g) => g && typeof g === 'object' && (g as { key?: unknown }).key === groupKey
+          )
+          if (!found) continue
+          await writeTextFile(
+            `replays/${e.id}.json`,
+            JSON.stringify({
+              ...parsed,
+              annotations: { ...(parsed.annotations ?? {}), [groupKey]: annotation },
+            }),
+            { baseDir: BaseDirectory.AppLocalData }
+          )
+          saved = true
+          return
+        } catch {
+          // 跳过损坏/缺失文件
+        }
+      }
+    })
+    .catch(() => {})
+  await writeChain
+  return saved
 }
 
 /**

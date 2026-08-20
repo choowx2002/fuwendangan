@@ -57,8 +57,8 @@ export async function createMatch(input: MatchInput, games: MatchGameInput[]): P
 
   const sql = `
     INSERT INTO ${TABLES.MATCH_RECORDS}
-      (id, deck_id, player_name, group_name, opponent_name, opponent_deck, opp_legend_id, opp_legend_print_id, opp_legend_name, opp_legend_image, deck_version_id, deck_version_number, best_of, note, played_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, deck_id, player_name, group_name, opponent_name, opponent_deck, opp_legend_id, opp_legend_print_id, opp_legend_name, opp_legend_image, deck_version_id, deck_version_number, best_of, note, played_at, replay_key, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   await db.execute(sql, [
     id,
@@ -76,6 +76,7 @@ export async function createMatch(input: MatchInput, games: MatchGameInput[]): P
     input.best_of ?? null,
     input.note ?? null,
     input.played_at ?? null,
+    input.replay_key ?? null,
     timestamp,
     timestamp,
   ])
@@ -152,6 +153,10 @@ export async function updateMatch(
     fields.push(`played_at = ?`)
     params.push(input.played_at ?? null)
   }
+  if (input.replay_key !== undefined) {
+    fields.push(`replay_key = ?`)
+    params.push(input.replay_key ?? null)
+  }
 
   if (fields.length > 0) {
     fields.push(`updated_at = ?`)
@@ -200,6 +205,11 @@ async function insertGames(matchId: string, games: MatchGameInput[]): Promise<vo
  * 查询单场对局（含小局）
  */
 export async function getMatchById(matchId: string): Promise<MatchWithGames | null> {
+  return loadMatchWithGamesById(matchId)
+}
+
+/** 按 id 加载单场对局（含小局 + 印刷信息），复用 getMatchById/findSynced 等入口 */
+async function loadMatchWithGamesById(matchId: string): Promise<MatchWithGames | null> {
   const db = await getDatabase()
   const rows = await db.select<MatchRecord[]>(
     `SELECT m.*, cp.card_no_extend AS opp_legend_print_code, cp.language AS opp_legend_lang
@@ -212,6 +222,93 @@ export async function getMatchById(matchId: string): Promise<MatchWithGames | nu
 
   const games = await getGamesByMatch(matchId)
   return { ...rows[0], games }
+}
+
+/**
+ * 按复盘 key 查询绑定记录（含小局）。本地列 replay_key 唯一。
+ */
+export async function getMatchByReplayKey(replayKey: string): Promise<MatchWithGames | null> {
+  const db = await getDatabase()
+  const rows = await db.select<{ id: string }[]>(
+    `SELECT id FROM ${TABLES.MATCH_RECORDS} WHERE replay_key = ?`,
+    [replayKey]
+  )
+  const row = rows[0]
+  if (!row) return null
+  return loadMatchWithGamesById(row.id)
+}
+
+/** 复盘绑定身份指纹（用于跨设备识别同一局） */
+export interface ReplayBindingIdentity {
+  roomCode: string | null
+  startedAt: number | null
+}
+
+function replayPlayedAt(startedAt: number | null): string | null {
+  return startedAt == null ? null : new Date(startedAt).toISOString()
+}
+
+/**
+ * 身份指纹查找：同一份复盘 json 在另一设备已同步出 match 记录（本机无 replay_key 链接）时，
+ * 用 group_name(=roomCode) + played_at(=startedAt ISO) 找到它，供导入静默重链 / 弹窗合并编辑。
+ * 已带 replay_key 链接（归属其他局）的记录不参与匹配；多条时取 updated_at 最新。
+ */
+export async function findSyncedMatchForReplay(
+  identity: ReplayBindingIdentity
+): Promise<MatchWithGames | null> {
+  const playedAt = replayPlayedAt(identity.startedAt)
+  if (!identity.roomCode || !playedAt) return null
+  const db = await getDatabase()
+  const rows = await db.select<{ id: string }[]>(
+    `SELECT id FROM ${TABLES.MATCH_RECORDS}
+     WHERE group_name = ? AND played_at = ?
+       AND (replay_key IS NULL OR replay_key = '')
+     ORDER BY updated_at DESC LIMIT 1`,
+    [identity.roomCode, playedAt]
+  )
+  const row = rows[0]
+  if (!row) return null
+  return loadMatchWithGamesById(row.id)
+}
+
+/**
+ * 导入后静默重链：身份指纹命中已同步记录时补上本机 replay_key 链接。
+ * 只改本地列、不新建行、不触碰 note/结果；返回是否重链成功。
+ */
+export async function relinkReplayToSyncedMatch(
+  replayKey: string,
+  identity: ReplayBindingIdentity
+): Promise<boolean> {
+  const found = await findSyncedMatchForReplay(identity)
+  if (!found) return false
+  const db = await getDatabase()
+  await db.execute(`UPDATE ${TABLES.MATCH_RECORDS} SET replay_key = ? WHERE id = ?`, [
+    replayKey,
+    found.id,
+  ])
+  return true
+}
+
+/** 全部复盘绑定关系：replay_key → deck_id（复盘列表展示 FileLock 指示用） */
+export async function getAllReplayBindings(): Promise<Map<string, string>> {
+  const db = await getDatabase()
+  const rows = await db.select<{ replay_key: string; deck_id: string }[]>(
+    `SELECT replay_key, deck_id FROM ${TABLES.MATCH_RECORDS}
+     WHERE replay_key IS NOT NULL AND replay_key != ''`
+  )
+  return new Map(rows.map((r) => [r.replay_key, r.deck_id]))
+}
+
+/** 删除复盘绑定记录（按 replay_key），带同步墓碑；未绑定返回 false */
+export async function deleteMatchByReplayKey(replayKey: string): Promise<boolean> {
+  const db = await getDatabase()
+  const rows = await db.select<{ id: string }[]>(
+    `SELECT id FROM ${TABLES.MATCH_RECORDS} WHERE replay_key = ?`,
+    [replayKey]
+  )
+  const row = rows[0]
+  if (!row) return false
+  return deleteMatch(row.id)
 }
 
 /**

@@ -19,15 +19,28 @@
     sortByList: SortKeyItem[]
     onChangeSubmit?: () => void
     fields?: { value: string; label: string; labelKey?: string }[]
+    /** 显示内置触发按钮（默认 true；由外部触发时设 false） */
+    showTrigger?: boolean
+    /** 外部打开信号（如顶栏按钮）；关闭时由 onClose 复位 */
+    open?: boolean
+    /** 关闭回调（遮罩/关闭按钮/完成都会调用） */
+    onClose?: (open: boolean) => void
   }
 
   let {
     sortByList = $bindable([]),
     onChangeSubmit,
     fields = DEFAULT_FIELDS,
+    showTrigger = true,
+    open = false,
+    onClose,
   }: SortModalProps = $props()
 
   let isSortModalOpen = $state(false)
+
+  $effect(() => {
+    if (open) isSortModalOpen = true
+  })
   let dndZoneEl = $state<HTMLElement | null>(null)
 
   function handleDrop(state: DragDropState<SortKeyItem>) {
@@ -72,6 +85,7 @@
 
   function closeModal() {
     isSortModalOpen = false
+    onClose?.(false)
     onChangeSubmit?.()
   }
 
@@ -86,15 +100,23 @@
 </script>
 
 <!-- 外部触发按钮 (带 Badge) -->
-<button class="button button-ghost trigger" onclick={openModal}>
-  <svg class="trigger-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M3 6h18M3 12h18M3 18h18" />
-  </svg>
-  <span>{$t('cards.sortLabel')}</span>
-  {#if sortByList.length > 0}
-    <span class="badge">{sortByList.length}</span>
-  {/if}
-</button>
+{#if showTrigger}
+  <button class="button button-ghost trigger" onclick={openModal}>
+    <svg
+      class="trigger-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+    >
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
+    <span>{$t('cards.sortLabel')}</span>
+    {#if sortByList.length > 0}
+      <span class="badge">{sortByList.length}</span>
+    {/if}
+  </button>
+{/if}
 
 <!-- Modal Popup -->
 {#if isSortModalOpen}

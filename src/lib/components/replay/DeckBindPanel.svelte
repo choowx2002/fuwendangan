@@ -4,7 +4,7 @@
   import { get } from 'svelte/store'
   import { isTauri } from '$lib/db/env'
   import { getDecks, getLatestDeckCards, type Deck, type DeckCardDetail } from '$lib/db'
-  import { normalizeSignedSuffix } from '$lib/decks/deck-import'
+  import { deckOverlapRatio } from '$lib/replay/deck-overlap'
   import type { RiftAtlasMatchRecord } from '$lib/replay/types'
 
   export interface DeckBindSelection {
@@ -31,30 +31,6 @@
   let loading = $state(true)
   let selectedId = $state<string | null>(null)
 
-  function mainDeckCodes(group: RiftAtlasMatchRecord): Set<string> {
-    const codes = new Set<string>()
-    const selfId = group.perspective?.localPlayerId
-    const self = selfId ? (group.players?.[selfId] ?? null) : null
-    for (const en of self?.deck?.mainDeck ?? []) codes.add(normalizeSignedSuffix(en.cardCode))
-    return codes
-  }
-
-  function deckCodeSet(cards: DeckCardDetail[]): Set<string> {
-    const codes = new Set<string>()
-    for (const c of cards) {
-      if (c.zone === 'sideboard') continue
-      if (c.print_code) codes.add(normalizeSignedSuffix(c.print_code))
-    }
-    return codes
-  }
-
-  function overlapRatio(a: Set<string>, b: Set<string>): number {
-    if (a.size === 0) return 0
-    let hit = 0
-    for (const code of a) if (b.has(code)) hit++
-    return hit / a.size
-  }
-
   function emit(deckId: string | null) {
     selectedId = deckId
     const overlaps = new Map<string, number>()
@@ -79,9 +55,13 @@
       const loaded: DeckOption[] = []
       for (const deck of decks) {
         const cards = await getLatestDeckCards(deck.id)
-        const codes = deckCodeSet(cards)
         const overlaps = new Map<string, number>()
-        for (const g of groups) overlaps.set(g.key, overlapRatio(mainDeckCodes(g), codes))
+        for (const g of groups) {
+          const self = g.perspective?.localPlayerId
+            ? g.players?.[g.perspective.localPlayerId]
+            : null
+          overlaps.set(g.key, deckOverlapRatio(self?.deck?.mainDeck ?? [], cards))
+        }
         const maxOverlap = [...overlaps.values()].reduce((a, b) => Math.max(a, b), 0)
         loaded.push({ deck, overlaps, maxOverlap })
       }

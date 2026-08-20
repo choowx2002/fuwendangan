@@ -122,7 +122,7 @@ export function printCacheName(
 export function getBestPrint(card: CardBase & { card_prints?: CardPrint[] }): BestPrint | null {
   if (!card.card_prints || card.card_prints.length === 0) return null
 
-  const prints = card.card_prints
+  const prints = card.card_prints.filter((c)=>!c.is_custom || !c.is_promo)
 
   // 1. 优先找 is_default
   let best = prints.find((p) => p.is_default)

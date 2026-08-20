@@ -193,6 +193,10 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CONTACTS, 'phone', 'TEXT')
   await ensureColumn(db, TABLES.CONTACTS, 'email', 'TEXT')
 
+  // 复盘绑定：match_records.replay_key（本地列）在补列后建唯一索引（老库无该列）
+  await ensureColumn(db, TABLES.MATCH_RECORDS, 'replay_key', 'TEXT')
+  await db.execute(TABLE_DEFINITIONS.idx_match_records_replay_key)
+
   // DEBUG: schema 迁移阶段标记（老库缺列排查）
   console.log('[DB] initializeTables: ensureColumn 完成')
 

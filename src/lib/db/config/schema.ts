@@ -238,6 +238,8 @@ export const TABLE_DEFINITIONS = {
       played_at TEXT,
       created_at TEXT,
       updated_at TEXT,
+      -- 复盘绑定：本地列（不进云同步），唯一关联 replays/*.json 的 group.key
+      replay_key TEXT,
       FOREIGN KEY(deck_id) REFERENCES decks(id) ON DELETE CASCADE
     )
   `,
@@ -258,6 +260,10 @@ export const TABLE_DEFINITIONS = {
       FOREIGN KEY(match_id) REFERENCES match_records(id) ON DELETE CASCADE,
       UNIQUE(match_id, game_number)
     )
+  `,
+
+  idx_match_records_replay_key: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_match_records_replay_key ON match_records(replay_key)
   `,
 
   collection_history: `

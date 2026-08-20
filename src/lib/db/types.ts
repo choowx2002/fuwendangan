@@ -706,6 +706,8 @@ export interface MatchRecord {
   played_at: string | null
   created_at: string | null
   updated_at: string | null
+  /** 复盘绑定（本地列，不进云同步）：replays/*.json 中 group.key，唯一 */
+  replay_key: string | null
 }
 
 export interface SqliteMatchRecord extends MatchRecord {}
@@ -768,6 +770,8 @@ export interface MatchInput {
   best_of?: number | null
   note?: string | null
   played_at?: string | null
+  /** 复盘绑定（本地列）：replays/*.json 中 group.key，唯一 */
+  replay_key?: string | null
 }
 
 // 创建小局输入
