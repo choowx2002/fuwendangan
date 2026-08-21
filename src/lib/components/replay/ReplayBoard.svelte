@@ -1,8 +1,10 @@
 <script lang="ts">
   import { t } from '$lib/i18n'
+  import { get } from 'svelte/store'
   import type { ReplayCardMeta } from '$lib/replay/card-meta'
   import type { GamePlayer } from '$lib/replay/replay-engine'
   import ReplayCard from './ReplayCard.svelte'
+  import CommonModal from '$lib/components/ui/CommonModal.svelte'
 
   interface Props {
     player: GamePlayer | null
@@ -69,136 +71,67 @@
   const banishedCards = $derived(zoneCards('banished'))
   const runeAreaCards = $derived(zoneCards('runeArea'))
   const runeDeckCount = $derived(zoneCards('runeDeck').length)
+  const legendCards = $derived(zoneCards('legend'))
+  const championCards = $derived(zoneCards('champion'))
+  const baseCards = $derived(zoneCards('base'))
 
   const isOpp = $derived(side === 'opp')
-  // 手牌：我方大卡扇形重叠；对方牌背小卡
-  const handWidth = $derived(isOpp ? 58 : 92)
+
+  // 基地血量（信息面板用 score 字段）
+  const score = $derived(typeof board.score === 'number' ? Number(board.score) : null)
+
+  // 手牌卡宽随数量自适应：保证横向总宽不超出半区可用宽度（画布内绝对无溢出）
+  const handWidth = $derived.by(() => {
+    const n = handCards.length
+    if (n === 0) return isOpp ? 60 : 64
+    const overlap = isOpp ? 24 : 30
+    const avail = isOpp ? 560 : 640
+    const w = (avail + overlap * (n - 1)) / n
+    return Math.round(Math.max(isOpp ? 32 : 42, Math.min(80, w)))
+  })
+
+  // 敌方手牌：牌背叠放展示（上限 5 张，数量角标兜底）
+  const oppBackCount = $derived(Math.min(handCards.length, 5))
+
+  // ===== T3 折叠堆弹窗：废牌堆 / 放逐区（点击 → CommonModal 卡牌列表） =====
+  let pileKind = $state<'trash' | 'banished' | null>(null)
+  const pileCards = $derived(
+    pileKind === 'trash' ? trashCards : pileKind === 'banished' ? banishedCards : []
+  )
+  const pileTitle = $derived(
+    pileKind === 'trash'
+      ? get(t)('replay.trashDetail', { values: { count: trashCards.length } })
+      : pileKind === 'banished'
+        ? get(t)('replay.banishedDetail', { values: { count: banishedCards.length } })
+        : ''
+  )
+  function openPile(kind: 'trash' | 'banished') {
+    if ((kind === 'trash' ? trashCards : banishedCards).length > 0) pileKind = kind
+  }
+  function closePile() {
+    pileKind = null
+  }
 </script>
 
-<div class="board" class:opp={isOpp}>
-  {#if isOpp}
-    <!-- 对手：手牌在最上（镜像），名字/资源在最下，卡牌与文字全部正立 -->
-    <div class="hand">
-      <span class="zlabel">{$t('replay.hand', { values: { count: handCards.length } })}</span>
-      <div class="zc hand-cards opp-hand">
-        {#each handCards as c (c.id)}
+<div class="board-half" class:opp={isOpp} class:active={activeTurn}>
+  <!-- ===== 手牌行（镜像：敌方在上 / 我方在下） ===== -->
+  <div class="bh-hand">
+    {#if isOpp}
+      <div class="hand-stack">
+        {#each handCards.slice(0, oppBackCount) as c, i (i)}
           <ReplayCard card={c} back width={handWidth} />
         {/each}
       </div>
-    </div>
-  {/if}
-
-  <div class="zones">
-    {#each [{ zone: 'champion', label: $t('replay.champion') }, { zone: 'legend', label: $t('replay.legend') }, { zone: 'base', label: $t('replay.base') }] as row (row.zone)}
-      {#if zoneCards(row.zone).length > 0}
-        <div class="zone">
-          <span class="zlabel">{row.label}</span>
-          <div class="zc fill">
-            {#each zoneCards(row.zone) as c (c.id)}
-              <button
-                type="button"
-                class="slot"
-                onmouseenter={() => pick(c, row.zone, false)}
-                onclick={() => pick(c, row.zone, true)}
-              >
-                <ReplayCard card={c} meta={metaOf(c)} fluid />
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    {/each}
-  </div>
-
-  <div class="zones">
-    {#if runeAreaCards.length > 0}
-      <div class="zone">
-        <span class="zlabel">{$t('replay.runeArea')}</span>
-        <div class="zc fill">
-          {#each runeAreaCards as c (c.id)}
-            <button
-              type="button"
-              class="slot"
-              onmouseenter={() => pick(c, 'runeArea', false)}
-              onclick={() => pick(c, 'runeArea', true)}
-            >
-              <ReplayCard card={c} meta={metaOf(c)} fluid showType={false} />
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-    <div class="zone">
-      <span class="zlabel">{$t('replay.runeDeck')}</span>
-      <div class="zc">
-        {#if runeDeckCount > 0}
-          <ReplayCard card={null} back width={56} />
-          <span class="count">{runeDeckCount}</span>
-        {:else}
-          <span class="zlabel dim">0</span>
-        {/if}
-      </div>
-    </div>
-    <div class="zone">
-      <span class="zlabel">{$t('replay.deck')}</span>
-      <div class="zc">
-        {#if deckCount > 0}
-          <ReplayCard card={null} back width={56} />
-          <span class="count">{deckCount}</span>
-        {:else}
-          <span class="zlabel dim">0</span>
-        {/if}
-      </div>
-    </div>
-    <div class="zone">
-      <span class="zlabel">{$t('replay.trash')}</span>
-      <div class="zc fill">
-        {#if trashCards.length > 0}
-          {#each trashCards.slice(-4) as c (c.id)}
-            <button
-              type="button"
-              class="slot"
-              onmouseenter={() => pick(c, 'trash', false)}
-              onclick={() => pick(c, 'trash', true)}
-            >
-              <ReplayCard card={c} meta={metaOf(c)} fluid showType={false} />
-            </button>
-          {/each}
-        {:else}
-          <span class="zlabel dim">0</span>
-        {/if}
-      </div>
-    </div>
-    <div class="zone">
-      <span class="zlabel">{$t('replay.banished')}</span>
-      <div class="zc fill">
-        {#if banishedCards.length > 0}
-          {#each banishedCards.slice(-4) as c (c.id)}
-            <button
-              type="button"
-              class="slot"
-              onmouseenter={() => pick(c, 'banished', false)}
-              onclick={() => pick(c, 'banished', true)}
-            >
-              <ReplayCard card={c} meta={metaOf(c)} fluid showType={false} />
-            </button>
-          {/each}
-        {:else}
-          <span class="zlabel dim">0</span>
-        {/if}
-      </div>
-    </div>
-  </div>
-
-  {#if !isOpp}
-    <!-- 我方：手牌在最下 -->
-    <div class="hand">
       <span class="zlabel">{$t('replay.hand', { values: { count: handCards.length } })}</span>
-      <div class="zc hand-cards">
-        {#each handCards as c (c.id)}
+    {:else}
+      <span class="zlabel">{$t('replay.hand', { values: { count: handCards.length } })}</span>
+      <div class="hand-fan">
+        {#each handCards as c, i (c.id)}
+          {@const angle = (i - (handCards.length - 1) / 2) * 5}
           <button
             type="button"
-            class="slot"
+            class="slot hcard"
+            style="--fan-rot: {angle.toFixed(1)}deg; --fan-lift: {Math.abs(angle) * 0.8}px"
             onmouseenter={() => pick(c, 'hand', false)}
             onclick={() => pick(c, 'hand', true)}
           >
@@ -206,120 +139,170 @@
           </button>
         {/each}
       </div>
-    </div>
-  {/if}
-
-  <div class="phead">
-    <span class="pname">
-      {name}
-      {#if activeTurn}<span class="turn-badge">{$t('replay.activeTurn')}</span>{/if}
-    </span>
-    <span class="pills">
-      {#each pills as p (p.key)}
-        <span class="pill"><b>{$t(p.key)}</b> <span class={p.cls}>{p.value}</span></span>
-      {/each}
-    </span>
+    {/if}
   </div>
+
+  <!-- ===== 资源行：传奇 | 选定 | 符文区（计算宽度，最多12张） | 基地（占比最宽） | 废牌堆 | 放逐区 ===== -->
+  <div class="bh-res">
+    <div class="leg-slot">
+      <span class="zlabel">{$t('replay.legend')}</span>
+      {#if legendCards[0]}
+        <button
+          type="button"
+          class="slot"
+          onmouseenter={() => pick(legendCards[0], 'legend', false)}
+          onclick={() => pick(legendCards[0], 'legend', true)}
+        >
+          <ReplayCard card={legendCards[0]} meta={metaOf(legendCards[0])} width={60} />
+        </button>
+      {:else}
+        <span class="empty-slot"></span>
+      {/if}
+    </div>
+    <div class="chp-slot">
+      <span class="zlabel">{$t('replay.champion')}</span>
+      {#if championCards[0]}
+        <button
+          type="button"
+          class="slot"
+          onmouseenter={() => pick(championCards[0], 'champion', false)}
+          onclick={() => pick(championCards[0], 'champion', true)}
+        >
+          <ReplayCard card={championCards[0]} meta={metaOf(championCards[0])} width={60} />
+        </button>
+      {:else}
+        <span class="empty-slot"></span>
+      {/if}
+    </div>
+    <div class="bh-rune">
+      <span class="zlabel">{$t('replay.runeArea')}</span>
+      <div class="rune-row">
+        {#each runeAreaCards.slice(0, 12) as c (c.id)}
+          <button
+            type="button"
+            class="slot"
+            onmouseenter={() => pick(c, 'runeArea', false)}
+            onclick={() => pick(c, 'runeArea', true)}
+          >
+            <ReplayCard card={c} meta={metaOf(c)} width={50} showType={false} />
+          </button>
+        {/each}
+      </div>
+    </div>
+    <div class="bh-base">
+      <span class="zlabel base-tag">{$t('replay.base')}</span>
+      {#if baseCards[0]}
+        <button
+          type="button"
+          class="slot"
+          onmouseenter={() => pick(baseCards[0], 'base', false)}
+          onclick={() => pick(baseCards[0], 'base', true)}
+        >
+          <ReplayCard card={baseCards[0]} meta={metaOf(baseCards[0])} width={60} />
+        </button>
+      {:else}
+        <span class="empty-slot wide"></span>
+      {/if}
+    </div>
+    <button
+      type="button"
+      class="pile-btn"
+      disabled={trashCards.length === 0}
+      onclick={() => openPile('trash')}
+      title={$t('replay.trash')}
+    >
+      <span class="zlabel">{$t('replay.trash')}</span>
+      <span class="pile-stack">
+        {#if trashCards.length > 0}
+          <ReplayCard card={null} back width={50} />
+          <span class="pile-count">{trashCards.length}</span>
+        {:else}
+          <span class="zlabel dim">0</span>
+        {/if}
+      </span>
+    </button>
+    <button
+      type="button"
+      class="pile-btn"
+      disabled={banishedCards.length === 0}
+      onclick={() => openPile('banished')}
+      title={$t('replay.banished')}
+    >
+      <span class="zlabel">{$t('replay.banished')}</span>
+      <span class="pile-stack">
+        {#if banishedCards.length > 0}
+          <ReplayCard card={null} back width={50} />
+          <span class="pile-count">{banishedCards.length}</span>
+        {:else}
+          <span class="zlabel dim">0</span>
+        {/if}
+      </span>
+    </button>
+  </div>
+
+  <!-- ===== T3 弹窗：废牌堆 / 放逐区卡牌列表 ===== -->
+  <CommonModal open={!!pileKind} title={pileTitle} onclose={closePile} width="min(640px, 100%)">
+    {#if pileCards.length === 0}
+      <p class="pile-empty">{$t('replay.pileEmpty')}</p>
+    {:else}
+      <div class="pile-grid">
+        {#each pileCards as c (c.id)}
+          <button
+            type="button"
+            class="slot pile-card"
+            onmouseenter={() => pick(c, pileKind ?? 'trash', false)}
+            onclick={() => {
+              pick(c, pileKind ?? 'trash', true)
+              closePile()
+            }}
+          >
+            <ReplayCard card={c} meta={metaOf(c)} width={64} showType={false} />
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </CommonModal>
 </div>
 
 <style>
-  .board {
+  /* ===== 半区骨架（镜像两行）：手牌行 + 资源行 =====
+     敌方：手牌在上、资源在下；我方：资源在上、手牌在下。
+     信息面板由 ReplayViewer 渲染在视口层顶部（与工具栏同行）。 */
+  .board-half {
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 8px 10px;
+    position: relative;
+    padding: 4px 8px;
   }
-  .phead {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 6px;
+  .bh-hand {
+    order: 1;
+    flex: none;
+    height: 120px;
   }
-  .board.opp .phead {
-    margin-top: 6px;
-    margin-bottom: 0;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: 6px;
+  .bh-res {
+    order: 2;
+    flex: none;
+    height: 114px;
   }
-  .pname {
-    font-weight: 600;
-    font-size: var(--text-md);
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .board-half:not(.opp) .bh-hand {
+    order: 2;
   }
-  .turn-badge {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: #fff;
-    background: var(--accent-color);
-    padding: 1px 6px;
-    border-radius: 8px;
+  .board-half:not(.opp) .bh-res {
+    order: 1;
   }
-  .pills {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .pill {
-    background: var(--surface-muted);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 1px 8px;
-  }
-  .pill b {
-    color: var(--text-primary);
-    font-weight: 600;
-    margin-right: 3px;
-  }
-  .pill .g {
-    color: #128378;
-    font-weight: 600;
-  }
-  .pill .o {
-    color: #d9730d;
-    font-weight: 600;
-  }
-  .zones {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 18px;
-    align-items: flex-start;
-    margin-bottom: 6px;
-  }
-  .zone {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
+
+  /* ===== 通用 ===== */
   .zlabel {
-    font-size: var(--text-xs);
+    font-size: 10px;
     color: var(--text-tertiary);
+    white-space: nowrap;
+    line-height: 1.2;
   }
   .zlabel.dim {
     color: var(--text-tertiary);
-  }
-  .zc {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-  /* 卡图尽量撑满可用宽度：slot 弹性伸展，上限 100px */
-  .zc.fill .slot {
-    flex: 1 1 0;
-    min-width: 58px;
-    max-width: 100px;
   }
   .slot {
     border-radius: 6px;
@@ -330,55 +313,171 @@
     font: inherit;
     color: inherit;
     display: block;
+    flex: none;
   }
   .slot:hover {
     outline: 2px solid var(--accent-color);
     outline-offset: 1px;
     z-index: 3;
   }
-  .count {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    align-self: center;
-    padding-left: 2px;
-  }
-  .hand {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: 6px;
-  }
-  .board.opp .hand {
-    border-top: none;
-    border-bottom: 1px solid var(--border-subtle);
-    padding-top: 0;
-    padding-bottom: 6px;
-  }
-  .hand-cards {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-  .hand-cards .slot {
+  .empty-slot {
+    width: 60px;
+    height: 84px;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--surface-muted) 55%, transparent);
     flex: none;
   }
-  .hand-cards :global(.rc) {
-    margin-right: -18px;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  .empty-slot.wide {
+    width: 160px;
+    height: 72px;
   }
-  .hand-cards :global(.rc:last-child) {
-    margin-right: 0;
+  .pile-count {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bg-primary);
+    font-variant-numeric: tabular-nums;
   }
-  .hand-cards :global(.rc:hover) {
-    transform: translateY(-8px);
-    transition: transform 0.12s ease;
-    z-index: 2;
+  .pile-stack {
+    position: relative;
+    display: inline-flex;
+    flex: none;
   }
-  .opp-hand :global(.rc) {
-    margin-right: -8px;
+
+  /* ===== 手牌行（全宽） ===== */
+  .bh-hand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 0 8px;
   }
-  .opp-hand :global(.rc:hover) {
-    transform: none;
+  /* 我方：弧形排列，hover 单张上浮放大 */
+  .hand-fan {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    min-width: 0;
+  }
+  .hcard {
+    transform: rotate(var(--fan-rot)) translateY(var(--fan-lift));
+    transition: transform 0.15s ease;
+    z-index: 1;
+  }
+  .hcard:hover {
+    transform: rotate(0deg) translateY(-14px) scale(1.16);
+    z-index: 5;
+  }
+  /* 敌方：牌背叠放（负 margin 错位） */
+  .hand-stack {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+  }
+  .hand-stack :global(.rc) {
+    margin-left: -18px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  }
+  .hand-stack :global(.rc:first-child) {
+    margin-left: 0;
+  }
+
+  /* ===== 资源行（传奇 | 选定 | 符文区动态 | 基地最宽 | 废牌堆 | 放逐区） ===== */
+  .bh-res {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .leg-slot,
+  .chp-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+    min-width: 0;
+  }
+  .bh-rune {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+    min-width: 0;
+    max-width: 660px;
+  }
+  .rune-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 660px;
+    overflow: hidden;
+  }
+  .bh-base {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 170px;
+    height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 14%, transparent);
+  }
+  .base-tag {
+    position: absolute;
+    top: 2px;
+    left: 8px;
+  }
+  .pile-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+    flex: none;
+    min-width: 0;
+  }
+  .pile-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  /* ===== T3 弹窗：卡牌网格 ===== */
+  .pile-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 52vh;
+    overflow-y: auto;
+  }
+  .pile-empty {
+    margin: 0;
+    padding: 16px 0;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--text-base);
   }
 </style>

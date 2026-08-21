@@ -84,10 +84,7 @@
         meta: bfMeta(opp),
       },
     ]
-    if (
-      zoneCards(opp, 'battlefieldC').length > 0 ||
-      zoneCards(me, 'battlefieldC').length > 0
-    ) {
+    if (zoneCards(opp, 'battlefieldC').length > 0 || zoneCards(me, 'battlefieldC').length > 0) {
       out.push({
         zone: 'battlefieldC',
         label: $t('replay.battlefield', { values: { lane: 'C' } }),
@@ -185,28 +182,25 @@
 
 <style>
   .bf {
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 8px 10px;
+    gap: 4px;
   }
   .bf-banner {
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    margin-top: -8px;
-    margin-bottom: 2px;
+    gap: 10px;
     flex-wrap: wrap;
   }
   .b-name {
-    font-size: var(--text-sm);
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-secondary);
-    max-width: 220px;
+    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -221,13 +215,14 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--surface-muted);
-    border: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--surface) 66%, transparent);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 2px 14px;
+    padding: 1px 14px;
     font-weight: 800;
-    font-size: var(--text-lg);
+    font-size: var(--text-md);
     color: var(--text-primary);
+    backdrop-filter: blur(8px);
   }
   .b-score b.opp {
     color: #e05252;
@@ -259,8 +254,10 @@
     font-size: var(--text-xs);
   }
   .bf-cols {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: stretch;
   }
   .bf-col {
@@ -268,10 +265,11 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: 6px 8px;
+    gap: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 4px 6px;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
   }
   .col-head {
     display: flex;
@@ -279,7 +277,7 @@
     gap: 6px;
   }
   .bf-thumb {
-    width: 64px;
+    width: 48px;
     aspect-ratio: 1040 / 744;
     flex: none;
     border-radius: 4px;
@@ -288,7 +286,7 @@
     background: var(--surface-muted);
   }
   .col-name {
-    font-size: var(--text-xs);
+    font-size: 11px;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.2;
@@ -300,16 +298,18 @@
     -webkit-box-orient: vertical;
   }
   .col-half {
+    flex: 1 1 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 3px;
   }
   .col-half.opp {
     border-bottom: 1px dashed var(--border-subtle);
-    padding-bottom: 4px;
+    padding-bottom: 3px;
   }
   .bf-owner {
-    font-size: var(--text-xs);
+    font-size: 10px;
     font-weight: 700;
     color: var(--text-secondary);
   }
@@ -323,13 +323,13 @@
     color: inherit;
     display: block;
     flex: 1 1 0;
-    min-width: 92px;
-    max-width: 150px;
+    min-width: 32px;
+    max-width: 50px;
   }
   .zc {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 4px;
+    flex-wrap: nowrap;
     align-items: flex-start;
     width: 100%;
   }

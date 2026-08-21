@@ -805,7 +805,7 @@
             />
           </label>
           <button
-            class="modal-btn"
+            class="button button-secondary"
             disabled={importing || !importSourcePlayer?.deck}
             onclick={() => void handleCreateDeck()}
           >
@@ -838,7 +838,7 @@
             </select>
           </label>
           <button
-            class="modal-btn"
+            class="button button-secondary"
             disabled={importing || !importSourcePlayer?.deck || !overwriteTargetId}
             onclick={() => void handleAddVersion()}
           >
@@ -862,7 +862,12 @@
         {#each group.games ?? [] as game (game.gameNumber)}
           {@const s = scoreOf(game)}
           {@const roles = gameRoles(game)}
-          <div class="game-row">
+          <div
+            class="game-row"
+            class:win={results[game.gameNumber] === 'win'}
+            class:loss={results[game.gameNumber] === 'loss'}
+            class:draw={results[game.gameNumber] === 'draw'}
+          >
             <span class="game-side" title={selfPlayer?.name ?? ''}>
               <span class="side-avatar">
                 <CardSimpleImage
@@ -874,6 +879,7 @@
                 <span
                   class="turn-tag"
                   class:first={roles.self === 'first'}
+                  class:second={roles.self === 'second'}
                   title={$t('replay.firstMoveHint', { values: { name: selfPlayer?.name ?? '-' } })}
                   >{$t(roles.self === 'first' ? 'replay.firstTurn' : 'replay.secondTurn')}</span
                 >
@@ -891,6 +897,7 @@
                 <span
                   class="turn-tag"
                   class:first={roles.opp === 'first'}
+                  class:second={roles.opp === 'second'}
                   title={$t('replay.firstMoveHint', { values: { name: oppPlayer?.name ?? '-' } })}
                   >{$t(roles.opp === 'first' ? 'replay.firstTurn' : 'replay.secondTurn')}</span
                 >
@@ -941,19 +948,23 @@
   {#snippet footer()}
     {#if !loading && isTauri}
       {#if record}
-        <button class="modal-btn danger" disabled={saving} onclick={() => void unbind()}>
+        <button
+          class="button button-danger-outline unbind-btn"
+          disabled={saving}
+          onclick={() => void unbind()}
+        >
           <Unlink size={15} />
           {$t('replay.unbindAction')}
         </button>
       {/if}
-      <button class="modal-btn primary" disabled={saving} onclick={() => void save()}>
+      <button class="button button-primary" disabled={saving} onclick={() => void save()}>
         {#if saving}
           <span class="spin"><LoaderCircle size={15} /></span>
         {/if}
         {$t('common.save')}
       </button>
     {:else if !loading}
-      <button class="modal-btn" onclick={onClose}>{$t('common.close')}</button>
+      <button class="button button-ghost" onclick={onClose}>{$t('common.close')}</button>
     {/if}
   {/snippet}
 </CommonModal>
@@ -980,13 +991,17 @@
   .sec {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
+  /* 区块标题：match-section-title 层级（700 加粗）+ 强调色竖条 */
   .sec-title {
     margin: 0;
-    font-size: var(--text-base);
+    font-size: var(--text-md);
     font-weight: 700;
     color: var(--text-primary);
+    padding-left: 10px;
+    border-left: 3px solid var(--accent-color);
+    line-height: 1.4;
   }
   .hint {
     margin: 0;
@@ -997,8 +1012,8 @@
     color: #b45309;
     background: #fff8ec;
     border: 1px solid #fcd9a8;
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
+    border-radius: 8px;
+    padding: 5px 10px;
   }
   .persp-row {
     display: flex;
@@ -1010,19 +1025,24 @@
     gap: 8px;
     flex: 1;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 10px;
     background: var(--surface);
     color: var(--text-primary);
-    padding: 6px 10px;
+    padding: 8px 10px;
     cursor: pointer;
     font-size: var(--text-sm);
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      box-shadow 0.15s ease;
   }
   .persp-btn:hover:not(:disabled) {
     background: var(--bg-hover);
   }
   .persp-btn.on {
     border-color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--surface));
+    box-shadow: 0 0 0 1px var(--accent-color);
   }
   .persp-btn:disabled {
     opacity: 0.6;
@@ -1063,13 +1083,16 @@
     gap: 8px;
     width: 100%;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 10px;
     background: var(--surface);
     color: var(--text-primary);
-    padding: 6px 10px;
+    padding: 8px 10px;
     cursor: pointer;
     font-size: var(--text-base);
     text-align: left;
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease;
   }
   .dl-header:hover:not(:disabled) {
     background: var(--bg-hover);
@@ -1088,7 +1111,7 @@
     width: 36px;
     aspect-ratio: 744 / 1039;
     flex: none;
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     border: 1px solid var(--border-color);
     background: var(--surface-muted);
@@ -1108,10 +1131,10 @@
   .dl-body {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 8px;
+    border-radius: 10px;
+    padding: 10px;
     background: var(--surface-muted);
   }
   .zone {
@@ -1140,7 +1163,7 @@
     width: 50px;
     aspect-ratio: 744 / 1039;
     flex: none;
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     border: 1px solid var(--border-color);
     background: var(--surface-muted);
@@ -1152,10 +1175,10 @@
     font-size: 10px;
     font-weight: 700;
     line-height: 1;
-    padding: 1px 3px;
+    padding: 2px 4px;
     background: rgba(0, 0, 0, 0.72);
     color: #fff;
-    border-top-left-radius: 3px;
+    border-top-left-radius: 4px;
     font-variant-numeric: tabular-nums;
   }
   .field {
@@ -1173,11 +1196,16 @@
     box-sizing: border-box;
     background: var(--surface);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     color: var(--text-primary);
     font-size: var(--text-base);
-    padding: 6px 8px;
+    padding: 7px 9px;
     font-family: inherit;
+    transition: border-color 0.15s ease;
+  }
+  .input.select:focus {
+    outline: none;
+    border-color: var(--accent-color);
   }
   .input.select:disabled {
     opacity: 0.6;
@@ -1188,11 +1216,12 @@
     box-sizing: border-box;
     background: var(--surface-muted);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     color: var(--text-primary);
     font-size: var(--text-base);
-    padding: 6px 8px;
+    padding: 7px 9px;
     font-family: inherit;
+    transition: border-color 0.15s ease;
   }
   .input.text:focus {
     outline: none;
@@ -1200,7 +1229,7 @@
   }
   .import-sec {
     border-top: 1px dashed var(--border-color);
-    padding-top: 10px;
+    padding-top: 12px;
   }
   .import-row {
     display: flex;
@@ -1217,18 +1246,37 @@
   .game-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
+  /* 每局结果行：game-item 同款卡片 + 胜/负/平底色 */
   .game-row {
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface);
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease;
+  }
+  .game-row.win {
+    background: color-mix(in srgb, #16a34a 6%, var(--surface));
+    border-color: color-mix(in srgb, #16a34a 30%, var(--border-color));
+  }
+  .game-row.loss {
+    background: color-mix(in srgb, #dc2626 6%, var(--surface));
+    border-color: color-mix(in srgb, #dc2626 30%, var(--border-color));
+  }
+  .game-row.draw {
+    background: color-mix(in srgb, var(--text-tertiary) 10%, var(--surface));
   }
   .game-side {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 3px;
     width: 44px;
     flex: none;
   }
@@ -1250,24 +1298,30 @@
     object-fit: cover;
     display: block;
   }
+  /* 先后手标签：与记录页 game-turn-badge 同色语义 */
   .turn-tag {
     font-size: 10px;
     font-weight: 700;
     line-height: 1.2;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 999px;
     background: var(--surface-muted);
     color: var(--text-secondary);
     white-space: nowrap;
   }
   .turn-tag.first {
-    background: var(--accent-color);
+    background: #2563eb;
+    color: #fff;
+  }
+  .turn-tag.second {
+    background: #ea580c;
     color: #fff;
   }
   .game-score {
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+    font-size: var(--text-base);
+    font-weight: 700;
+    color: var(--text-primary);
     min-width: 48px;
     text-align: center;
     flex: none;
@@ -1275,21 +1329,23 @@
   .seg {
     display: inline-flex;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     overflow: hidden;
     flex: none;
+    background: var(--surface-muted);
   }
   .seg-btn {
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--text-sm);
-    padding: 3px 12px;
+    padding: 4px 12px;
     cursor: pointer;
     transition: all 0.12s ease;
   }
   .seg-btn:hover:not(:disabled) {
     background: var(--bg-hover);
+    color: var(--text-primary);
   }
   .seg-btn:disabled {
     opacity: 0.5;
@@ -1306,11 +1362,12 @@
     box-sizing: border-box;
     background: var(--surface-muted);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     color: var(--text-primary);
     font-size: var(--text-base);
-    padding: 8px 10px;
+    padding: 9px 11px;
     font-family: inherit;
+    transition: border-color 0.15s ease;
   }
   .note-input:focus {
     outline: none;
@@ -1319,40 +1376,8 @@
   .note-input:disabled {
     opacity: 0.6;
   }
-  .modal-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border-radius: var(--radius-md);
-    padding: 7px 16px;
-    font-size: var(--text-base);
-    cursor: pointer;
-    border: 1px solid var(--border-color);
-    background: var(--surface);
-    color: var(--text-primary);
-  }
-  .modal-btn:hover {
-    background: var(--bg-hover);
-  }
-  .modal-btn.primary {
-    background: var(--accent-color);
-    color: #fff;
-    border-color: transparent;
-  }
-  .modal-btn.primary:hover {
-    filter: brightness(1.08);
-  }
-  .modal-btn.danger {
-    color: #b42318;
-    border-color: #f5b5ad;
-    background: transparent;
+  /* 底部解绑按钮靠左（footer 其余按钮默认靠右） */
+  .unbind-btn {
     margin-right: auto;
-  }
-  .modal-btn.danger:hover {
-    background: #fdecea;
-  }
-  .modal-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
   }
 </style>

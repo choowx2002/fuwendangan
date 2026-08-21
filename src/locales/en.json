@@ -1907,6 +1907,7 @@
     "gameTab": "Game {n}",
     "gameWin": "{name} won",
     "firstBadge": "1st",
+    "secondBadge": "2nd",
     "firstMoveHint": "First move: {name}",
     "firstTurn": "First",
     "secondTurn": "Second",
@@ -1943,7 +1944,6 @@
     "zoneChain": "Chain",
     "logToggle": "Log",
     "readerNoDesc": "No card data in local library — effects unavailable",
-    "toggleLeft": "Toggle left panel",
     "toggleRight": "Toggle right panel",
     "enterFullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen",
@@ -1994,6 +1994,11 @@
     "unbindAction": "Unbind",
     "boundCurrent": "Bound deck: {name}",
     "syncedRecordFound": "Detected a match record synced from another device — editing it",
-    "replayBindLinked": "Auto-linked to this match's deck record"
+    "replayBindLinked": "Auto-linked to this match's deck record",
+    "landscapeHint": "Rotate to landscape",
+    "landscapeHintSub": "Rotate your device or widen the window to continue",
+    "trashDetail": "Trash ({count})",
+    "banishedDetail": "Banished ({count})",
+    "pileEmpty": "Empty"
   }
 }

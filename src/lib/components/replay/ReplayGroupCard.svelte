@@ -217,11 +217,6 @@
         >{$t('replay.seriesGames', { values: { n: group.games.length } })}</span
       >
     {/if}
-    {#if deckOverlap !== null && deckOverlap >= 0.7}
-      <span class="badge match">
-        {$t('replay.deckMatchScore', { values: { pct: Math.round(deckOverlap * 100) } })}
-      </span>
-    {/if}
     {#if group.perspective?.isSpectator}
       <span class="badge spectator">{$t('replay.spectatorView')}</span>
     {/if}
@@ -248,14 +243,6 @@
           url={selfLegend ? (metas.get(selfLegend.cardCode)?.imgCdn ?? '') : ''}
           name={selfLegend ? (metas.get(selfLegend.cardCode)?.cacheName ?? '') : ''}
         />
-        {#if firstStarterSide === 'self'}
-          <span
-            class="first-badge"
-            title={$t('replay.firstMoveHint', {
-              values: { name: starterNameOf(firstGame) ?? '-' },
-            })}>{$t('replay.firstBadge')}</span
-          >
-        {/if}
       </div>
       {#if selfBattlefield && boTotal === 1}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -275,11 +262,12 @@
         {#each perGameScores as s, i (i)}
           {@const starterName = starterNameOf((group.games ?? [])[i])}
           <span class="game-score" title={scoreTitle(i + 1, starterName)}>
-            {#if s.starterSide === 'self'}<span class="first-dot">{$t('replay.firstBadge')}</span
-              >{/if}
+            {#if s.starterSide === 'self'}
+              <span class="first-dot">{$t('replay.firstBadge')}</span>
+            {:else if s.starterSide === 'opp'}
+              <span class="second-dot">{$t('replay.secondBadge')}</span>
+            {/if}
             {s.my ?? '-'}:{s.opp ?? '-'}
-            {#if s.starterSide === 'opp'}<span class="first-dot">{$t('replay.firstBadge')}</span
-              >{/if}
           </span>
         {/each}
       {:else if scoreText}
@@ -299,14 +287,6 @@
           url={oppLegend ? (metas.get(oppLegend.cardCode)?.imgCdn ?? '') : ''}
           name={oppLegend ? (metas.get(oppLegend.cardCode)?.cacheName ?? '') : ''}
         />
-        {#if firstStarterSide === 'opp'}
-          <span
-            class="first-badge"
-            title={$t('replay.firstMoveHint', {
-              values: { name: starterNameOf(firstGame) ?? '-' },
-            })}>{$t('replay.firstBadge')}</span
-          >
-        {/if}
       </div>
       {#if oppBattlefield && boTotal === 1}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -333,14 +313,18 @@
       {#if selectable}
         <span class="g-warn">{$t('replay.selectHint')}</span>
       {:else if group.telemetry?.hasReplayableData}
-        <button class="g-btn" onclick={onReplay}
-          ><CirclePlay size={15} /> {$t('replay.replayAction')}</button
-        >
+        <button class="button button-primary button-sm" onclick={onReplay}>
+          <CirclePlay size={15} /> {$t('replay.replayAction')}
+        </button>
       {:else}
         <span class="g-warn">{$t('replay.groupNotReplayable')}</span>
       {/if}
       {#if onDelete && !selectable}
-        <button class="g-del" onclick={onDelete} title={$t('replay.deleteReplay')}>
+        <button
+          class="button button-text button-sm g-del"
+          onclick={onDelete}
+          title={$t('replay.deleteReplay')}
+        >
           <Trash2 size={14} />
         </button>
       {/if}
@@ -351,22 +335,128 @@
 <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
 <style>
+  /* 与 decks 页 match-item 一致的卡片语言：surface 底 + 边框 + 左侧状态色条 */
   .gcard {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-color);
+    border-radius: 12px;
+    padding: 12px 14px;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
+  }
+  .gcard:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
   }
   .gcard.unplayable {
     opacity: 0.65;
+    border-left-color: var(--border-color);
   }
   .gcard.selected {
     border-color: var(--accent-color);
     box-shadow: 0 0 0 1px var(--accent-color);
     background: color-mix(in srgb, var(--accent-color) 6%, var(--surface));
+  }
+  .g-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .room {
+    font-weight: 700;
+    font-size: var(--text-md);
+    color: var(--text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .badge.bo {
+    background: var(--accent-color);
+    color: #fff;
+  }
+  .badge.games {
+    background: var(--surface-subtle);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+  }
+  .badge.spectator {
+    background: #f5eefb;
+    color: #7c3aed;
+    border: 1px solid #ddd0f5;
+  }
+  .g-title-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .g-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-color);
+    background: var(--surface-muted);
+    color: transparent;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .g-check:hover {
+    border-color: var(--accent-color);
+  }
+  .g-check.checked {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+  }
+  .g-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.15s ease;
+  }
+  .g-info-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  }
+  .g-info-btn.bound {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
   }
   .g-cols {
     display: grid;
@@ -383,118 +473,48 @@
     flex-wrap: wrap;
     justify-content: space-around;
   }
+  /* 中间比分：match-item-result 同款加粗数字排版 */
   .vs-badge {
-    font-size: var(--text-xl);
-    font-weight: 700;
-    color: var(--accent-color);
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    gap: 3px;
     height: 100%;
+    min-width: 64px;
+    font-size: var(--text-md);
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .score-hint {
+    color: var(--accent-color);
+  }
+  .game-score {
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .first-dot,
+  .second-dot {
+    display: inline-block;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    padding: 1px 5px;
+    margin: 0 1px;
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    color: var(--text-secondary);
   }
   .pname {
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     color: var(--text-secondary);
-    font-weight: 800;
+    font-weight: 600;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 0 0 100%;
     text-align: center;
-  }
-  .g-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .g-check {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    flex: none;
-    border-radius: 6px;
-    border: 1.5px solid var(--border-color);
-    background: var(--surface-muted);
-    color: transparent;
-    cursor: pointer;
-    padding: 0;
-    transition:
-      background 0.12s ease,
-      border-color 0.12s ease;
-  }
-  .g-check:hover {
-    border-color: var(--accent-color);
-  }
-  .g-check.checked {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-    color: #fff;
-  }
-  .g-title-actions {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .g-info-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    flex: none;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    padding: 0;
-    transition: all 0.12s ease;
-  }
-  .g-info-btn:hover {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
-  }
-  .g-info-btn.bound {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-  }
-  .room {
-    font-weight: 700;
-    font-size: var(--text-md);
-    color: var(--text-primary);
-  }
-  .badge {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    border-radius: 8px;
-    padding: 1px 8px;
-  }
-  .badge.bo {
-    background: var(--accent-color);
-    color: #fff;
-  }
-  .badge.games {
-    background: var(--surface-subtle);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-subtle);
-  }
-  .badge.match {
-    background: #fff3e0;
-    color: #b45309;
-    border: 1px solid #fcd9a8;
-  }
-  .badge.spectator {
-    background: #f5eefb;
-    color: #7c3aed;
-    border: 1px solid #ddd0f5;
   }
   .legend-card {
     width: 42px;
@@ -506,44 +526,11 @@
     background: var(--surface-muted);
     position: relative;
   }
-  .first-badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    z-index: 2;
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 1;
-    padding: 2px 4px;
-    border-radius: 999px;
-    background: var(--accent-color);
-    color: #fff;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
-  }
-  .first-dot {
-    display: inline-block;
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 1;
-    padding: 1px 3px;
-    margin: 0 1px;
-    border-radius: 999px;
-    background: var(--accent-color);
-    color: #fff;
-    vertical-align: middle;
-  }
   .legend-card :global(img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-  }
-  .card-hit {
-    cursor: pointer;
-    transition: filter 0.12s ease;
-  }
-  .card-hit:hover {
-    filter: brightness(1.06);
   }
   .bf-card {
     width: 72px;
@@ -554,27 +541,36 @@
     border: 1px solid var(--border-color);
     background: var(--surface-muted);
   }
+  .card-hit {
+    cursor: pointer;
+    transition:
+      filter 0.12s ease,
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+  .card-hit:hover {
+    filter: brightness(1.06);
+    transform: scale(1.03);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+  .g-footer {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+  }
   .g-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 14px;
     font-size: var(--text-sm);
     color: var(--text-secondary);
-  }
-  .score-hint {
-    color: var(--accent-color);
-  }
-  .game-score {
-    line-height: 1.3;
-    white-space: nowrap;
-  }
-
-  .g-footer {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    justify-content: space-between;
-    align-items: end;
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
   }
   .g-action {
     display: flex;
@@ -583,36 +579,17 @@
     flex: none;
     justify-content: end;
   }
+  /* 删除：全局 button-text 底子 + 危险红 hover（对齐 match-item-actions） */
   .g-del {
-    display: inline-flex;
-    align-items: center;
-    background: transparent;
+    padding: 4px;
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
     color: var(--text-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 5px 8px;
-    cursor: pointer;
-    font-size: var(--text-sm);
   }
   .g-del:hover {
     color: #b42318;
     background: #fdecea;
-    border-color: #f5b5ad;
-  }
-  .g-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: var(--accent-color);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius-md);
-    padding: 6px 14px;
-    cursor: pointer;
-    font-size: var(--text-base);
-  }
-  .g-btn:hover {
-    filter: brightness(1.08);
   }
   .g-warn {
     font-size: var(--text-sm);

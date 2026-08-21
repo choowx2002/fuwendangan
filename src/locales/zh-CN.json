@@ -1907,6 +1907,7 @@
     "gameTab": "第 {n} 局",
     "gameWin": "{name} 胜",
     "firstBadge": "先",
+    "secondBadge": "后",
     "firstMoveHint": "先手：{name}",
     "firstTurn": "先手",
     "secondTurn": "后手",
@@ -1943,7 +1944,6 @@
     "zoneChain": "连锁",
     "logToggle": "记录",
     "readerNoDesc": "本地库无此卡牌数据，无法显示技能效果",
-    "toggleLeft": "显示/隐藏左栏",
     "toggleRight": "显示/隐藏右栏",
     "enterFullscreen": "进入全屏",
     "exitFullscreen": "退出全屏",
@@ -1994,6 +1994,11 @@
     "unbindAction": "解除绑定",
     "boundCurrent": "已绑定卡组：{name}",
     "syncedRecordFound": "检测到其他设备同步的对局记录，已合并编辑",
-    "replayBindLinked": "已自动关联本局卡组记录"
+    "replayBindLinked": "已自动关联本局卡组记录",
+    "landscapeHint": "请横屏游玩",
+    "landscapeHintSub": "旋转设备或拉宽窗口后继续观看",
+    "trashDetail": "弃牌堆（{count}）",
+    "banishedDetail": "放逐区（{count}）",
+    "pileEmpty": "空"
   }
 }
