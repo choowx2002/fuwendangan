@@ -26,8 +26,9 @@
   import { isTauri } from '$lib/db/env'
   import { updateGameStarterChooser } from '$lib/services/replay-library-service'
   import ReplayBoard from './ReplayBoard.svelte'
+  import ReplayArrowOverlay from './ReplayArrowOverlay.svelte'
   import ReplayCard from './ReplayCard.svelte'
-  import ReplayCardReader from './ReplayCardReader.svelte'
+  import ReplayCardTooltip from './ReplayCardTooltip.svelte'
   import ReplayNarration from './ReplayNarration.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import {
@@ -38,7 +39,6 @@
     PanelRight,
     Pause,
     Play,
-    RotateCw,
     ScrollText,
     SkipBack,
     SkipForward,
@@ -73,7 +73,7 @@
   let showRight = $state(false)
   let isFullscreen = $state(false)
 
-  // 阅读器：悬停预览，点击固定（弹卡式，画布内弹出）
+  // 悬停提示（跟随指针的小浮层）：只展示卡图 + 卡牌效果（中文）。不指着卡牌时不显示。
   interface ReaderSel {
     card: Record<string, unknown> | null
     meta: ReplayCardMeta | null
@@ -81,7 +81,33 @@
     zone: string | null
   }
   let preview = $state<ReaderSel | null>(null)
-  let pinned = $state<ReaderSel | null>(null)
+  // 需按住 Alt 才显示提示：松开即隐藏
+  let altHeld = $state(false)
+  // 指针在画布内的设计坐标（1280×720），用于把提示锚定在指针旁
+  let pointer = $state({ x: 0, y: 0 })
+  let canvasEl = $state<HTMLElement | null>(null)
+  const TOOLTIP_W = 340
+  const TOOLTIP_H = 320
+
+  // 战场行 / 连锁区独立缩放：按战场带实际高度（设计基准 300px）缩放卡牌尺寸
+  let bfRowEl = $state<HTMLElement | null>(null)
+  let bfK = $state(1)
+  $effect(() => {
+    const el = bfRowEl
+    if (!el) return
+    const update = () => {
+      const h = el.clientHeight || 0
+      bfK = Math.max(0.5, Math.min(2.4, h / 300))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  })
+  const bfCardW = $derived(Math.round(64 * bfK)) // 战场槽主卡
+  const bfExtraW = $derived(Math.round(48 * bfK)) // 战场附加槽卡
+  const chainBigW = $derived(Math.round(70 * bfK)) // 连锁最新一张
+  const chainMiniW = $derived(Math.round(34 * bfK)) // 连锁其余小图
 
   // 系列内选局（Schema v3）：games 按 gameNumber 升序；回放事件源在各局 telemetry
   const games = $derived(group.games ?? [])
@@ -218,28 +244,6 @@
     return out.slice(0, 200)
   })
 
-  function zoneLabel(zone: string | null | undefined): string {
-    if (!zone) return ''
-    const g = get(t)
-    const map: Record<string, string> = {
-      hand: g('replay.zoneHand'),
-      deck: g('replay.zoneDeck'),
-      runeDeck: g('replay.zoneRuneDeck'),
-      runeArea: g('replay.runeArea'),
-      champion: g('replay.champion'),
-      legend: g('replay.legend'),
-      base: g('replay.base'),
-      trash: g('replay.trash'),
-      banished: g('replay.banished'),
-      battlefieldA: g('replay.battlefield', { values: { lane: 'A' } }),
-      battlefieldB: g('replay.battlefield', { values: { lane: 'B' } }),
-      battlefieldC: g('replay.battlefield', { values: { lane: 'C' } }),
-      battlefieldToken: g('replay.battlefieldToken'),
-      chain: g('replay.zoneChain'),
-    }
-    return map[zone] ?? zone
-  }
-
   function metaOfChain(card: Record<string, unknown> | undefined | null): ReplayCardMeta | null {
     if (!card || typeof card.cardCode !== 'string') return null
     return metas.get(String(card.cardCode)) ?? null
@@ -321,7 +325,27 @@
     if (gameIndex < games.length - 1) gameIndex++
   }
 
-  // ==================== 阅读器（弹卡式） ====================
+  // ==================== 悬停提示（跟随指针，不点击固定） ====================
+
+  // 指针移动时记录棋盘容器内像素坐标（提示锚定用，直接量容器相对位置）
+  function updatePointer(e: PointerEvent) {
+    const canvas = canvasEl
+    if (!canvas) return
+    const r = canvas.getBoundingClientRect()
+    if (r.width === 0) return
+    pointer = { x: e.clientX - r.left, y: e.clientY - r.top }
+  }
+
+  // 离开任何卡牌区域（指针落在非卡牌元素上）即隐藏提示
+  function onCanvasPointerOver(e: PointerEvent) {
+    const t = e.target as Element | null
+    if (!t || typeof t.closest !== 'function' || !t.closest('[data-card-id]')) preview = null
+  }
+
+  // 仅牌背（占位/无卡/back）不显示悬停提示；hidden 卡仍显示（提示内标注 hidden）
+  function isBackCard(card: Record<string, unknown> | null | undefined): boolean {
+    return !card || card.isPlaceholder === true || card.back === true
+  }
 
   function hoverCard(
     card: Record<string, unknown>,
@@ -329,20 +353,18 @@
     side: 'self' | 'opp' | null,
     zone: string
   ) {
+    if (isBackCard(card)) return
     preview = { card, meta, side, zone }
   }
+  // 点击与悬停一致：仅显示提示，不做固定；牌背卡同样不显示
   function pickCard(
     card: Record<string, unknown>,
     meta: ReplayCardMeta | null,
     side: 'self' | 'opp' | null,
     zone: string
   ) {
-    const sel: ReaderSel = { card, meta, side, zone }
-    preview = sel
-    pinned = sel
-  }
-  function clearPinned() {
-    pinned = null
+    if (isBackCard(card)) return
+    preview = { card, meta, side, zone }
   }
 
   // ==================== 全屏 ====================
@@ -418,6 +440,8 @@
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Alt（或 Option）按住时才允许显示悬停提示
+      altHeld = e.altKey
       if (e.code === 'Space') {
         e.preventDefault()
         togglePlay()
@@ -438,10 +462,17 @@
         if (isFullscreen) void syncFullscreen()
       }
     }
+    const onKeyUp = (e: KeyboardEvent) => {
+      // 松开 Alt（或 Option）立即隐藏提示；按 key 判断比 e.altKey 可靠
+      if (e.key === 'Alt') altHeld = false
+      else altHeld = e.altKey
+    }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
     document.addEventListener('fullscreenchange', syncFullscreen)
     return () => {
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKeyUp)
       document.removeEventListener('fullscreenchange', syncFullscreen)
       if (timer) clearInterval(timer)
       if (isFullscreen) {
@@ -464,7 +495,22 @@
     return m ? parseInt(m[1], 10) : 1
   })
   const reconnectCount = $derived(game?.telemetry?.reconnectCount ?? 0)
-  const readerSel = $derived(pinned ?? preview)
+  const readerSel = $derived(altHeld ? preview : null)
+
+  // 提示锚定在指针旁（棋盘容器像素），越界时翻转到另一侧并夹取在容器内
+  const tooltipStyle = $derived.by(() => {
+    if (!preview) return ''
+    const W = canvasEl?.clientWidth ?? TOOLTIP_W
+    const H = canvasEl?.clientHeight ?? TOOLTIP_H
+    const off = 16
+    let left = pointer.x + off
+    if (left + TOOLTIP_W > W) left = pointer.x - off - TOOLTIP_W
+    let top = pointer.y + off
+    if (top + TOOLTIP_H > H) top = pointer.y - off - TOOLTIP_H
+    left = Math.max(4, Math.min(W - TOOLTIP_W - 4, left))
+    top = Math.max(4, Math.min(H - 40, top))
+    return `left: ${left}px; top: ${top}px;`
+  })
 
   // 战场卡背景元数据（selectedBattlefield 英文名 → 本地库卡图）
   function bfMetaOf(
@@ -476,9 +522,6 @@
   }
   const oppBf = $derived(bfMetaOf(opp))
   const meBf = $derived(bfMetaOf(me))
-  // 战场行比分（共用中央横幅）
-  const oppScore = $derived(typeof opp?.board?.score === 'number' ? Number(opp.board.score) : 0)
-  const meScore = $derived(typeof me?.board?.score === 'number' ? Number(me.board.score) : 0)
 
   // 顶部信息面板（与工具栏同行）：比分 / 能量 / 法力 / 传奇经验
   function playerNums(p: { board?: Record<string, unknown> } | null | undefined) {
@@ -514,18 +557,56 @@
   ])
   const hasExtraBf = $derived(extraBfCards.length > 0)
 
-  // ==================== 固定画布：16:9 等比缩放 + 竖屏拦截 ====================
-  // 设计稿 1280×720，scale = min(窗口宽/1280, 窗口高/720)，应用在画布 transform 上，
-  // 使桌面与移动端视觉完全一致且绝对无溢出；竖屏时全屏遮罩引导横屏。
-  const DESIGN_W = 1280
-  const DESIGN_H = 720
-  let scale = $state(1)
+  // ==================== 连锁区（画布右沟）与目标箭头层 ====================
+  // 连锁最新一张大图 + 其余小图堆叠；箭头数据来自 state.targetArrowsByPlayer
+  // （服务端 set_room_fields 整组覆盖，引擎 Object.assign 已落到状态根）
+  const chainNewest = $derived(
+    chainEntries.length > 0
+      ? ((chainEntries[chainEntries.length - 1]?.card ?? null) as Record<string, unknown> | null)
+      : null
+  )
+  const chainOlder = $derived(
+    chainEntries
+      .slice(0, -1)
+      .reverse()
+      .map((en) => en.card as Record<string, unknown> | undefined)
+  )
+  interface FlatArrow {
+    ownerId: string
+    sourceCardId: string
+    targetCardId: string
+    sourceAnchor: string
+    targetAnchor: string
+  }
+  const roomArrows = $derived.by(() => {
+    const raw = gameState?.targetArrowsByPlayer
+    if (!raw || typeof raw !== 'object') return [] as FlatArrow[]
+    const out: FlatArrow[] = []
+    for (const [pid, list] of Object.entries(raw as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue
+      for (const a of list) {
+        const o = a as Record<string, unknown>
+        if (typeof o.sourceCardId !== 'string' || typeof o.targetCardId !== 'string') continue
+        out.push({
+          ownerId: pid,
+          sourceCardId: o.sourceCardId,
+          targetCardId: o.targetCardId,
+          sourceAnchor: typeof o.sourceAnchor === 'string' ? o.sourceAnchor : '',
+          targetAnchor: typeof o.targetAnchor === 'string' ? o.targetAnchor : '',
+        })
+      }
+    }
+    return out
+  })
+  const highlightCardId = $derived.by(() => {
+    const id = readerSel?.card?.id
+    return typeof id === 'string' ? id : null
+  })
+
+  // ==================== 竖屏判定（保留拦截，Step 6 再做自适应） ====================
   let portrait = $state(false)
   function measureViewport() {
-    const w = window.innerWidth
-    const h = window.innerHeight
-    scale = Math.min(w / DESIGN_W, h / DESIGN_H)
-    portrait = w < h
+    portrait = window.innerWidth < window.innerHeight
   }
   $effect(() => {
     measureViewport()
@@ -538,15 +619,7 @@
   })
 </script>
 
-{#if portrait}
-  <div class="portrait-overlay">
-    <div class="portrait-box">
-      <span class="portrait-icon"><RotateCw size={44} /></span>
-      <h3>{$t('replay.landscapeHint')}</h3>
-      <p>{$t('replay.landscapeHintSub')}</p>
-    </div>
-  </div>
-{:else if !build || total === 0}
+{#if !build || total === 0}
   <div class="empty-box">
     {#if (game?.telemetry?.snapshotCount ?? 0) > 0}
       {$t('replay.viewerIncomplete')}
@@ -556,10 +629,17 @@
   </div>
 {:else}
   <div class="viewer">
-    <!-- 固定 1280×720 画布：整体等比缩放居中，画布内绝对无滚动 -->
-    <div class="canvas-stage">
-      <div class="canvas" style="transform: scale({scale})">
-        <div class="board-half-opp">
+    <!-- 流体画布：填满窗口，三个 band 纵排；竖屏时战场行改为上下叠放 -->
+    <div
+      class="board"
+      class:portrait={portrait}
+      bind:this={canvasEl}
+      role="presentation"
+      onpointermove={updatePointer}
+      onpointerover={onCanvasPointerOver}
+      onpointerleave={() => (preview = null)}
+    >
+      <div class="board-half-opp">
           <ReplayBoard
             player={opp}
             side="opp"
@@ -570,106 +650,141 @@
           />
         </div>
 
-        <!-- 战场行（共用一行，不镜像）：比分横幅 + 战场1/战场2（卡图作背景，无图用 static/black.jpg） -->
-        <div class="bf-row">
-          <div class="bf-banner">
-            <span class="mb-name" class:on={activeTurnPlayerId === opp?.id}>{oppName}</span>
-            <span class="mb-score"
-              ><b class="opp">{oppScore}</b><i>:</i><b class="self">{meScore}</b></span
-            >
-            <span class="mb-turn">
-              {#if gameState?.turnNumber != null}
-                {$t('replay.turn', { values: { number: gameState.turnNumber } })}
+        <!-- 战场行（共用一行，不镜像）：战场1/战场2 各按 1039:744 等比展示完整战场卡图（卡图作背景，无图用 static/black.jpg） -->
+        <div class="bf-row" bind:this={bfRowEl} style="--bfK: {bfK}">
+          <div class="bf-slot">
+            <div class="bf-bg">
+              {#if oppBf?.imgCdn}
+                <CardSimpleImage
+                  url={oppBf.imgCdn}
+                  name={oppBf.cacheName}
+                  className="bf-bg-img"
+                  isLandscape
+                />
               {/if}
-              {#if gameState?.phase}<span class="mb-phase">{gameState.phase}</span>{/if}
-            </span>
-            <span class="mb-name" class:on={activeTurnPlayerId === me?.id}>{selfName}</span>
+            </div>
+            <div class="bf-side">
+              {#each bfCardsOf(opp, 'battlefieldA') as c (c.id)}
+                <button
+                  type="button"
+                  class="slot"
+                  data-card-id={String(c.id)}
+                  onmouseenter={() => hoverCard(c, metaOfCard(c), 'opp', 'battlefieldA')}
+                  onclick={() => pickCard(c, metaOfCard(c), 'opp', 'battlefieldA')}
+                >
+                  <ReplayCard card={c} meta={metaOfCard(c)} width={bfCardW} />
+                </button>
+              {/each}
+            </div>
+            <div class="bf-side">
+              {#each bfCardsOf(me, 'battlefieldA') as c (c.id)}
+                <button
+                  type="button"
+                  class="slot"
+                  data-card-id={String(c.id)}
+                  onmouseenter={() => hoverCard(c, metaOfCard(c), 'self', 'battlefieldA')}
+                  onclick={() => pickCard(c, metaOfCard(c), 'self', 'battlefieldA')}
+                >
+                  <ReplayCard card={c} meta={metaOfCard(c)} width={bfCardW} />
+                </button>
+              {/each}
+            </div>
           </div>
-          <div class="bf-slots">
-            <div class="bf-slot">
-              <div class="bf-bg">
-                {#if oppBf?.imgCdn}
-                  <CardSimpleImage
-                    url={oppBf.imgCdn}
-                    name={oppBf.cacheName}
-                    className="bf-bg-img"
-                    isLandscape
-                  />
-                {/if}
-              </div>
+          <div class="bf-slot">
+            <div class="bf-bg">
+              {#if meBf?.imgCdn}
+                <CardSimpleImage
+                  url={meBf.imgCdn}
+                  isLandscape
+                  name={meBf.cacheName}
+                  className="bf-bg-img"
+                />
+              {/if}
+            </div>
+            <div class="bf-side">
+              {#each bfCardsOf(opp, 'battlefieldB') as c (c.id)}
+                <button
+                  type="button"
+                  class="slot"
+                  data-card-id={String(c.id)}
+                  onmouseenter={() => hoverCard(c, metaOfCard(c), 'opp', 'battlefieldB')}
+                  onclick={() => pickCard(c, metaOfCard(c), 'opp', 'battlefieldB')}
+                >
+                  <ReplayCard card={c} meta={metaOfCard(c)} width={bfCardW} />
+                </button>
+              {/each}
+            </div>
+            <div class="bf-side">
+              {#each bfCardsOf(me, 'battlefieldB') as c (c.id)}
+                <button
+                  type="button"
+                  class="slot"
+                  data-card-id={String(c.id)}
+                  onmouseenter={() => hoverCard(c, metaOfCard(c), 'self', 'battlefieldB')}
+                  onclick={() => pickCard(c, metaOfCard(c), 'self', 'battlefieldB')}
+                >
+                  <ReplayCard card={c} meta={metaOfCard(c)} width={bfCardW} />
+                </button>
+              {/each}
+            </div>
+          </div>
+          {#if hasExtraBf}
+            <div class="bf-slot extra">
               <div class="bf-side">
-                {#each bfCardsOf(opp, 'battlefieldA') as c (c.id)}
+                {#each extraBfCards as c (c.id)}
                   <button
                     type="button"
                     class="slot"
-                    onmouseenter={() => hoverCard(c, metaOfCard(c), 'opp', 'battlefieldA')}
-                    onclick={() => pickCard(c, metaOfCard(c), 'opp', 'battlefieldA')}
+                    data-card-id={String(c.id)}
+                    onmouseenter={() => hoverCard(c, metaOfCard(c), null, 'battlefieldC')}
+                    onclick={() => pickCard(c, metaOfCard(c), null, 'battlefieldC')}
                   >
-                    <ReplayCard card={c} meta={metaOfCard(c)} width={26} />
-                  </button>
-                {/each}
-              </div>
-              <div class="bf-side">
-                {#each bfCardsOf(me, 'battlefieldA') as c (c.id)}
-                  <button
-                    type="button"
-                    class="slot"
-                    onmouseenter={() => hoverCard(c, metaOfCard(c), 'self', 'battlefieldA')}
-                    onclick={() => pickCard(c, metaOfCard(c), 'self', 'battlefieldA')}
-                  >
-                    <ReplayCard card={c} meta={metaOfCard(c)} width={26} />
+                    <ReplayCard card={c} meta={metaOfCard(c)} width={bfExtraW} />
                   </button>
                 {/each}
               </div>
             </div>
-            <div class="bf-slot">
-              <div class="bf-bg">
-                {#if meBf?.imgCdn}
-                  <CardSimpleImage url={meBf.imgCdn} isLandscape name={meBf.cacheName} className="bf-bg-img" />
-                {/if}
-              </div>
-              <div class="bf-side">
-                {#each bfCardsOf(opp, 'battlefieldB') as c (c.id)}
-                  <button
-                    type="button"
-                    class="slot"
-                    onmouseenter={() => hoverCard(c, metaOfCard(c), 'opp', 'battlefieldB')}
-                    onclick={() => pickCard(c, metaOfCard(c), 'opp', 'battlefieldB')}
-                  >
-                    <ReplayCard card={c} meta={metaOfCard(c)} width={26} />
-                  </button>
-                {/each}
-              </div>
-              <div class="bf-side">
-                {#each bfCardsOf(me, 'battlefieldB') as c (c.id)}
-                  <button
-                    type="button"
-                    class="slot"
-                    onmouseenter={() => hoverCard(c, metaOfCard(c), 'self', 'battlefieldB')}
-                    onclick={() => pickCard(c, metaOfCard(c), 'self', 'battlefieldB')}
-                  >
-                    <ReplayCard card={c} meta={metaOfCard(c)} width={26} />
-                  </button>
-                {/each}
-              </div>
-            </div>
-            {#if hasExtraBf}
-              <div class="bf-slot extra">
-                <div class="bf-side">
-                  {#each extraBfCards as c (c.id)}
-                    <button
-                      type="button"
-                      class="slot"
-                      onmouseenter={() => hoverCard(c, metaOfCard(c), null, 'battlefieldC')}
-                      onclick={() => pickCard(c, metaOfCard(c), null, 'battlefieldC')}
-                    >
-                      <ReplayCard card={c} meta={metaOfCard(c)} width={24} />
-                    </button>
+          {/if}
+
+          <!-- 连锁区（战场行内）：最新一张大图，其余小图堆叠 -->
+          {#if chainNewest}
+            <div class="chain-col">
+              <span class="cc-label">{$t('replay.zoneChain')} · {chainEntries.length}</span>
+              <button
+                type="button"
+                class="slot cc-big"
+                data-card-id={String(chainNewest.id)}
+                onmouseenter={() =>
+                  chainNewest && hoverCard(chainNewest, metaOfChain(chainNewest), null, 'chain')}
+                onclick={() =>
+                  chainNewest && pickCard(chainNewest, metaOfChain(chainNewest), null, 'chain')}
+              >
+                <ReplayCard
+                  card={chainNewest}
+                  meta={metaOfChain(chainNewest)}
+                  width={chainBigW}
+                  showType={false}
+                />
+              </button>
+              {#if chainOlder.length > 0}
+                <div class="cc-minis">
+                  {#each chainOlder as c, i (String(c?.id ?? i))}
+                    {#if c}
+                      <button
+                        type="button"
+                        class="slot cc-mini"
+                        data-card-id={String(c.id)}
+                        onmouseenter={() => c && hoverCard(c, metaOfChain(c), null, 'chain')}
+                        onclick={() => c && pickCard(c, metaOfChain(c), null, 'chain')}
+                      >
+                        <ReplayCard card={c} meta={metaOfChain(c)} width={chainMiniW} showType={false} />
+                      </button>
+                    {/if}
                   {/each}
                 </div>
-              </div>
-            {/if}
-          </div>
+              {/if}
+            </div>
+          {/if}
         </div>
 
         <div class="board-half-self">
@@ -683,19 +798,20 @@
           />
         </div>
 
-        <!-- 阅读器弹卡：hover/点击棋盘卡牌时画布内弹出预览 -->
+        <!-- 目标箭头层：SVG 覆盖画布，pointer-events:none，按容器像素定位 -->
+        <ReplayArrowOverlay
+          arrows={roomArrows}
+          frame={safeCurrent}
+          {highlightCardId}
+          selfOwnerId={me?.id ?? null}
+        />
+
+        <!-- 悬停提示（跟随指针）：只展示卡图 + 卡牌效果（中文），不指着卡牌时不显示 -->
         {#if readerSel}
-          <div class="card-pop">
-            <ReplayCardReader
-              card={readerSel?.card ?? null}
-              meta={readerSel?.meta ?? null}
-              side={readerSel?.side ?? null}
-              zone={zoneLabel(readerSel?.zone ?? null)}
-              onClose={clearPinned}
-            />
+          <div class="card-tip" style={tooltipStyle}>
+            <ReplayCardTooltip card={readerSel?.card ?? null} meta={readerSel?.meta ?? null} />
           </div>
         {/if}
-      </div>
     </div>
 
     <!-- 视口层顶部一行（不随画布缩放）：敌方信息 + 工具栏 + 我方信息 同行 -->
@@ -790,22 +906,11 @@
           {/if}
         </div>
         <div class="starter-row">
-          <span class="starter-label">{$t('replay.starterChooserLabel')}:</span>
+          <span class="starter-label">{$t('replay.starterLabel')}</span>
           {#if gameFirstId}
             <span class="starter-name">{players[gameFirstId]?.name ?? gameFirstId}</span>
-            <button class="starter-btn" onclick={() => setStarterChooser(null)}
-              >{$t('common.clear')}</button
-            >
           {:else}
             <span class="starter-unknown">{$t('replay.starterChooserUnknown')}</span>
-            {#if selfPlayer && oppPlayer}
-              <button class="starter-btn" onclick={() => setStarterChooser(selfPlayer.id)}
-                >{selfPlayer.name ?? selfName}</button
-              >
-              <button class="starter-btn" onclick={() => setStarterChooser(oppPlayer.id)}
-                >{oppPlayer.name ?? oppName}</button
-              >
-            {/if}
           {/if}
         </div>
         {#if games.length > 1}
@@ -893,36 +998,6 @@
           </button>
         </div>
       </div>
-
-      <div class="bp-chain">
-        <span class="chain-label"
-          >{$t('replay.chain', { values: { count: chainEntries.length } })}</span
-        >
-        {#if chainEntries.length === 0}
-          <span class="chain-empty">{$t('replay.chainEmpty')}</span>
-        {:else}
-          <div class="chain-cards">
-            {#each chainEntries as en (en.id)}
-              {@const c = en.card as Record<string, unknown> | undefined}
-              <button
-                type="button"
-                class="slot"
-                onmouseenter={() => c && hoverCard(c, metaOfChain(c), null, 'chain')}
-                onclick={() => c && pickCard(c, metaOfChain(c), null, 'chain')}
-              >
-                <ReplayCard
-                  card={c}
-                  meta={c && typeof c.cardCode === 'string'
-                    ? (metas.get(String(c.cardCode)) ?? null)
-                    : null}
-                  width={30}
-                  showType={false}
-                />
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
     </footer>
 
     {#if showRight}
@@ -998,6 +1073,8 @@
     position: fixed;
     inset: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .empty-box {
@@ -1010,64 +1087,40 @@
     color: var(--text-tertiary);
   }
 
-  /* ============ 竖屏拦截遮罩 ============ */
-  .portrait-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-primary);
-  }
-  .portrait-box {
-    display: flex;
+  /* ============ 竖屏自适应：战场行上下叠放、半区压缩 ============ */
+  .board.portrait .bf-row {
     flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 24px;
-    text-align: center;
   }
-  .portrait-icon {
-    color: var(--accent-color);
-    animation: portrait-rotate 2.2s ease-in-out infinite;
+  .board.portrait .board-half-opp {
+    flex: 0 0 18%;
   }
-  @keyframes portrait-rotate {
-    0%,
-    100% {
-      transform: rotate(0deg);
-    }
-    50% {
-      transform: rotate(90deg);
-    }
+  .board.portrait .board-half-self {
+    flex: 0 0 18%;
   }
-  .portrait-box h3 {
-    margin: 0;
-    font-size: 20px;
-    color: var(--text-primary);
+  .board.portrait .bf-slot {
+    height: auto;
+    width: min(96cqw, calc((100cqh - 8px) / 2 * 1039 / 744));
+    aspect-ratio: 1039 / 744;
   }
-  .portrait-box p {
-    margin: 0;
-    font-size: 13px;
-    color: var(--text-secondary);
+  .board.portrait .bf-slot.extra {
+    height: auto;
+    width: calc(90px * var(--bfK, 1));
+    aspect-ratio: auto;
+  }
+  /* 竖屏窄：连锁区隐藏，避免遮挡战场 */
+  .board.portrait .chain-col {
+    display: none;
   }
 
-  /* ============ 固定画布：舞台居中 + 整体等比缩放 ============ */
-  .canvas-stage {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    background: var(--bg-primary);
-  }
-  .canvas {
-    width: 1280px;
-    height: 720px;
-    flex: none;
+  /* ============ 流体画布：填满窗口，三 band 纵排（横屏先按比例） ============ */
+  .board {
+    flex: 1 1 auto;
+    min-height: 0;
     position: relative;
-    transform-origin: center center;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 52px 12px 96px 12px;
     border-radius: 16px;
     overflow: hidden;
     /* 主题自适应的棋盘底色：深浅主题均可用 */
@@ -1078,100 +1131,31 @@
         transparent 65%
       ),
       linear-gradient(180deg, var(--bg-secondary), var(--bg-primary));
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
   }
 
-  /* T1 区域：敌方半区 / 共用战场行 / 我方半区 / 底栏（画布内绝对定位） */
+  /* T1 区域：敌方半区 / 共用战场行 / 我方半区（流体 flex 纵排）
+     战场行作画面核心约占 44%，上下半区各 ~28% */
   .board-half-opp {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 46px;
-    height: 250px;
+    flex: 0 0 28%;
+    min-height: 0;
   }
   .bf-row {
-    position: absolute;
-    left: 110px;
-    right: 110px;
-    top: 304px;
-    height: 108px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-  }
-  .bf-banner {
-    flex: none;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--surface) 60%, transparent);
-    backdrop-filter: blur(8px);
-    padding: 0 16px;
-    min-width: 0;
-  }
-  .mb-name {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .mb-name.on {
-    color: var(--accent-color);
-  }
-  .mb-name.on::after {
-    content: ' •';
-  }
-  .mb-score {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 16px;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-primary);
-  }
-  .mb-score b.opp {
-    color: #e05252;
-  }
-  .mb-score b.self {
-    color: #4d9de0;
-  }
-  .mb-score i {
-    font-style: normal;
-    color: var(--text-tertiary);
-  }
-  .mb-turn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-  .mb-turn .mb-phase {
-    background: var(--surface-muted);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 0 8px;
-    font-size: 10px;
-  }
-  /* 战场槽：卡图作背景（无图时 static/black.jpg），上下两半显示双方卡 */
-  .bf-slots {
-    flex: 1;
+    flex: 1 1 44%;
     min-height: 0;
+    position: relative;
+    container-type: size;
     display: flex;
+    justify-content: center;
+    align-items: center;
     gap: 8px;
+    min-width: 0;
   }
+  /* 两格各按 1039:744；高度取 min(带高, 宽度限制) 使其同时适配宽、高并居中 */
   .bf-slot {
     position: relative;
-    flex: 1 1 0;
+    flex: none;
+    height: min(96cqh, calc((100cqw - 8px) / 2 * 744 / 1039));
+    aspect-ratio: 1039 / 744;
     min-width: 0;
     border-radius: 10px;
     overflow: hidden;
@@ -1180,7 +1164,9 @@
   }
   .bf-slot.extra {
     flex: none;
-    width: 90px;
+    width: calc(90px * var(--bfK, 1));
+    height: min(96cqh, calc((100cqw - 8px) / 2 * 744 / 1039));
+    aspect-ratio: auto;
   }
   .bf-bg {
     position: absolute;
@@ -1225,17 +1211,65 @@
     display: block;
     flex: none;
   }
-  .bf-row .slot:hover {
-    outline: 2px solid var(--accent-color);
-    outline-offset: 1px;
-    z-index: 3;
-  }
   .board-half-self {
+    flex: 0 0 28%;
+    min-height: 0;
+  }
+
+  /* 连锁区（战场行右缘浮层，不占战场布局宽度）：最新一张大图 + 其余小图堆叠 */
+  .chain-col {
     position: absolute;
-    left: 0;
-    right: 0;
-    top: 420px;
-    height: 250px;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    width: 100px;
+    height: 90%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    backdrop-filter: blur(6px);
+    min-width: 0;
+  }
+  .cc-label {
+    flex: none;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
+  .chain-col .slot {
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    display: block;
+    flex: none;
+  }
+  .cc-big {
+    z-index: 2;
+  }
+  .cc-minis {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+  }
+  .cc-mini {
+    margin-top: -34px;
+  }
+  .cc-mini:first-child {
+    margin-top: 0;
   }
   .bp-bar {
     position: fixed;
@@ -1398,6 +1432,13 @@
     min-width: 4px;
   }
 
+  /* 较窄窗口：信息面板只保留名字+比分（隐藏能量/法力/传奇经验 pill），避免溢出 */
+  @media (max-width: 1180px) {
+    .top-info .ip-pill {
+      display: none;
+    }
+  }
+
   @media (max-width: 767.99px) {
     .tb-title {
       max-width: 100px;
@@ -1474,18 +1515,6 @@
   }
   .starter-unknown {
     color: var(--text-tertiary);
-  }
-  .starter-btn {
-    background: var(--surface-muted);
-    color: var(--text-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: 0 8px;
-    cursor: pointer;
-    font-size: 10px;
-  }
-  .starter-btn:hover {
-    background: var(--bg-hover);
   }
   .game-tabs {
     display: flex;
@@ -1602,64 +1631,12 @@
     white-space: nowrap;
   }
 
-  /* ============ 底栏：连锁 ============ */
-  .bp-chain {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .chain-label {
-    flex: none;
-    color: var(--text-tertiary);
-    font-size: 10px;
-    font-weight: 700;
-  }
-  .chain-empty {
-    color: var(--text-tertiary);
-    font-size: 10px;
-  }
-  .chain-cards {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 3px;
-    min-width: 0;
-    overflow: hidden;
-  }
-  .bp-chain .slot {
-    border-radius: 6px;
-    cursor: pointer;
-    padding: 0;
-    background: none;
-    border: none;
-    font: inherit;
-    color: inherit;
-    display: block;
-    flex: 1 1 0;
-    min-width: 24px;
-    max-width: 34px;
-  }
-  .bp-chain .slot:hover {
-    outline: 2px solid var(--accent-color);
-    outline-offset: 1px;
-    z-index: 3;
-  }
-
-  /* ============ 阅读器弹卡（画布内，随缩放） ============ */
-  .card-pop {
+  /* ============ 悬停提示（画布内，随缩放；锚定在指针旁） ============ */
+  .card-tip {
     position: absolute;
-    right: 10px;
-    bottom: 20px;
-    width: 250px;
     z-index: 30;
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
-  }
-  .card-pop :global(.reader) {
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
+    width: max-content;
+    pointer-events: none;
   }
 
   /* ============ 右栏浮层：书签（默认收起） ============ */

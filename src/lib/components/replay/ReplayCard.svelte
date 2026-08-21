@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n'
   import { loadImageFromAppFolder } from '$lib/services/image-cache-service'
   import { isTauri } from '$lib/db/env'
   import { createFallbackMeta, type ReplayCardMeta } from '$lib/replay/card-meta'
@@ -36,6 +37,7 @@
     eventType === 'battlefield' || (resolved?.type ?? '').includes('战场')
   )
   const exhausted = $derived(card?.exhausted === true)
+  const hidden = $derived(card?.hidden === true)
   const placeholder = $derived(card?.isPlaceholder === true)
   const might = $derived(resolved?.might ?? (typeof card?.might === 'number' ? card.might : null))
   const whiteCounter = $derived(
@@ -82,6 +84,9 @@
   >
     <div class="rc-art">
       <img src={artSrc} alt={name} draggable="false" onerror={onArtError} />
+      {#if hidden}
+        <span class="rc-hidden">{$t('replay.hiddenCard')}</span>
+      {/if}
     </div>
     {#if might !== null}
       <span class="rc-might">{might}</span>
@@ -91,9 +96,6 @@
         {#if whiteCounter !== null}<span class="rc-badge w">{whiteCounter}</span>{/if}
         {#if redCounter !== null}<span class="rc-badge r">{redCounter}</span>{/if}
       </span>
-    {/if}
-    {#if showType && typeLabel}
-      <div class="rc-type">{typeLabel}</div>
     {/if}
   </div>
 {/if}
@@ -131,8 +133,18 @@
     object-fit: cover;
     display: block;
   }
-  .rc.face.exhausted .rc-art img {
-    filter: grayscale(0.55) brightness(0.72);
+  /* hidden 卡：图面中央标注（待命中 / hidden） */
+  .rc-hidden {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(6px, 14cqw, 13px);
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: #fff;
+    background: rgba(8, 12, 20, 0.55);
   }
   .rc.face.exhausted {
     transform: rotate(90deg);
@@ -178,21 +190,5 @@
   }
   .rc-badge.r {
     background: #e05252;
-  }
-  .rc-type {
-    position: absolute;
-    top: 3%;
-    right: 3%;
-    font-size: clamp(6px, 9cqw, 11px);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.85);
-    border-radius: 5px;
-    padding: 1px 4px;
-    max-width: 70%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

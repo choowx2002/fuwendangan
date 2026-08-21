@@ -191,15 +191,19 @@ export const loadImageFromAppFolder = async (url: string, name: string): Promise
 
   const localToken = localImgToken(url)
   if (localToken) {
+    const key = `local://${localToken}`
+    if (cache.has(key)) return cache.get(key)!
     const targetPath = await join(CARD_IMAGE, localToken)
     const bytes = await safeRead(targetPath)
     if (!bytes) return null
-    const arrayBuffer = bytes.slice().buffer
-    const blob = new Blob([arrayBuffer], { type: 'image/*' })
-    return URL.createObjectURL(blob)
+    const objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'image/*' }))
+    cache.set(key, objectUrl)
+    return objectUrl
   }
 
   const filename = urlToFilename(url, name)
+  if (cache.has(filename)) return cache.get(filename)!
+
   const targetPath = await join(CARD_IMAGE, filename)
 
   let bytes = await safeRead(targetPath)
@@ -210,9 +214,9 @@ export const loadImageFromAppFolder = async (url: string, name: string): Promise
     if (!bytes) return null
   }
 
-  const arrayBuffer = bytes.slice().buffer
-  const blob = new Blob([arrayBuffer], { type: 'image/*' })
-  return URL.createObjectURL(blob)
+  const objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'image/*' }))
+  cache.set(filename, objectUrl)
+  return objectUrl
 }
 
 // ==================== 缓存管理功能 ====================
