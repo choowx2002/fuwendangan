@@ -509,6 +509,7 @@ export async function updateGameStarterChooser(
         const group = groups.find((g) => g.key === groupKey)
         const game = group?.games?.find((gg) => gg.gameNumber === gameNumber)
         if (!group || !game) return
+        game.firstPlayerId = playerId
         game.starterChooserPlayerId = playerId
         await writeTextFile(
           `replays/${fileId}.json`,

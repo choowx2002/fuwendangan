@@ -87,6 +87,8 @@
   // 系列内选局（Schema v3）：games 按 gameNumber 升序；回放事件源在各局 telemetry
   const games = $derived(group.games ?? [])
   const game = $derived(games.length > 0 ? games[Math.min(gameIndex, games.length - 1)] : null)
+  // 该局先手方（实际先手 firstPlayerId 优先，缺失回退先手选择者）
+  const gameFirstId = $derived(game?.firstPlayerId ?? game?.starterChooserPlayerId ?? null)
 
   // build 依赖当前局重建（session 事件源在 game 级）
   $effect(() => {
@@ -397,9 +399,11 @@
     showToast(get(t)('replay.marked', { values: { result: label } }), 'success')
   }
 
-  // 手动指定/清除先手选择者：内存即时生效 + 写回磁盘（fileId 为 null 时仅内存）
+  // 手动指定/清除先手：内存即时生效 + 写回磁盘（fileId 为 null 时仅内存）。
+  // 同时写 firstPlayerId（实际先手）与 starterChooserPlayerId（先手选择者），保证手动值覆盖解析值
   async function setStarterChooser(playerId: string | null) {
     if (!game) return
+    game.firstPlayerId = playerId
     game.starterChooserPlayerId = playerId
     if (!fileId) {
       showToast(get(t)('replay.starterChooserNotPersisted'), 'info')
@@ -548,10 +552,8 @@
           </div>
           <div class="starter-row">
             <span class="starter-label">{$t('replay.starterChooserLabel')}:</span>
-            {#if game?.starterChooserPlayerId}
-              <span class="starter-name"
-                >{players[game.starterChooserPlayerId]?.name ?? game.starterChooserPlayerId}</span
-              >
+            {#if gameFirstId}
+              <span class="starter-name">{players[gameFirstId]?.name ?? gameFirstId}</span>
               <button class="starter-btn" onclick={() => setStarterChooser(null)}
                 >{$t('common.clear')}</button
               >

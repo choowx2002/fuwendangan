@@ -140,6 +140,8 @@ export interface RiftAtlasGame {
   winnerId: string | null
   /** 先手选择者（服务器权威字段；null = 未知，播放页可手动指定并持久化） */
   starterChooserPlayerId: string | null
+  /** 本局实际先手玩家（choose_first_player.patch.set_room_fields.firstPlayerId / 快照 room 兜底） */
+  firstPlayerId: string | null
   startedAt: number
   endedAt: number | null
   durationMs: number | null

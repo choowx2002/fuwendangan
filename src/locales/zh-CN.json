@@ -1908,6 +1908,8 @@
     "gameWin": "{name} 胜",
     "firstBadge": "先",
     "firstMoveHint": "先手：{name}",
+    "firstTurn": "先手",
+    "secondTurn": "后手",
     "seriesGames": "共 {n} 局",
     "starterChooserLabel": "先手选择者",
     "starterChooserUnknown": "先手选择者未知",

@@ -444,12 +444,19 @@
     }
   }
 
-  // 该局先手方是否为某侧（服务器权威 starterChooserPlayerId，未知/非双方 → false 不显示标记）
-  function isGameStarter(game: RiftAtlasGame, side: 'self' | 'opp'): boolean {
-    const starter = game.starterChooserPlayerId
-    if (starter == null) return false
-    const id = side === 'self' ? selfPlayer?.id : oppPlayer?.id
-    return id != null && starter === id
+  // 该局先后手角色（实际先手 firstPlayerId 优先，缺失回退 starterChooserPlayerId；
+  // 未知 → 双方均为 null，不显示标签）
+  function gameRoles(game: RiftAtlasGame): {
+    self: 'first' | 'second' | null
+    opp: 'first' | 'second' | null
+  } {
+    const first = game.firstPlayerId ?? game.starterChooserPlayerId ?? null
+    if (first == null) return { self: null, opp: null }
+    const selfId = selfPlayer?.id
+    const oppId = oppPlayer?.id
+    if (selfId && first === selfId) return { self: 'first', opp: 'second' }
+    if (oppId && first === oppId) return { self: 'second', opp: 'first' }
+    return { self: null, opp: null }
   }
 
   function setResult(gameNumber: number, mark: ResultMark) {
@@ -470,9 +477,9 @@
         win_type: mark === 'draw' ? 'draw' : 'normal',
         is_win: mark === 'win',
         is_first:
-          g.starterChooserPlayerId == null
+          g.firstPlayerId == null && g.starterChooserPlayerId == null
             ? null
-            : selfId != null && g.starterChooserPlayerId === selfId,
+            : selfId != null && (g.firstPlayerId ?? g.starterChooserPlayerId) === selfId,
         win_reason: null,
         log: null,
       })
@@ -854,39 +861,38 @@
       <div class="game-list">
         {#each group.games ?? [] as game (game.gameNumber)}
           {@const s = scoreOf(game)}
+          {@const roles = gameRoles(game)}
           <div class="game-row">
-            <span
-              class="game-side"
-              class:is-first={isGameStarter(game, 'self')}
-              title={selfPlayer?.name ?? ''}
-            >
-              <CardSimpleImage
-                url={selfPlayer ? legendDisplay(selfPlayer).img : ''}
-                name={selfPlayer ? legendDisplay(selfPlayer).cacheName : ''}
-              />
-              {#if isGameStarter(game, 'self')}
+            <span class="game-side" title={selfPlayer?.name ?? ''}>
+              <span class="side-avatar">
+                <CardSimpleImage
+                  url={selfPlayer ? legendDisplay(selfPlayer).img : ''}
+                  name={selfPlayer ? legendDisplay(selfPlayer).cacheName : ''}
+                />
+              </span>
+              {#if roles.self}
                 <span
-                  class="first-badge"
+                  class="turn-tag"
+                  class:first={roles.self === 'first'}
                   title={$t('replay.firstMoveHint', { values: { name: selfPlayer?.name ?? '-' } })}
-                  >{$t('replay.firstBadge')}</span
+                  >{$t(roles.self === 'first' ? 'replay.firstTurn' : 'replay.secondTurn')}</span
                 >
               {/if}
             </span>
             <span class="game-score">{s.my ?? '-'}:{s.opp ?? '-'}</span>
-            <span
-              class="game-side opp"
-              class:is-first={isGameStarter(game, 'opp')}
-              title={oppPlayer?.name ?? ''}
-            >
-              <CardSimpleImage
-                url={oppPlayer ? legendDisplay(oppPlayer).img : ''}
-                name={oppPlayer ? legendDisplay(oppPlayer).cacheName : ''}
-              />
-              {#if isGameStarter(game, 'opp')}
+            <span class="game-side opp" title={oppPlayer?.name ?? ''}>
+              <span class="side-avatar">
+                <CardSimpleImage
+                  url={oppPlayer ? legendDisplay(oppPlayer).img : ''}
+                  name={oppPlayer ? legendDisplay(oppPlayer).cacheName : ''}
+                />
+              </span>
+              {#if roles.opp}
                 <span
-                  class="first-badge"
+                  class="turn-tag"
+                  class:first={roles.opp === 'first'}
                   title={$t('replay.firstMoveHint', { values: { name: oppPlayer?.name ?? '-' } })}
-                  >{$t('replay.firstBadge')}</span
+                  >{$t(roles.opp === 'first' ? 'replay.firstTurn' : 'replay.secondTurn')}</span
                 >
               {/if}
             </span>
@@ -1219,6 +1225,14 @@
     gap: 8px;
   }
   .game-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 44px;
+    flex: none;
+  }
+  .game-side .side-avatar {
     width: 22px;
     aspect-ratio: 744 / 1039;
     flex: none;
@@ -1226,30 +1240,29 @@
     overflow: hidden;
     border: 1px solid var(--border-color);
     background: var(--surface-muted);
-    position: relative;
-  }
-  .game-side .first-badge {
-    position: absolute;
-    top: 1px;
-    right: 1px;
-    z-index: 2;
-    font-size: 8px;
-    font-weight: 700;
-    line-height: 1;
-    padding: 1px 3px;
-    border-radius: 999px;
-    background: var(--accent-color);
-    color: #fff;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
   }
   .game-side.opp {
     margin-left: auto;
   }
-  .game-side :global(img) {
+  .game-side .side-avatar :global(img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+  .turn-tag {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .turn-tag.first {
+    background: var(--accent-color);
+    color: #fff;
   }
   .game-score {
     font-variant-numeric: tabular-nums;

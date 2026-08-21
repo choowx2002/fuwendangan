@@ -111,7 +111,7 @@
   })
 
   // 每局比分（未比完局 = 解析期按最后状态预填的最后分数；该局无任何比分数据 → 行显示 -）
-  // starterSide：该局先手方（服务器权威 starterChooserPlayerId；非我方/对方或未知 → null 不显示）
+  // starterSide：该局先手方（实际先手 firstPlayerId 优先，缺失回退 starterChooserPlayerId；非我方/对方或未知 → null 不显示）
   const perGameScores = $derived.by(() =>
     (group.games ?? []).map((g) => {
       const my = selfPlayer ? (g.score?.[selfPlayer.id] ?? null) : null
@@ -123,8 +123,14 @@
   // 系列首局先手方（传奇头像角标：bo1 即唯一一局；多局系列首局即第一局）
   const firstStarterSide = $derived(starterSideOf(firstGame))
 
+  // 该局先手方（实际先手 firstPlayerId 优先，缺失回退先手选择者 starterChooserPlayerId；
+  // 非我方/对方或未知 → null 不显示）
+  function firstPlayerOf(game: RiftAtlasGame | null): string | null {
+    return game?.firstPlayerId ?? game?.starterChooserPlayerId ?? null
+  }
+
   function starterSideOf(game: RiftAtlasGame | null): 'self' | 'opp' | null {
-    const starter = game?.starterChooserPlayerId ?? null
+    const starter = firstPlayerOf(game)
     if (starter == null) return null
     if (selfPlayer && starter === selfPlayer.id) return 'self'
     if (oppPlayer && starter === oppPlayer.id) return 'opp'
@@ -132,7 +138,7 @@
   }
 
   function starterNameOf(game: RiftAtlasGame | null): string | null {
-    const id = game?.starterChooserPlayerId ?? null
+    const id = firstPlayerOf(game)
     if (!id) return null
     return players[id]?.name ?? null
   }

@@ -262,6 +262,8 @@ export interface SeriesFields {
   /** 本局胜者（pendingGameResult / pendingResult，string 或含 winner 字段的对象） */
   pendingGameWinner: string | null
   starterChooserPlayerId: string | null
+  /** 本局实际先手（choose_first_player 的 set_room_fields.firstPlayerId / 快照 room 兜底） */
+  firstPlayerId: string | null
 }
 
 /** 从 payload 顶层或快照顶层取字段（首个非空生效；snapshot 优先） */
@@ -333,6 +335,7 @@ export function extractSeriesFields(sessions: ReplaySession[]): SeriesFields {
   let winsByPlayerId: Record<string, number> | null = null
   let pendingGameWinner: string | null = null
   let starterChooserPlayerId: string | null = null
+  let firstPlayerId: string | null = null
 
   for (const s of sessions) {
     for (const ev of s.events) {
@@ -366,9 +369,43 @@ export function extractSeriesFields(sessions: ReplaySession[]): SeriesFields {
         if (w) pendingGameWinner = w
       }
       const starter = asString(
-        probeAny(seriesContainers(p), ['starterChooserPlayerId', 'starter_chooser_player_id'])
+        probeAny(seriesContainers(p), [
+          'starterChooserPlayerId',
+          'starter_chooser_player_id',
+          'firstPlayerChooserId',
+        ])
       )
       if (starter) starterChooserPlayerId = starter
+
+      // 实际先手：choose_first_player 的 patch.set_room_fields.firstPlayerId
+      // 或 patch.operations[] 的 set_room_fields 块；快照/顶层 firstPlayerId 兜底
+      let fp: string | null = null
+      const patch = isRecord(p.patch) ? p.patch : null
+      if (patch) {
+        const roomFields = isRecord(patch.set_room_fields) ? patch.set_room_fields : null
+        if (
+          roomFields &&
+          typeof roomFields.firstPlayerId === 'string' &&
+          roomFields.firstPlayerId
+        ) {
+          fp = roomFields.firstPlayerId
+        } else if (Array.isArray(patch.operations)) {
+          for (const raw of patch.operations) {
+            if (isRecord(raw) && raw.op === 'set_room_fields' && isRecord(raw.fields)) {
+              const v = raw.fields.firstPlayerId
+              if (typeof v === 'string' && v) {
+                fp = v
+                break
+              }
+            }
+          }
+        }
+      }
+      if (!fp) {
+        const snapFp = asString(probeAny(seriesContainers(p), ['firstPlayerId', 'first_player_id']))
+        if (snapFp) fp = snapFp
+      }
+      if (fp) firstPlayerId = fp
     }
   }
 
@@ -380,6 +417,7 @@ export function extractSeriesFields(sessions: ReplaySession[]): SeriesFields {
     winsByPlayerId,
     pendingGameWinner,
     starterChooserPlayerId,
+    firstPlayerId,
   }
 }
 
@@ -815,6 +853,7 @@ export function buildGame(roomCode: string | null, list: ReplaySession[]): Built
     nextRoomCode: series.nextRoomCode,
     winnerId,
     starterChooserPlayerId: starterChooserId,
+    firstPlayerId: series.firstPlayerId,
     startedAt,
     endedAt,
     durationMs,
@@ -838,7 +877,7 @@ export function buildGame(roomCode: string | null, list: ReplaySession[]): Built
     selfId,
     queueFormat,
     snapshotCount,
-    firstPlayerId: null,
+    firstPlayerId: series.firstPlayerId,
     source,
     isSpectator: spectator,
   }
@@ -936,7 +975,7 @@ export function buildSeriesRecord(opts: {
         last.game.endedAt !== null && first.game.startedAt
           ? last.game.endedAt - first.game.startedAt
           : null,
-      firstPlayerId,
+      firstPlayerId: first.game.firstPlayerId ?? firstPlayerId,
       source: source ?? built[0]?.source ?? null,
     },
     perspective: {
@@ -1033,6 +1072,7 @@ export function migrateV2ToV3(g: RiftAtlasMatchRecord): RiftAtlasMatchRecord {
     nextRoomCode: null,
     winnerId: null,
     starterChooserPlayerId: null,
+    firstPlayerId: null,
     startedAt: g.meta?.startedAt ?? 0,
     endedAt: g.meta?.endedAt ?? null,
     durationMs: g.meta?.durationMs ?? null,

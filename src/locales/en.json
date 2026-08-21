@@ -1908,6 +1908,8 @@
     "gameWin": "{name} won",
     "firstBadge": "1st",
     "firstMoveHint": "First move: {name}",
+    "firstTurn": "First",
+    "secondTurn": "Second",
     "seriesGames": "{n} games",
     "starterChooserLabel": "Starter chooser",
     "starterChooserUnknown": "Unknown starter chooser",
