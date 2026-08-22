@@ -1,17 +1,17 @@
-import { resolveResource, appDataDir, join } from '@tauri-apps/api/path'
+import { appLocalDataDir, join } from '@tauri-apps/api/path'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   exists,
-  readFile,
   writeFile,
   mkdir,
   remove,
-  BaseDirectory,
   readDir,
   stat,
 } from '@tauri-apps/plugin-fs'
 import { fetch } from '@tauri-apps/plugin-http'
 import { printCacheName } from '$lib/db/helper'
 import { whenOnline } from '$lib/stores/network.svelte'
+
 // ==================== 类型定义 ====================
 
 export interface ImageItem {
@@ -26,6 +26,9 @@ export type ObjectFitType = 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'
 export const CARD_IMAGE = 'cardImages'
 const cache = new Map<string, string>()
 
+// 下载去重：记录正在进行的下载 Promise，防止并发重复下载同一文件
+const downloadingPromises = new Map<string, Promise<boolean>>()
+
 // ==================== 工具函数 ====================
 
 function safeSegment(str: string): string {
@@ -33,9 +36,7 @@ function safeSegment(str: string): string {
 }
 
 function urlToFilename(dataUrl: string | null | undefined, name: string = 'undefined'): string {
-  // 无 URL 时返回确定性占位名，避免 null.replace 崩溃
   if (!dataUrl) return safeSegment(`${name}-file`)
-  // 移除末尾的斜杠，获取文件名部分
   const cleanUrl = dataUrl.replace(/\/$/, '')
   const id = cleanUrl.split('/').pop()?.split('.')[0] || 'file'
   const filename = `${name}-${id}`
@@ -75,14 +76,28 @@ export function localImgToken(url: string | null | undefined): string | null {
   return token ? safeSegment(token) : null
 }
 
-async function safeRead(path: string): Promise<Uint8Array | null> {
-  try {
-    return await readFile(path, {
-      baseDir: BaseDirectory.AppLocalData,
-    })
-  } catch {
-    return null
+/**
+ * 获取图片在本地文件系统的绝对路径
+ */
+const getAbsoluteImagePath = async (filename: string): Promise<string> => {
+  const localDataDir = await appLocalDataDir()
+  return await join(localDataDir, CARD_IMAGE, filename)
+}
+
+/**
+ * 根据文件名推断 MIME type
+ */
+const getMimeType = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  const mimeTypes: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    avif: 'image/avif',
+    gif: 'image/gif',
   }
+  return mimeTypes[ext || ''] || 'image/*'
 }
 
 export const ensureDir = async (dir: string): Promise<void> => {
@@ -97,7 +112,11 @@ export const ensureDir = async (dir: string): Promise<void> => {
   }
 }
 
-// ==================== 外部资源加载 ====================
+// ==================== 外部资源加载（打包资源，保持 Blob 方案） ====================
+
+import { resolveResource } from '@tauri-apps/api/path'
+import { readFile } from '@tauri-apps/plugin-fs'
+import { BaseDirectory } from '@tauri-apps/plugin-fs'
 
 export async function loadExternalImage(
   fileName: string,
@@ -108,7 +127,8 @@ export async function loadExternalImage(
   try {
     const paths = await resolveResource(`resources/external/${folder}/${fileName}`)
     const bytes = await readFile(paths)
-    const blob = new Blob([bytes])
+    const mimeType = getMimeType(fileName)
+    const blob = new Blob([bytes], { type: mimeType })
     const url = URL.createObjectURL(blob)
     cache.set(fileName, url)
     return url
@@ -122,7 +142,7 @@ export async function loadExternalImage(
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry = 3) => {
+const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry = 3): Promise<boolean> => {
   if (!(await whenOnline())) {
     console.warn(`[Cache] 网络不可用，跳过下载: ${filename}`)
     return false
@@ -131,7 +151,6 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry 
     try {
       const controller = new AbortController()
 
-      // timeout 30s
       const timeout = setTimeout(() => {
         controller.abort()
       }, 30000)
@@ -156,9 +175,8 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry 
 
       await ensureDir(CARD_IMAGE)
 
-      await writeFile(`${CARD_IMAGE}/${filename}`, new Uint8Array(arrayBuffer), {
-        baseDir: BaseDirectory.AppLocalData,
-      })
+      const absolutePath = await getAbsoluteImagePath(filename)
+      await writeFile(absolutePath, new Uint8Array(arrayBuffer))
 
       console.log(`[Cache] 保存图片成功: ${filename}`)
 
@@ -167,12 +185,9 @@ const saveImageToAppFolder = async (dataUrl: string, filename: string, maxRetry 
       console.warn(`[Cache] 下载失败 (${attempt}/${maxRetry}):`, filename, error)
 
       if (attempt < maxRetry) {
-        // exponential backoff
-        // 1s -> 2s -> 4s
         await sleep(1000 * Math.pow(2, attempt - 1))
       } else {
         console.error(`[Cache] 最终失败: ${filename}`)
-
         return false
       }
     }
@@ -186,37 +201,126 @@ export async function saveRemoteImageAsToken(url: string, token: string): Promis
   return saveImageToAppFolder(url, token)
 }
 
+/**
+ * 轻量级并发控制器
+ * @param tasks 任务数组
+ * @param concurrency 最大并发数（默认 4）
+ */
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency = 4
+): Promise<T[]> {
+  const results: T[] = []
+  const executing: Promise<void>[] = []
+
+  for (const task of tasks) {
+    const p = task().then((result) => {
+      results.push(result)
+    })
+    executing.push(p)
+
+    if (executing.length >= concurrency) {
+      await Promise.race(executing)
+      // 移除已完成的
+      const idx = executing.findIndex((e) => e === p)
+      if (idx >= 0) executing.splice(idx, 1)
+    }
+  }
+
+  await Promise.all(executing)
+  return results
+}
+
 export const loadImageFromAppFolder = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
 
   const localToken = localImgToken(url)
-  if (localToken) {
-    const key = `local://${localToken}`
-    if (cache.has(key)) return cache.get(key)!
-    const targetPath = await join(CARD_IMAGE, localToken)
-    const bytes = await safeRead(targetPath)
-    if (!bytes) return null
-    const objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'image/*' }))
-    cache.set(key, objectUrl)
-    return objectUrl
+  const filename = localToken || urlToFilename(url, name)
+  const cacheKey = localToken ? `local://${localToken}` : filename
+
+  // 1. 内存缓存命中
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!
+
+  // 2. 获取绝对路径并检查文件存在
+  const absolutePath = await getAbsoluteImagePath(filename)
+  const fileExists = await exists(absolutePath)
+
+  if (!fileExists) {
+    // 3. 防并发下载
+    if (downloadingPromises.has(filename)) {
+      await downloadingPromises.get(filename)
+    } else {
+      const downloadPromise = saveImageToAppFolder(url, filename).finally(() => {
+        downloadingPromises.delete(filename)
+      })
+      downloadingPromises.set(filename, downloadPromise)
+      const success = await downloadPromise
+      if (!success) return null
+    }
   }
 
-  const filename = urlToFilename(url, name)
-  if (cache.has(filename)) return cache.get(filename)!
+  // 4. 使用 convertFileSrc 生成 asset:// URL
+  try {
+    const assetUrl = convertFileSrc(absolutePath)
+    cache.set(cacheKey, assetUrl)
+    return assetUrl
+  } catch (error) {
+    console.error(
+      '[Cache] convertFileSrc 失败，请检查 tauri.conf.json 中的 assetProtocol.scope 是否包含 $APPLOCALDATA/cardImages/**',
+      error
+    )
+    return null
+  }
+}
 
-  const targetPath = await join(CARD_IMAGE, filename)
+export const preloadImage = async (url: string, name: string): Promise<string | null> => {
+  if (!url) return null
 
-  let bytes = await safeRead(targetPath)
-  if (!bytes) {
-    await saveImageToAppFolder(url, filename)
+  const localToken = localImgToken(url)
+  const filename = localToken || urlToFilename(url, name)
+  const cacheKey = localToken ? `local://${localToken}` : filename
 
-    bytes = await safeRead(targetPath)
-    if (!bytes) return null
+  // 1. 内存缓存命中
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!
+
+  // 2. 获取绝对路径并检查文件存在
+  const absolutePath = await getAbsoluteImagePath(filename)
+  const fileExists = await exists(absolutePath)
+
+  if (!fileExists) {
+    // 3. 防并发下载
+    if (downloadingPromises.has(filename)) {
+      await downloadingPromises.get(filename)
+    } else {
+      const downloadPromise = saveImageToAppFolder(url, filename).finally(() => {
+        downloadingPromises.delete(filename)
+      })
+      downloadingPromises.set(filename, downloadPromise)
+      const success = await downloadPromise
+      if (!success) return null
+    }
   }
 
-  const objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'image/*' }))
-  cache.set(filename, objectUrl)
-  return objectUrl
+  // 4. 使用 convertFileSrc 生成 asset:// URL
+  try {
+    const assetUrl = convertFileSrc(absolutePath)
+    cache.set(cacheKey, assetUrl)
+    return assetUrl
+  } catch (error) {
+    console.error(
+      '[Cache] convertFileSrc 失败，请检查 tauri.conf.json 中的 assetProtocol.scope 是否包含 $APPLOCALDATA/cardImages/**',
+      error
+    )
+    return null
+  }
+}
+
+/**
+ * 批量预加载图片（带并发限制，默认 4 个并发）
+ */
+export const preloadImages = async (imageList: ImageItem[], concurrency = 4): Promise<(string | null)[]> => {
+  const tasks = imageList.map(({ url, name }) => () => preloadImage(url, name))
+  return runWithConcurrency(tasks, concurrency)
 }
 
 // ==================== 缓存管理功能 ====================
@@ -226,10 +330,13 @@ export const loadImageFromAppFolder = async (url: string, name: string): Promise
  */
 export const clearMemoryCache = (): void => {
   cache.forEach((url) => {
-    URL.revokeObjectURL(url)
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+    }
   })
   cache.clear()
-  console.log('[Cache] 内存缓存已清除')
+  downloadingPromises.clear()
+  console.log('[Cache] 内存缓存及下载队列已清除')
 }
 
 /**
@@ -238,7 +345,9 @@ export const clearMemoryCache = (): void => {
 export const removeFromCache = (fileName: string): void => {
   const url = cache.get(fileName)
   if (url) {
-    URL.revokeObjectURL(url)
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+    }
     cache.delete(fileName)
   }
 }
@@ -314,7 +423,6 @@ export async function getMissingCardPrints(
 
   const missing = cardPrints.filter((print) => {
     if (localImgToken(print.img_cdn)) return false
-    // 无任何图片来源的打印无法下载，不进入缺失清单（也避免 null 崩溃）
     const url = print.img_cdn ?? print.tts_cdn
     if (!url) return false
     const expectedName = urlToFilename(url, printCacheName(print))
@@ -365,7 +473,6 @@ export const clearLocalCache = async (): Promise<boolean> => {
     for (const entry of entries) {
       const fileName = entry.name
       if (!fileName) continue
-      // 用户自建打印的本地图片（custom-*）不清除
       if (fileName.startsWith('custom-')) continue
       await remove(`${imagesDir}/${fileName}`, {
         baseDir: BaseDirectory.AppLocalData,
@@ -390,58 +497,6 @@ export const getCacheDirPath = async (): Promise<string> => {
 }
 
 /**
- * 预加载图片到缓存
- */
-export const preloadImage = async (url: string, name: string): Promise<string | null> => {
-  if (!url) return null
-
-  const localToken = localImgToken(url)
-  if (localToken) {
-    const targetPath = await join(CARD_IMAGE, localToken)
-    const bytes = await safeRead(targetPath)
-    if (!bytes) return null
-    const arrayBuffer = bytes.slice().buffer
-    const blob = new Blob([arrayBuffer], { type: 'image/*' })
-    const objectUrl = URL.createObjectURL(blob)
-    cache.set(localToken, objectUrl)
-    return objectUrl
-  }
-
-  const filename = urlToFilename(url, name)
-
-  if (isInCache(filename)) {
-    return cache.get(filename)!
-  }
-
-  const targetPath = await join(CARD_IMAGE, filename)
-  let bytes = await safeRead(targetPath)
-
-  if (!bytes) {
-    await saveImageToAppFolder(url, filename)
-    bytes = await safeRead(targetPath)
-    if (!bytes) return null
-  }
-
-  if (bytes) {
-    const arrayBuffer = bytes.slice().buffer
-    const blob = new Blob([arrayBuffer], { type: 'image/*' })
-    const objectUrl = URL.createObjectURL(blob)
-    cache.set(filename, objectUrl)
-    return objectUrl
-  }
-
-  return null
-}
-
-/**
- * 批量预加载图片
- */
-export const preloadImages = async (imageList: ImageItem[]): Promise<(string | null)[]> => {
-  const promises = imageList.map(({ url, name }) => preloadImage(url, name))
-  return Promise.all(promises)
-}
-
-/**
  * 获取所有缓存的文件名列表
  */
 export const getCachedFileNames = (): string[] => {
@@ -453,7 +508,6 @@ export const getCachedFileNames = (): string[] => {
  */
 export const refreshCache = async (url: string, name: string): Promise<string | null> => {
   if (!url) return null
-  // local:// 自定义图由用户操作直接覆盖文件，不重新下载
   if (localImgToken(url)) return null
   const filename = urlToFilename(url, name)
 
