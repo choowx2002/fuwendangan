@@ -30,8 +30,8 @@
     <p class="dialog-message">{dialogState.message}</p>
   </div>
 
-  {#if mode === 'confirm'}
-    {#snippet footer()}
+  {#snippet footer()}
+    {#if mode === 'confirm'}
       <button class="button button-ghost" onclick={handleClose}>{dialogState.cancelLabel}</button>
       <button
         class="button {dialogState.danger ? 'button-danger' : 'button-primary'}"
@@ -39,14 +39,12 @@
       >
         {dialogState.okLabel}
       </button>
-    {/snippet}
-  {:else}
-    {#snippet footer()}
+    {:else}
       <button class="button button-primary" onclick={() => closeDialog(true)}>
         {dialogState.okLabel}
       </button>
-    {/snippet}
-  {/if}
+    {/if}
+  {/snippet}
 </CommonModal>
 
 <style>
