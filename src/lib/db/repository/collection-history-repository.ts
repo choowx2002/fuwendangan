@@ -182,12 +182,9 @@ export async function getHistoryItems(historyId: string): Promise<CollectionHist
   return rows.map(mapItemRow)
 }
 
-function deriveSeriesCode(cardNoExtend: string): string {
-  return cardNoExtend.toUpperCase().slice(0, 3)
-}
-
-/** 撤销单条：before 存在则按旧值回写，before 不存在则删除该语言行 */
-export async function undoHistory(historyId: string): Promise<void> {
+/** 撤销单条：before 存在则按旧值回写，before 不存在则删除该语言行 */ export async function undoHistory(
+  historyId: string
+): Promise<void> {
   const db = await getDatabase()
   const head = await db.select<{ is_undoable: number; note: string | null }[]>(
     `SELECT is_undoable, note FROM ${TABLES.COLLECTION_HISTORY} WHERE id = ?`,
@@ -225,9 +222,9 @@ async function restoreLangRow(item: CollectionHistoryItem): Promise<void> {
     collectionId = Snowflake.generate()
     await db.execute(
       `INSERT INTO ${TABLES.COLLECTION}
-       (id, card_no, card_no_extend, series_code, last_edited_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [collectionId, item.cardNo, item.cardNoExtend, deriveSeriesCode(item.cardNoExtend), t, t, t]
+       (id, card_no, card_no_extend, last_edited_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [collectionId, item.cardNo, item.cardNoExtend, t, t, t]
     )
   }
 

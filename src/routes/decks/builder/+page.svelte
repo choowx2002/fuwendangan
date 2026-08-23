@@ -20,7 +20,7 @@
     TriangleAlert,
     X,
   } from '@lucide/svelte'
-  import { ask, message } from '@tauri-apps/plugin-dialog'
+  import { confirmAction, showMessage } from '$lib/utils/confirm'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { printCacheName } from '$lib/db/helper'
   import CostCurveChart from '$lib/components/cards/CostCurveChart.svelte'
@@ -186,7 +186,7 @@
 
   async function runOwnershipCheck() {
     if (allDeckCards.length === 0) {
-      message(get(t)('builder.emptyOwnershipCheck'))
+      showMessage(get(t)('builder.emptyOwnershipCheck'))
       return
     }
     loadingOwnership = true
@@ -221,8 +221,8 @@
 
     if (isDirty) {
       navigation.cancel()
-      const confirmed = await ask(get(t)('builder.unsavedChanges'), {
-        kind: 'warning',
+      const confirmed = await confirmAction(get(t)('builder.unsavedChanges'), {
+        danger: true,
         okLabel: get(t)('common.confirm'),
         cancelLabel: get(t)('builder.keepEditing'),
       })
@@ -274,7 +274,7 @@
     try {
       const loaded = await loadDeckForEdit(deckId)
       if (!loaded) {
-        message(get(t)('builder.deckNotFound'))
+        showMessage(get(t)('builder.deckNotFound'))
         goto('/decks')
         return
       }
@@ -293,7 +293,7 @@
       isDirty = false
     } catch (error) {
       console.error('加载卡组失败:', error)
-      message(get(t)('builder.loadFailed'))
+      showMessage(get(t)('builder.loadFailed'))
     }
   }
 
@@ -314,13 +314,13 @@
 
   async function handleAddCard(card: cardAndPrint) {
     if (card.is_banned) {
-      message(get(t)('builder.bannedCard'))
+      showMessage(get(t)('builder.bannedCard'))
       return
     }
 
     // Promo / 自定义打印不可入卡组
     if (card.card_prints?.every((p) => p.is_promo || p.is_custom)) {
-      message(get(t)('builder.promoNotAllowed'))
+      showMessage(get(t)('builder.promoNotAllowed'))
       return
     }
 
@@ -331,7 +331,7 @@
     )
     const isReplacable = ['legend', 'champion'].includes(selectedZone)
     if (capacityError && !isReplacable) {
-      message(
+      showMessage(
         get(t)(capacityError.messageKey, {
           values: { zone: get(t)(capacityError.params.zone), max: capacityError.params.max },
         })
@@ -486,7 +486,7 @@
     const cards = getZoneCards(zone)
 
     if (cards.length >= getZoneConfig(deckFormat, zone).maxCount) {
-      message(
+      showMessage(
         get(t)('builder.zoneCapacity', {
           values: {
             zoneName: ZONE_CONFIG[zone].name,
@@ -526,12 +526,12 @@
 
   async function handleSave() {
     if (hasErrors) {
-      message(get(t)('builder.constructionIssues'))
+      showMessage(get(t)('builder.constructionIssues'))
       return
     }
 
     if (deckIssues.filter((i) => i.severity === 'warning').length) {
-      const ignoreWarning = await ask(
+      const ignoreWarning = await confirmAction(
         get(t)('builder.continueSavePrompt', {
           values: {
             issues: deckIssues
@@ -559,7 +559,7 @@
     const name = saveDeckName.trim()
 
     if (!name) {
-      message(get(t)('builder.enterName'))
+      showMessage(get(t)('builder.enterName'))
       return
     }
 
@@ -621,7 +621,7 @@
       }
 
       console.error('保存失败:', error)
-      message(get(t)('builder.saveFailed'))
+      showMessage(get(t)('builder.saveFailed'))
     } finally {
       isSaving = false
     }

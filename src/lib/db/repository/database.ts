@@ -160,7 +160,6 @@ async function initializeTables(db: Database): Promise<void> {
   await db.execute(TABLE_DEFINITIONS.sync_tombstones)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_language)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_status)
-  await db.execute(TABLE_DEFINITIONS.idx_collection_series)
   await db.execute(TABLE_DEFINITIONS.idx_card_prints_variant)
   await db.execute(TABLE_DEFINITIONS.idx_collection_langs_collection)
   await db.execute(TABLE_DEFINITIONS.idx_collection_card)
@@ -174,6 +173,11 @@ async function initializeTables(db: Database): Promise<void> {
   // 被删除后此补列曾缺失，导致老库首次内容同步在写入阶段报 no such column: is_custom/is_promo）
   await ensureColumn(db, TABLES.CARD_PRINTS, 'is_promo', 'INTEGER DEFAULT 0')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'is_custom', 'INTEGER DEFAULT 0')
+  // 系列/风味文本迁移到打印级（2026-08-23 云端 card_prints 新增 series/flavor_text_*，
+  // 老库升级时补齐这三列；cards_base 的 series_name/flavor_text_* 已从 DDL 移除）
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'series', 'TEXT')
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_cn', 'TEXT')
+  await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_en', 'TEXT')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
   await ensureColumn(db, TABLES.SERIES, 'cover_image', 'TEXT')
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'color', 'TEXT')
@@ -225,6 +229,34 @@ async function initializeTables(db: Database): Promise<void> {
     await backfillPrintCardNo(db)
   }
 
+  // 老库回填 card_prints.series/flavor（系列/风味迁移到打印级）：
+  // 仅当 card_prints 存在缺值的行 且 老库 cards_base 仍有 series_name 列时写库（新库无该列，直接跳过）
+  const nullSeriesFlavor = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.CARD_PRINTS} WHERE series IS NULL OR flavor_text_cn IS NULL`
+  )
+  if ((nullSeriesFlavor[0]?.n ?? 0) > 0) {
+    const baseCols = await db.select<{ name: string }[]>(`PRAGMA table_info(${TABLES.CARDS_BASE})`)
+    if (baseCols.some((c) => c.name === 'series_name')) {
+      await backfillPrintSeriesFlavor(db)
+    }
+  }
+
+  // 一次性迁移：老自定义打印（is_custom=1）series 为空时按 card_no_extend 前 3 位回填系列码。
+  // 仅当存在空 series 的自定义打印时写库（前缀非已知系列码则保持 NULL，诚实归属）。
+  const nullCustomSeries = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.CARD_PRINTS} WHERE is_custom = 1 AND series IS NULL`
+  )
+  if ((nullCustomSeries[0]?.n ?? 0) > 0) {
+    await backfillCustomPrintSeries(db)
+  }
+
+  // 一次性迁移：collection.series_code 冗余列废弃（系列归属一律以 card_prints.series 为准）。
+  // 先删引用该列的索引再删列；仅当列仍存在时写库。
+  const colCols = await db.select<{ name: string }[]>(`PRAGMA table_info(${TABLES.COLLECTION})`)
+  if (colCols.some((c) => c.name === 'series_code')) {
+    await dropCollectionSeriesCode(db)
+  }
+
   // 一次性迁移：旧版 collection_langs.status 的 wishlist/ordered 语义迁移到 wishlist_items，
   // 迁移后 status 列仅保留 owned（心愿单与库存解耦）。仅当存在遗留行时才写库。
   const legacyLangRows = await db.select<{ n: number }[]>(
@@ -274,6 +306,41 @@ async function backfillPrintCardNo(db: Database): Promise<void> {
      SET card_no = (SELECT card_no FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)
      WHERE card_no IS NULL`
   )
+}
+
+/**
+ * 回填 card_prints.series/flavor_text_*（从老库 cards_base.series_name/flavor_text_* 拷贝）：
+ * 系列/风味迁移到打印级的一次性迁移。仅当 cards_base 仍有 series_name 列的老库时调用。
+ */
+async function backfillPrintSeriesFlavor(db: Database): Promise<void> {
+  await db.execute(
+    `UPDATE ${TABLES.CARD_PRINTS}
+     SET series = COALESCE(series, (SELECT series_name FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)),
+       flavor_text_cn = COALESCE(flavor_text_cn, (SELECT flavor_text_cn FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)),
+       flavor_text_en = COALESCE(flavor_text_en, (SELECT flavor_text_en FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id))
+     WHERE series IS NULL OR flavor_text_cn IS NULL OR flavor_text_en IS NULL`
+  )
+}
+
+/**
+ * 回填自定义打印（is_custom=1）的空 series：按 card_no_extend 前 3 位匹配 series 表已知系列码。
+ * 系列归属简化后只认打印级 series，老自定义打印需要补上；前缀非已知系列码保持 NULL。
+ */
+async function backfillCustomPrintSeries(db: Database): Promise<void> {
+  await db.execute(
+    `UPDATE ${TABLES.CARD_PRINTS}
+     SET series = (SELECT code FROM ${TABLES.SERIES} WHERE code = substr(upper(card_no_extend), 1, 3))
+     WHERE is_custom = 1 AND series IS NULL`
+  )
+}
+
+/**
+ * 一次性迁移：删除 collection.series_code 冗余列（先删引用它的索引）。
+ * 系列归属简化后不再需要该冗余列；由 initializeTables 在读保护（列仍存在）下调用。
+ */
+async function dropCollectionSeriesCode(db: Database): Promise<void> {
+  await db.execute('DROP INDEX IF EXISTS idx_collection_series')
+  await db.execute(`ALTER TABLE ${TABLES.COLLECTION} DROP COLUMN series_code`)
 }
 
 /**

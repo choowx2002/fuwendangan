@@ -27,6 +27,7 @@ import { mapRowToPrint } from '../helper'
 import { TABLES } from '../config/constants'
 import { getAllSeries } from './series-repository'
 import { getCardById } from './card-repository'
+import { getPrintsByCardId } from './print-repository'
 import { normalizePresetCode } from '../config/languages'
 import { getValidLanguageCodes, isLanguageCodeValid } from './language-repository'
 import { combineCardName } from '$lib/collection/collection-utils'
@@ -129,12 +130,11 @@ async function _applyLangQtyWrite(
 
   if (!collectionId) {
     collectionId = Snowflake.generate()
-    const seriesCode = deriveSeriesCode(cardNoExtend)
     await db.execute(
       `INSERT INTO ${TABLES.COLLECTION}
-       (id, card_no, card_no_extend, series_code, last_edited_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [collectionId, cardNo, cardNoExtend, seriesCode, now(), now(), now()]
+       (id, card_no, card_no_extend, last_edited_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [collectionId, cardNo, cardNoExtend, now(), now(), now()]
     )
   }
 
@@ -177,10 +177,9 @@ async function _applyLangQtyWrite(
   }
   await db.execute(
     `UPDATE ${TABLES.COLLECTION}
-     SET updated_at = ?, last_edited_at = ?,
-       series_code = COALESCE(series_code, ?)
+     SET updated_at = ?, last_edited_at = ?
      WHERE id = ?`,
-    [now(), now(), deriveSeriesCode(cardNoExtend), collectionId]
+    [now(), now(), collectionId]
   )
   return { before, after, action: before ? 'set' : 'add' }
 }
@@ -229,11 +228,6 @@ export async function upsertLangQty(
   void captureCollectionSnapshot('auto')
 }
 
-/** 由卡图印刷编号推导系列码（card_no_extend 前 3 位大写） */
-function deriveSeriesCode(cardNoExtend: string): string {
-  return cardNoExtend.toUpperCase().slice(0, 3)
-}
-
 /**
  * 设置某卡牌某语言的状态（wishlist/ordered 等；行不存在时创建空行）。
  * 当前 UI 不使用，供后续状态功能调用。
@@ -278,9 +272,9 @@ export async function setLangStatus(
       collectionId = Snowflake.generate()
       await db.execute(
         `INSERT INTO ${TABLES.COLLECTION}
-         (id, card_no, card_no_extend, series_code, last_edited_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [collectionId, cardNo, cardNoExtend, deriveSeriesCode(cardNoExtend), now(), now(), now()]
+         (id, card_no, card_no_extend, last_edited_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [collectionId, cardNo, cardNoExtend, now(), now(), now()]
       )
     }
     await db.execute(
@@ -368,17 +362,8 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
   const ownedCond = cm.ownedPredicate ?? '1=1'
 
   const seriesList = await getAllSeries()
-  const seriesCodes = seriesList.map((s) => s.code.toUpperCase())
-  const knownIn = seriesCodes.length > 0 ? seriesCodes.map(() => '?').join(',') : 'NULL'
-  // 系列归属：自建打印（is_custom）一律按原型卡所在系列（series_name），
-  // 其余以冗余列 series_code 优先（旧数据回退 card_no_extend 前 3 位）；前缀非已知系列码时回退 cards_base.series_name
-  const seriesExpr = `CASE
-    WHEN MAX(p.is_custom) = 1 THEN cb.series_name
-    WHEN col.series_code IS NOT NULL AND col.series_code != '' THEN col.series_code
-    WHEN substr(upper(p.card_no_extend), 1, 3) IN (${knownIn})
-      THEN substr(upper(p.card_no_extend), 1, 3)
-    ELSE cb.series_name
-  END`
+  // 系列归属：一律以打印级 series 为准（card_no_extend 前 3 位推导与 collection.series_code 冗余列已废弃）
+  const seriesExpr = `MAX(p.series)`
 
   const ownedRows = await db.select<any[]>(
     `SELECT series, bucket, COUNT(*) AS owned FROM (
@@ -399,14 +384,13 @@ export async function getCollectionStats(mode?: CompletionModeId): Promise<Colle
        GROUP BY col.card_no, col.card_no_extend
      )
      GROUP BY series, bucket
-     ${cm.bucketPredicate ? `HAVING ${cm.bucketPredicate}` : ''}`,
-    seriesCodes
+     ${cm.bucketPredicate ? `HAVING ${cm.bucketPredicate}` : ''}`
   )
 
   // 自建打印总数（每系列×桶），并入收藏总数与进度分母
   const customRows = await db.select<any[]>(
     `SELECT series, bucket, COUNT(*) AS n FROM (
-       SELECT cb.series_name AS series,
+       SELECT MAX(p.series) AS series,
          CASE
            WHEN cb.card_category LIKE '%符文%' THEN 'rune'
            WHEN cb.card_category LIKE '%指示物%' THEN 'token'
@@ -537,12 +521,19 @@ export async function createCustomPrint(input: CustomPrintInput): Promise<string
     throw new Error(`基础卡不存在（${input.cardId}）`)
   }
 
+  // 系列/风味已迁移到打印级：未显式提供时从原型卡代表打印继承系列
+  let series = input.series ?? null
+  if (!series) {
+    const protoPrints = await getPrintsByCardId(input.cardId)
+    series = protoPrints.find((p) => !p.is_promo)?.series ?? protoPrints[0]?.series ?? null
+  }
+
   await db.execute(
     `INSERT INTO ${TABLES.CARD_PRINTS}
      (id, card_id, card_no, card_no_extend, rarity_name, extend_rarity_name, back_image,
       language, img_cdn, tts_cdn, artist, print_order, is_default, is_promo, is_custom,
-      created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      series, flavor_text_cn, flavor_text_en, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       printId,
       input.cardId,
@@ -559,6 +550,9 @@ export async function createCustomPrint(input: CustomPrintInput): Promise<string
       0,
       1,
       1,
+      series,
+      input.flavorTextCn ?? null,
+      input.flavorTextEn ?? null,
       t,
       t,
     ]
@@ -599,6 +593,9 @@ export async function updateCustomPrint(
     extend_rarity_name?: string
     language?: string
     artist?: string | null
+    series?: string | null
+    flavor_text_cn?: string | null
+    flavor_text_en?: string | null
   }
 ): Promise<void> {
   const db = await getDatabase()
@@ -649,7 +646,7 @@ export async function updateCustomPrint(
 
 /**
  * 自定打印编辑引起卡牌号/语言变更时，迁移收藏数量行到新键。
- * - 卡牌号变更：迁移 collection 行（重算 series_code）；新键已有 collection 则按语言合并后删除旧行。
+ * - 卡牌号变更：迁移 collection 行到新键；新键已有 collection 则按语言合并后删除旧行。
  * - 语言变更：迁移 collection_langs 旧语言行到新语言；新语言行已存在则合并数量并按状态规则重算。
  * - 两个变更可叠加：先迁卡牌号，再迁语言。
  */
@@ -682,8 +679,8 @@ async function migrateCustomPrintCollection(
       } else {
         await db.execute(
           `UPDATE ${TABLES.COLLECTION}
-           SET card_no_extend = ?, series_code = ?, updated_at = ? WHERE id = ?`,
-          [newExtend, deriveSeriesCode(newExtend), now(), oldColId]
+           SET card_no_extend = ?, updated_at = ? WHERE id = ?`,
+          [newExtend, now(), oldColId]
         )
         affectedIds.push(oldColId)
       }
@@ -1275,7 +1272,7 @@ export async function bulkDeleteCollection(items: CollectionItem[]): Promise<num
 export async function getRecentCollectionCards(limit = 6): Promise<RecentCollectionCard[]> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
-    `SELECT col.card_no, col.card_no_extend, col.series_code, col.last_edited_at,
+    `SELECT col.card_no, col.card_no_extend, col.last_edited_at,
        cb.card_name_cn, cb.card_no, cb.id AS card_id,
        cl.language_code, cl.normal_qty, cl.foil_qty
      FROM ${TABLES.COLLECTION} col
@@ -1294,7 +1291,7 @@ export async function getRecentCollectionCards(limit = 6): Promise<RecentCollect
     const rowValueIn = keyArr.map(() => '(?, ?)').join(',')
     const printsRows = await db.select<any[]>(
       `SELECT id, card_id, card_no_extend, language, is_default, is_promo,
-        img_cdn, tts_cdn
+        img_cdn, tts_cdn, series
        FROM ${TABLES.CARD_PRINTS}
        WHERE (card_id, card_no_extend) IN (${rowValueIn})`,
       keyArr.flatMap((k) => k.split('|'))
@@ -1325,7 +1322,7 @@ export async function getRecentCollectionCards(limit = 6): Promise<RecentCollect
     return {
       cardId: r.card_no,
       cardNoExtend: r.card_no_extend,
-      seriesCode: r.series_code ?? null,
+      seriesCode: chosen?.series ?? rep?.series ?? null,
       lastEditedAt: r.last_edited_at ?? null,
       cardNameCn: r.card_name_cn ?? null,
       cardNo: r.card_no ?? null,
@@ -1342,7 +1339,7 @@ export async function getRecentCollectionCards(limit = 6): Promise<RecentCollect
 
 /**
  * 缺卡清单筛选（全部可选，不传则不过滤）
- * - seriesCode：按卡图印刷系列码（card_no_extend 前 3 位大写）过滤
+ * - seriesCode：按打印级系列码（card_prints.series）过滤
  * - bucket：仅统计该桶（base/alt/overnum/rune/token）
  * - rarities：卡牌扩展稀有度（card_prints.extend_rarity_name：平卡/异画/超编/签名超编）
  * - categories：卡牌类型（cards_base.card_category，JSON 数组任一匹配）
@@ -1382,10 +1379,8 @@ export async function getMissingVariants(opts?: MissingListFilter): Promise<Miss
   const params: any[] = []
 
   if (opts?.seriesCode) {
-    innerConds.push(
-      `(substr(upper(p3.card_no_extend), 1, 3) = ? OR (p3.is_custom = 1 AND cb3.series_name = ?))`
-    )
-    params.push(opts.seriesCode.toUpperCase(), opts.seriesCode.toUpperCase())
+    innerConds.push(`p3.series = ?`)
+    params.push(opts.seriesCode.toUpperCase())
   }
   if (opts?.rarities?.length) {
     const ph = opts.rarities.map(() => '?').join(',')

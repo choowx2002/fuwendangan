@@ -4,7 +4,8 @@
   import { t } from '$lib/i18n'
   import { goto } from '$app/navigation'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
-  import { open as openDialog, message } from '@tauri-apps/plugin-dialog'
+  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { showMessage } from '$lib/utils/confirm'
   import { readText } from '@tauri-apps/plugin-clipboard-manager'
   import { readTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
   import {
@@ -373,7 +374,7 @@
     try {
       content = await readTextFile(String(src))
     } catch (e) {
-      await message(e instanceof Error ? e.message : get(t)('decks.readFileFailed'), {
+      await showMessage(e instanceof Error ? e.message : get(t)('decks.readFileFailed'), {
         title: get(t)('decks.importTitle'),
         kind: 'error',
       })
@@ -382,7 +383,7 @@
 
     const decks = parseImportFile(content)
     if (decks.length === 0) {
-      await message(get(t)('decks.invalidJsonFile'), {
+      await showMessage(get(t)('decks.invalidJsonFile'), {
         title: get(t)('decks.importTitle'),
         kind: 'error',
       })

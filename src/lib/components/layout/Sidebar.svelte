@@ -22,8 +22,8 @@
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { get } from 'svelte/store'
-  import { ask } from '@tauri-apps/plugin-dialog'
-  import { sidebarState, showToast } from '../../stores/ui-store.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
+  import { sidebarState, showToast, setLoadStatus } from '../../stores/ui-store.svelte'
   import { showTTSFeatures, windowAlwaysOnTop, darkMode } from '$lib/stores/settings'
   import { isTauri, syncViaSupabase } from '$lib/db'
   import { refreshSupabaseUser, supabaseState } from '$lib/stores/supabase.svelte'
@@ -89,19 +89,24 @@
 
   async function handleSyncClick() {
     if (syncing) return
-    const accepted = await ask(get(t)('settings.supabaseSyncConfirm'), {
+    const accepted = await confirmAction(get(t)('settings.supabaseSyncConfirm'), {
       title: get(t)('settings.supabaseSync'),
-      kind: 'warning',
       okLabel: get(t)('settings.autoSyncConfirm'),
       cancelLabel: get(t)('common.cancel'),
     })
     if (!accepted) return
     syncing = true
+    setLoadStatus('syncing', get(t)('settings.supabaseSync'), get(t)('settings.pleaseWait'))
     try {
       await syncViaSupabase()
+      setLoadStatus('success')
       showToast(get(t)('settings.supabaseSyncDone'), 'success')
     } catch (e) {
-      showToast(e instanceof Error ? e.message : get(t)('common.unknownError'), 'error')
+      setLoadStatus(
+        'error',
+        get(t)('loading.error'),
+        e instanceof Error ? e.message : get(t)('common.unknownError')
+      )
     } finally {
       syncing = false
     }

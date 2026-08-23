@@ -325,11 +325,13 @@
             {/if}
           </div>
 
-          <!-- 风味文本 -->
-          {#if card.flavor_text_cn}
+          <!-- 风味文本（打印级：随所选版本切换） -->
+          {#if selectedVersion[selectedIndex]?.flavor_text_cn}
             <div class="flavor-section selectable">
-              <p class="flavor-text">{card.flavor_text_cn}</p>
-              <p class="flavor-text">{card.flavor_text_en}</p>
+              <p class="flavor-text">{selectedVersion[selectedIndex]?.flavor_text_cn}</p>
+              {#if selectedVersion[selectedIndex]?.flavor_text_en}
+                <p class="flavor-text">{selectedVersion[selectedIndex]?.flavor_text_en}</p>
+              {/if}
             </div>
           {/if}
         </section>

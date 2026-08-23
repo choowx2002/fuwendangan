@@ -18,7 +18,6 @@ import { getDatabase } from '../repository/database'
 import { buildOrderBy, mapRowToCard, mapRowToPrint } from '../helper'
 import { TABLES } from '../config/constants'
 import { getCompletionMode } from './completion-modes'
-import { getAllSeries } from '../repository/series-repository'
 
 /**
  * 执行卡牌搜索
@@ -83,7 +82,7 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     }
   }
 
-  // 3. 文本字段精确过滤
+  // 3. 文本字段精确过滤（series_name 已迁移到打印级，匹配 card_prints.series；rarity_name 仍在 cards_base）
   const textFields = ['series_name', 'rarity_name'] as const
   for (const field of textFields) {
     const filterParam = params[field] as
@@ -95,6 +94,26 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     const excludeVals = filterParam.exclude || []
 
     const matchVals = [...new Set([...includeVals, ...mustVals])]
+    if (field === 'series_name') {
+      const inClause = (vals: string[], negate = false) => {
+        const ph = vals.map(() => '?').join(',')
+        return `EXISTS (
+          SELECT 1 FROM ${TABLES.CARD_PRINTS} cp
+          WHERE cp.card_id = ${TABLES.CARDS_BASE}.id
+            AND cp.series ${negate ? 'NOT IN' : 'IN'} (${ph})
+        )`
+      }
+      if (matchVals.length > 0) {
+        whereClauses.push(inClause(matchVals))
+        queryParams.push(...matchVals)
+      }
+      if (excludeVals.length > 0) {
+        whereClauses.push(inClause(excludeVals, true))
+        queryParams.push(...excludeVals)
+      }
+      continue
+    }
+
     if (matchVals.length > 0) {
       const placeholders = matchVals.map(() => '?').join(',')
       whereClauses.push(`${TABLES.CARDS_BASE}.${field} IN (${placeholders})`)
@@ -108,32 +127,17 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     }
   }
 
-  // 3.5 收藏页：按卡图印刷系列过滤（card_no_extend 前 3 位，不依赖 cards_base.series_name）。
-  // 回退：该卡没有任何已知系列码前缀的非 promo 印刷时，才按 cards_base.series_name 匹配（防御）。
+  // 3.5 收藏页：按卡图印刷系列过滤（card_prints.series）
   if (params.seriesCode && params.seriesCode.trim() !== '') {
-    const seriesList = await getAllSeries()
-    const knownCodes = seriesList.map((s) => s.code.toUpperCase())
     const code = params.seriesCode.trim().toUpperCase()
-
-    const knownIn = knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
-    whereClauses.push(`(
-      EXISTS (
+    whereClauses.push(
+      `EXISTS (
         SELECT 1 FROM ${TABLES.CARD_PRINTS} cp
         WHERE cp.card_id = ${TABLES.CARDS_BASE}.id
-          AND COALESCE(cp.is_promo, 0) != 1
-          AND substr(upper(cp.card_no_extend), 1, 3) = ?
-      )
-      OR (
-        ${TABLES.CARDS_BASE}.series_name = ?
-        AND NOT EXISTS (
-          SELECT 1 FROM ${TABLES.CARD_PRINTS} cp2
-          WHERE cp2.card_id = ${TABLES.CARDS_BASE}.id
-            AND COALESCE(cp2.is_promo, 0) != 1
-            AND substr(upper(cp2.card_no_extend), 1, 3) IN (${knownIn})
-        )
-      )
-    )`)
-    queryParams.push(code, code, ...knownCodes)
+          AND cp.series = ?
+      )`
+    )
+    queryParams.push(code)
   }
 
   // 4. 数值范围过滤
@@ -378,8 +382,6 @@ export async function searchCardVariants(
   const db = await getDatabase()
   const { page = 1, pageSize = 30 } = params
 
-  const seriesList = await getAllSeries()
-  const knownCodes = seriesList.map((s) => s.code.toUpperCase())
   const code = params.seriesCode?.trim().toUpperCase() ?? ''
   const searchText = params.searchText?.trim() ?? ''
   const hasSearch = searchText !== ''
@@ -395,15 +397,8 @@ export async function searchCardVariants(
   const innerParams: unknown[] = []
 
   if (code) {
-    innerSelects.push(
-      `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) = ? THEN 1 ELSE 0 END) AS prefix_match`
-    )
+    innerSelects.push(`MAX(CASE WHEN series = ? THEN 1 ELSE 0 END) AS series_match`)
     innerParams.push(code)
-    const knownIn = knownCodes.length > 0 ? knownCodes.map(() => '?').join(',') : 'NULL'
-    innerSelects.push(
-      `MAX(CASE WHEN substr(upper(card_no_extend), 1, 3) IN (${knownIn}) THEN 1 ELSE 0 END) AS has_known`
-    )
-    innerParams.push(...knownCodes)
   }
   if (hasSearch) {
     innerSelects.push(
@@ -420,12 +415,8 @@ export async function searchCardVariants(
   const outerWheres: string[] = []
   const outerParams: unknown[] = []
   if (code) {
-    // 前缀匹配；回退：没有任何已知前缀时按 cards_base.series_name 匹配（防御 R--/T-- 类编号）；
-    // 自建打印（is_custom）前缀不受限，一律按原型卡所在系列归属
-    outerWheres.push(
-      `(v.prefix_match = 1 OR (v.has_known = 0 AND cb.series_name = ?) OR (v.is_custom = 1 AND cb.series_name = ?))`
-    )
-    outerParams.push(code, code)
+    // 系列归属：一律按打印级 series 匹配
+    outerWheres.push(`v.series_match = 1`)
   }
   if (hasSearch) {
     outerWheres.push(`v.text_match = 1`)

@@ -136,10 +136,6 @@ export function mergeCollection(opts: {
   return { upsert, deleteKeys }
 }
 
-function deriveSeriesCode(cardNoExtend: string): string {
-  return cardNoExtend.toUpperCase().slice(0, 3)
-}
-
 /** 写回单个收藏变体（upsert collection 行 + 语言行，保留 winner 时间戳） */
 async function upsertCollectionVariant(db: DbLike, col: SyncCollection): Promise<void> {
   const exists = (await db.select(
@@ -151,20 +147,19 @@ async function upsertCollectionVariant(db: DbLike, col: SyncCollection): Promise
     collectionId = exists[0].id
     await db.execute(
       `UPDATE ${TABLES.COLLECTION}
-       SET series_code = COALESCE(series_code, ?), updated_at = ?, last_edited_at = ? WHERE id = ?`,
-      [deriveSeriesCode(col.card_no_extend), col.updated_at, col.updated_at, collectionId]
+       SET updated_at = ?, last_edited_at = ? WHERE id = ?`,
+      [col.updated_at, col.updated_at, collectionId]
     )
   } else {
     collectionId = Snowflake.generate()
     await db.execute(
       `INSERT INTO ${TABLES.COLLECTION}
-       (id, card_no, card_no_extend, series_code, last_edited_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (id, card_no, card_no_extend, last_edited_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         collectionId,
         col.card_no,
         col.card_no_extend,
-        deriveSeriesCode(col.card_no_extend),
         col.updated_at,
         col.updated_at,
         col.updated_at,

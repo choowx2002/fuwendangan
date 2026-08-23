@@ -20,8 +20,8 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
     `INSERT OR REPLACE INTO ${TABLES.CARD_PRINTS}
      (id, card_id, card_no, card_no_extend, rarity_name, extend_rarity_name, back_image,
       language, img_cdn, tts_cdn, artist, print_order, is_default, is_promo, is_custom,
-      created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      series, flavor_text_cn, flavor_text_en, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       print.id,
       print.card_id,
@@ -38,6 +38,9 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
       isDefaultInt,
       isPromoInt,
       isCustomInt,
+      print.series,
+      print.flavor_text_cn,
+      print.flavor_text_en,
       print.created_at,
       print.updated_at,
     ]
@@ -172,7 +175,7 @@ export async function getRandomPackPrint(
     `p.language = 'SC'`,
     `COALESCE(p.is_promo, 0) != 1`,
     `COALESCE(p.is_custom, 0) != 1`,
-    `substr(upper(p.card_no_extend), 1, 3) = ?`,
+    `p.series = ?`,
     `cb.card_category NOT LIKE '%符文%'`,
   ]
   const params: (string | number)[] = [seriesCode.toUpperCase()]

@@ -7,7 +7,6 @@ import {
   loadImageFromAppFolder,
 } from '$lib/services/image-cache-service'
 import { appLocalDataDir, join } from '@tauri-apps/api/path'
-import { message } from '@tauri-apps/plugin-dialog'
 import {
   beginDownload,
   finishDownload,
@@ -15,6 +14,7 @@ import {
   downloadState,
 } from '$lib/stores/ui-store.svelte'
 import { stat, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { showMessage } from '$lib/utils/confirm'
 import { isMobile } from '$lib/utils/os'
 import { whenOnline } from '$lib/stores/network.svelte'
 import { get } from 'svelte/store'
@@ -123,7 +123,7 @@ export async function startCardImageDownload(missing: any[]) {
   }
 
   if (!(await whenOnline())) {
-    await message(get(t)('download.offlineMessage'), {
+    await showMessage(get(t)('download.offlineMessage'), {
       title: get(t)('download.notificationTitle'),
       kind: 'error',
     })
@@ -270,7 +270,7 @@ async function runCardImageDownload(missing: any[], onMobile: boolean = false) {
       )
     }
 
-    await message(error instanceof Error ? error.message : get(t)('download.failedBody'), {
+    await showMessage(error instanceof Error ? error.message : get(t)('download.failedBody'), {
       title: get(t)('download.problemTitle'),
       kind: 'error',
     })

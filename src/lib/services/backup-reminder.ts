@@ -5,7 +5,7 @@
  */
 
 import { get } from 'svelte/store'
-import { ask } from '@tauri-apps/plugin-dialog'
+import { openConfirm } from '$lib/stores/confirm-store.svelte'
 import { goto } from '$app/navigation'
 import { isTauri, getDbStats } from '$lib/db'
 import {
@@ -43,13 +43,12 @@ export async function maybePromptBackup(): Promise<void> {
     lastBackupReminderAt.set(new Date().toISOString())
 
     const days = lastTs ? Math.max(1, Math.floor((now - lastTs) / DAY_MS)) : 0
-    const ok = await ask(
+    const ok = await openConfirm(
       days > 0
         ? get(t)('settings.backupReminderStale', { values: { days } })
         : get(t)('settings.backupReminderNever'),
       {
         title: get(t)('settings.backupReminderTitle'),
-        kind: 'warning',
         okLabel: get(t)('settings.backupReminderGo'),
         cancelLabel: get(t)('common.cancel'),
       }

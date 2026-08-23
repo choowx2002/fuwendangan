@@ -5,7 +5,7 @@
  * - 断网/项目暂停/未配置等一律静默跳过，不打扰用户。
  */
 
-import { ask } from '@tauri-apps/plugin-dialog'
+import { openConfirm } from '$lib/stores/confirm-store.svelte'
 import { get } from 'svelte/store'
 import { isTauri } from '$lib/db/env'
 import { syncSupabaseUrl, syncSupabaseAnonKey, autoSyncEnabled } from '$lib/stores/settings'
@@ -28,9 +28,8 @@ export async function checkAutoSyncOnLaunch(): Promise<void> {
     const lastSync = await getLastSync()
     if (lastSync && meta.updatedAt <= lastSync) return
 
-    const accepted = await ask(get(t)('settings.autoSyncPrompt'), {
+    const accepted = await openConfirm(get(t)('settings.autoSyncPrompt'), {
       title: get(t)('settings.autoSyncPromptTitle'),
-      kind: 'info',
       okLabel: get(t)('settings.autoSyncConfirm'),
       cancelLabel: get(t)('common.cancel'),
     })

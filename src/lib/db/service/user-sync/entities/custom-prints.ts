@@ -28,9 +28,6 @@ const CARD_BASE_COLUMNS = [
   'return_energy',
   'power',
   'rarity_name',
-  'series_name',
-  'flavor_text_cn',
-  'flavor_text_en',
   'is_banned',
   'deck_limit',
   'created_at',
@@ -53,6 +50,9 @@ const PRINT_COLUMNS = [
   'is_default',
   'is_promo',
   'is_custom',
+  'series',
+  'flavor_text_cn',
+  'flavor_text_en',
   'created_at',
   'updated_at',
 ]
@@ -67,6 +67,7 @@ export function extractCustomPrints(): Promise<SyncCustomPrint[]> {
          p.back_image AS p_back_image, p.language AS p_language, p.img_cdn AS p_img_cdn,
          p.tts_cdn AS p_tts_cdn, p.artist AS p_artist, p.print_order AS p_print_order,
          p.is_default AS p_is_default, p.is_promo AS p_is_promo, p.is_custom AS p_is_custom,
+         p.series AS p_series, p.flavor_text_cn AS p_flavor_text_cn, p.flavor_text_en AS p_flavor_text_en,
          p.created_at AS p_created_at, p.updated_at AS p_updated_at,
          cb.id AS cb_id, cb.card_no AS cb_card_no, cb.card_name_cn AS cb_card_name_cn,
          cb.card_name_en AS cb_card_name_en, cb.sub_title_cn AS cb_sub_title_cn,
@@ -76,8 +77,7 @@ export function extractCustomPrints(): Promise<SyncCustomPrint[]> {
          cb.champion_tag AS cb_champion_tag, cb.effect_cn AS cb_effect_cn,
          cb.effect_en AS cb_effect_en, cb.energy AS cb_energy,
          cb.return_energy AS cb_return_energy, cb.power AS cb_power,
-         cb.rarity_name AS cb_rarity_name, cb.series_name AS cb_series_name,
-         cb.flavor_text_cn AS cb_flavor_text_cn, cb.flavor_text_en AS cb_flavor_text_en,
+         cb.rarity_name AS cb_rarity_name,
          cb.is_banned AS cb_is_banned, cb.deck_limit AS cb_deck_limit,
          cb.created_at AS cb_created_at, cb.updated_at AS cb_updated_at
        FROM ${TABLES.CARD_PRINTS} p
@@ -107,6 +107,9 @@ export function extractCustomPrints(): Promise<SyncCustomPrint[]> {
           is_default: (r.p_is_default as number) ?? null,
           is_promo: (r.p_is_promo as number) ?? null,
           is_custom: (r.p_is_custom as number) ?? 1,
+          series: (r.p_series as string) ?? null,
+          flavor_text_cn: (r.p_flavor_text_cn as string) ?? null,
+          flavor_text_en: (r.p_flavor_text_en as string) ?? null,
           created_at: (r.p_created_at as string) ?? null,
           updated_at:
             (r.p_updated_at as string) ?? (r.p_created_at as string) ?? new Date().toISOString(),

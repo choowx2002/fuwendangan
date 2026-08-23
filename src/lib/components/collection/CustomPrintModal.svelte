@@ -40,6 +40,10 @@
   let langOptions = $state<string[]>([...PRESET_LANGUAGE_CODES])
   let customLangNames = $state(new Map<string, string>())
   let artist = $state('')
+  // 打印级系列码与风味文本（系列/风味已迁移到打印级）
+  let series = $state('')
+  let flavorTextCn = $state('')
+  let flavorTextEn = $state('')
   let imgToken = $state<string | null>(null)
   let imgUrl = $state('')
   let imgApplying = $state(false)
@@ -74,6 +78,11 @@
         return
       }
       baseCard = { id: c.id, cardNo: c.card_no ?? '', name: c.card_name_cn ?? c.card_name_en ?? '' }
+      // 新建时预填系列码（从原型卡代表打印继承；留空则保存时在仓储层再次兜底）
+      if (!editPrint && !series) {
+        const protoPrints = await getPrintsByCardId(id)
+        series = protoPrints.find((p) => !p.is_promo)?.series ?? protoPrints[0]?.series ?? ''
+      }
     } catch (err) {
       console.error('[CustomPrintModal] 原型卡加载失败:', err)
       baseCardError = get(t)('collection.baseCardLoadFailed')
@@ -119,6 +128,9 @@
       extendRarityName = editPrint.extend_rarity_name ?? '平卡'
       language = editPrint.language ?? ''
       artist = editPrint.artist ?? ''
+      series = editPrint.series ?? ''
+      flavorTextCn = editPrint.flavor_text_cn ?? ''
+      flavorTextEn = editPrint.flavor_text_en ?? ''
       imgToken = localImgToken(editPrint.img_cdn)
       originalImgToken = imgToken
       normalQty = 0
@@ -129,6 +141,9 @@
       extendRarityName = '平卡'
       language = 'SC'
       artist = ''
+      series = ''
+      flavorTextCn = ''
+      flavorTextEn = ''
       imgToken = null
       originalImgToken = null
       normalQty = 1
@@ -286,6 +301,9 @@
           extend_rarity_name: extendRarityName,
           language: language.trim() || 'SC',
           artist: artist.trim() || null,
+          series: series.trim() || null,
+          flavor_text_cn: flavorTextCn.trim() || null,
+          flavor_text_en: flavorTextEn.trim() || null,
         })
         await updateCustomPrintImg(printId, imgToken)
       } else {
@@ -295,6 +313,9 @@
           extendRarityName,
           language: language.trim() || 'SC',
           artist: artist.trim() || null,
+          series: series.trim() || undefined,
+          flavorTextCn: flavorTextCn.trim() || null,
+          flavorTextEn: flavorTextEn.trim() || null,
           imgToken,
           normalQty,
           foilQty,
@@ -466,6 +487,26 @@
           bind:value={artist}
           placeholder={$t('collection.artistPlaceholder')}
         />
+      </div>
+
+      <div class="field">
+        <label for="cp-series">{$t('collection.seriesLabel')}</label>
+        <input
+          id="cp-series"
+          bind:value={series}
+          placeholder={$t('collection.seriesPlaceholder')}
+        />
+      </div>
+
+      <div class="form-row">
+        <div class="field">
+          <label for="cp-flavor-cn">{$t('collection.flavorLabelCn')}</label>
+          <input id="cp-flavor-cn" bind:value={flavorTextCn} />
+        </div>
+        <div class="field">
+          <label for="cp-flavor-en">{$t('collection.flavorLabelEn')}</label>
+          <input id="cp-flavor-en" bind:value={flavorTextEn} />
+        </div>
       </div>
 
       <div class="field">

@@ -6,6 +6,7 @@
     getOrCreateDeviceId,
     parseBundle,
     syncViaSupabase,
+    forcePushViaSupabase,
     signInSupabase,
     signOutSupabase,
     testSupabaseConnection,
@@ -23,7 +24,8 @@
   import { get } from 'svelte/store'
   import { t } from 'svelte-i18n'
   import { onMount } from 'svelte'
-  import { ask, message, open } from '@tauri-apps/plugin-dialog'
+  import { open } from '@tauri-apps/plugin-dialog'
+  import { confirmAction, showMessage } from '$lib/utils/confirm'
   import { writeText } from '@tauri-apps/plugin-clipboard-manager'
   import { appLocalDataDir, join } from '@tauri-apps/api/path'
   import { readTextFile, writeTextFile } from '$lib/services/db-file-service'
@@ -103,7 +105,7 @@
     try {
       text = await withBusy(_t('settings.syncExportBusy'), () => buildSyncBundleText(deviceName))
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.syncExport'),
         kind: 'error',
       })
@@ -121,7 +123,7 @@
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
         const dest = await join(String(dir), `rune-archive-sync-${stamp}.json`)
         await writeTextFile(dest, text)
-        await message(_t('settings.syncExportSuccess', { values: { path: dest } }), {
+        await showMessage(_t('settings.syncExportSuccess', { values: { path: dest } }), {
           title: _t('settings.syncExport'),
           kind: 'info',
         })
@@ -133,14 +135,14 @@
         anchor.download = `rune-archive-sync-${new Date().toISOString().slice(0, 10)}.json`
         anchor.click()
         URL.revokeObjectURL(url)
-        await message(_t('settings.syncExportWebDone'), {
+        await showMessage(_t('settings.syncExportWebDone'), {
           title: _t('settings.syncExport'),
           kind: 'info',
         })
       }
       await refreshSyncLastSync()
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.syncExport'),
         kind: 'error',
       })
@@ -176,7 +178,7 @@
       const text = await file.text()
       await runSyncImport(text, file.name)
     } catch (err) {
-      await message(err instanceof Error ? err.message : _t('common.unknownError'), {
+      await showMessage(err instanceof Error ? err.message : _t('common.unknownError'), {
         title: _t('settings.syncImport'),
         kind: 'error',
       })
@@ -189,7 +191,7 @@
     try {
       text = await withBusy(_t('settings.syncImportReadBusy'), () => readTextFile(path))
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.syncImport'),
         kind: 'error',
       })
@@ -204,26 +206,28 @@
     try {
       parseBundle(text)
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.syncImport'),
         kind: 'error',
       })
       return
     }
 
-    const confirmed = await ask(_t('settings.syncImportConfirm', { values: { path: source } }), {
-      title: _t('settings.syncImportConfirmTitle'),
-      kind: 'warning',
-      okLabel: _t('common.confirm'),
-      cancelLabel: _t('common.cancel'),
-    })
+    const confirmed = await confirmAction(
+      _t('settings.syncImportConfirm', { values: { path: source } }),
+      {
+        title: _t('settings.syncImportConfirmTitle'),
+        okLabel: _t('common.confirm'),
+        cancelLabel: _t('common.cancel'),
+      }
+    )
     if (!confirmed) return
 
     try {
       const result = await withBusy(_t('settings.syncImportBusy'), () =>
         importSyncBundleText(text, deviceName)
       )
-      await message(
+      await showMessage(
         _t('settings.syncImportSuccess', {
           values: {
             decks: result.upsertedDecks,
@@ -243,7 +247,7 @@
       )
       await refreshSyncLastSync()
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.syncImport'),
         kind: 'error',
       })
@@ -254,12 +258,12 @@
   async function copySupabaseSql() {
     try {
       await writeText(buildSupabaseCreateTableSql())
-      await message(_t('settings.supabaseCopySqlDone'), {
+      await showMessage(_t('settings.supabaseCopySqlDone'), {
         title: _t('settings.supabaseTitle'),
         kind: 'info',
       })
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseTitle'),
         kind: 'error',
       })
@@ -290,7 +294,7 @@
         default:
           text = res.detail || _t('settings.supabaseError')
       }
-      await message(text, {
+      await showMessage(text, {
         title: _t('settings.supabaseTest'),
         kind: res.ok ? 'info' : 'warning',
       })
@@ -302,7 +306,7 @@
         '[SYNC] testSupabaseConn 失败 string:',
         e instanceof Error ? e.message : String(e)
       )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseTest'),
         kind: 'error',
       })
@@ -318,7 +322,7 @@
       const email = supabaseEmail
       supabasePassword = ''
       await refreshSupabaseUser()
-      await message(_t('settings.supabaseSignedIn', { values: { email } }), {
+      await showMessage(_t('settings.supabaseSignedIn', { values: { email } }), {
         title: _t('settings.supabaseSignIn'),
         kind: 'info',
       })
@@ -328,7 +332,7 @@
         '[SYNC] handleSupabaseSignIn 失败 string:',
         e instanceof Error ? e.message : String(e)
       )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignIn'),
         kind: 'error',
       })
@@ -345,7 +349,7 @@
         '[SYNC] handleSupabaseSignOut 失败 string:',
         e instanceof Error ? e.message : String(e)
       )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSignOut'),
         kind: 'error',
       })
@@ -353,16 +357,15 @@
   }
 
   async function syncSupabaseNow() {
-    const accepted = await ask(_t('settings.supabaseSyncConfirm'), {
+    const accepted = await confirmAction(_t('settings.supabaseSyncConfirm'), {
       title: _t('settings.supabaseSync'),
-      kind: 'warning',
       okLabel: _t('settings.autoSyncConfirm'),
       cancelLabel: _t('common.cancel'),
     })
     if (!accepted) return
     try {
       const result = await withBusy(_t('settings.supabaseSyncBusy'), () => syncViaSupabase())
-      await message(
+      await showMessage(
         _t('settings.supabaseSyncSuccess', {
           values: {
             decks: result.upsertedDecks,
@@ -388,8 +391,33 @@
         '[SYNC] syncSupabaseNow 失败 string:',
         e instanceof Error ? e.message : String(e)
       )
-      await message(e instanceof Error ? e.message : _t('common.unknownError'), {
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
         title: _t('settings.supabaseSync'),
+        kind: 'error',
+      })
+    }
+  }
+
+  async function forcePushNow() {
+    const accepted = await confirmAction(_t('settings.supabaseForcePushConfirm'), {
+      title: _t('settings.supabaseForcePush'),
+      okLabel: _t('settings.supabaseForcePushOk'),
+      cancelLabel: _t('common.cancel'),
+      danger: true,
+    })
+    if (!accepted) return
+    try {
+      await withBusy(_t('settings.supabaseSyncBusy'), () => forcePushViaSupabase())
+      await showMessage(_t('settings.supabaseForcePushSuccess'), {
+        title: _t('settings.supabaseForcePush'),
+        kind: 'info',
+      })
+      await refreshSyncLastSync()
+    } catch (e) {
+      console.error('[SYNC] forcePushNow 失败:', e)
+      console.error('[SYNC] forcePushNow 失败 string:', e instanceof Error ? e.message : String(e))
+      await showMessage(e instanceof Error ? e.message : _t('common.unknownError'), {
+        title: _t('settings.supabaseForcePush'),
         kind: 'error',
       })
     }
@@ -479,6 +507,15 @@
       <button class="button button-primary" disabled={!!busyText} onclick={syncSupabaseNow}>
         <Upload size={16} />
         {$t('settings.supabaseSync')}
+      </button>
+      <button
+        class="button button-danger-outline"
+        disabled={!!busyText}
+        onclick={forcePushNow}
+        title={$t('settings.supabaseForcePushDesc')}
+      >
+        <Cloud size={16} />
+        {$t('settings.supabaseForcePush')}
       </button>
     </div>
 

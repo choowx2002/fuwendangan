@@ -19,7 +19,7 @@
   } from '$lib/stores/tools'
   import { playerName } from '$lib/stores/settings'
   import type { CardBase, MatchWinType } from '$lib/db/types'
-  import { ask, message } from '@tauri-apps/plugin-dialog'
+  import { confirmAction, showMessage } from '$lib/utils/confirm'
   import { goto } from '$app/navigation'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -453,9 +453,9 @@
   }
 
   async function resetScore() {
-    const confirm = await ask(get(t)('tools.resetConfirm'), {
+    const confirm = await confirmAction(get(t)('tools.resetConfirm'), {
       title: get(t)('tools.resetScoreTitle'),
-      kind: 'warning',
+      danger: true,
       okLabel: get(t)('common.reset'),
       cancelLabel: get(t)('common.cancel'),
     })
@@ -595,7 +595,7 @@
       saveDoneOpen = true
     } catch (error) {
       console.error('[Tools] 保存对局失败:', error)
-      await message(get(t)('tools.saveFailedRetry'), {
+      await showMessage(get(t)('tools.saveFailedRetry'), {
         title: get(t)('tools.saveFailedTitle'),
         kind: 'error',
       })

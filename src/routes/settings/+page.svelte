@@ -79,7 +79,8 @@
   import { openUrl } from '@tauri-apps/plugin-opener'
   import { getVersion as getAppVersion } from '@tauri-apps/api/app'
   import { isMobile } from '$lib/utils/os'
-  import { ask, message, open, save } from '@tauri-apps/plugin-dialog'
+  import { confirmAction, showMessage } from '$lib/utils/confirm'
+  import { open, save } from '@tauri-apps/plugin-dialog'
   import { beforeNavigate, goto } from '$app/navigation'
   import { Download, Upload, FileText, FileUp, ChevronRight, RefreshCw } from '@lucide/svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -333,11 +334,11 @@
   }
 
   async function handleClearLogs() {
-    const confirmed = await ask(_t('settings.clearLogsConfirm'), {
+    const confirmed = await confirmAction(_t('settings.clearLogsConfirm'), {
       title: _t('settings.viewLogs'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
     await clearLogs()
@@ -378,18 +379,18 @@
   }
 
   async function handleResetDb() {
-    const accpected = await ask(_t('settings.resetDbConfirm'), {
+    const accpected = await confirmAction(_t('settings.resetDbConfirm'), {
       title: _t('settings.resetDb'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (accpected) {
       await withBusy(_t('settings.resetDbBusy'), async () => {
         await resetDatabase()
         await loadDbInfo()
       })
-      message(_t('settings.resetDbSuccess'))
+      showMessage(_t('settings.resetDbSuccess'))
     }
   }
 
@@ -398,11 +399,11 @@
   }
 
   async function handleResetImageCache() {
-    const accpected = await ask(_t('settings.resetImageCacheConfirm'), {
+    const accpected = await confirmAction(_t('settings.resetImageCacheConfirm'), {
       title: _t('settings.resetImageCache'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (accpected) {
       try {
@@ -410,7 +411,7 @@
           await clearLocalCache()
         })
         await loadImageCacheInfo()
-        await message(_t('settings.resetImageCacheSuccess'))
+        await showMessage(_t('settings.resetImageCacheSuccess'))
       } catch (e) {
         setLoadStatus(
           'error',
@@ -430,7 +431,7 @@
       const { missing } = await prepareCardImageDownload()
 
       if (missing.length === 0) {
-        await message(_t('settings.imagesExist'), {
+        await showMessage(_t('settings.imagesExist'), {
           title: _t('settings.cardResourceTitle'),
           kind: 'info',
         })
@@ -438,11 +439,10 @@
         return
       }
 
-      const accepted = await ask(
+      const accepted = await confirmAction(
         _t('settings.downloadConfirm', { values: { count: missing.length } }),
         {
           title: _t('settings.cardResourceDownloadTitle'),
-          kind: 'warning',
           okLabel: _t('common.confirm'),
           cancelLabel: _t('common.cancel'),
         }
@@ -456,7 +456,7 @@
     } catch (error) {
       console.error('[Settings] 准备卡图下载失败:', error)
 
-      await message(error instanceof Error ? error.message : _t('settings.prepareDownloadFailed'), {
+      await showMessage(error instanceof Error ? error.message : _t('settings.prepareDownloadFailed'), {
         title: _t('settings.cardResourceDownloadTitle'),
         kind: 'error',
       })
@@ -479,7 +479,7 @@
         planCardImageZipImport(String(src))
       )
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
         title: _t('settings.importZip'),
         kind: 'error',
       })
@@ -487,7 +487,7 @@
     }
 
     if (plan.newJobs.length === 0) {
-      await message(
+      await showMessage(
         _t('settings.importZipNoNew', {
           values: { existing: plan.existingCount, unmatched: plan.unmatchedCount },
         }),
@@ -496,7 +496,7 @@
       return
     }
 
-    const accepted = await ask(
+    const accepted = await confirmAction(
       _t('settings.importZipConfirm', {
         values: {
           total: plan.totalEntries,
@@ -507,7 +507,6 @@
       }),
       {
         title: _t('settings.importZip'),
-        kind: 'warning',
         okLabel: _t('common.confirm'),
         cancelLabel: _t('common.cancel'),
       }
@@ -519,14 +518,14 @@
         executeCardImageZipImport(String(src), plan.newJobs)
       )
       await loadImageCoverage()
-      await message(
+      await showMessage(
         _t('settings.importZipSuccess', {
           values: { count: result.imported, failed: result.failed.length },
         }),
         { title: _t('settings.importZip'), kind: 'info' }
       )
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.importZipFailed'), {
         title: _t('settings.importZip'),
         kind: 'error',
       })
@@ -545,7 +544,7 @@
     try {
       const result = await withBusy(_t('settings.dataPackBusy'), () => exportDataPack(String(dir)))
       lastBackupAt.set(new Date().toISOString())
-      await message(
+      await showMessage(
         _t('settings.dataPackSuccess', {
           values: {
             path: String(dir),
@@ -556,7 +555,7 @@
         { title: _t('settings.dataPackTitle'), kind: 'info' }
       )
     } catch (e) {
-      await message(
+      await showMessage(
         _t('settings.dataPackFailed', {
           values: { message: e instanceof Error ? e.message : _t('common.unknownError') },
         }),
@@ -579,18 +578,18 @@
       validateSqliteBackup(String(src))
     )
     if (!validation.ok) {
-      await message(validation.reason ?? _t('settings.restoreInvalid'), {
+      await showMessage(validation.reason ?? _t('settings.restoreInvalid'), {
         title: _t('settings.restore'),
         kind: 'error',
       })
       return
     }
 
-    const confirmed = await ask(_t('settings.restoreConfirm'), {
+    const confirmed = await confirmAction(_t('settings.restoreConfirm'), {
       title: _t('settings.restoreConfirmTitle'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
 
@@ -605,9 +604,9 @@
         }
       })
       lastBackupAt.set(new Date().toISOString())
-      await message(_t('settings.restoreSuccess'), { title: _t('settings.restore'), kind: 'info' })
+      await showMessage(_t('settings.restoreSuccess'), { title: _t('settings.restore'), kind: 'info' })
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.restoreFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.restoreFailed'), {
         title: _t('settings.restore'),
         kind: 'error',
       })
@@ -745,13 +744,13 @@
         }
         await writeTextFile(dest, JSON.stringify(data, null, 2))
       })
-      await message(_t('settings.exportSuccess', { values: { count: data.decks.length } }), {
+      await showMessage(_t('settings.exportSuccess', { values: { count: data.decks.length } }), {
         title: _t('settings.export'),
         kind: 'info',
       })
       showExportModal = false
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.exportFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.exportFailed'), {
         title: _t('settings.export'),
         kind: 'error',
       })
@@ -913,7 +912,7 @@
     try {
       content = await withBusy(_t('settings.importReadBusy'), async () => readTextFile(String(src)))
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.importReadFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.importReadFailed'), {
         title: _t('settings.import'),
         kind: 'error',
       })
@@ -922,7 +921,7 @@
 
     const decks = parseImportFile(content)
     if (decks.length === 0) {
-      await message(_t('settings.importInvalidFile'), {
+      await showMessage(_t('settings.importInvalidFile'), {
         title: _t('settings.import'),
         kind: 'error',
       })
@@ -958,14 +957,14 @@
         missingCards > 0
           ? _t('settings.importSkippedMissing', { values: { count: missingCards } })
           : ''
-      await message(
+      await showMessage(
         _t('settings.importSuccess', { values: { count: imported, extra: missingText } }),
         { title: _t('settings.import'), kind: 'info' }
       )
       showImportModal = false
       await loadDbInfo()
     } catch (e) {
-      await message(e instanceof Error ? e.message : _t('settings.importFailed'), {
+      await showMessage(e instanceof Error ? e.message : _t('settings.importFailed'), {
         title: _t('settings.import'),
         kind: 'error',
       })
@@ -981,18 +980,18 @@
     action: () => Promise<unknown>,
     successMsg?: string
   ) {
-    const confirmed = await ask(desc, {
+    const confirmed = await confirmAction(desc, {
       title,
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
 
     try {
       await withBusy(_t('settings.confirmAndRunBusy', { values: { action: title } }), action)
     } catch (e) {
-      await message(
+      await showMessage(
         e instanceof Error ? e.message : _t('settings.actionFailed', { values: { action: title } }),
         {
           title,
@@ -1001,7 +1000,7 @@
       )
       return
     }
-    if (successMsg) await message(successMsg, { kind: 'info' })
+    if (successMsg) await showMessage(successMsg, { kind: 'info' })
     await loadDbInfo()
   }
 
@@ -1016,7 +1015,7 @@
 
   async function manualSnapshot() {
     await captureCollectionSnapshot('manual')
-    await message(_t('settings.snapshotRecorded'), {
+    await showMessage(_t('settings.snapshotRecorded'), {
       title: _t('settings.snapshotTitle'),
       kind: 'info',
     })
@@ -1033,32 +1032,32 @@
   }
 
   async function cleanupVersionsAsk() {
-    const confirmed = await ask(_t('settings.cleanupVersionsConfirm'), {
+    const confirmed = await confirmAction(_t('settings.cleanupVersionsConfirm'), {
       title: _t('settings.cleanupVersions'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
 
     const deleted = await withBusy(_t('settings.cleanupVersionsBusy'), () => cleanupDeckVersions())
-    await message(_t('settings.cleanupVersionsSuccess', { values: { count: deleted } }), {
+    await showMessage(_t('settings.cleanupVersionsSuccess', { values: { count: deleted } }), {
       kind: 'info',
     })
     await loadDbInfo()
   }
 
   async function clearCardDataAsk() {
-    const confirmed = await ask(_t('settings.clearCardDataConfirm'), {
+    const confirmed = await confirmAction(_t('settings.clearCardDataConfirm'), {
       title: _t('settings.clearCardData'),
-      kind: 'warning',
       okLabel: _t('common.confirm'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
 
     await withBusy(_t('settings.clearCardDataBusy'), () => clearCardData())
-    await message(_t('settings.clearCardDataSuccess'), { kind: 'info' })
+    await showMessage(_t('settings.clearCardDataSuccess'), { kind: 'info' })
     await loadDbInfo()
   }
 
@@ -1140,11 +1139,11 @@
   async function removeLang(code: string) {
     langMsg = ''
     langMsgError = false
-    const confirmed = await ask(_t('settings.deleteLangConfirm', { values: { code } }), {
+    const confirmed = await confirmAction(_t('settings.deleteLangConfirm', { values: { code } }), {
       title: _t('settings.deleteCustomLang'),
-      kind: 'warning',
       okLabel: _t('common.delete'),
       cancelLabel: _t('common.cancel'),
+      danger: true,
     })
     if (!confirmed) return
     try {

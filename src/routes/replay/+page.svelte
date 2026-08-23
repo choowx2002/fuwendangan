@@ -29,6 +29,7 @@
   import ReplayGroupCard from '$lib/components/replay/ReplayGroupCard.svelte'
   import ReplayInfoModal from '$lib/components/replay/ReplayInfoModal.svelte'
   import { deckOverlapRatio } from '$lib/replay/deck-overlap'
+  import { confirmAction } from '$lib/utils/confirm'
   import SortModal from '$lib/components/cards/SortModal.svelte'
   import type { SortKeyItem } from '$lib/db/types'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -407,18 +408,12 @@
   async function onDelete(fileId: string, key: string, label: string) {
     if (deleting) return
     const message = get(t)('replay.deleteConfirm', { values: { room: label } })
-    let ok = false
-    if (isTauri) {
-      const { ask } = await import('@tauri-apps/plugin-dialog')
-      ok = await ask(message, {
-        title: get(t)('replay.deleteReplay'),
-        kind: 'warning',
-        okLabel: get(t)('common.confirm'),
-        cancelLabel: get(t)('common.cancel'),
-      })
-    } else {
-      ok = window.confirm(message)
-    }
+    const ok = await confirmAction(message, {
+      title: get(t)('replay.deleteReplay'),
+      okLabel: get(t)('common.confirm'),
+      cancelLabel: get(t)('common.cancel'),
+      danger: true,
+    })
     if (!ok) return
     deleting = true
     try {
@@ -473,18 +468,12 @@
     const message = get(t)('replay.deleteSelectedConfirm', {
       values: { count: selected.length },
     })
-    let ok = false
-    if (isTauri) {
-      const { ask } = await import('@tauri-apps/plugin-dialog')
-      ok = await ask(message, {
-        title: get(t)('replay.deleteReplay'),
-        kind: 'warning',
-        okLabel: get(t)('common.confirm'),
-        cancelLabel: get(t)('common.cancel'),
-      })
-    } else {
-      ok = window.confirm(message)
-    }
+    const ok = await confirmAction(message, {
+      title: get(t)('replay.deleteReplay'),
+      okLabel: get(t)('common.confirm'),
+      cancelLabel: get(t)('common.cancel'),
+      danger: true,
+    })
     if (!ok) return
     deleting = true
     try {

@@ -20,7 +20,6 @@
     getCollectionStats,
     getPrintsByCardId,
     getVariantLangs,
-    isTauri,
     searchCardVariants,
     upsertLangQty,
   } from '$lib/db'
@@ -34,6 +33,7 @@
   import CollectionSortDropdown from '$lib/components/collection/CollectionSortDropdown.svelte'
   import BatchToolbar from '$lib/components/collection/BatchToolbar.svelte'
   import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -232,16 +232,15 @@
   async function batchDelete() {
     const items = selectedItems()
     if (items.length === 0) return
-    const confirmed = isTauri
-      ? await (
-          await import('@tauri-apps/plugin-dialog')
-        ).ask(get(t)('collection.deleteConfirm', { values: { count: items.length } }), {
-          title: get(t)('collection.deleteTitle'),
-          kind: 'warning',
-          okLabel: get(t)('common.delete'),
-          cancelLabel: get(t)('common.cancel'),
-        })
-      : window.confirm(get(t)('collection.deleteConfirm', { values: { count: items.length } }))
+    const confirmed = await confirmAction(
+      get(t)('collection.deleteConfirm', { values: { count: items.length } }),
+      {
+        title: get(t)('collection.deleteTitle'),
+        okLabel: get(t)('common.delete'),
+        cancelLabel: get(t)('common.cancel'),
+        danger: true,
+      }
+    )
     if (!confirmed) return
     batchBusy = true
     try {

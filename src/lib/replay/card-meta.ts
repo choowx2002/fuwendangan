@@ -81,7 +81,8 @@ function applyCardMeta(meta: ReplayCardMeta, card: CardWithPrints): void {
       : null
   meta.subtitle = card.sub_title_cn ?? card.sub_title_en ?? null
   meta.description = card.effect_cn ?? card.effect_en ?? null
-  meta.flavor = card.flavor_text_cn ?? card.flavor_text_en ?? null
+  const bestPrint = best ? card.card_prints?.find((p) => p.id === best.id) : undefined
+  meta.flavor = bestPrint?.flavor_text_cn ?? bestPrint?.flavor_text_en ?? null
   meta.energyCost = typeof card.energy === 'number' ? card.energy : null
   meta.might = typeof card.power === 'number' ? card.power : null
   if (best?.url) {

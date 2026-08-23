@@ -168,3 +168,19 @@ export async function syncViaSupabase(): Promise<SyncImportResult> {
     remoteDeviceName: '',
   }
 }
+
+/**
+ * 强制上传覆盖云端：跳过 pull + merge，直接把本机全量 bundle 推送到云端。
+ * 危险操作 —— 云端现有数据会被本机完全覆盖（含其它设备写入的数据）。
+ * 用于：云端数据损坏 / 跨版本格式冲突后主动清空远端重建。
+ */
+export async function forcePushViaSupabase(): Promise<void> {
+  console.log('[SYNC] forcePushViaSupabase 开始（强制覆盖云端）')
+  const localDeviceId = await getOrCreateDeviceId()
+  const local = await extractSyncBody()
+  await pushBody(local, localDeviceId)
+  const checksum = computeBodyChecksum(local)
+  await setSyncMeta(SUPABASE_LAST_PUSH_CHECKSUM, checksum)
+  await setLastSync(new Date().toISOString())
+  console.log('[SYNC] forcePushViaSupabase 完成')
+}

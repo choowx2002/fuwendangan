@@ -5,7 +5,7 @@
   import type { Locker, LockerSection, LockerCard } from '$lib/db'
   import { getLocker, getSection, getSectionCards, deleteSection, printCacheName } from '$lib/db'
   import { Pencil, Trash2, LayoutGrid, Table } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
   import { resolveLockerIcon } from '$lib/components/locker/locker-icons'
@@ -59,11 +59,11 @@
 
   async function removeDrawer() {
     if (!section) return
-    const ok = await ask(
+    const ok = await confirmAction(
       get(t)('locker.deleteSectionConfirm', { values: { name: section.name ?? '' } }),
       {
         title: get(t)('locker.delete'),
-        kind: 'warning',
+        danger: true,
         okLabel: get(t)('locker.delete'),
         cancelLabel: get(t)('common.cancel'),
       }

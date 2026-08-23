@@ -24,7 +24,7 @@ export function deckToString(deck: CardWithPrint[]): string {
       const parts = [
         fullName,
 
-        encode(card.effect_cn ?? card.flavor_text_cn ?? '无效果'),
+        encode(card.effect_cn ?? card.card_prints.flavor_text_cn ?? '无效果'),
 
         card.card_prints.back_image ?? '',
 

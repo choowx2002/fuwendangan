@@ -21,7 +21,6 @@
     type CollectionSort,
   } from '$lib/db'
   import { Pencil, Trash2, X, CheckSquare, ListChecks, Boxes } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
   import { confirmAction } from '$lib/utils/confirm'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -111,11 +110,11 @@
 
   async function removeDrawer() {
     if (!section) return
-    const ok = await ask(
+    const ok = await confirmAction(
       get(t)('locker.deleteSectionConfirm', { values: { name: section.name ?? '' } }),
       {
         title: get(t)('locker.delete'),
-        kind: 'warning',
+        danger: true,
         okLabel: get(t)('locker.delete'),
         cancelLabel: get(t)('common.cancel'),
       }
@@ -206,6 +205,7 @@
         }),
         {
           title: get(t)('locker.removeCard'),
+          danger: true,
           okLabel: get(t)('locker.removeCard'),
           cancelLabel: get(t)('common.cancel'),
         }
@@ -308,6 +308,7 @@
       get(t)('locker.removeSelectedConfirm', { values: { count: selectedMap.size } }),
       {
         title: get(t)('locker.batchRemove'),
+        danger: true,
         okLabel: get(t)('common.delete'),
         cancelLabel: get(t)('common.cancel'),
       }
@@ -349,6 +350,7 @@
       }),
       {
         title: get(t)('locker.removeCard'),
+        danger: true,
         okLabel: get(t)('common.delete'),
         cancelLabel: get(t)('common.cancel'),
       }

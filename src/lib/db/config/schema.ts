@@ -14,8 +14,7 @@ export const TABLE_DEFINITIONS = {
       champion_tag TEXT,
       effect_cn TEXT, effect_en TEXT,
       energy INTEGER, return_energy INTEGER, power INTEGER,
-      rarity_name TEXT, series_name TEXT,
-      flavor_text_cn TEXT, flavor_text_en TEXT,
+      rarity_name TEXT,
       is_banned INTEGER DEFAULT 0,
       deck_limit INTEGER,
       created_at TEXT, updated_at TEXT
@@ -39,6 +38,9 @@ export const TABLE_DEFINITIONS = {
       is_default INTEGER,
       is_promo INTEGER DEFAULT 0,
       is_custom INTEGER DEFAULT 0,
+      series TEXT,
+      flavor_text_cn TEXT,
+      flavor_text_en TEXT,
       created_at TEXT,
       updated_at TEXT,
       FOREIGN KEY(card_id) REFERENCES cards_base(id) ON DELETE CASCADE
@@ -50,7 +52,6 @@ export const TABLE_DEFINITIONS = {
       id TEXT PRIMARY KEY,
       card_no TEXT NOT NULL,
       card_no_extend TEXT NOT NULL,
-      series_code TEXT,
       last_edited_at TEXT,
       created_at TEXT,
       updated_at TEXT,
@@ -70,10 +71,6 @@ export const TABLE_DEFINITIONS = {
       updated_at TEXT,
       UNIQUE(collection_id, language_code)
     )
-  `,
-
-  idx_collection_series: `
-    CREATE INDEX IF NOT EXISTS idx_collection_series ON collection(series_code, last_edited_at)
   `,
 
   idx_collection_card: `

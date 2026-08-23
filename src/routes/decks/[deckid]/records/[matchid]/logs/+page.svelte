@@ -14,7 +14,7 @@
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import { onMount } from 'svelte'
   import { Clock, PencilLine, Swords, Trash2 } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { get } from 'svelte/store'
   import { t } from '$lib/i18n'
 
@@ -55,8 +55,8 @@
   async function confirmDelete() {
     const m = match
     if (!m) return
-    const confirm = await ask(get(t)('records.deleteConfirm'), {
-      kind: 'warning',
+    const confirm = await confirmAction(get(t)('records.deleteConfirm'), {
+      danger: true,
       okLabel: get(t)('common.delete'),
       cancelLabel: get(t)('common.cancel'),
     })

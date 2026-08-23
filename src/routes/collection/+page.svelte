@@ -36,7 +36,7 @@
   import GlobalCollectionSearch from '$lib/components/collection/GlobalCollectionSearch.svelte'
   import EmptyState from '$lib/components/collection/EmptyState.svelte'
   import CustomPrintCreator from '$lib/components/collection/CustomPrintCreator.svelte'
-  import { deriveSeriesCode } from '$lib/collection/collection-utils'
+  import { seriesCodeOfCard } from '$lib/collection/collection-utils'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -242,8 +242,8 @@
     if (!ok) showToast(get(t)('collection.saveCancelled'), 'info')
   }
 
-  function handleGlobalSelect(card: { card_prints?: { card_no_extend: string }[] }) {
-    const code = deriveSeriesCode(card.card_prints?.[0]?.card_no_extend)
+  function handleGlobalSelect(card: { card_prints?: { series?: string | null }[] }) {
+    const code = seriesCodeOfCard(card)
     if (code) {
       void goto(`/collection/${code}`)
     }

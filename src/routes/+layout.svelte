@@ -2,6 +2,7 @@
 <script lang="ts">
   import AppShell from '../lib/components/layout/AppShell.svelte'
   import LoadingModal from '../lib/components/ui/LoadingModal.svelte'
+  import ConfirmDialog from '../lib/components/ui/ConfirmDialog.svelte'
   import Toast from '../lib/components/ui/Toast.svelte'
   import {
     getVersion,
@@ -14,7 +15,7 @@
   import { refreshSupabaseUser } from '../lib/stores/supabase.svelte'
   import { initLogService } from '$lib/services/log-service'
   import { maybePromptBackup } from '$lib/services/backup-reminder'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import '$lib/i18n'
   import '../app.css'
   import { onMount } from 'svelte'
@@ -77,9 +78,8 @@
     try {
       const hasUpdate = await checkForContentUpdates()
       if (!hasUpdate) return
-      const accepted = await ask(get(t)('common.contentUpdatePrompt'), {
+      const accepted = await confirmAction(get(t)('common.contentUpdatePrompt'), {
         title: get(t)('common.contentUpdateTitle'),
-        kind: 'info',
         okLabel: get(t)('common.contentUpdateConfirm'),
         cancelLabel: get(t)('common.cancel'),
       })
@@ -102,6 +102,7 @@
 
 <div class="layout-root">
   <Toast />
+  <ConfirmDialog />
   <!-- 直接使用 uiState.status -->
   {#if uiState.status === 'error'}
     <LoadingModal status={uiState.status} text={uiState.text} subtext={uiState.subText} />

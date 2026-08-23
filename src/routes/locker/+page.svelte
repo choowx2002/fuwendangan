@@ -21,7 +21,7 @@
     Download,
     Upload,
   } from '@lucide/svelte'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { isTauri } from '$lib/db/env'
   import { parseLockerCsv, type LockerCsvParseRow } from '$lib/locker/locker-csv'
@@ -130,9 +130,9 @@
   }
 
   async function removeLocker(l: LockerSummary) {
-    const ok = await ask(get(t)('locker.deleteConfirm', { values: { name: l.name } }), {
+    const ok = await confirmAction(get(t)('locker.deleteConfirm', { values: { name: l.name } }), {
       title: get(t)('locker.delete'),
-      kind: 'warning',
+      danger: true,
       okLabel: get(t)('locker.delete'),
       cancelLabel: get(t)('common.cancel'),
     })

@@ -21,9 +21,6 @@ export interface CardBase {
   return_energy: number | null
   power: number | null
   rarity_name: string | null
-  series_name: string | null
-  flavor_text_cn: string | null
-  flavor_text_en: string | null
   is_banned: boolean | null
   // 卡组中的同名数量上限：NULL=默认3，0=不限，N=最多N张（作用域：英雄+主牌+备牌）
   deck_limit: number | null
@@ -49,6 +46,10 @@ export interface CardPrint {
   is_default: boolean | null
   is_promo: boolean | null
   is_custom: boolean | null
+  // 印刷级系列码（系列/风味文本迁移到打印级，不再取自 cards_base）
+  series: string | null
+  flavor_text_cn: string | null
+  flavor_text_en: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -159,7 +160,6 @@ export interface CollectionEntry {
   id: string
   card_id: string
   card_no_extend: string
-  series_code: string | null
   last_edited_at: string | null
   created_at: string | null
   updated_at: string | null
@@ -266,6 +266,10 @@ export interface CustomPrintInput {
   language: string
   artist?: string | null
   imgToken?: string | null
+  // 打印级系列码/风味文本（系列与风味迁移到打印级）
+  series?: string | null
+  flavorTextCn?: string | null
+  flavorTextEn?: string | null
   normalQty: number
   foilQty: number
 }

@@ -19,9 +19,9 @@ export async function saveCard(card: CardBase): Promise<void> {
     `INSERT OR REPLACE INTO ${TABLES.CARDS_BASE}
      (id, card_no, card_name_cn, card_name_en, sub_title_cn, sub_title_en, card_category,
       card_color_list, region, tag, keyword, advanced_tag, champion_tag, effect_cn, effect_en,
-      energy, return_energy, power, rarity_name, series_name, flavor_text_cn, flavor_text_en,
+      energy, return_energy, power, rarity_name,
       is_banned, deck_limit, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
     [
       sqliteCard.id,
       sqliteCard.card_no,
@@ -42,9 +42,6 @@ export async function saveCard(card: CardBase): Promise<void> {
       sqliteCard.return_energy,
       sqliteCard.power,
       sqliteCard.rarity_name,
-      sqliteCard.series_name,
-      sqliteCard.flavor_text_cn,
-      sqliteCard.flavor_text_en,
       sqliteCard.is_banned,
       sqliteCard.deck_limit,
       sqliteCard.created_at,

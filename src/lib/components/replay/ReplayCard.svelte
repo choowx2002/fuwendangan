@@ -14,8 +14,10 @@
     width?: number
     nameOverride?: string | null
     showType?: boolean
-    /** 宽度由父容器（flex）决定，忽略 width（用于自适应撑满） */
-    fluid?: boolean
+/** 宽度由父容器（flex）决定，忽略 width（用于自适应撑满） */
+  fluid?: boolean
+  /** 强制显示正面卡面（忽略 back/placeholder/hidden），用于连锁区 */
+  forceFace?: boolean
   }
   let {
     card = null,
@@ -25,6 +27,7 @@
     nameOverride = null,
     showType = true,
     fluid = false,
+    forceFace = false,
   }: Props = $props()
 
   const code = $derived(typeof card?.cardCode === 'string' ? String(card.cardCode) : '')
@@ -71,7 +74,7 @@
   }
 </script>
 
-{#if back || placeholder || !card}
+{#if !forceFace && (back || placeholder || !card)}
   <div class="rc back" style="width: {fluid ? '100%' : width + 'px'}">
     <img src="/blue.jpg" alt="" draggable="false" />
   </div>
@@ -84,7 +87,7 @@
   >
     <div class="rc-art">
       <img src={artSrc} alt={name} draggable="false" onerror={onArtError} />
-      {#if hidden}
+      {#if !forceFace && hidden}
         <span class="rc-hidden">{$t('replay.hiddenCard')}</span>
       {/if}
     </div>
@@ -133,6 +136,9 @@
     object-fit: cover;
     display: block;
   }
+  .rc.face.exhausted {
+    transform: rotate(90deg);
+  }
   /* hidden 卡：图面中央标注（待命中 / hidden） */
   .rc-hidden {
     position: absolute;
@@ -145,9 +151,6 @@
     letter-spacing: 0.18em;
     color: #fff;
     background: rgba(8, 12, 20, 0.55);
-  }
-  .rc.face.exhausted {
-    transform: rotate(90deg);
   }
   /* 战力：左上角，尺寸随卡宽（cqw = 卡宽百分比） */
   .rc-might {

@@ -23,7 +23,7 @@ import { repointDeckCardReferences } from '../repository/deck-repository'
 import { updateFilterOptions } from './filter-service'
 import { uiState, showToast } from '$lib/stores/ui-store.svelte'
 import { whenOnline, isMetered } from '$lib/stores/network.svelte'
-import { ask } from '@tauri-apps/plugin-dialog'
+import { openConfirm } from '$lib/stores/confirm-store.svelte'
 import { getDatabase } from '../repository/database'
 import { TABLES } from '../config/constants'
 import { get } from 'svelte/store'
@@ -63,7 +63,7 @@ export async function initializeDatabase(opts?: {
     // 首次安装（无本地 version 行）静默同步，升级才询问
     const isFreshInstall = localVersions.length === 0
     if (!isFreshInstall && opts?.confirm !== false) {
-      const accepted = await ask(get(t)('common.syncDataPrompt'))
+      const accepted = await openConfirm(get(t)('common.syncDataPrompt'))
       if (!accepted) return
     }
 
@@ -210,11 +210,11 @@ async function performSync(
       await repointDeckCardReferences()
     }
 
-    // 4. 条件后处理：卡牌/卡图变化影响收藏有效性；仅 cards 变化时重建筛选
+    // 4. 条件后处理：卡牌/卡图变化影响收藏有效性；series 数据源在打印级，cards/prints 任一变化都重建筛选
     if (hasCards || hasPrints) {
       await collectionRepo.cleanupOrphans()
     }
-    if (hasCards) {
+    if (hasCards || hasPrints) {
       await updateFilterOptions()
     }
 

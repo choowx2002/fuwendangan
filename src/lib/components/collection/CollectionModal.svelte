@@ -9,6 +9,7 @@
   import { type VariantBucket, classifyVariant } from '$lib/cards/utils/variant-utils'
   import { isTauri } from '$lib/db/env'
   import { showToast } from '$lib/stores/ui-store.svelte'
+  import { confirmAction } from '$lib/utils/confirm'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
@@ -186,18 +187,15 @@
   async function removeCustom(v: VariantView) {
     const custom = v.prints.find((p) => p.is_custom)
     if (!custom) return
-    const confirmed = isTauri
-      ? await (
-          await import('@tauri-apps/plugin-dialog')
-        ).ask(get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } }), {
-          title: get(t)('collection.deleteCustomTitle'),
-          kind: 'warning',
-          okLabel: get(t)('collection.deleteAction'),
-          cancelLabel: get(t)('common.cancel'),
-        })
-      : window.confirm(
-          get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } })
-        )
+    const confirmed = await confirmAction(
+      get(t)('collection.deleteCustomConfirm', { values: { cardNo: v.cardNoExtend } }),
+      {
+        title: get(t)('collection.deleteCustomTitle'),
+        okLabel: get(t)('collection.deleteAction'),
+        cancelLabel: get(t)('common.cancel'),
+        danger: true,
+      }
+    )
     if (!confirmed) return
     try {
       const { deleteCustomPrint } = await import('$lib/db')

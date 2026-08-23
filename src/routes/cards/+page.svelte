@@ -9,7 +9,7 @@
   import { multiSpawn } from '$lib/services/tts-communication-service'
   import { beforeNavigate, goto } from '$app/navigation'
   import { routeBackConfig } from '$lib/utils/route-config'
-  import { ask } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { Send, LoaderCircle } from '@lucide/svelte'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
@@ -32,11 +32,10 @@
     if (sending) return
     if (!displayedCards.length) return
 
-    const accepted = await ask(
+    const accepted = await confirmAction(
       get(t)('cards.ttsBatchConfirm', { values: { count: displayedCards.length } }),
       {
         title: get(t)('cards.ttsBatch'),
-        kind: 'warning',
         okLabel: get(t)('common.confirm'),
         cancelLabel: get(t)('common.cancel'),
       }

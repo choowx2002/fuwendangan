@@ -287,6 +287,9 @@
   function step(dir: -1 | 1) {
     const next = Math.max(0, Math.min(current + dir, total - 1))
     current = next
+    console.log(gameState)
+    console.log(opp)
+    console.log(me)
   }
   function jump(end: boolean) {
     current = end ? total - 1 : 0
@@ -342,9 +345,9 @@
     if (!t || typeof t.closest !== 'function' || !t.closest('[data-card-id]')) preview = null
   }
 
-  // 仅牌背（占位/无卡/back）不显示悬停提示；hidden 卡仍显示（提示内标注 hidden）
+  // 牌背（占位/无卡/back/hidden）不显示悬停提示
   function isBackCard(card: Record<string, unknown> | null | undefined): boolean {
-    return !card || card.isPlaceholder === true || card.back === true
+    return !card || card.isPlaceholder === true  && card.hidden === true
   }
 
   function hoverCard(
@@ -764,6 +767,7 @@
                   meta={metaOfChain(chainNewest)}
                   width={chainBigW}
                   showType={false}
+                  forceFace={true}
                 />
               </button>
               {#if chainOlder.length > 0}
@@ -777,7 +781,7 @@
                         onmouseenter={() => c && hoverCard(c, metaOfChain(c), null, 'chain')}
                         onclick={() => c && pickCard(c, metaOfChain(c), null, 'chain')}
                       >
-                        <ReplayCard card={c} meta={metaOfChain(c)} width={chainMiniW} showType={false} />
+                        <ReplayCard card={c} meta={metaOfChain(c)} width={chainMiniW} showType={false} forceFace={true} />
                       </button>
                     {/if}
                   {/each}

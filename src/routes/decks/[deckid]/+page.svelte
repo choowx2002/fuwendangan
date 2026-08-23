@@ -62,7 +62,8 @@
   import { isMobile } from '$lib/utils/os'
   import { writeText, writeImage } from '@tauri-apps/plugin-clipboard-manager'
   import { shareFile } from '@choochmeque/tauri-plugin-sharekit-api'
-  import { save, open, ask } from '@tauri-apps/plugin-dialog'
+  import { save, open } from '@tauri-apps/plugin-dialog'
+  import { confirmAction } from '$lib/utils/confirm'
   import { writeTextFile, readImageFileAsDataUrl } from '$lib/services/db-file-service'
   import {
     buildProxyPdf,
@@ -603,8 +604,8 @@
   }
 
   async function confirmDeleteMatch(match: MatchWithGames) {
-    const confirm = await ask(get(t)('records.deleteConfirm'), {
-      kind: 'warning',
+    const confirm = await confirmAction(get(t)('records.deleteConfirm'), {
+      danger: true,
       okLabel: get(t)('common.delete'),
       cancelLabel: get(t)('common.cancel'),
     })
@@ -615,10 +616,10 @@
 
   async function confirmDeleteDeck() {
     if (!deck) return
-    const confirm = await ask(
+    const confirm = await confirmAction(
       get(t)('deckDetail.deleteDeckConfirm', { values: { name: deck.name } }),
       {
-        kind: 'warning',
+        danger: true,
         okLabel: get(t)('common.delete'),
         cancelLabel: get(t)('common.cancel'),
       }
@@ -655,10 +656,9 @@
       return
     }
     const nextVersion = versions.reduce((max, v) => Math.max(max, v.version_number), 0) + 1
-    const confirm = await ask(
+    const confirm = await confirmAction(
       get(t)('deckDetail.overwriteAsk', { values: { version: nextVersion } }),
       {
-        kind: 'warning',
         okLabel: get(t)('deckDetail.overwriteConfirm'),
         cancelLabel: get(t)('common.cancel'),
       }

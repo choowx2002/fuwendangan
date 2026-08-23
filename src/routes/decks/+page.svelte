@@ -10,6 +10,7 @@
     importDecksFromJson,
     type DeckListResult,
   } from '$lib/db'
+  import { confirmAction, showMessage } from '$lib/utils/confirm'
   import { getRelativeTime } from '$lib/utils/time-helper'
   import { DECK_FORMATS, FORMAT_LABEL_KEYS } from '$lib/decks/format'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
@@ -30,7 +31,6 @@
     CopyPlus,
     Pin,
   } from '@lucide/svelte'
-  import { ask, message } from '@tauri-apps/plugin-dialog'
   import { isMobile } from '$lib/utils/os'
   import { onMount, tick } from 'svelte'
   import { get } from 'svelte/store'
@@ -122,10 +122,10 @@
   }
 
   async function deleteDeckAsk(name: string, deckId: string) {
-    const confirm = await ask(get(t)('decks.deleteConfirm', { values: { name } }), {
-      kind: 'warning',
+    const confirm = await confirmAction(get(t)('decks.deleteConfirm', { values: { name } }), {
       okLabel: get(t)('common.confirm'),
       cancelLabel: get(t)('common.cancel'),
+      danger: true,
     })
 
     if (confirm) {
@@ -136,8 +136,7 @@
   }
 
   async function duplicateDeckAsk(name: string, deckId: string) {
-    const confirm = await ask(get(t)('decks.duplicateConfirm', { values: { name } }), {
-      kind: 'warning',
+    const confirm = await confirmAction(get(t)('decks.duplicateConfirm', { values: { name } }), {
       okLabel: get(t)('common.confirm'),
       cancelLabel: get(t)('common.cancel'),
     })
@@ -147,11 +146,11 @@
     try {
       const newDeckId = await duplicateDeck(deckId)
       if (newDeckId) {
-        message(get(t)('decks.duplicateSuccess')).then(init)
+        showMessage(get(t)('decks.duplicateSuccess')).then(init)
       }
     } catch (error) {
       console.error(error)
-      message(get(t)('decks.duplicateFailed'))
+      showMessage(get(t)('decks.duplicateFailed'))
     }
   }
 
@@ -487,14 +486,14 @@
         missingCards > 0
           ? get(t)('decks.importSkippedMissing', { values: { count: missingCards } })
           : ''
-      await message(get(t)('decks.importSuccess', { values: { imported, extra: missingText } }), {
+      await showMessage(get(t)('decks.importSuccess', { values: { imported, extra: missingText } }), {
         title: get(t)('decks.importTitle'),
         kind: 'info',
       })
       showImportModal = false
       init()
     } catch (e) {
-      await message(e instanceof Error ? e.message : get(t)('decks.importFailed'), {
+      await showMessage(e instanceof Error ? e.message : get(t)('decks.importFailed'), {
         title: get(t)('decks.importTitle'),
         kind: 'error',
       })

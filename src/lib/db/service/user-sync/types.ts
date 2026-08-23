@@ -231,6 +231,9 @@ export interface SyncCustomPrint {
     is_default: number | null
     is_promo: number | null
     is_custom: number | null
+    series: string | null
+    flavor_text_cn: string | null
+    flavor_text_en: string | null
     created_at: string | null
     updated_at: string
   }
