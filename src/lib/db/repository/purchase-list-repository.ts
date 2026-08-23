@@ -766,7 +766,16 @@ export async function createPurchaseListEditor(input: {
  */
 export async function getDeckPurchasePreview(
   deckId: string
-): Promise<{ cardNo: string; cardNoExtend: string; cardName: string | null; needed: number }[]> {
+): Promise<
+  {
+    cardNo: string
+    cardNoExtend: string
+    cardName: string | null
+    needed: number
+    imgCdn: string | null
+    printLanguage: string | null
+  }[]
+> {
   const { checkRows } = await loadDeckCheck(deckId)
   return checkRows
     .filter((r) => r.qtyToBuy > 0)
@@ -775,6 +784,8 @@ export async function getDeckPurchasePreview(
       cardNoExtend: r.cardNoExtend,
       cardName: r.cardName ?? null,
       needed: r.needed,
+      imgCdn: r.imgCdn ?? null,
+      printLanguage: r.printLanguage ?? null,
     }))
 }
 

@@ -159,10 +159,15 @@
   }
 
   function onVariantChange(row: EditRow) {
+    applyVariantImage(row)
+    dirty = true
+  }
+
+  /** 从已加载的印刷列表里，把某行的卡图 URL/语言补齐（addCard 之外的路径——如卡组生成——需要此补图） */
+  function applyVariantImage(row: EditRow) {
     const p = (variantsByCard[row.cardNo] ?? []).find((x) => x.card_no_extend === row.cardNoExtend)
     if (p?.img_cdn) row.imgCdn = p.img_cdn
     if (p?.language) row.imgLang = p.language
-    dirty = true
   }
 
   function onQtyChange(row: EditRow, e: Event) {
@@ -189,8 +194,8 @@
           cardNo: p.cardNo,
           cardNoExtend: p.cardNoExtend,
           cardName: p.cardName || p.cardNo,
-          imgCdn: null,
-          imgLang: null,
+          imgCdn: p.imgCdn,
+          imgLang: p.printLanguage,
           languagePref: get(defaultLanguage),
           finishPref: 'any',
           qtyRequired: Math.max(1, p.needed),

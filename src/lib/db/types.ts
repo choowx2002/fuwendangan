@@ -293,6 +293,9 @@ export interface OwnershipCheckRow {
   available: number
   // 缺卡数量 = max(0, needed - available)
   qtyToBuy: number
+  // 代表印刷的卡图 URL 与语言（可为 null）
+  imgCdn?: string | null
+  printLanguage?: string | null
 }
 
 // ==================== 心愿单 ====================

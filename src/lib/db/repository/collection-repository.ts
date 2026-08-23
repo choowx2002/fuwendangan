@@ -849,7 +849,8 @@ export async function checkDeckOwnership(
 
   const printRows = await db.select<any[]>(
     `SELECT p.id AS print_id, p.card_id, cb.card_no AS card_no,
-       cb.card_name_cn AS card_name, p.card_no_extend AS card_no_extend
+       cb.card_name_cn AS card_name, p.card_no_extend AS card_no_extend,
+       p.img_cdn AS img_cdn, p.language AS language
      FROM ${TABLES.CARD_PRINTS} p
      JOIN ${TABLES.CARDS_BASE} cb ON cb.id = p.card_id
      WHERE p.id IN (${items.map(() => '?').join(',')})`,
@@ -928,6 +929,8 @@ export async function checkDeckOwnership(
       borrowedIn,
       available,
       qtyToBuy: Math.max(0, needed - available),
+      imgCdn: sample.img_cdn ?? null,
+      printLanguage: sample.language ?? null,
     })
   }
   result.sort(
