@@ -1,5 +1,10 @@
 import { isTauri } from '$lib/db'
-import { openConfirm, openAlert } from '$lib/stores/confirm-store.svelte'
+import {
+  openConfirm,
+  openAlert,
+  openChoice,
+  type DialogAction,
+} from '$lib/stores/confirm-store.svelte'
 
 export interface ConfirmOptions {
   title?: string
@@ -18,6 +23,24 @@ export async function confirmAction(message: string, opts?: ConfirmOptions): Pro
     return openConfirm(message, opts)
   }
   return window.confirm(message)
+}
+
+export interface ChoiceOptions {
+  title?: string
+  cancelLabel?: string
+  actions: DialogAction[]
+}
+
+/**
+ * 统一多选操作弹窗：返回所选 action 的 key，取消则返回 null。
+ * Tauri 环境走应用内模态框；Web 环境（无原生多按钮）回退为确认后取第一个 action。
+ */
+export async function confirmChoice(message: string, opts: ChoiceOptions): Promise<string | null> {
+  if (isTauri) {
+    return openChoice(message, opts)
+  }
+  if (!window.confirm(message)) return null
+  return opts.actions[0]?.key ?? null
 }
 
 export type MessageKind = 'info' | 'success' | 'warning' | 'error'

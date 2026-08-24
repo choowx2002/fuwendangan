@@ -29,7 +29,7 @@
   import ReplayGroupCard from '$lib/components/replay/ReplayGroupCard.svelte'
   import ReplayInfoModal from '$lib/components/replay/ReplayInfoModal.svelte'
   import { deckOverlapRatio } from '$lib/replay/deck-overlap'
-  import { confirmAction } from '$lib/utils/confirm'
+  import { confirmAction, confirmChoice } from '$lib/utils/confirm'
   import SortModal from '$lib/components/cards/SortModal.svelte'
   import type { SortKeyItem } from '$lib/db/types'
   import CommonModal from '$lib/components/ui/CommonModal.svelte'
@@ -407,14 +407,32 @@
 
   async function onDelete(fileId: string, key: string, label: string) {
     if (deleting) return
-    const message = get(t)('replay.deleteConfirm', { values: { room: label } })
-    const ok = await confirmAction(message, {
-      title: get(t)('replay.deleteReplay'),
-      okLabel: get(t)('common.confirm'),
-      cancelLabel: get(t)('common.cancel'),
-      danger: true,
-    })
-    if (!ok) return
+    const bound = bindings.has(key)
+    // 已绑定对局记录时，询问是否保留记录（仅删复盘，还是连同记录一起删）
+    let deleteRecord = true
+    if (bound) {
+      const choice = await confirmChoice(
+        get(t)('replay.deleteBindConfirm', { values: { room: label } }),
+        {
+          title: get(t)('replay.deleteReplay'),
+          cancelLabel: get(t)('common.cancel'),
+          actions: [
+            { key: 'keep', label: get(t)('replay.deleteKeepRecord') },
+            { key: 'delete', label: get(t)('replay.deleteRecord'), danger: true },
+          ],
+        }
+      )
+      if (choice === null) return
+      deleteRecord = choice === 'delete'
+    } else {
+      const ok = await confirmAction(get(t)('replay.deleteConfirm', { values: { room: label } }), {
+        title: get(t)('replay.deleteReplay'),
+        okLabel: get(t)('common.confirm'),
+        cancelLabel: get(t)('common.cancel'),
+        danger: true,
+      })
+      if (!ok) return
+    }
     deleting = true
     try {
       const removed = await removeRoom(fileId, key)
@@ -427,9 +445,11 @@
       } else {
         await refresh()
       }
-      // 联动清理：该局的 match 记录（含同步墓碑）随复盘删除
+      // 联动清理：仅当用户选择删除记录时，才移除该局的 match 记录（含同步墓碑）
       if (isTauri) {
-        await deleteMatchByReplayKey(key)
+        if (deleteRecord) {
+          await deleteMatchByReplayKey(key)
+        }
         await loadBindings()
       }
       showToast(get(t)('replay.deleted'), 'success')
@@ -465,16 +485,35 @@
     if (deleting || selectedKeys.size === 0) return
     const selected = mergedGroups.filter((m) => selectedKeys.has(m.group.key))
     if (selected.length === 0) return
-    const message = get(t)('replay.deleteSelectedConfirm', {
-      values: { count: selected.length },
-    })
-    const ok = await confirmAction(message, {
-      title: get(t)('replay.deleteReplay'),
-      okLabel: get(t)('common.confirm'),
-      cancelLabel: get(t)('common.cancel'),
-      danger: true,
-    })
-    if (!ok) return
+    const boundSelected = selected.filter((m) => bindings.has(m.group.key))
+    // 有选中局已绑定对局记录时，询问是否保留记录（仅删复盘，还是连同记录一起删）
+    let deleteRecord = true
+    if (boundSelected.length > 0) {
+      const choice = await confirmChoice(
+        get(t)('replay.deleteSelectedBindConfirm', { values: { count: boundSelected.length } }),
+        {
+          title: get(t)('replay.deleteReplay'),
+          cancelLabel: get(t)('common.cancel'),
+          actions: [
+            { key: 'keep', label: get(t)('replay.deleteKeepRecord') },
+            { key: 'delete', label: get(t)('replay.deleteRecord'), danger: true },
+          ],
+        }
+      )
+      if (choice === null) return
+      deleteRecord = choice === 'delete'
+    } else {
+      const ok = await confirmAction(
+        get(t)('replay.deleteSelectedConfirm', { values: { count: selected.length } }),
+        {
+          title: get(t)('replay.deleteReplay'),
+          okLabel: get(t)('common.confirm'),
+          cancelLabel: get(t)('common.cancel'),
+          danger: true,
+        }
+      )
+      if (!ok) return
+    }
     deleting = true
     try {
       let removedOnDisk = 0
@@ -499,10 +538,12 @@
       if (removedOnDisk > 0) {
         await refresh()
       }
-      // 联动清理：批量删除各局的 match 记录
+      // 联动清理：仅当用户选择删除记录时，才移除各局的 match 记录
       if (isTauri) {
-        for (const m of selected) {
-          await deleteMatchByReplayKey(m.group.key)
+        if (deleteRecord) {
+          for (const m of selected) {
+            await deleteMatchByReplayKey(m.group.key)
+          }
         }
         await loadBindings()
       }

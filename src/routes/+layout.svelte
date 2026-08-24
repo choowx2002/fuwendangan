@@ -16,15 +16,22 @@
   import { initLogService } from '$lib/services/log-service'
   import { maybePromptBackup } from '$lib/services/backup-reminder'
   import { confirmAction } from '$lib/utils/confirm'
+  import { isSecondaryWindow } from '$lib/utils/open-window'
   import '$lib/i18n'
   import '../app.css'
   import { onMount } from 'svelte'
   import { afterNavigate } from '$app/navigation'
+  import { page } from '$app/state'
   import { tick } from 'svelte'
   import { get } from 'svelte/store'
   import { t } from '$lib/i18n'
 
   let { children } = $props()
+
+  /** 卡牌独立展示窗口：无 AppShell（无侧栏/顶栏/底栏），纯全屏展示 */
+  const isShowcaseWindow = $derived(page.url.pathname.startsWith('/cards/show/'))
+  /** 独立筛选窗口：无 AppShell（无侧栏/顶栏/底栏） */
+  const isStandaloneWindow = $derived(page.url.pathname.startsWith('/cards/filter'))
 
   $effect(() => {
     document.documentElement.dataset.theme = $darkMode ? 'dark' : 'light'
@@ -37,6 +44,10 @@
 
   async function init() {
     try {
+      // 次级窗口（openInNewWindow 创建）共享主窗口的数据库与内容，不应再触发
+      // 内容同步 / 备份提醒 / 云同步等主窗口才承担的一次性启动逻辑。
+      const secondary = await isSecondaryWindow()
+
       const needInit = !(await getVersion())
 
       if (needInit) {
@@ -46,18 +57,20 @@
         }, 500)
 
         await initializeDatabase()
-      } else {
+      } else if (!secondary) {
         // 老用户启动：后台静默检查内容更新，发现新版本再询问
         void checkContentUpdates()
       }
 
       setLoadStatus('success')
-      // 启动后异步检查备份提醒（不阻塞界面）
-      void maybePromptBackup()
-      // 启动后异步检测云同步更新（仅 Tauri + 开关开启，弹框确认后同步，失败静默）
-      void checkAutoSyncOnLaunch()
-      // 启动后异步刷新 Supabase 登录状态（Sidebar 同步按钮显隐）
-      void refreshSupabaseUser()
+      if (!secondary) {
+        // 启动后异步检查备份提醒（不阻塞界面）
+        void maybePromptBackup()
+        // 启动后异步检测云同步更新（仅 Tauri + 开关开启，弹框确认后同步，失败静默）
+        void checkAutoSyncOnLaunch()
+        // 启动后异步刷新 Supabase 登录状态（Sidebar 同步按钮显隐）
+        void refreshSupabaseUser()
+      }
     } catch (error) {
       // DEBUG: 启动初始化失败的真实错误（plugin-sql reject 为普通字符串）
       console.error('[Layout] 初始化失败:', error)
@@ -111,9 +124,14 @@
   {/if}
 
   {#if uiState.status === 'success' || uiState.status === 'hidden' || uiState.status === 'downloading'}
-    <AppShell>
+    {#if isShowcaseWindow || isStandaloneWindow}
+      <!-- 独立展示/筛选窗口：不套 AppShell，直接渲染子内容 -->
       {@render children()}
-    </AppShell>
+    {:else}
+      <AppShell>
+        {@render children()}
+      </AppShell>
+    {/if}
   {/if}
 </div>
 

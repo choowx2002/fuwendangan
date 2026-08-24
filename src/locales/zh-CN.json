@@ -12,7 +12,8 @@
     "scanner": "扫码",
     "sectionTools": "工具与设置",
     "supabaseSync": "云同步",
-    "sync": "数据同步"
+    "sync": "数据同步",
+    "openInNewWindow": "在新窗口打开"
   },
   "rules": {
     "title": "游戏文档",
@@ -1006,7 +1007,9 @@
     "causeServer": "图片服务器暂时不可用",
     "causeRegion": "中国大陆地区可能因网络环境导致无法访问",
     "causeMissing": "图片资源不存在或已被移除",
-    "adjustFilters": "试试调整筛选条件或搜索关键词"
+    "adjustFilters": "试试调整筛选条件或搜索关键词",
+    "filterRange": "数值范围",
+    "hitCount": "命中 {count} 张"
   },
   "collection": {
     "title": "收藏",
@@ -1338,8 +1341,10 @@
     "importPlaceholder": "粘贴 JSON 或 Base64 分享码，点击导入",
     "importSuccess": "导入成功",
     "importFailed": "导入失败：格式不正确",
-    "exportJson": "导出 JSON",
-    "exportBase64": "导出 Base64",
+    "historyImported": "已导入历史（{count} 个快照点）",
+    "exportHistoryJson": "导出 JSON",
+    "exportHistoryBase64": "导出 Base64",
+    "historyExported": "历史已复制",
     "apply": "应用此快照",
     "delete": "删除",
     "minimize": "最小化",
@@ -1828,10 +1833,14 @@
     "deleted": "已删除",
     "deleteReplay": "删除该局",
     "deleteConfirm": "确认删除这局 {room}？",
+    "deleteBindConfirm": "这局 {room} 已关联对局记录，删除复盘时是否保留该记录？",
+    "deleteKeepRecord": "保留记录",
+    "deleteRecord": "删除记录",
     "multiSelect": "多选",
     "selectAll": "全选",
     "deleteSelected": "删除（{count}）",
     "deleteSelectedConfirm": "确认删除这 {count} 局？",
+    "deleteSelectedBindConfirm": "所选 {count} 局已关联对局记录，删除复盘时是否保留这些记录？",
     "deletedMany": "已删除 {count} 局",
     "toggleSelect": "选择该局",
     "selectHint": "勾选以批量删除",
@@ -2013,5 +2022,16 @@
     "trashDetail": "弃牌堆（{count}）",
     "banishedDetail": "放逐区（{count}）",
     "pileEmpty": "空"
+  },
+  "showcase": {
+    "reset": "复位",
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "flip": "翻面",
+    "enterFullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏",
+    "minimize": "最小化",
+    "cardize": "卡片化置顶",
+    "uncardize": "放大恢复"
   }
 }

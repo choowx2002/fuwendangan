@@ -11,6 +11,8 @@
     SortKeyItem,
   } from '$lib/db/types'
   import { ChevronDown, ChevronUp, LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
+  import { isTauri } from '$lib/db/env'
+  import { filterSyncStore, initFilterSync, setFilterSyncState } from '$lib/services/filter-bridge'
   import { buildSearchParams, printCacheName } from '$lib/db/helper'
   import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
@@ -29,6 +31,7 @@
     displayedCards = $bindable<CardBase[]>([]),
     isFilterOpen = $bindable(false),
     zone = $bindable('legend'),
+    filterSyncEnabled = false,
   }: {
     onCardClick?: (arg0: cardAndPrint) => void
     onMenuClick?: (id: string, zone: ZoneKey) => void
@@ -37,6 +40,8 @@
     displayedCards?: CardBase[]
     isFilterOpen?: boolean
     zone?: ZoneKey
+    /** 是否开启与独立筛选窗口的实时双向同步 */
+    filterSyncEnabled?: boolean
   } = $props()
 
   // --- 基础状态 ---
@@ -91,6 +96,77 @@
       await performSearch()
     }
     init()
+  })
+
+  // --- 跨窗口筛选同步 ---
+  let syncUnsub: (() => void) | null = null
+  let storeUnsub: (() => void) | null = null
+  /** 上次已广播/已应用的状态指纹，用于去抖避免回环 */
+  let lastSyncJson = ''
+
+  // 本地筛选状态指纹（作为 $effect 依赖；仅真正变化才触发广播）
+  const localSyncState = $derived(
+    JSON.stringify({
+      activeFilters,
+      energy,
+      power,
+      return_energy,
+      currentSearchText,
+      sortList,
+      totalCards,
+    })
+  )
+
+  // 本地状态变化 → 广播到其它窗口
+  $effect(() => {
+    if (!filterSyncEnabled) return
+    const json = localSyncState
+    if (json === lastSyncJson) return
+    lastSyncJson = json
+    void setFilterSyncState({
+      activeFilters: [...activeFilters],
+      energy: { ...energy },
+      power: { ...power },
+      return_energy: { ...return_energy },
+      currentSearchText,
+      sortList: sortList.map((s) => ({ ...s })),
+      totalCards,
+    })
+  })
+
+  // 订阅其它窗口广播 → 应用本地并重新搜索
+  $effect(() => {
+    if (!filterSyncEnabled) return
+    let cancelled = false
+    void (async () => {
+      const unlisten = await initFilterSync()
+      if (cancelled) {
+        unlisten()
+        return
+      }
+      syncUnsub = unlisten
+      storeUnsub = filterSyncStore.subscribe((s) => {
+        if (!s) return
+        // 若与本地当前状态相同则忽略（可能来自自己的广播回写）
+        const remoteJson = JSON.stringify(s)
+        if (remoteJson === localSyncState) return
+        lastSyncJson = remoteJson
+        activeFilters = s.activeFilters
+        energy = s.energy
+        power = s.power
+        return_energy = s.return_energy
+        currentSearchText = s.currentSearchText
+        sortList = s.sortList
+        void performSearch()
+      })
+    })()
+    return () => {
+      cancelled = true
+      syncUnsub?.()
+      syncUnsub = null
+      storeUnsub?.()
+      storeUnsub = null
+    }
   })
 
   // --- 核心搜索逻辑 ---
@@ -504,6 +580,7 @@
       isFilterOpen = false
       performSearch()
     }}
+    showOpenInNewWindow={filterSyncEnabled}
     bind:energy
     bind:power
     bind:return_energy

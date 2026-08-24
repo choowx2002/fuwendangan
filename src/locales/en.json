@@ -12,7 +12,8 @@
     "scanner": "Scanner",
     "sectionTools": "Tools & Settings",
     "supabaseSync": "Cloud Sync",
-    "sync": "Sync"
+    "sync": "Sync",
+    "openInNewWindow": "Open in new window"
   },
   "rules": {
     "title": "Game Documents",
@@ -1006,7 +1007,9 @@
     "causeServer": "Image server temporarily unavailable",
     "causeRegion": "May be inaccessible due to network conditions in mainland China",
     "causeMissing": "Image resource does not exist or has been removed",
-    "adjustFilters": "Try adjusting your filters or search terms"
+    "adjustFilters": "Try adjusting your filters or search terms",
+    "filterRange": "Number Range",
+    "hitCount": "Hit {count} cards"
   },
   "collection": {
     "title": "Collection",
@@ -1338,8 +1341,10 @@
     "importPlaceholder": "Paste JSON or Base64 share code, then import",
     "importSuccess": "Imported",
     "importFailed": "Import failed: invalid format",
-    "exportJson": "Export JSON",
-    "exportBase64": "Export Base64",
+    "historyImported": "History imported ({count} snapshots)",
+    "exportHistoryJson": "Export JSON",
+    "exportHistoryBase64": "Export Base64",
+    "historyExported": "History copied",
     "apply": "Apply snapshot",
     "delete": "Delete",
     "minimize": "Minimize",
@@ -1828,10 +1833,14 @@
     "deleted": "Deleted",
     "deleteReplay": "Delete this game",
     "deleteConfirm": "Delete this game ({room})?",
+    "deleteBindConfirm": "This game ({room}) is linked to a match record. Keep that record when deleting the replay?",
+    "deleteKeepRecord": "Keep record",
+    "deleteRecord": "Delete record",
     "multiSelect": "Multi-select",
     "selectAll": "Select all",
     "deleteSelected": "Delete ({count})",
     "deleteSelectedConfirm": "Delete these {count} games?",
+    "deleteSelectedBindConfirm": "{count} of the selected games are linked to match records. Keep those records when deleting the replays?",
     "deletedMany": "Deleted {count} games",
     "toggleSelect": "Select this game",
     "selectHint": "Select to batch delete",
@@ -2013,5 +2022,16 @@
     "trashDetail": "Trash ({count})",
     "banishedDetail": "Banished ({count})",
     "pileEmpty": "Empty"
+  },
+  "showcase": {
+    "reset": "Reset",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "flip": "Flip",
+    "enterFullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "minimize": "Minimize",
+    "cardize": "Card size & pin",
+    "uncardize": "Enlarge restore"
   }
 }

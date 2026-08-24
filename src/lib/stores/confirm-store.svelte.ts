@@ -2,8 +2,17 @@
 import { get } from 'svelte/store'
 import { t } from 'svelte-i18n'
 
-export type DialogMode = 'confirm' | 'alert'
+export type DialogMode = 'confirm' | 'alert' | 'choice'
 export type DialogIcon = 'info' | 'success' | 'warning' | 'error'
+
+/** choice 模式下的一个可选操作按钮 */
+export interface DialogAction {
+  /** 选中时 resolve 的标识 key */
+  key: string
+  label: string
+  /** 危险操作：按钮用红色样式 */
+  danger?: boolean
+}
 
 interface DialogState {
   open: boolean
@@ -14,7 +23,8 @@ interface DialogState {
   cancelLabel: string
   danger: boolean
   icon: DialogIcon
-  resolve: ((value: boolean) => void) | null
+  actions: DialogAction[]
+  resolve: ((value: boolean | string | null) => void) | null
 }
 
 export const dialogState = $state<DialogState>({
@@ -26,6 +36,7 @@ export const dialogState = $state<DialogState>({
   cancelLabel: '',
   danger: false,
   icon: 'info',
+  actions: [],
   resolve: null,
 })
 
@@ -43,6 +54,12 @@ export interface AlertOptions {
   kind?: DialogIcon
 }
 
+export interface ChoiceOptions {
+  title?: string
+  cancelLabel?: string
+  actions: DialogAction[]
+}
+
 /**
  * 打开应用内确认弹窗，返回用户选择的 Promise<boolean>。
  * Tauri 环境用它替代 @tauri-apps/plugin-dialog 的 ask()（无系统声音）。
@@ -56,7 +73,30 @@ export function openConfirm(message: string, opts: ConfirmOptions = {}): Promise
     dialogState.cancelLabel = opts.cancelLabel ?? get(t)('common.cancel') ?? '取消'
     dialogState.danger = opts.danger ?? false
     dialogState.icon = opts.danger ? 'warning' : 'info'
-    dialogState.resolve = resolve
+    dialogState.actions = []
+    dialogState.resolve = (value) => resolve(Boolean(value))
+    dialogState.open = true
+  })
+}
+
+/**
+ * 打开应用内多选操作弹窗（取消 / 多个可选按钮），返回所选 action 的 key；取消则返回 null。
+ * 用于「删除并联动清理」这类需要用户在多个后果间选择的情形。
+ */
+export function openChoice(
+  message: string,
+  opts: Partial<ChoiceOptions> = {}
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    dialogState.mode = 'choice'
+    dialogState.message = message
+    dialogState.title = opts.title ?? ''
+    dialogState.okLabel = ''
+    dialogState.cancelLabel = opts.cancelLabel ?? get(t)('common.cancel') ?? '取消'
+    dialogState.danger = false
+    dialogState.icon = 'warning'
+    dialogState.actions = opts.actions ?? []
+    dialogState.resolve = (v) => resolve(typeof v === 'string' ? v : null)
     dialogState.open = true
   })
 }
@@ -74,12 +114,13 @@ export function openAlert(message: string, opts: AlertOptions = {}): Promise<voi
     dialogState.cancelLabel = ''
     dialogState.danger = false
     dialogState.icon = opts.kind ?? 'info'
+    dialogState.actions = []
     dialogState.resolve = () => resolve()
     dialogState.open = true
   })
 }
 
-export function closeDialog(result: boolean) {
+export function closeDialog(result: boolean | string | null) {
   dialogState.resolve?.(result)
   dialogState.resolve = null
   dialogState.open = false

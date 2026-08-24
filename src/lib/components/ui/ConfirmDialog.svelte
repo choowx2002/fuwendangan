@@ -13,7 +13,7 @@
 <CommonModal
   open={dialogState.open}
   title={dialogState.title}
-  width="380px"
+  width={mode === 'choice' ? 'min(440px, 100%)' : '380px'}
   closeOnOverlay={false}
   onclose={handleClose}
 >
@@ -39,6 +39,16 @@
       >
         {dialogState.okLabel}
       </button>
+    {:else if mode === 'choice'}
+      <button class="button button-ghost" onclick={handleClose}>{dialogState.cancelLabel}</button>
+      {#each dialogState.actions as action (action.key)}
+        <button
+          class="button {action.danger ? 'button-danger' : 'button-primary'}"
+          onclick={() => closeDialog(action.key)}
+        >
+          {action.label}
+        </button>
+      {/each}
     {:else}
       <button class="button button-primary" onclick={() => closeDialog(true)}>
         {dialogState.okLabel}

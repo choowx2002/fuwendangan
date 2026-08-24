@@ -8,6 +8,9 @@ import { persistentWritable } from '$lib/stores/tools'
 
 export const CHAIN_SIM_VERSION = 1
 export const CHAIN_SIM_EXPORT_TYPE = 'chain-sim'
+/** 整个历史（当前局面 + 全部快照点）导出格式 */
+export const CHAIN_SIM_HISTORY_TYPE = 'chain-sim-history'
+export const CHAIN_SIM_HISTORY_VERSION = 1
 /** 侧栏自定义条目池的区域 key */
 export const POOL_KEY = 'pool'
 
@@ -563,6 +566,68 @@ export function parseSimImport(text: string): SimState | null {
   const o = parsed as Record<string, unknown>
   if (o.type !== CHAIN_SIM_EXPORT_TYPE || o.version !== CHAIN_SIM_VERSION) return null
   return normalizeSimState(o)
+}
+
+// ---------------- 整个历史导入导出 ----------------
+
+/** 历史导出内容：当前局面（可空）+ 全部快照点 */
+export interface HistoryExport {
+  current: SimState | null
+  snapshots: Snapshot[]
+}
+
+/** 导出整个历史：当前局面 + 全部快照点，JSON 文本 */
+export function serializeHistory(current: SimState, snapshots: Snapshot[]): string {
+  const payload = {
+    type: CHAIN_SIM_HISTORY_TYPE,
+    version: CHAIN_SIM_HISTORY_VERSION,
+    savedAt: new Date().toISOString(),
+    current: cloneSimState(current),
+    snapshots: snapshots.map((s) => ({
+      id: s.id,
+      label: s.label,
+      createdAt: s.createdAt,
+      state: cloneSimState(s.state),
+    })),
+  }
+  return JSON.stringify(payload, null, 2)
+}
+
+/**
+ * 解析历史导入：校验 type/version，逐个归一化快照（无效快照跳过）。
+ * 快照 id 一律用 Snowflake 重新生成，避免与现有历史撞 id（keyed each 依赖唯一 key）。
+ * 当前局面与快照均无效时返回 null。
+ */
+export function parseHistoryImport(text: string): HistoryExport | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const o = parsed as Record<string, unknown>
+  if (o.type !== CHAIN_SIM_HISTORY_TYPE || o.version !== CHAIN_SIM_HISTORY_VERSION) return null
+
+  const current = normalizeSimState(o.current)
+  const rawSnapshots = Array.isArray(o.snapshots) ? (o.snapshots as unknown[]) : []
+  const snapshots: Snapshot[] = []
+  for (const raw of rawSnapshots) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const r = raw as Record<string, unknown>
+    if (typeof r.label !== 'string' || typeof r.createdAt !== 'string') continue
+    const state = normalizeSimState(r.state)
+    if (!state) continue
+    snapshots.push({
+      id: Snowflake.generate().toString(),
+      label: r.label,
+      createdAt: r.createdAt,
+      state,
+    })
+  }
+
+  if (!current && snapshots.length === 0) return null
+  return { current, snapshots }
 }
 
 // ---------------- 持久化 store ----------------

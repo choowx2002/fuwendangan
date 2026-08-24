@@ -7,6 +7,7 @@
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { showTTSFeatures } from '$lib/stores/settings'
   import { multiSpawn } from '$lib/services/tts-communication-service'
+  import { notifyFilterClose } from '$lib/services/filter-bridge'
   import { beforeNavigate, goto } from '$app/navigation'
   import { routeBackConfig } from '$lib/utils/route-config'
   import { confirmAction } from '$lib/utils/confirm'
@@ -67,7 +68,12 @@
   //   })
   // })
 
-  beforeNavigate(({ from, cancel, type, delta }) => {
+  beforeNavigate(({ from, cancel, type, delta, to }) => {
+    // 离开单卡库页时，关闭已打开的筛选独立窗口
+    if (from?.url.pathname === '/cards' && to?.url.pathname !== '/cards') {
+      void notifyFilterClose()
+    }
+
     // 核心判断：只有当导航类型是浏览器后退(popstate) 且 delta 为负数时才触发
     const isBackward = delta && delta < 0
 
@@ -99,7 +105,12 @@
 
 <div class="page-wrapper">
   <main class="main-content">
-    <CardPool onCardClick={handleCardClick} bind:displayedCards bind:isFilterOpen />
+    <CardPool
+      onCardClick={handleCardClick}
+      bind:displayedCards
+      bind:isFilterOpen
+      filterSyncEnabled
+    />
   </main>
 
   <!-- 详情弹窗依然留在当前页面 -->

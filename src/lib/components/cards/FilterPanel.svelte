@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { Lock, X } from '@lucide/svelte'
+  import { Lock, X, ExternalLink } from '@lucide/svelte'
   import type { FilterOptions, ActiveFilter, FilterMode, NumberRange } from '$lib/db/types'
   import { sortOptions } from '$lib/cards/utils/options-utils'
   import NumberRangeSlider from '../ui/NumberRangeSlider.svelte'
+  import { openSecondary } from '$lib/utils/open-window'
+  import { isTauri } from '$lib/db/env'
+  import { goto } from '$app/navigation'
   import { t } from '$lib/i18n'
 
   interface Props {
@@ -16,6 +19,8 @@
     energy: NumberRange
     power: NumberRange
     return_energy: NumberRange
+    /** 是否显示「在新窗口打开筛选」按钮 */
+    showOpenInNewWindow?: boolean
   }
 
   let {
@@ -29,7 +34,21 @@
     energy = $bindable(),
     power = $bindable(),
     return_energy = $bindable(),
+    showOpenInNewWindow = false,
   }: Props = $props()
+
+  /** 打开独立筛选窗口；平台不支持新窗口时降级为页内全屏。成功后关闭当前筛选弹窗 */
+  async function openFilterWindow() {
+    const res = await openSecondary('/cards/filter', {
+      width: 480,
+      height: 680,
+      decorations: false,
+    })
+    onClose() // 无论成败都关闭当前弹窗
+    if (!res.ok) {
+      await goto('/cards/filter')
+    }
+  }
 
   const sections = $derived.by(() => {
     if (!filterOptions) return []
@@ -123,9 +142,21 @@
               {$t('cards.excluded')}
             </div>
           </h2>
-          <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
-            <X size={20} />
-          </button>
+          <div class="header-actions">
+            {#if showOpenInNewWindow && isTauri}
+              <button
+                class="close-btn"
+                onclick={() => void openFilterWindow()}
+                aria-label={$t('nav.openInNewWindow')}
+                title={$t('nav.openInNewWindow')}
+              >
+                <ExternalLink size={18} />
+              </button>
+            {/if}
+            <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
+              <X size={20} />
+            </button>
+          </div>
         </header>
 
         <!-- 内容区：可滚动 -->
@@ -346,6 +377,12 @@
     border-top: 1px solid var(--border-color);
     background: var(--bg-secondary);
     flex-shrink: 0;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .count {

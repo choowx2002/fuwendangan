@@ -34,6 +34,7 @@
     type ChainItem,
     type DisplayMode,
     type GameState,
+    type HistoryExport,
     type SimState,
   } from '$lib/simulator/chain'
   import { searchCards, getBestPrint, printCacheName, type CardWithOwned } from '$lib/db'
@@ -444,6 +445,21 @@
     baseSim = state
     game.zones = simToZones(state)
     showToast($t('simulator.importSuccess'), 'success')
+  }
+
+  /** 导入整个历史：替换全部快照点；带当前局面时一并恢复棋盘 */
+  function importHistory(history: HistoryExport) {
+    const next = history.snapshots.slice(-50)
+    if (history.current) {
+      if (!history.current.extra) history.current.extra = { deck: [] }
+      baseSim = history.current
+      game.zones = simToZones(history.current)
+    }
+    game.snapshots = next
+    showToast(
+      $t('simulator.historyImported', { values: { count: next.length } }),
+      'success'
+    )
   }
 
   function resetGame() {
@@ -894,6 +910,7 @@
       onApply={applySnapshotById}
       onDelete={removeSnapshot}
       onImport={importState}
+      onImportHistory={importHistory}
     />
 
     <CommonModal open={settingsOpen} title="设置" onclose={() => (settingsOpen = false)}>

@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { X, LoaderCircle } from '@lucide/svelte'
+  import { X, LoaderCircle, ExternalLink } from '@lucide/svelte'
+  import { openSecondary } from '$lib/utils/open-window'
+  import { isTauri } from '$lib/db/env'
+  import { goto } from '$app/navigation'
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint, CardWithPrint } from '$lib/db'
   import { printCacheName } from '$lib/db/helper'
@@ -102,6 +105,23 @@
       sending = false
     }
   }
+
+  /** 在独立窗口打开卡牌展示；平台不支持新窗口时降级为页内全屏 */
+  async function openShowcase() {
+    if (!card?.id) return
+    const res = await openSecondary(`/cards/show/${card.id}`, {
+      decorations: false,
+      transparent: true,
+      width: 760,
+      height: 720,
+      minWidth: 480,
+      minHeight: 560,
+    })
+    if (!res.ok) {
+      onClose()
+      await goto(`/cards/show/${card.id}`)
+    }
+  }
 </script>
 
 {#if isOpen && card}
@@ -110,9 +130,21 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_interactive_supports_focus -->
     <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
-        <X size={20} />
-      </button>
+      <div class="modal-top-actions">
+        {#if isTauri && card?.id}
+          <button
+            class="close-btn"
+            onclick={() => void openShowcase()}
+            aria-label={$t('nav.openInNewWindow')}
+            title={$t('nav.openInNewWindow')}
+          >
+            <ExternalLink size={18} />
+          </button>
+        {/if}
+        <button class="close-btn" onclick={onClose} aria-label={$t('common.close')}>
+          <X size={20} />
+        </button>
+      </div>
 
       <div class="modal-body">
         <div class="title-group-mobile selectable">
@@ -376,11 +408,21 @@
     animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .close-btn {
+  .modal-top-actions {
     position: absolute;
     top: 16px;
     right: 16px;
     z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .modal-top-actions .close-btn {
+    position: static;
+  }
+
+  .close-btn {
     background: var(--bg-primary);
     border: none;
     width: 32px;

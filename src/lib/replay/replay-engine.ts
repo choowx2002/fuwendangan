@@ -217,7 +217,9 @@ export function applyOp(state: GameState, op: ReplayOp): boolean {
       const z = zoneOf(state, op.playerId, op.zone)
       if (!z) break
       const idx = Math.min(op.index == null ? z.length : op.index, z.length)
-      ;(op.cards ?? []).forEach((c, i) => z.splice(idx + i, 0, c))
+      // cloneState：op 携带的卡对象与 build.frames 共享引用，直接插入会被后续 patch
+      // 原地改写（跨帧污染），克隆后插入保证每帧状态相互独立。
+      ;(op.cards ?? []).forEach((c, i) => z.splice(idx + i, 0, cloneState(c)))
       return true
     }
     case 'zone_remove': {
@@ -243,7 +245,8 @@ export function applyOp(state: GameState, op: ReplayOp): boolean {
       const i = from.indexOf(card)
       from.splice(i, 1)
       const idx = Math.min(op.to?.index == null ? to.length : op.to.index, to.length)
-      to.splice(idx, 0, op.card ?? card)
+      // op.card 与 build.frames 共享引用，克隆后插入，避免跨帧污染（见 zone_insert）
+      to.splice(idx, 0, op.card ? cloneState(op.card) : card)
       return true
     }
     case 'zone_reorder': {
@@ -309,7 +312,7 @@ export function applyOp(state: GameState, op: ReplayOp): boolean {
         state.chainEntries.length
       )
       ;(op.entries ?? []).forEach((en, i) =>
-        state.chainEntries!.splice(idx + i, 0, en as ChainEntry)
+        state.chainEntries!.splice(idx + i, 0, cloneState(en) as ChainEntry)
       )
       return true
     }
@@ -319,7 +322,8 @@ export function applyOp(state: GameState, op: ReplayOp): boolean {
       return true
     }
     case 'chain_replace': {
-      state.chainEntries = (op.entries ?? []) as ChainEntry[]
+      // 整体替换同样克隆，避免与 build.frames 共享引用导致跨帧污染
+      state.chainEntries = (op.entries ?? []).map((en) => cloneState(en) as ChainEntry)
       return true
     }
     // log 类操作只影响服务端对局日志，不影响状态；narration 为历史记录，无需回滚
@@ -489,6 +493,42 @@ export function stateAt(build: ReplayBuild, index: number): GameState | null {
 export function finalState(build: ReplayBuild): GameState | null {
   if (build.frames.length === 0) return null
   return stateAt(build, build.frames.length - 1)
+}
+
+/** 判定服务端阶段是否处于「对局进行中」（实测快照 phase 值为 in_game） */
+function isInGamePhase(phase: unknown): boolean {
+  if (typeof phase !== 'string' || !phase) return false
+  const p = phase.toLowerCase()
+  return p === 'in_game' || p.includes('in_game') || p.includes('ingame')
+}
+
+/**
+ * 找到「回合 1 进入 in_game 阶段」的帧下标，作为打开对局时的初始帧（跳过选战场/调度等前期阶段）。
+ * 逐帧增量推演（base 快照变化时重置运行态），O(总 ops)。
+ * 找不到 in_game 时回退到回合 1 首帧；再找不到回退第 0 帧。
+ */
+export function findTurnOneInGameFrame(build: ReplayBuild): number {
+  const frames = build.frames
+  if (frames.length === 0) return 0
+  let state: GameState | null = null
+  let lastBase = -1
+  let firstTurnOne: number | null = null
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i]
+    const baseKey = f.base ? f.base.atFrame : -1
+    if (baseKey !== lastBase) {
+      lastBase = baseKey
+      state = cloneState(f.base ? f.base.state : { players: [] })
+    }
+    if (!state) continue
+    applyFrame(state, f)
+    const tn = typeof state.turnNumber === 'number' ? state.turnNumber : null
+    if (tn === 1) {
+      if (firstTurnOne === null) firstTurnOne = i
+      if (isInGamePhase(state.phase)) return i
+    }
+  }
+  return firstTurnOne ?? 0
 }
 
 /**

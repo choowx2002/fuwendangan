@@ -2,8 +2,10 @@
   import { onDestroy } from 'svelte'
   import { Camera, Trash2, Copy, RotateCcw, X, Download, Minus } from '@lucide/svelte'
   import {
-    serializeSimState,
+    serializeHistory,
+    parseHistoryImport,
     parseSimImport,
+    type HistoryExport,
     type SimState,
     type Snapshot,
   } from '$lib/simulator/chain'
@@ -19,6 +21,7 @@
     onApply,
     onDelete,
     onImport,
+    onImportHistory,
   }: {
     open?: boolean
     onClose?: () => void
@@ -28,6 +31,7 @@
     onApply?: (id: string) => void
     onDelete?: (id: string) => void
     onImport?: (state: SimState) => void
+    onImportHistory?: (history: HistoryExport) => void
   } = $props()
 
   let minimized = $state(false)
@@ -89,28 +93,48 @@
     }
   }
 
-  function exportJson(snap?: Snapshot) {
-    const json = serializeSimState(snap?.state ?? currentState)
-    void copyText(json, 'JSON 已复制')
+  /** 导出整个历史（当前局面 + 全部快照点） */
+  function exportJson() {
+    const json = serializeHistory(currentState, snapshots)
+    void copyText(json, $t('simulator.historyExported'))
   }
 
-  function exportBase64(snap?: Snapshot) {
-    const json = serializeSimState(snap?.state ?? currentState)
+  function exportBase64() {
+    const json = serializeHistory(currentState, snapshots)
     const base64 = btoa(unescape(encodeURIComponent(json)))
-    void copyText(base64, 'Base64 分享码已复制')
+    void copyText(base64, $t('simulator.historyExported'))
+  }
+
+  function decodeBase64(text: string): string | null {
+    if (!/^[A-Za-z0-9+/=]+$/.test(text)) return null
+    try {
+      return decodeURIComponent(escape(atob(text)))
+    } catch {
+      return null
+    }
   }
 
   function doImport() {
     const text = importText.trim()
     if (!text) return
+
+    // 1) 整个历史（JSON 或 Base64）
+    let history = parseHistoryImport(text)
+    if (!history) {
+      const json = decodeBase64(text)
+      if (json) history = parseHistoryImport(json)
+    }
+    if (history) {
+      onImportHistory?.(history)
+      importText = ''
+      return
+    }
+
+    // 2) 兼容旧格式：单局面（JSON 或 Base64）
     let parsed = parseSimImport(text)
-    if (!parsed && /^[A-Za-z0-9+/=]+$/.test(text)) {
-      try {
-        const json = decodeURIComponent(escape(atob(text)))
-        parsed = parseSimImport(json)
-      } catch {
-        parsed = null
-      }
+    if (!parsed) {
+      const json = decodeBase64(text)
+      if (json) parsed = parseSimImport(json)
     }
     if (!parsed) {
       showToast($t('simulator.importFailed'), 'error')
@@ -146,6 +170,14 @@
             <Camera size={15} />
             {$t('simulator.recordSnapshot')}
           </button>
+          <button type="button" class="btn" onclick={exportJson}>
+            <Copy size={15} />
+            {$t('simulator.exportHistoryJson')}
+          </button>
+          <button type="button" class="btn" onclick={exportBase64}>
+            <Download size={15} />
+            {$t('simulator.exportHistoryBase64')}
+          </button>
         </div>
 
         <div class="snapshot-list">
@@ -162,20 +194,6 @@
                   onclick={() => onApply?.(snap.id)}
                 >
                   <RotateCcw size={13} />
-                </button>
-                <button
-                  type="button"
-                  title={$t('simulator.exportJson')}
-                  onclick={() => exportJson(snap)}
-                >
-                  <Copy size={13} />
-                </button>
-                <button
-                  type="button"
-                  title={$t('simulator.exportBase64')}
-                  onclick={() => exportBase64(snap)}
-                >
-                  <Download size={13} />
                 </button>
                 <button
                   type="button"
@@ -276,6 +294,8 @@
 
   .toolbar {
     display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .btn {
