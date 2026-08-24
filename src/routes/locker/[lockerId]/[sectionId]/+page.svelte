@@ -4,7 +4,7 @@
   import { onMount } from 'svelte'
   import type { Locker, LockerSection, LockerCard } from '$lib/db'
   import { getLocker, getSection, getSectionCards, deleteSection, printCacheName } from '$lib/db'
-  import { Pencil, Trash2, LayoutGrid, Table } from '@lucide/svelte'
+  import { Pencil, Trash2, LayoutGrid, Table, AlertTriangle } from '@lucide/svelte'
   import { confirmAction } from '$lib/utils/confirm'
   import { setTopbar } from '$lib/stores/ui-store.svelte'
   import CardSimpleImage from '$lib/components/cards/CardSimpleImage.svelte'
@@ -171,6 +171,15 @@
               {:else}
                 <span class="tile-no">{card.card_no}</span>
               {/if}
+              {#if card.variantMissing}
+                <span
+                  class="tile-warn"
+                  title={$t('locker.variantMissingBadge')}
+                  aria-label={$t('locker.variantMissingBadge')}
+                >
+                  <AlertTriangle size={12} />
+                </span>
+              {/if}
               <span class="tile-qty">×{card.quantity}</span>
             </div>
             <div class="tile-meta">
@@ -198,7 +207,18 @@
               {/if}
             </div>
             <div class="t-info">
-              <span class="t-name">{card.card_name ?? card.card_no}</span>
+              <span class="t-name">
+                {card.card_name ?? card.card_no}
+                {#if card.variantMissing}
+                  <span
+                    class="t-warn"
+                    title={$t('locker.variantMissingBadge')}
+                    aria-label={$t('locker.variantMissingBadge')}
+                  >
+                    <AlertTriangle size={12} />
+                  </span>
+                {/if}
+              </span>
               <span class="t-no">
                 {card.card_no}{card.card_no_extend ? ` · ${card.card_no_extend}` : ''}{card.language
                   ? ` · ${card.language}`
@@ -428,6 +448,22 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
+  .tile-warn {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.9);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  }
+
   .tile-meta {
     display: flex;
     flex-direction: column;
@@ -512,6 +548,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .t-warn {
+    display: inline-flex;
+    vertical-align: -2px;
+    margin-left: 4px;
+    flex-shrink: 0;
+    color: #b45309;
   }
 
   .t-no {

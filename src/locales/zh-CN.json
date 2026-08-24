@@ -1602,7 +1602,9 @@
     "importedCount": "已导入 {count} 行{skipped}",
     "skippedInfo": "，跳过 {count} 行",
     "importFailed": "导入失败：{message}",
-    "readFileFailed": "读取文件失败：{message}"
+    "readFileFailed": "读取文件失败：{message}",
+    "variantMissingBadge": "卡牌变体已不存在，仅保留存放记录",
+    "issueCount": "{count} 张异常"
   },
   "wishlist": {
     "title": "心愿单",

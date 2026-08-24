@@ -44,6 +44,8 @@ export interface LockerSection {
   updated_at: string | null
   cardCount: number
   totalQty: number
+  /** 格内变体引用已不在 card_prints 的卡牌数（内容库删除/变更后的悬挂引用） */
+  issueCount: number
   thumbs: { url: string; name: string }[]
 }
 
@@ -60,6 +62,8 @@ export interface LockerCard {
   card_name: string | null
   print: CardPrint | null
   ownedTotal: number
+  /** (card_no, card_no_extend) 已不在 card_prints 中：内容库删除/变更后的悬挂引用 */
+  variantMissing: boolean
 }
 
 export interface CardLocation {
@@ -201,7 +205,12 @@ export async function getSections(lockerId: string): Promise<LockerSection[]> {
   const rows = await db.select<any[]>(
     `SELECT s.*,
        (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS card_count,
-       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty
+       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty,
+       (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id
+          AND NOT EXISTS (
+            SELECT 1 FROM ${TABLES.CARD_PRINTS} p
+            WHERE p.card_no = cc.card_no AND p.card_no_extend = cc.card_no_extend
+          )) AS issue_count
      FROM ${TABLES.LOCKER_SECTIONS} s
      WHERE s.locker_id = ? ORDER BY s.sort_order ASC, s.created_at ASC`,
     [lockerId]
@@ -222,29 +231,34 @@ export async function getSections(lockerId: string): Promise<LockerSection[]> {
       updated_at: r.updated_at ?? null,
       cardCount: r.card_count ?? 0,
       totalQty: r.total_qty ?? 0,
+      issueCount: r.issue_count ?? 0,
       thumbs,
     })
   }
   return sections
 }
 
-/** 抽屉节点缩略图：前 3 张卡的打印图 */
+/** 抽屉节点缩略图：前 3 张去重后的打印图（不同卡牌可能经兜底解析到同一印刷，URL 必须去重） */
 async function loadSectionThumbs(sectionId: string): Promise<{ url: string; name: string }[]> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
     `SELECT cc.card_no, cc.card_no_extend, cc.language FROM ${TABLES.LOCKER_CARDS} cc
-     WHERE cc.section_id = ? ORDER BY cc.created_at ASC LIMIT 3`,
+     WHERE cc.section_id = ? ORDER BY cc.created_at ASC`,
     [sectionId]
   )
   const thumbs: { url: string; name: string }[] = []
+  const seenUrls = new Set<string>()
   for (const r of rows) {
+    if (thumbs.length >= 3) break
     const print = await loadPrint(r.card_no, r.card_no_extend ?? null, r.language ?? null)
-    if (print?.img_cdn || print?.tts_cdn) {
-      thumbs.push({
-        url: print.img_cdn ?? print.tts_cdn ?? '',
-        name: `${r.card_no_extend ?? r.card_no}-${r.language ?? 'default'}`,
-      })
-    }
+    if (!print?.img_cdn && !print?.tts_cdn) continue
+    const url = print.img_cdn ?? print.tts_cdn ?? ''
+    if (!url || seenUrls.has(url)) continue
+    seenUrls.add(url)
+    thumbs.push({
+      url,
+      name: `${r.card_no_extend ?? r.card_no}-${r.language ?? 'default'}`,
+    })
   }
   return thumbs
 }
@@ -254,7 +268,12 @@ export async function getSection(sectionId: string): Promise<LockerSection | nul
   const rows = await db.select<any[]>(
     `SELECT s.*,
        (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS card_count,
-       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty
+       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty,
+       (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id
+          AND NOT EXISTS (
+            SELECT 1 FROM ${TABLES.CARD_PRINTS} p
+            WHERE p.card_no = cc.card_no AND p.card_no_extend = cc.card_no_extend
+          )) AS issue_count
      FROM ${TABLES.LOCKER_SECTIONS} s WHERE s.id = ?`,
     [sectionId]
   )
@@ -273,6 +292,7 @@ export async function getSection(sectionId: string): Promise<LockerSection | nul
     updated_at: r.updated_at ?? null,
     cardCount: r.card_count ?? 0,
     totalQty: r.total_qty ?? 0,
+    issueCount: r.issue_count ?? 0,
     thumbs: await loadSectionThumbs(r.id),
   }
 }
@@ -409,6 +429,22 @@ async function loadOwnedTotals(cardNos: string[]): Promise<Map<string, number>> 
   return map
 }
 
+/** 批量查询现存变体：`card_no|card_no_extend` 集合（判定悬挂引用） */
+async function loadExistingVariants(cardNos: string[]): Promise<Set<string>> {
+  const set = new Set<string>()
+  const unique = [...new Set(cardNos.filter(Boolean))]
+  if (unique.length === 0) return set
+  const db = await getDatabase()
+  const placeholders = unique.map(() => '?').join(', ')
+  const rows = await db.select<any[]>(
+    `SELECT DISTINCT card_no, card_no_extend FROM ${TABLES.CARD_PRINTS}
+     WHERE card_no IN (${placeholders})`,
+    unique
+  )
+  for (const r of rows) set.add(`${r.card_no}|${r.card_no_extend ?? ''}`)
+  return set
+}
+
 export async function getSectionCards(sectionId: string): Promise<LockerCard[]> {
   const db = await getDatabase()
   const rows = await db.select<any[]>(
@@ -416,6 +452,7 @@ export async function getSectionCards(sectionId: string): Promise<LockerCard[]> 
     [sectionId]
   )
   const ownedMap = await loadOwnedTotals(rows.map((r) => r.card_no))
+  const variantSet = await loadExistingVariants(rows.map((r) => r.card_no))
   const cards: LockerCard[] = []
   for (const r of rows) {
     cards.push({
@@ -431,6 +468,7 @@ export async function getSectionCards(sectionId: string): Promise<LockerCard[]> 
       card_name: await loadCardName(r.card_no),
       print: await loadPrint(r.card_no, r.card_no_extend ?? null, r.language ?? null),
       ownedTotal: ownedMap.get(r.card_no) ?? 0,
+      variantMissing: !variantSet.has(`${r.card_no}|${r.card_no_extend ?? ''}`),
     })
   }
   return cards
@@ -627,7 +665,12 @@ export async function getSectionByName(
   const rows = await db.select<any[]>(
     `SELECT s.*,
        (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS card_count,
-       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty
+       (SELECT COALESCE(SUM(cc.quantity), 0) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id) AS total_qty,
+       (SELECT COUNT(*) FROM ${TABLES.LOCKER_CARDS} cc WHERE cc.section_id = s.id
+          AND NOT EXISTS (
+            SELECT 1 FROM ${TABLES.CARD_PRINTS} p
+            WHERE p.card_no = cc.card_no AND p.card_no_extend = cc.card_no_extend
+          )) AS issue_count
      FROM ${TABLES.LOCKER_SECTIONS} s
      WHERE s.locker_id = ? AND s.name = ? LIMIT 1`,
     [lockerId, name.trim()]
@@ -647,6 +690,7 @@ export async function getSectionByName(
     updated_at: r.updated_at ?? null,
     cardCount: r.card_count ?? 0,
     totalQty: r.total_qty ?? 0,
+    issueCount: r.issue_count ?? 0,
     thumbs: [],
   }
 }

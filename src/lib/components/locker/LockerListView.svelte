@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AlertTriangle } from '@lucide/svelte'
   import type { LockerSection } from '$lib/db'
   import CardSimpleImage from '../cards/CardSimpleImage.svelte'
   import { resolveLockerIcon } from './locker-icons'
@@ -35,6 +36,16 @@
             <span class="row-name">{s.name ?? $t('locker.newSection')}</span>
           </span>
           <span class="row-count">{$t('locker.cards', { values: { count: s.totalQty } })}</span>
+          {#if s.issueCount > 0}
+            <span
+              class="row-issue"
+              title={$t('locker.variantMissingBadge')}
+              aria-label={$t('locker.variantMissingBadge')}
+            >
+              <AlertTriangle size={11} />
+              {$t('locker.issueCount', { values: { count: s.issueCount } })}
+            </span>
+          {/if}
         </div>
         {#if s.description}
           <div class="row-desc">{s.description}</div>
@@ -53,7 +64,8 @@
       <span class="row-pull" aria-hidden="true"></span>
       {#if s.thumbs && s.thumbs.length > 0}
         <div class="row-thumbs">
-          {#each s.thumbs as img (img.url)}
+          <!-- 索引键：缩略图 URL 可能经兜底解析重复，不能作为键 -->
+          {#each s.thumbs as img, i (i)}
             <CardSimpleImage url={img.url} name={img.name} className="row-thumb" />
           {/each}
         </div>
@@ -137,6 +149,19 @@
     font-size: 10px;
     font-weight: 700;
     color: var(--node-color, var(--accent-color));
+  }
+
+  .row-issue {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.12);
   }
 
   .row-desc {

@@ -1602,7 +1602,9 @@
     "importedCount": "Imported {count} rows{skipped}",
     "skippedInfo": ", skipped {count}",
     "importFailed": "Import failed: {message}",
-    "readFileFailed": "Failed to read file: {message}"
+    "readFileFailed": "Failed to read file: {message}",
+    "variantMissingBadge": "Variant no longer exists; placement record kept",
+    "issueCount": "{count} affected"
   },
   "wishlist": {
     "title": "Wishlist",
