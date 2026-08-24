@@ -1,6 +1,6 @@
 [package]
 name = "符文档案"
-version = "1.1.0"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["天龠wx"]
 edition = "2021"

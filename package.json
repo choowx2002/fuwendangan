@@ -1,6 +1,6 @@
 {
   "name": "Rune Archive",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -13,7 +13,9 @@
     "tauri": "tauri",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "tauri:build:linux": "NO_STRIP=true tauri build"
+    "tauri:build:linux": "NO_STRIP=true tauri build",
+    "tauri:build:android": "tauri android build",
+    "tauri:build:windows": "tauri build --target x86_64-pc-windows-msvc"
   },
   "license": "MIT",
   "dependencies": {
