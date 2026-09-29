@@ -952,6 +952,8 @@
     "filterAdvancedTag": "进阶标签",
     "filterSeries": "系列",
     "filterRarity": "稀有度",
+    "modeBase": "基础卡",
+    "modePrints": "印刷",
     "artist": "画师",
     "generating": "生成中...",
     "generate": "生成",

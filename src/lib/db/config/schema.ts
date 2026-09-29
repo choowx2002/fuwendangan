@@ -15,6 +15,7 @@ export const TABLE_DEFINITIONS = {
       effect_cn TEXT, effect_en TEXT,
       energy INTEGER, return_energy INTEGER, power INTEGER,
       rarity_name TEXT,
+      series_name TEXT,
       is_banned INTEGER DEFAULT 0,
       deck_limit INTEGER,
       created_at TEXT, updated_at TEXT
@@ -126,6 +127,7 @@ export const TABLE_DEFINITIONS = {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       regions TEXT, tags TEXT, keywords TEXT, advanced_tags TEXT, colors TEXT,
       categories TEXT, series TEXT, rarities TEXT, champions TEXT,
+      base_series TEXT, print_rarities TEXT,
       energy_min INTEGER, energy_max INTEGER,
       power_min INTEGER, power_max INTEGER,
       return_energy_min INTEGER, return_energy_max INTEGER,

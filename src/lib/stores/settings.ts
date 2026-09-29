@@ -5,6 +5,7 @@ import { isSupportedLocale, systemLocale } from '$lib/i18n'
 import { isTauri } from '$lib/db/env'
 import { setSyncMeta } from '$lib/db/repository/sync-repository'
 import type { ZoneKey } from '$lib/decks/zone'
+import type { CardLibraryMode } from '$lib/db/types'
 
 let storePromise: Promise<Store> | null = null
 
@@ -62,6 +63,9 @@ export const showForeignCardArt = persistentWritable('showForeignCardArt', false
 export const windowAlwaysOnTop = persistentWritable('windowAlwaysOnTop', false)
 
 export const showTTSFeatures = persistentWritable('showTTSFeatures', false)
+
+/** 卡牌库浏览模式：base=基础卡（cards_base），prints=印刷（card_prints） */
+export const cardLibraryMode = persistentWritable<CardLibraryMode>('cardLibraryMode', 'base')
 
 export const rulesTheme = persistentWritable('rulesTheme', 'parchment', () =>
   markSettingChanged('rulesTheme')

@@ -33,77 +33,50 @@ export async function fetchAllVersions(): Promise<AppVersion[]> {
 }
 
 /**
- * 获取所有卡牌数据（分页拉取）
+ * 分页拉取整表（不请求 count：按返回行数 < pageSize 判断结束，省掉每页 COUNT(*)）。
+ * pageSize 不得超过 Supabase PostgREST 的 max-rows（默认 1000），否则会提前截断丢数据。
  */
-export async function fetchAllCards(): Promise<CardBase[]> {
+async function fetchAllPaged<T>(table: string, label: string): Promise<T[]> {
   const supabase = getSupabaseClient()
-  const totalData: CardBase[] = []
+  const pageSize = 1000
+  const totalData: T[] = []
   let page = 0
-  const pageSize = 500
-  let hasMore = true
 
-  while (hasMore) {
-    const { data, count, error } = await supabase
-      .from('cards_base')
-      .select('*', { count: 'exact' })
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
-    if (error) throw new Error(`获取卡牌失败：${error.message}`)
-    if (data) totalData.push(...data)
-    if (count && data && data.length < pageSize) hasMore = false
+    if (error) throw new Error(`获取${label}失败：${error.message}`)
+    const rows = (data ?? []) as T[]
+    totalData.push(...rows)
+    if (rows.length < pageSize) break
     page++
   }
 
   return totalData
+}
+
+/**
+ * 获取全部卡牌数据（分页拉取）
+ */
+export function fetchAllCards(): Promise<CardBase[]> {
+  return fetchAllPaged<CardBase>('cards_base', '卡牌')
 }
 
 /**
  * 获取所有卡图数据（分页拉取，整表全量）
  */
-export async function fetchAllPrints(): Promise<CardPrint[]> {
-  const supabase = getSupabaseClient()
-  const totalData: CardPrint[] = []
-  let page = 0
-  const pageSize = 1000
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await supabase
-      .from('card_prints')
-      .select('*', { count: 'exact' })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-    if (error) throw new Error(`获取卡图失败：${error.message}`)
-    if (data) totalData.push(...data)
-    if (count && data && data.length < pageSize) hasMore = false
-    page++
-  }
-
-  return totalData
+export function fetchAllPrints(): Promise<CardPrint[]> {
+  return fetchAllPaged<CardPrint>('card_prints', '卡图')
 }
 
 /**
  * 获取所有图标数据（分页拉取）
  */
-export async function fetchAllIcons(): Promise<IconDB[]> {
-  const supabase = getSupabaseClient()
-  const totalData: IconDB[] = []
-  let page = 0
-  const pageSize = 100
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await supabase
-      .from('card_icons')
-      .select('*', { count: 'exact' })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new Error(`获取图标数据失败：${error.message}`)
-    if (data) totalData.push(...data)
-    if (count && data && data.length < pageSize) hasMore = false
-    page++
-  }
-
-  return totalData
+export function fetchAllIcons(): Promise<IconDB[]> {
+  return fetchAllPaged<IconDB>('card_icons', '图标数据')
 }
 
 /**
@@ -111,53 +84,17 @@ export async function fetchAllIcons(): Promise<IconDB[]> {
  * series 表未在远端创建时容错返回空数组，避免阻塞整体同步
  */
 export async function fetchAllSeries(): Promise<Series[]> {
-  const supabase = getSupabaseClient()
-  const totalData: Series[] = []
-  let page = 0
-  const pageSize = 100
-  let hasMore = true
-
   try {
-    while (hasMore) {
-      const { data, count, error } = await supabase
-        .from('series')
-        .select('*', { count: 'exact' })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (error) throw new Error(`获取系列数据失败：${error.message}`)
-      if (data) totalData.push(...data)
-      if (count && data && data.length < pageSize) hasMore = false
-      page++
-    }
+    return await fetchAllPaged<Series>('series', '系列数据')
   } catch (err) {
     console.warn('[remote] series 拉取失败（可能尚未建表），跳过：', err)
     return []
   }
-
-  return totalData
 }
 
 /**
  * 获取所有RULES数据（分页拉取）
  */
-export async function fetchAllRules(): Promise<Rule[]> {
-  const supabase = getSupabaseClient()
-  const totalData: Rule[] = []
-  let page = 0
-  const pageSize = 100
-  let hasMore = true
-
-  while (hasMore) {
-    const { data, count, error } = await supabase
-      .from('rules')
-      .select('*', { count: 'exact' })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (error) throw new Error(`获取RULES数据失败：${error.message}`)
-    if (data) totalData.push(...data)
-    if (count && data && data.length < pageSize) hasMore = false
-    page++
-  }
-
-  return totalData
+export function fetchAllRules(): Promise<Rule[]> {
+  return fetchAllPaged<Rule>('rules', 'RULES数据')
 }

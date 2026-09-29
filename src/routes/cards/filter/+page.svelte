@@ -20,6 +20,7 @@
     type FilterSyncState,
   } from '$lib/services/filter-bridge'
   import { isTauri } from '$lib/db/env'
+  import { cardLibraryMode } from '$lib/stores/settings'
   import { X, Minus, Pin, PinOff, RotateCcw, SlidersHorizontal } from '@lucide/svelte'
   import { t } from '$lib/i18n'
 
@@ -31,6 +32,23 @@
   let searchText = $state('')
   let sortList = $state<SortKeyItem[]>([{ id: 1, name: 'card_no', isAsc: true, order: 1 }])
   let totalCards = $state(0)
+
+  /** 按当前模式替换系列/稀有度选项来源（与主窗口 CardPool 口径一致） */
+  const modeOptions = $derived.by<FilterOptions | null>(() => {
+    if (!filterOptions) return null
+    if ($cardLibraryMode === 'prints') {
+      return {
+        ...filterOptions,
+        series: filterOptions.series ?? [],
+        rarities: filterOptions.print_rarities ?? [],
+      }
+    }
+    return {
+      ...filterOptions,
+      series: filterOptions.base_series ?? [],
+      rarities: filterOptions.rarities ?? [],
+    }
+  })
 
   /** 已生效的筛选项数（activeFilters + 非全范围滑块 + 搜索词） */
   const activeFilterCount = $derived.by(() => {
@@ -58,6 +76,7 @@
       currentSearchText: searchText,
       sortList: sortList.map((s) => ({ ...s })),
       totalCards,
+      mode: $cardLibraryMode,
     }
   }
 
@@ -67,7 +86,7 @@
 
   // 筛选分类区块
   const sections = $derived.by(() => {
-    if (!filterOptions) return []
+    if (!modeOptions) return []
     const map = (type: ActiveFilter['type'], options: string[] | undefined) => ({
       type,
       title:
@@ -91,13 +110,13 @@
       options: options || [],
     })
     return [
-      map('card_color_list', filterOptions.colors),
-      map('card_category', filterOptions.categories),
-      map('series', filterOptions.series),
-      map('rarity', filterOptions.rarities),
-      map('region', filterOptions.regions),
-      map('tag', filterOptions.tags),
-      map('keyword', filterOptions.keywords),
+      map('card_color_list', modeOptions.colors),
+      map('card_category', modeOptions.categories),
+      map('series', modeOptions.series),
+      map('rarity', modeOptions.rarities),
+      map('region', modeOptions.regions),
+      map('tag', modeOptions.tags),
+      map('keyword', modeOptions.keywords),
     ].filter((s) => s.options.length > 0)
   })
 
@@ -228,6 +247,7 @@
         searchText = s.currentSearchText
         sortList = s.sortList
         totalCards = s.totalCards
+        if (s.mode && s.mode !== $cardLibraryMode) cardLibraryMode.set(s.mode)
       })
     })()
   })
@@ -272,9 +292,8 @@
 
   <!-- 搜索词（复用 SearchBar） -->
   <div class="search-box">
-    <SearchBar {filterOptions} onAddFilter={handleAddFilter} onTextSearch={handleTextSearch} />
+    <SearchBar filterOptions={modeOptions} onAddFilter={handleAddFilter} onTextSearch={handleTextSearch} />
   </div>
-
   <!-- 已应用筛选 chips -->
   {#if activeFilters.length > 0 || searchText}
     <div class="chips-bar">

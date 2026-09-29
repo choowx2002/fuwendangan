@@ -1,24 +1,27 @@
 <script lang="ts">
-  import { searchCards, getFilterOptions } from '$lib/db'
+  import { searchCards, searchCardVariants, getFilterOptions, updateFilterOptions } from '$lib/db'
   import SearchBar from './SearchBar.svelte'
   import FilterPanel from './FilterPanel.svelte'
   import type {
     ActiveFilter,
     CardBase,
+    CardLibraryMode,
     CardPrint,
     FilterOptions,
     NumberRange,
     SortKeyItem,
+    VariantWithOwned,
   } from '$lib/db/types'
   import { ChevronDown, ChevronUp, LoaderCircle, SlidersHorizontal } from '@lucide/svelte'
   import { isTauri } from '$lib/db/env'
   import { filterSyncStore, initFilterSync, setFilterSyncState } from '$lib/services/filter-bridge'
-  import { buildSearchParams, printCacheName } from '$lib/db/helper'
+  import { buildSearchParams, buildVariantSearchParams, printCacheName } from '$lib/db/helper'
   import { onMount, tick } from 'svelte'
   import SortModal from './SortModal.svelte'
   import { page } from '$app/state'
   import CachedImage from './CachedImage.svelte'
   import type { ZoneKey } from '$lib/decks/zone'
+  import { cardLibraryMode, settingsStoreReady } from '$lib/stores/settings'
   import { t } from '$lib/i18n'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
@@ -32,6 +35,8 @@
     isFilterOpen = $bindable(false),
     zone = $bindable('legend'),
     filterSyncEnabled = false,
+    modeSwitchEnabled = false,
+    onVariantClick,
   }: {
     onCardClick?: (arg0: cardAndPrint) => void
     onMenuClick?: (id: string, zone: ZoneKey) => void
@@ -42,6 +47,10 @@
     zone?: ZoneKey
     /** 是否开启与独立筛选窗口的实时双向同步 */
     filterSyncEnabled?: boolean
+    /** 是否显示「基础卡 / 印刷」模式切换（仅卡牌库页开启） */
+    modeSwitchEnabled?: boolean
+    /** 印刷模式点击回调（一格 = 一个 card_no_extend） */
+    onVariantClick?: (v: VariantWithOwned) => void
   } = $props()
 
   // --- 基础状态 ---
@@ -68,6 +77,39 @@
   // --- 排序方式 ---
   let sortList = $state<SortKeyItem[]>([{ id: 1, name: 'card_no', isAsc: true, order: 1 }])
 
+  // --- 印刷模式（card_prints 数据源，一格 = 一个 card_no_extend，语言合并、图优先 SC）---
+  let variantCards = $state<VariantWithOwned[]>([])
+  /** 实际生效模式：未开启切换的页面（卡组构建等）恒为 base */
+  const mode = $derived<CardLibraryMode>(modeSwitchEnabled ? $cardLibraryMode : 'base')
+
+  /** 按模式替换系列/稀有度选项来源（base=卡牌原始系列+基础稀有度；prints=打印级） */
+  const modeFilterOptions = $derived.by<FilterOptions | null>(() => {
+    if (!filterOptions) return null
+    // 未启用模式切换的页面（卡组构建等）保持原有筛选口径
+    if (!modeSwitchEnabled) return filterOptions
+    if (mode === 'prints') {
+      return {
+        ...filterOptions,
+        series: filterOptions.series ?? [],
+        rarities: filterOptions.print_rarities ?? [],
+      }
+    }
+    return {
+      ...filterOptions,
+      series: filterOptions.base_series ?? [],
+      rarities: filterOptions.rarities ?? [],
+    }
+  })
+
+  /** 数值范围是否被用户收窄（等于全局全范围视为未筛选） */
+  function isRangeActive(
+    current: NumberRange,
+    globalRange?: { min: number; max: number }
+  ): boolean {
+    if (!globalRange) return false
+    return current.min > globalRange.min || current.max < globalRange.max
+  }
+
   function onChangeSort() {
     performSearch()
   }
@@ -92,7 +134,16 @@
   // --- 初始化 ---
   $effect(() => {
     async function init() {
+      // 等待 settings.json 读取完成，避免记忆的模式（prints）被默认 base 覆盖首次搜索
+      await settingsStoreReady.catch(() => {})
       filterOptions = await getFilterOptions()
+      // 老缓存缺 base_series/print_rarities（升级后首次启动）→ 重算一次
+      if (filterOptions && (!filterOptions.base_series || !filterOptions.print_rarities)) {
+        await updateFilterOptions()
+        filterOptions = await getFilterOptions()
+      }
+      // 数值滑块对齐全局范围（硬编码默认值可能与数据不符，导致默认全范围被误当成筛选条件）
+      resetRangeFilters()
       await performSearch()
     }
     init()
@@ -114,6 +165,7 @@
       currentSearchText,
       sortList,
       totalCards,
+      mode,
     })
   )
 
@@ -131,6 +183,7 @@
       currentSearchText,
       sortList: sortList.map((s) => ({ ...s })),
       totalCards,
+      mode,
     })
   })
 
@@ -157,6 +210,7 @@
         return_energy = s.return_energy
         currentSearchText = s.currentSearchText
         sortList = s.sortList
+        if (s.mode && s.mode !== $cardLibraryMode) cardLibraryMode.set(s.mode)
         void performSearch()
       })
     })()
@@ -176,6 +230,7 @@
     if (!isLoadMore) {
       currentPage = 1
       displayedCards = []
+      variantCards = []
       hasMore = true
       isLoading = true
     } else {
@@ -183,32 +238,73 @@
     }
 
     try {
-      const params = buildSearchParams(
-        activeFilters,
-        currentSearchText,
-        currentPage,
-        pageSize,
-        sortList,
-        energy,
-        return_energy,
-        power
-      )
+      let total = 0
+      let loaded = 0
 
-      const result = await searchCards({ ...params, champion_tag })
-      totalCards = result.total
-      if (isLoadMore) {
-        displayedCards = [...displayedCards, ...result.data]
+      // 数值范围仅在被用户收窄时作为筛选条件；全范围不传，避免 NULL 数值卡（装备/法术等）被排除
+      const energyParam = isRangeActive(energy, filterOptions?.energy_range) ? energy : undefined
+      const returnEnergyParam = isRangeActive(return_energy, filterOptions?.return_energy_range)
+        ? return_energy
+        : undefined
+      const powerParam = isRangeActive(power, filterOptions?.power_range) ? power : undefined
+
+      if (mode === 'prints') {
+        // prints 模式：数据源 card_prints，series/rarity 走打印级，收录 promo
+        const params = buildVariantSearchParams(
+          activeFilters,
+          currentSearchText,
+          currentPage,
+          pageSize,
+          sortList,
+          energyParam,
+          returnEnergyParam,
+          powerParam
+        )
+        const result = await searchCardVariants({
+          ...params,
+          includePromo: true,
+          champion_tag,
+        })
+        total = result.total
+        variantCards = isLoadMore ? [...variantCards, ...result.data] : result.data
+        loaded = variantCards.length
       } else {
-        displayedCards = result.data
+        const params = buildSearchParams(
+          activeFilters,
+          currentSearchText,
+          currentPage,
+          pageSize,
+          sortList,
+          energyParam,
+          returnEnergyParam,
+          powerParam
+        )
+        const result = await searchCards({
+          ...params,
+          // 卡牌库 base 模式按卡牌原始系列筛选；其他页面（卡组构建等）保持打印级旧行为
+          seriesScope: modeSwitchEnabled ? 'base' : undefined,
+          champion_tag,
+        })
+        total = result.total
+        if (isLoadMore) {
+          displayedCards = [...displayedCards, ...result.data]
+        } else {
+          displayedCards = result.data
+        }
+        loaded = displayedCards.length
       }
 
-      hasMore = displayedCards.length < result.total
+      totalCards = total
+      hasMore = loaded < total
 
       await tick()
-      if (displayedCards.length > 0 && currentPage == 1) {
-        const firstItem = document.getElementById(displayedCards[0].id)
-        if (firstItem) {
-          firstItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      if (loaded > 0 && currentPage == 1) {
+        const firstId =
+          mode === 'prints'
+            ? variantCards[0] && `${variantCards[0].cardId}:${variantCards[0].cardNoExtend}`
+            : displayedCards[0]?.id
+        if (firstId) {
+          document.getElementById(firstId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
         }
       }
 
@@ -266,6 +362,31 @@
     }
   }
 
+  /** 重置数值范围筛选（模式切换时用，范围取当前选项缓存的极值） */
+  function resetRangeFilters() {
+    energy = {
+      min: filterOptions?.energy_range?.min ?? 0,
+      max: filterOptions?.energy_range?.max ?? 12,
+    }
+    power = {
+      min: filterOptions?.power_range?.min ?? 0,
+      max: filterOptions?.power_range?.max ?? 12,
+    }
+    return_energy = {
+      min: filterOptions?.return_energy_range?.min ?? 0,
+      max: filterOptions?.return_energy_range?.max ?? 4,
+    }
+  }
+
+  /** 切换浏览模式：清空筛选条件（含数值范围）、保留搜索词，然后重新搜索 */
+  function handleModeChange(next: CardLibraryMode) {
+    if (next === $cardLibraryMode) return
+    cardLibraryMode.set(next)
+    activeFilters = []
+    resetRangeFilters()
+    void performSearch()
+  }
+
   // 计算卡组中该卡的数量
   function getDeckCount(cardId: string | number): number {
     if (!showDeckCount || !deckCards) return 0
@@ -273,6 +394,12 @@
   }
 
   let isLandscape = $derived.by(() => {
+    if (mode === 'prints') {
+      return (
+        variantCards.length > 0 &&
+        variantCards.every((v) => v.cardCategory?.findIndex((cat) => cat === '战场') !== -1)
+      )
+    }
     return displayedCards.every((c) => c.card_category?.findIndex((cat) => cat === '战场') !== -1)
   })
 
@@ -306,11 +433,6 @@
 
   const totalActiveCount = $derived.by(() => {
     let count = activeFilters.length
-
-    const isRangeActive = (current: NumberRange, globalRange?: { min: number; max: number }) => {
-      if (!globalRange) return false
-      return current.min > globalRange.min || current.max < globalRange.max
-    }
 
     if (isRangeActive(energy, filterOptions?.energy_range)) count++
     if (isRangeActive(power, filterOptions?.power_range)) count++
@@ -425,10 +547,79 @@
       card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
     )
   }
+
+  // --- 渲染卡片磁贴（base=基础卡，prints=card_no_extend）---
+  interface PoolTile {
+    key: string
+    id: string
+    imgSrc: string | null | undefined
+    imgName: string
+    title: string
+    no: string
+    isBanned: boolean
+    card?: cardAndPrint
+    variant?: VariantWithOwned
+  }
+
+  const tiles = $derived.by<PoolTile[]>(() => {
+    if (mode === 'prints') {
+      return variantCards.map((v) => ({
+        key: `${v.cardId}:${v.cardNoExtend}`,
+        id: `${v.cardId}:${v.cardNoExtend}`,
+        imgSrc: v.imgCdn ?? v.ttsCdn,
+        imgName: printCacheName({
+          card_no_extend: v.cardNoExtend,
+          language: v.printLanguage,
+          id: v.printId,
+        }),
+        title: `${v.card_name_cn ?? ''} ${v.sub_title_cn || ''}`.trim(),
+        no: v.cardNoExtend,
+        isBanned: !!v.isBanned,
+        variant: v,
+      }))
+    }
+    return displayedCards.map((card) => {
+      const p = getDefaultImg(card as cardAndPrint)
+      return {
+        key: card.id,
+        id: card.id,
+        imgSrc: p?.img_cdn ?? p?.tts_cdn,
+        imgName: printCacheName(p),
+        title: `${card.card_name_cn ?? ''} ${card.sub_title_cn || ''}`.trim(),
+        no: card.card_no,
+        isBanned: !!card.is_banned,
+        card: card as cardAndPrint,
+      }
+    })
+  })
+
+  function handleTileClick(tile: PoolTile) {
+    if (tile.variant) {
+      onVariantClick?.(tile.variant)
+      return
+    }
+    if (tile.card) handleCardClick(tile.card)
+  }
 </script>
 
 <div class="card-pool-wrapper">
   <header class="search-header">
+    {#if modeSwitchEnabled}
+      <div class="library-mode-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={mode === 'base'}
+          class:active={mode === 'base'}
+          onclick={() => handleModeChange('base')}>{$t('cards.modeBase')}</button
+        >
+        <button
+          role="tab"
+          aria-selected={mode === 'prints'}
+          class:active={mode === 'prints'}
+          onclick={() => handleModeChange('prints')}>{$t('cards.modePrints')}</button
+        >
+      </div>
+    {/if}
     {#if showZone}
       <div class="deck-zone-tabs">
         <button
@@ -471,7 +662,7 @@
     {/if}
     <div class="search-wrapper">
       <SearchBar
-        {filterOptions}
+        filterOptions={modeFilterOptions}
         onAddFilter={handleAddFromPopdown}
         onTextSearch={handleTextSearch}
       />
@@ -508,38 +699,37 @@
   </header>
 
   <section class="results-area">
-    {#if isLoading && displayedCards.length === 0}
+    {#if isLoading && tiles.length === 0}
       <div class="loading-state">
         <LoaderCircle class="animate-spin" size={24} />
       </div>
-    {:else if displayedCards.length > 0}
+    {:else if tiles.length > 0}
       <div class="card-grid">
-        {#each displayedCards as card (card.id)}
-          {@const defaultI = getDefaultImg(card as unknown as cardAndPrint)}
+        {#each tiles as tile (tile.key)}
           <div
-            id={card.id}
-            class:isBanned={card.is_banned}
+            id={tile.id}
+            class:isBanned={tile.isBanned}
             role="presentation"
-            onclick={() => handleCardClick(card as any)}
+            onclick={() => handleTileClick(tile)}
             oncontextmenu={(e) => {
               e.preventDefault()
-              if (onMenuClick) onMenuClick(card.id, zone)
+              if (tile.card && onMenuClick) onMenuClick(tile.card.id, zone)
             }}
             style="position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column"
           >
             <CachedImage
-              src={defaultI?.img_cdn! ?? defaultI?.tts_cdn!}
-              name={printCacheName(defaultI)}
+              src={tile.imgSrc!}
+              name={tile.imgName}
               borderRadius="6px"
               fit="cover"
               {isLandscape}
             />
             <h5 style="color: var(--text-primary) ;margin: 0; text-align: center;">
-              {`${card.card_name_cn} ${card.sub_title_cn || ''}`}
+              {tile.title}
             </h5>
-            <small style="font-size: var(--text-xs)">{card.card_no}</small>
-            {#if showDeckCount}
-              {@const count = getDeckCount(card.id)}
+            <small style="font-size: var(--text-xs)">{tile.no}</small>
+            {#if showDeckCount && tile.card}
+              {@const count = getDeckCount(tile.card.id)}
               {#if count > 0}
                 <span class="deck-count">×{count}</span>
               {/if}
@@ -571,7 +761,7 @@
 
   <FilterPanel
     isOpen={isFilterOpen}
-    {filterOptions}
+    filterOptions={modeFilterOptions}
     {activeFilters}
     onToggle={handleToggleFilter}
     onRemove={handleRemoveFilter}
@@ -588,6 +778,39 @@
 </div>
 
 <style>
+  .library-mode-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 8px 0px rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+  }
+
+  .library-mode-tabs > button {
+    all: unset;
+    padding: 5px 12px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-radius: calc(var(--radius-md) - 3px);
+    cursor: pointer;
+    word-break: keep-all;
+    transition: all 0.15s;
+  }
+
+  .library-mode-tabs > button:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+  }
+
+  .library-mode-tabs > button.active {
+    color: var(--bg-secondary);
+    background-color: var(--accent-color);
+  }
+
   .deck-zone-tabs {
     width: 100%;
     display: flex;

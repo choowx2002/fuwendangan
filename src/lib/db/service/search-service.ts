@@ -4,6 +4,7 @@
  */
 
 import type {
+  ArrayFilterParam,
   CardPrint,
   CardSearchParams,
   CardSearchResult,
@@ -11,11 +12,13 @@ import type {
   CardVariantSearchResult,
   CardWithOwned,
   CollectionSort,
+  SortKeyItem,
   VariantWithOwned,
 } from '../types'
 import type { VariantBucket } from '$lib/cards/utils/variant-utils'
 import { getDatabase } from '../repository/database'
 import { buildOrderBy, mapRowToCard, mapRowToPrint } from '../helper'
+import { SORT_FIELD_LIST } from '../constants'
 import { TABLES } from '../config/constants'
 import { getCompletionMode } from './completion-modes'
 
@@ -95,6 +98,20 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
 
     const matchVals = [...new Set([...includeVals, ...mustVals])]
     if (field === 'series_name') {
+      // 卡牌库 base 模式：系列归属按卡牌原始系列（cards_base.series_name），不受异画/超编打印影响
+      if (params.seriesScope === 'base') {
+        if (matchVals.length > 0) {
+          const ph = matchVals.map(() => '?').join(',')
+          whereClauses.push(`${TABLES.CARDS_BASE}.series_name IN (${ph})`)
+          queryParams.push(...matchVals)
+        }
+        if (excludeVals.length > 0) {
+          const ph = excludeVals.map(() => '?').join(',')
+          whereClauses.push(`${TABLES.CARDS_BASE}.series_name NOT IN (${ph})`)
+          queryParams.push(...excludeVals)
+        }
+        continue
+      }
       const inClause = (vals: string[], negate = false) => {
         const ph = vals.map(() => '?').join(',')
         return `EXISTS (
@@ -140,7 +157,8 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
     queryParams.push(code)
   }
 
-  // 4. 数值范围过滤
+  // 4. 数值范围过滤：字段为 NULL 表示该卡没有此数值（装备/法术/战场等），
+  //    不参与范围筛选，否则会因 `NULL >= ?` 为 NULL 被静默排除。
   const numberFields = ['power', 'energy', 'return_energy'] as const
   for (const field of numberFields) {
     const val = params[field as keyof CardSearchParams] as
@@ -150,12 +168,17 @@ export async function searchCards(params: CardSearchParams): Promise<CardSearchR
         whereClauses.push(`${TABLES.CARDS_BASE}.${field} = ?`)
         queryParams.push(val)
       } else {
-        if (val.min !== undefined) {
-          whereClauses.push(`${TABLES.CARDS_BASE}.${field} >= ?`)
+        const col = `${TABLES.CARDS_BASE}.${field}`
+        const hasMin = val.min !== undefined
+        const hasMax = val.max !== undefined
+        if (hasMin && hasMax) {
+          whereClauses.push(`(${col} IS NULL OR (${col} >= ? AND ${col} <= ?))`)
+          queryParams.push(val.min, val.max)
+        } else if (hasMin) {
+          whereClauses.push(`(${col} IS NULL OR ${col} >= ?)`)
           queryParams.push(val.min)
-        }
-        if (val.max !== undefined) {
-          whereClauses.push(`${TABLES.CARDS_BASE}.${field} <= ?`)
+        } else if (hasMax) {
+          whereClauses.push(`(${col} IS NULL OR ${col} <= ?)`)
           queryParams.push(val.max)
         }
       }
@@ -396,6 +419,31 @@ export async function searchCardVariants(
   ]
   const innerParams: unknown[] = []
 
+  // 打印级精确筛选（系列/稀有度）：include+must 命中，exclude 需无命中
+  const printFlagWheres: { alias: string; expect: 0 | 1 }[] = []
+  const addPrintValueFlags = (column: string, param?: ArrayFilterParam, prefix?: string): void => {
+    if (!param) return
+    const matchVals = [...new Set([...(param.include ?? []), ...(param.must ?? [])])]
+    const excludeVals = param.exclude ?? []
+    if (matchVals.length > 0) {
+      const ph = matchVals.map(() => '?').join(',')
+      innerSelects.push(`MAX(CASE WHEN ${column} IN (${ph}) THEN 1 ELSE 0 END) AS ${prefix}_in`)
+      innerParams.push(...matchVals)
+      printFlagWheres.push({ alias: `${prefix}_in`, expect: 1 })
+    }
+    if (excludeVals.length > 0) {
+      const ph = excludeVals.map(() => '?').join(',')
+      innerSelects.push(`MAX(CASE WHEN ${column} IN (${ph}) THEN 1 ELSE 0 END) AS ${prefix}_ex`)
+      innerParams.push(...excludeVals)
+      printFlagWheres.push({ alias: `${prefix}_ex`, expect: 0 })
+    }
+  }
+  addPrintValueFlags('series', params.series_name, 'series_name')
+  addPrintValueFlags('rarity_name', params.rarity_name, 'rarity_name')
+
+  // 收录 promo：卡牌库 prints 模式为 true；默认 false 保持收藏页行为
+  const innerWhere = params.includePromo ? '' : `WHERE COALESCE(is_promo, 0) != 1 OR is_custom = 1`
+
   if (code) {
     innerSelects.push(`MAX(CASE WHEN series = ? THEN 1 ELSE 0 END) AS series_match`)
     innerParams.push(code)
@@ -421,6 +469,71 @@ export async function searchCardVariants(
   if (hasSearch) {
     outerWheres.push(`v.text_match = 1`)
   }
+  for (const flag of printFlagWheres) {
+    outerWheres.push(`v.${flag.alias} = ${flag.expect}`)
+  }
+
+  // 数组类字段过滤（cards_base JSON 数组，与 searchCards 同口径）
+  const arrayFields = [
+    'region',
+    'tag',
+    'keyword',
+    'advanced_tag',
+    'card_color_list',
+    'card_category',
+  ] as const
+  for (const field of arrayFields) {
+    const filterParam = params[field]
+    if (!filterParam) continue
+    if (filterParam.include && filterParam.include.length > 0) {
+      const placeholders = filterParam.include.map(() => '?').join(',')
+      outerWheres.push(
+        `EXISTS (SELECT 1 FROM json_each(cb.${field}) WHERE value IN (${placeholders}))`
+      )
+      outerParams.push(...filterParam.include)
+    }
+    if (filterParam.must && filterParam.must.length > 0) {
+      for (const val of filterParam.must) {
+        outerWheres.push(`EXISTS (SELECT 1 FROM json_each(cb.${field}) WHERE value = ?)`)
+        outerParams.push(val)
+      }
+    }
+    if (filterParam.exclude && filterParam.exclude.length > 0) {
+      for (const val of filterParam.exclude) {
+        outerWheres.push(`NOT EXISTS (SELECT 1 FROM json_each(cb.${field}) WHERE value = ?)`)
+        outerParams.push(val)
+      }
+    }
+  }
+
+  // 数值范围过滤（cards_base）：NULL 数值卡（装备/法术/战场等）不参与范围筛选
+  const numberFields = ['power', 'energy', 'return_energy'] as const
+  for (const field of numberFields) {
+    const val = params[field]
+    if (val === undefined || val === null) continue
+    if (typeof val === 'number') {
+      outerWheres.push(`cb.${field} = ?`)
+      outerParams.push(val)
+    } else {
+      const hasMin = val.min !== undefined
+      const hasMax = val.max !== undefined
+      if (hasMin && hasMax) {
+        outerWheres.push(`(cb.${field} IS NULL OR (cb.${field} >= ? AND cb.${field} <= ?))`)
+        outerParams.push(val.min, val.max)
+      } else if (hasMin) {
+        outerWheres.push(`(cb.${field} IS NULL OR cb.${field} >= ?)`)
+        outerParams.push(val.min)
+      } else if (hasMax) {
+        outerWheres.push(`(cb.${field} IS NULL OR cb.${field} <= ?)`)
+        outerParams.push(val.max)
+      }
+    }
+  }
+
+  if (params.champion_tag && params.champion_tag.trim() !== '') {
+    outerWheres.push(`(COALESCE(cb.card_category, '') NOT LIKE '%专属%' OR cb.champion_tag LIKE ?)`)
+    outerParams.push(`%${params.champion_tag.trim()}%`)
+  }
 
   const havings: string[] = []
   const ownedSumExpr = `SUM(cl.normal_qty) > 0 OR SUM(cl.foil_qty) > 0`
@@ -441,6 +554,9 @@ export async function searchCardVariants(
   const whereStr = outerWheres.length > 0 ? `WHERE ${outerWheres.join(' AND ')}` : ''
   const havingStr = havings.length > 0 ? `HAVING ${havings.join(' AND ')}` : ''
   const offset = (page - 1) * pageSize
+  const orderBy = params.collectionSort
+    ? buildVariantOrderBy(params.collectionSort)
+    : buildVariantOrderByList(params.sortList)
 
   const dataSql = `
     SELECT v.card_id,
@@ -463,12 +579,13 @@ export async function searchCardVariants(
         WHEN v.extend_rarity IN ('超编', '签名超编') THEN 'overnum'
         ELSE 'base'
       END AS bucket,
-      cb.card_category AS raw_category
+      cb.card_category AS raw_category,
+      cb.is_banned AS is_banned
     FROM (
       SELECT card_id, card_no_extend,
         ${innerSelects.join(',\n        ')}
       FROM ${TABLES.CARD_PRINTS}
-      WHERE COALESCE(is_promo, 0) != 1 OR is_custom = 1
+      ${innerWhere}
       GROUP BY card_id, card_no_extend
     ) v
     LEFT JOIN ${TABLES.CARDS_BASE} cb ON cb.id = v.card_id
@@ -477,7 +594,7 @@ export async function searchCardVariants(
     ${whereStr}
     GROUP BY v.card_id, v.card_no_extend
     ${havingStr}
-    ${buildVariantOrderBy(params.collectionSort)}
+    ${orderBy}
     LIMIT ? OFFSET ?
   `
   const rows = await db.select<any[]>(dataSql, [...innerParams, ...outerParams, pageSize, offset])
@@ -529,6 +646,7 @@ export async function searchCardVariants(
       bucket: row.bucket as VariantBucket,
       cardCategory: row.raw_category ? JSON.parse(row.raw_category) : null,
       isCustom: !!row.is_custom,
+      isBanned: row.is_banned === 1,
       ownedNormal: row.owned_normal ?? 0,
       ownedFoil: row.owned_foil ?? 0,
       ownedTotal: row.owned_total ?? 0,
@@ -584,4 +702,27 @@ function buildVariantOrderBy(sort?: CollectionSort): string {
     default:
       return `ORDER BY v.card_no_extend COLLATE NOCASE ASC`
   }
+}
+
+/**
+ * 卡牌库 prints 模式排序：与卡牌库排序项同一套字段。
+ * card_no 映射到印刷编号（card_no_extend），其余字段走 cards_base 列。
+ */
+function buildVariantOrderByList(sortList?: SortKeyItem[]): string {
+  if (!sortList?.length) return `ORDER BY v.card_no_extend COLLATE NOCASE ASC`
+
+  const dynamic = [...sortList]
+    .sort((a, b) => a.order - b.order)
+    .map((item) => {
+      let column: string | null = null
+      if (item.name === 'card_no') column = 'v.card_no_extend'
+      else if (SORT_FIELD_LIST.includes(item.name)) column = `cb.${item.name}`
+      if (!column) return null
+      return `${column} ${item.isAsc ? 'ASC' : 'DESC'}`
+    })
+    .filter(Boolean)
+
+  return dynamic.length > 0
+    ? `ORDER BY ${dynamic.join(', ')}`
+    : `ORDER BY v.card_no_extend COLLATE NOCASE ASC`
 }

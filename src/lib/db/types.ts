@@ -21,6 +21,8 @@ export interface CardBase {
   return_energy: number | null
   power: number | null
   rarity_name: string | null
+  // 卡牌原始所属系列码（卡牌库 base 模式系列筛选用；打印级系列见 CardPrint.series）
+  series_name?: string | null
   is_banned: boolean | null
   // 卡组中的同名数量上限：NULL=默认3，0=不限，N=最多N张（作用域：英雄+主牌+备牌）
   deck_limit: number | null
@@ -94,6 +96,8 @@ export interface VariantWithOwned {
   cardCategory: string[] | null
   // 是否为自建打印（is_custom=1，独立卡牌）
   isCustom: boolean
+  // 基础卡禁用标记（卡牌库 prints 模式置灰用）
+  isBanned?: boolean
   ownedNormal: number
   ownedFoil: number
   ownedTotal: number
@@ -546,11 +550,18 @@ export interface FilterOptions {
   series: string[]
   rarities: string[]
   champions: string[]
+  // 卡牌库 base 模式的系列选项（cards_base.series_name，老缓存可能缺省）
+  base_series?: string[]
+  // 卡牌库 prints 模式的稀有度选项（card_prints.rarity_name，老缓存可能缺省）
+  print_rarities?: string[]
   energy_range: { min: number; max: number }
   power_range: { min: number; max: number }
   return_energy_range: { min: number; max: number }
   updated_at: string
 }
+
+/** 卡牌库浏览模式：base=基础卡（cards_base 一格一卡），prints=印刷（card_no_extend 一格） */
+export type CardLibraryMode = 'base' | 'prints'
 
 export interface CardSearchParams {
   page?: number
@@ -558,6 +569,8 @@ export interface CardSearchParams {
   searchText?: string
   is_banned?: boolean
   sortByList?: SortKeyItem[]
+  // 系列筛选口径：base=cards_base.series_name（卡牌原始系列），print=card_prints.series（默认，兼容旧行为）
+  seriesScope?: 'base' | 'print'
 
   // 收藏相关（收藏页使用）
   ownership?: OwnershipType
@@ -588,7 +601,7 @@ export interface CardSearchParams {
   return_energy?: number | NumberRange
 }
 
-// 收藏页卡牌搜索参数（以 card_prints 为数据源）
+// 卡牌库 / 收藏页卡牌搜索参数（以 card_prints 为数据源）
 export interface CardVariantSearchParams {
   page?: number
   pageSize?: number
@@ -599,6 +612,24 @@ export interface CardVariantSearchParams {
   seriesCode?: string
   // 按卡牌桶过滤（base/alt/overnum/rune/token）
   bucket?: string
+
+  // ===== 卡牌库 prints 模式筛选（可选；收藏页调用不传，行为不变） =====
+  /** 收录 promo 打印（卡牌库 prints 模式为 true；默认 false，与收藏页一致） */
+  includePromo?: boolean
+  sortList?: SortKeyItem[]
+  region?: ArrayFilterParam
+  tag?: ArrayFilterParam
+  keyword?: ArrayFilterParam
+  advanced_tag?: ArrayFilterParam
+  card_color_list?: ArrayFilterParam
+  card_category?: ArrayFilterParam
+  // 打印级精确过滤（card_prints.series / card_prints.rarity_name）
+  series_name?: ArrayFilterParam
+  rarity_name?: ArrayFilterParam
+  champion_tag?: string
+  power?: number | NumberRange
+  energy?: number | NumberRange
+  return_energy?: number | NumberRange
 }
 
 export interface CardVariantSearchResult {

@@ -4,6 +4,7 @@
 
 import type { IconDB } from '../types'
 import { getDatabase } from './database'
+import { buildUpsertStatements } from './batch'
 import { TABLES } from '../config/constants'
 
 const iconCache = new Map<string, IconDB>()
@@ -59,12 +60,41 @@ export async function saveIcon(icon: IconDB): Promise<void> {
   )
 }
 
+/** icons 列顺序（与 saveIcon 的 VALUES 一致） */
+const ICONS_COLUMNS = [
+  'id',
+  'name_zh',
+  'name_en',
+  'url',
+  'url_en',
+  'isWhite',
+  'storage_type',
+  'created_at',
+  'updated_at',
+]
+
+function toIconRow(icon: IconDB): unknown[] {
+  return [
+    icon.id,
+    icon.name_zh,
+    icon.name_en,
+    icon.url,
+    icon.url_en,
+    icon.isWhite,
+    icon.storage_type,
+    icon.created_at,
+    icon.updated_at,
+  ]
+}
+
 /**
- * 批量保存或更新图标信息 (全量同步时常用)
+ * 批量保存或更新图标信息 (全量同步时常用)：分块多行 upsert（单语句隐式事务）
  */
 export async function saveIcons(icons: IconDB[]): Promise<void> {
-  for (const icon of icons) {
-    await saveIcon(icon)
+  const db = await getDatabase()
+  const statements = buildUpsertStatements(TABLES.ICONS, ICONS_COLUMNS, icons.map(toIconRow))
+  for (const stmt of statements) {
+    await db.execute(stmt.sql, stmt.params)
   }
 }
 

@@ -19,9 +19,11 @@
     card: (CardBase & { card_prints?: CardPrint[] }) | null
     isOpen: boolean
     onClose: () => void
+    /** prints 模式：打开时定位到的印刷变体（card_no_extend） */
+    initialCardNoExtend?: string | null
   }
 
-  let { card, isOpen, onClose }: Props = $props()
+  let { card, isOpen, onClose, initialCardNoExtend = null }: Props = $props()
 
   let selectedVersion = $state<CardPrint[]>([])
   let selectedIndex = $state<number>(0)
@@ -59,6 +61,7 @@
 
   $effect(() => {
     const currentCardId = card?.id
+    const targetExtend = initialCardNoExtend
 
     if (!currentCardId) {
       selectedVersion = []
@@ -66,8 +69,9 @@
       return
     }
 
-    // 获取默认的第一个版本
-    const firstKey = sortedMap.keys().next().value
+    // 优先定位到指定变体（prints 模式点击的 card_no_extend），否则默认第一个版本
+    const firstKey =
+      targetExtend && sortedMap.has(targetExtend) ? targetExtend : sortedMap.keys().next().value
     const firstVersion = firstKey ? sortedMap.get(firstKey) : undefined
 
     if (firstVersion && firstVersion.length > 0) {

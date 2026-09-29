@@ -6,6 +6,7 @@ import type { CardBase, CardPrint, SqliteCardBase } from '../types'
 import { toSqliteModel, mapRowToCard } from '../helper'
 import { getDatabase } from './database'
 import { getPrintsByCardId } from './print-repository'
+import { buildUpsertStatements } from './batch'
 import { TABLES } from '../config/constants'
 
 /**
@@ -19,9 +20,9 @@ export async function saveCard(card: CardBase): Promise<void> {
     `INSERT OR REPLACE INTO ${TABLES.CARDS_BASE}
      (id, card_no, card_name_cn, card_name_en, sub_title_cn, sub_title_en, card_category,
       card_color_list, region, tag, keyword, advanced_tag, champion_tag, effect_cn, effect_en,
-      energy, return_energy, power, rarity_name,
+      energy, return_energy, power, rarity_name, series_name,
       is_banned, deck_limit, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       sqliteCard.id,
       sqliteCard.card_no,
@@ -42,6 +43,7 @@ export async function saveCard(card: CardBase): Promise<void> {
       sqliteCard.return_energy,
       sqliteCard.power,
       sqliteCard.rarity_name,
+      sqliteCard.series_name ?? null,
       sqliteCard.is_banned,
       sqliteCard.deck_limit,
       sqliteCard.created_at,
@@ -50,18 +52,73 @@ export async function saveCard(card: CardBase): Promise<void> {
   )
 }
 
+/** cards_base 列顺序（与 saveCard 的 VALUES 一致） */
+const CARDS_COLUMNS = [
+  'id',
+  'card_no',
+  'card_name_cn',
+  'card_name_en',
+  'sub_title_cn',
+  'sub_title_en',
+  'card_category',
+  'card_color_list',
+  'region',
+  'tag',
+  'keyword',
+  'advanced_tag',
+  'champion_tag',
+  'effect_cn',
+  'effect_en',
+  'energy',
+  'return_energy',
+  'power',
+  'rarity_name',
+  'series_name',
+  'is_banned',
+  'deck_limit',
+  'created_at',
+  'updated_at',
+]
+
+function toCardRow(card: CardBase): unknown[] {
+  const c = toSqliteModel(card)
+  return [
+    c.id,
+    c.card_no,
+    c.card_name_cn,
+    c.card_name_en,
+    c.sub_title_cn,
+    c.sub_title_en,
+    c.card_category,
+    c.card_color_list,
+    c.region,
+    c.tag,
+    c.keyword,
+    c.advanced_tag,
+    c.champion_tag,
+    c.effect_cn,
+    c.effect_en,
+    c.energy,
+    c.return_energy,
+    c.power,
+    c.rarity_name,
+    c.series_name ?? null,
+    c.is_banned,
+    c.deck_limit,
+    c.created_at,
+    c.updated_at,
+  ]
+}
+
 /**
- * 批量保存卡牌（逐条 upsert，无跨语句事务；调用方负责 FK 关开包裹）
+ * 批量保存卡牌：分块多行 upsert（单语句隐式事务，无跨语句 BEGIN/COMMIT；
+ * 调用方负责 FK 关开包裹）
  */
 export async function saveCards(cards: CardBase[]): Promise<void> {
-  await getDatabase()
-
-  try {
-    for (const card of cards) {
-      await saveCard(card)
-    }
-  } catch (error) {
-    throw error
+  const db = await getDatabase()
+  const statements = buildUpsertStatements(TABLES.CARDS_BASE, CARDS_COLUMNS, cards.map(toCardRow))
+  for (const stmt of statements) {
+    await db.execute(stmt.sql, stmt.params)
   }
 }
 

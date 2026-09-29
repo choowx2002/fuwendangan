@@ -5,6 +5,7 @@ import type {
   CardBase,
   CardPrint,
   CardSearchParams,
+  CardVariantSearchParams,
   IconDB,
   Deck,
   DeckCard,
@@ -257,6 +258,74 @@ export function buildOrderBy(sortByList?: SortKeyItem[]) {
     .filter(Boolean)
 
   return `ORDER BY ${[...dynamic].join(', ')}`
+}
+
+/**
+ * 卡牌库 prints 模式：把筛选状态映射为 card_prints 数据源搜索参数。
+ * 与 buildSearchParams 同一套 UI 别名映射；系列/稀有度由 searchCardVariants 按打印级处理。
+ */
+export function buildVariantSearchParams(
+  activeFilters: ActiveFilter[] | any,
+  searchText: string,
+  page: number = 1,
+  pageSize: number = 60,
+  sortByList?: SortKeyItem[],
+  energy?: NumberRange | number,
+  return_energy?: NumberRange | number,
+  power?: NumberRange | number
+): CardVariantSearchParams {
+  const params: CardVariantSearchParams = {
+    page,
+    pageSize,
+    searchText,
+    sortList: sortByList,
+  }
+
+  const rawFilters = activeFilters
+  const filtersArray = Array.isArray(rawFilters) ? rawFilters : Object.values(rawFilters || {})
+
+  if (energy) params.energy = energy
+  if (return_energy) params.return_energy = return_energy
+  if (power) params.power = power
+
+  for (const filter of filtersArray) {
+    if (!filter || !filter.type) continue
+
+    const dbField = typeToFieldMap[filter.type]
+    if (!dbField) {
+      console.warn(`[buildVariantSearchParams] 未知的 filter type: ${filter.type}`)
+      continue
+    }
+
+    const arrayFields = [
+      'tag',
+      'keyword',
+      'card_color_list',
+      'region',
+      'advanced_tag',
+      'rarity_name',
+      'series_name',
+      'card_category',
+    ]
+    if (arrayFields.includes(dbField as string)) {
+      if (!params[dbField as keyof CardVariantSearchParams]) {
+        ;(params as any)[dbField] = {} as ArrayFilterParam
+      }
+      const paramObj = (params as any)[dbField] as ArrayFilterParam
+
+      // UI 的 'require' 对应底层 SQL 的 'must'
+      const modeKey = filter.mode === 'require' ? 'must' : filter.mode
+
+      if (!paramObj[modeKey as keyof ArrayFilterParam]) {
+        ;(paramObj as any)[modeKey] = []
+      }
+      ;(paramObj as any)[modeKey].push(filter.value)
+    } else {
+      ;(params as any)[dbField] = filter.value
+    }
+  }
+
+  return params
 }
 
 /**

@@ -17,8 +17,9 @@ export async function saveFilterOptions(
   await db.execute(
     `INSERT OR REPLACE INTO ${TABLES.FILTER_OPTIONS}
      (id, regions, tags, keywords, advanced_tags, colors, categories, series, rarities, champions,
+      base_series, print_rarities,
       energy_min, energy_max, power_min, power_max, return_energy_min, return_energy_max, updated_at)
-     VALUES (1, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+     VALUES (1, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
     [
       JSON.stringify(options.regions),
       JSON.stringify(options.tags),
@@ -29,6 +30,8 @@ export async function saveFilterOptions(
       JSON.stringify(options.series),
       JSON.stringify(options.rarities),
       JSON.stringify(options.champions),
+      JSON.stringify(options.base_series ?? []),
+      JSON.stringify(options.print_rarities ?? []),
       options.energy_range.min,
       options.energy_range.max,
       options.power_range.min,
@@ -61,6 +64,9 @@ export async function getFilterOptions(): Promise<FilterOptions | null> {
     series: JSON.parse(row.series || '[]'),
     rarities: JSON.parse(row.rarities || '[]'),
     champions: JSON.parse(row.champions || '[]'),
+    // 老缓存行无这两列（NULL）→ undefined，调用方据此触发一次重算
+    base_series: row.base_series != null ? JSON.parse(row.base_series) : undefined,
+    print_rarities: row.print_rarities != null ? JSON.parse(row.print_rarities) : undefined,
     energy_range: { min: row.energy_min, max: row.energy_max },
     power_range: { min: row.power_min, max: row.power_max },
     return_energy_range: {

@@ -5,6 +5,7 @@
 import type { CardPrint } from '../types'
 import { mapRowToPrint } from '../helper'
 import { getDatabase } from './database'
+import { buildUpsertStatements } from './batch'
 import { TABLES } from '../config/constants'
 
 /**
@@ -47,18 +48,68 @@ export async function saveCardPrint(print: CardPrint): Promise<void> {
   )
 }
 
+/** card_prints 列顺序（与 saveCardPrint 的 VALUES 一致） */
+const PRINTS_COLUMNS = [
+  'id',
+  'card_id',
+  'card_no',
+  'card_no_extend',
+  'rarity_name',
+  'extend_rarity_name',
+  'back_image',
+  'language',
+  'img_cdn',
+  'tts_cdn',
+  'artist',
+  'print_order',
+  'is_default',
+  'is_promo',
+  'is_custom',
+  'series',
+  'flavor_text_cn',
+  'flavor_text_en',
+  'created_at',
+  'updated_at',
+]
+
+function toPrintRow(print: CardPrint): unknown[] {
+  return [
+    print.id,
+    print.card_id,
+    print.card_no,
+    print.card_no_extend,
+    print.rarity_name,
+    print.extend_rarity_name,
+    print.back_image,
+    print.language,
+    print.img_cdn,
+    print.tts_cdn,
+    print.artist,
+    print.print_order,
+    print.is_default === null ? null : print.is_default ? 1 : 0,
+    print.is_promo === null ? null : print.is_promo ? 1 : 0,
+    print.is_custom === null ? null : print.is_custom ? 1 : 0,
+    print.series,
+    print.flavor_text_cn,
+    print.flavor_text_en,
+    print.created_at,
+    print.updated_at,
+  ]
+}
+
 /**
- * 批量保存卡图（逐条 upsert，无跨语句事务；调用方负责 FK 关开包裹）
+ * 批量保存卡图：分块多行 upsert（单语句隐式事务，无跨语句 BEGIN/COMMIT；
+ * 调用方负责 FK 关开包裹）
  */
 export async function saveCardPrints(prints: CardPrint[]): Promise<void> {
-  await getDatabase()
-
-  try {
-    for (const print of prints) {
-      await saveCardPrint(print)
-    }
-  } catch (error) {
-    throw error
+  const db = await getDatabase()
+  const statements = buildUpsertStatements(
+    TABLES.CARD_PRINTS,
+    PRINTS_COLUMNS,
+    prints.map(toPrintRow)
+  )
+  for (const stmt of statements) {
+    await db.execute(stmt.sql, stmt.params)
   }
 }
 

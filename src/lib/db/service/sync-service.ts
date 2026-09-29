@@ -24,7 +24,7 @@ import { updateFilterOptions } from './filter-service'
 import { uiState, showToast } from '$lib/stores/ui-store.svelte'
 import { whenOnline, isMetered } from '$lib/stores/network.svelte'
 import { openConfirm } from '$lib/stores/confirm-store.svelte'
-import { getDatabase } from '../repository/database'
+import { getDatabase, withTransaction } from '../repository/database'
 import { TABLES } from '../config/constants'
 import { get } from 'svelte/store'
 import { t } from '$lib/i18n'
@@ -157,12 +157,17 @@ async function performSync(
   const hasRules = tablesToSync.includes('rules')
   const hasSeries = tablesToSync.includes('series')
 
-  // 1. 下载阶段：全部拉取到内存后再写库，下载失败不产生任何本地写入
-  const cards = hasCards ? await remoteApi.fetchAllCards() : undefined
-  const prints = hasPrints ? await remoteApi.fetchAllPrints() : undefined
-  const icons = hasIcons ? await remoteApi.fetchAllIcons() : undefined
-  const rules = hasRules ? await remoteApi.fetchAllRules() : undefined
-  const series = hasSeries ? await remoteApi.fetchAllSeries() : undefined
+  // 1. 下载阶段：全部拉取到内存后再写库，下载失败不产生任何本地写入。
+  //    各表并行拉取（表内分页仍串行），墙钟约等于最慢一张表。
+  const downloadStart = Date.now()
+  const [cards, prints, icons, rules, series] = await Promise.all([
+    hasCards ? remoteApi.fetchAllCards() : Promise.resolve(undefined),
+    hasPrints ? remoteApi.fetchAllPrints() : Promise.resolve(undefined),
+    hasIcons ? remoteApi.fetchAllIcons() : Promise.resolve(undefined),
+    hasRules ? remoteApi.fetchAllRules() : Promise.resolve(undefined),
+    hasSeries ? remoteApi.fetchAllSeries() : Promise.resolve(undefined),
+  ])
+  console.log(`[DB] 下载阶段完成，耗时 ${Date.now() - downloadStart}ms`)
 
   const db = await getDatabase()
 
@@ -182,58 +187,63 @@ async function performSync(
 
   // 2. 写入阶段：临时关闭外键检查（先清后插期间外键瞬时可能不成立：
   //    清理旧数据、同 card_no 换 id 的 REPLACE 级联、卡组引用旧打印等）。
-  //    不用 BEGIN/COMMIT 跨语句事务：插件底层是 sqlx 多连接池，跨语句事务不可靠且会锁库。
+  //    整段跑在一个串行槽内（withTransaction 实为批量执行，无 BEGIN/COMMIT），
+  //    写入用分块多行 INSERT：既不被其他 DB 操作穿插，也不再逐行提交。
   //    结束时 repoint 已把卡组引用重链到当前存在的打印，随后恢复外键即一致。
-  await db.execute('PRAGMA foreign_keys = OFF')
-  try {
-    // 保留顺序：先清卡片再清卡图，确保 clearAllCards 能看到全部自定义打印（is_custom=1）并保留其引用的基础卡
-    if (hasCards) await cardRepo.clearAllCards()
-    if (hasPrints) await printRepo.clearAllPrints()
-    if (hasCards) await cardRepo.saveCards(cards as CardBase[])
-    if (hasPrints) await printRepo.saveCardPrints(prints as CardPrint[])
+  const writeStart = Date.now()
+  await withTransaction(async () => {
+    await db.execute('PRAGMA foreign_keys = OFF')
+    try {
+      // 保留顺序：先清卡片再清卡图，确保 clearAllCards 能看到全部自定义打印（is_custom=1）并保留其引用的基础卡
+      if (hasCards) await cardRepo.clearAllCards()
+      if (hasPrints) await printRepo.clearAllPrints()
+      if (hasCards) await cardRepo.saveCards(cards as CardBase[])
+      if (hasPrints) await printRepo.saveCardPrints(prints as CardPrint[])
 
-    if (hasIcons) {
-      await iconRepo.clearIcons()
-      await iconRepo.saveIcons(icons as IconDB[])
-    }
-    if (hasRules) {
-      await ruleRepo.clearRules()
-      await ruleRepo.saveRules(rules as Rule[])
-    }
-    if (hasSeries) {
-      await seriesRepo.clearAllSeries()
-      await seriesRepo.saveSeries(series as Series[])
-    }
+      if (hasIcons) {
+        await iconRepo.clearIcons()
+        await iconRepo.saveIcons(icons as IconDB[])
+      }
+      if (hasRules) {
+        await ruleRepo.clearRules()
+        await ruleRepo.saveRules(rules as Rule[])
+      }
+      if (hasSeries) {
+        await seriesRepo.clearAllSeries()
+        await seriesRepo.saveSeries(series as Series[])
+      }
 
-    // 3. 重链卡组引用：卡牌/卡图变化后把 deck_cards 指向当前存在的打印，无法映射的行删除
-    if (hasCards || hasPrints) {
-      await repointDeckCardReferences()
-    }
+      // 3. 重链卡组引用：卡牌/卡图变化后把 deck_cards 指向当前存在的打印，无法映射的行删除
+      if (hasCards || hasPrints) {
+        await repointDeckCardReferences()
+      }
 
-    // 4. 条件后处理：卡牌/卡图变化影响收藏有效性；series 数据源在打印级，cards/prints 任一变化都重建筛选
-    if (hasCards || hasPrints) {
-      await collectionRepo.cleanupOrphans()
-    }
-    if (hasCards || hasPrints) {
-      await updateFilterOptions()
-    }
+      // 4. 条件后处理：卡牌/卡图变化影响收藏有效性；series 数据源在打印级，cards/prints 任一变化都重建筛选
+      if (hasCards || hasPrints) {
+        await collectionRepo.cleanupOrphans()
+      }
+      if (hasCards || hasPrints) {
+        await updateFilterOptions()
+      }
 
-    // 5. 最后按表更新本地 version 行（崩溃中断则本地 version 不动 → 下次启动自动重试）
-    for (const name of tablesToSync) {
-      const remoteTime = remoteMap.get(name)
-      if (remoteTime) await versionRepo.upsertTableVersion(name, remoteTime)
+      // 5. 最后按表更新本地 version 行（崩溃中断则本地 version 不动 → 下次启动自动重试）
+      for (const name of tablesToSync) {
+        const remoteTime = remoteMap.get(name)
+        if (remoteTime) await versionRepo.upsertTableVersion(name, remoteTime)
+      }
+    } catch (error) {
+      // DEBUG: 写入阶段具体哪一步失败（老库缺列 / 外键冲突 / 锁）
+      console.error('[DB] performSync 写入阶段失败:', error)
+      console.error(
+        '[DB] performSync 写入阶段失败 string:',
+        error instanceof Error ? error.message : String(error)
+      )
+      throw error
+    } finally {
+      await db.execute('PRAGMA foreign_keys = ON')
     }
-  } catch (error) {
-    // DEBUG: 写入阶段具体哪一步失败（老库缺列 / 外键冲突 / 锁）
-    console.error('[DB] performSync 写入阶段失败:', error)
-    console.error(
-      '[DB] performSync 写入阶段失败 string:',
-      error instanceof Error ? error.message : String(error)
-    )
-    throw error
-  } finally {
-    await db.execute('PRAGMA foreign_keys = ON')
-  }
+  })
+  console.log(`[DB] 写入阶段完成，耗时 ${Date.now() - writeStart}ms`)
 
   console.log(
     `[DB] 同步完成！${cards ? `更新 ${cards.length} 张卡牌，` : ''}${prints ? `${prints.length} 个卡图，` : ''}${icons ? `${icons.length} 个图标，` : ''}${rules ? `${rules.length} 条规则，` : ''}${series ? `${series.length} 个系列` : ''}。`

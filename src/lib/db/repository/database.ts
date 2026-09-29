@@ -178,6 +178,11 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CARD_PRINTS, 'series', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_cn', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_en', 'TEXT')
+  // 卡牌库 base 模式：卡牌原始所属系列（2026-09-26 重新引入，云端 cards_base 一直保留该列）
+  await ensureColumn(db, TABLES.CARDS_BASE, 'series_name', 'TEXT')
+  // 卡牌库模式切换：base 专用系列选项 + prints 专用稀有度选项
+  await ensureColumn(db, TABLES.FILTER_OPTIONS, 'base_series', 'TEXT')
+  await ensureColumn(db, TABLES.FILTER_OPTIONS, 'print_rarities', 'TEXT')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
   await ensureColumn(db, TABLES.SERIES, 'cover_image', 'TEXT')
   await ensureColumn(db, TABLES.LOCKER_SECTIONS, 'color', 'TEXT')
@@ -230,15 +235,31 @@ async function initializeTables(db: Database): Promise<void> {
   }
 
   // 老库回填 card_prints.series/flavor（系列/风味迁移到打印级）：
-  // 仅当 card_prints 存在缺值的行 且 老库 cards_base 仍有 series_name 列时写库（新库无该列，直接跳过）
+  // 仅当非自定义打印存在缺值的行 且 老库 cards_base 仍有 series_name 列时写库（新库无该列，直接跳过）
   const nullSeriesFlavor = await db.select<{ n: number }[]>(
-    `SELECT COUNT(*) AS n FROM ${TABLES.CARD_PRINTS} WHERE series IS NULL OR flavor_text_cn IS NULL`
+    `SELECT COUNT(*) AS n FROM ${TABLES.CARD_PRINTS}
+     WHERE COALESCE(is_custom, 0) = 0 AND (series IS NULL OR flavor_text_cn IS NULL)`
   )
   if ((nullSeriesFlavor[0]?.n ?? 0) > 0) {
     const baseCols = await db.select<{ name: string }[]>(`PRAGMA table_info(${TABLES.CARDS_BASE})`)
     if (baseCols.some((c) => c.name === 'series_name')) {
       await backfillPrintSeriesFlavor(db)
     }
+  }
+
+  // 老库回填 cards_base.series_name（卡牌库 base 模式系列筛选）：
+  // 本地曾随「系列迁移到打印级」删除该列，云端 cards_base 一直保留；升级后从打印回填，
+  // 仅当存在 series_name 为空且其打印有系列的基础卡时写库。
+  const nullBaseSeries = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${TABLES.CARDS_BASE} cb
+     WHERE cb.series_name IS NULL
+       AND EXISTS (
+         SELECT 1 FROM ${TABLES.CARD_PRINTS} cp
+         WHERE cp.card_id = cb.id AND cp.series IS NOT NULL
+       )`
+  )
+  if ((nullBaseSeries[0]?.n ?? 0) > 0) {
+    await backfillCardBaseSeries(db)
   }
 
   // 一次性迁移：老自定义打印（is_custom=1）series 为空时按 card_no_extend 前 3 位回填系列码。
@@ -311,6 +332,7 @@ async function backfillPrintCardNo(db: Database): Promise<void> {
 /**
  * 回填 card_prints.series/flavor_text_*（从老库 cards_base.series_name/flavor_text_* 拷贝）：
  * 系列/风味迁移到打印级的一次性迁移。仅当 cards_base 仍有 series_name 列的老库时调用。
+ * 排除自定义打印：其系列/风味是用户自建内容，不能被基础卡数据覆盖。
  */
 async function backfillPrintSeriesFlavor(db: Database): Promise<void> {
   await db.execute(
@@ -318,7 +340,31 @@ async function backfillPrintSeriesFlavor(db: Database): Promise<void> {
      SET series = COALESCE(series, (SELECT series_name FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)),
        flavor_text_cn = COALESCE(flavor_text_cn, (SELECT flavor_text_cn FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id)),
        flavor_text_en = COALESCE(flavor_text_en, (SELECT flavor_text_en FROM ${TABLES.CARDS_BASE} WHERE id = ${TABLES.CARD_PRINTS}.card_id))
-     WHERE series IS NULL OR flavor_text_cn IS NULL OR flavor_text_en IS NULL`
+     WHERE COALESCE(is_custom, 0) = 0
+       AND (series IS NULL OR flavor_text_cn IS NULL OR flavor_text_en IS NULL)`
+  )
+}
+
+/**
+ * 回填 cards_base.series_name（卡牌库 base 模式系列筛选）：
+ * 老库该列为空时，优先取该卡自身编号对应的打印（card_no_extend = card_no，SC 优先）的 series。
+ * 仅当存在可回填的行时调用。
+ * 注意：SQLite 不允许 UPDATE 子查询的 ORDER BY 引用外层表列，故在子查询内 JOIN cards_base 取 card_no。
+ */
+async function backfillCardBaseSeries(db: Database): Promise<void> {
+  await db.execute(
+    `UPDATE ${TABLES.CARDS_BASE}
+     SET series_name = (
+       SELECT cp.series
+       FROM ${TABLES.CARD_PRINTS} cp
+       JOIN ${TABLES.CARDS_BASE} c ON c.id = cp.card_id
+       WHERE c.id = ${TABLES.CARDS_BASE}.id AND cp.series IS NOT NULL
+       ORDER BY CASE WHEN cp.card_no_extend = c.card_no THEN 0 ELSE 1 END,
+                CASE WHEN cp.language = 'SC' THEN 0 ELSE 1 END,
+                cp.print_order
+       LIMIT 1
+     )
+     WHERE series_name IS NULL`
   )
 }
 

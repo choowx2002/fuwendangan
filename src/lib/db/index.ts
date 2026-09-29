@@ -12,6 +12,7 @@ export type {
   CardSearchResult,
   FilterOptions,
   CardSearchParams,
+  CardLibraryMode,
   FilterStatus,
   NumberRange,
   ArrayFilterParam,
@@ -378,6 +379,7 @@ export {
   printCacheName,
   gameResult,
   buildSearchParams,
+  buildVariantSearchParams,
   buildOrderBy,
   formatBytes,
 } from './helper'

@@ -4,6 +4,7 @@
 
 import type { Series } from '../types'
 import { getDatabase } from './database'
+import { buildUpsertStatements } from './batch'
 import { TABLES } from '../config/constants'
 
 let seriesCache: Series[] | null = null
@@ -22,35 +23,52 @@ function mapRowToSeries(row: any): Series {
   }
 }
 
+/** series 列顺序 */
+const SERIES_COLUMNS = [
+  'code',
+  'name_cn',
+  'name_en',
+  'release_order',
+  'is_standard',
+  'is_active',
+  'base_count',
+  'alt_count',
+  'overnum_count',
+  'rune_count',
+  'token_count',
+  'cover_image',
+  'created_at',
+  'updated_at',
+]
+
+function toSeriesRow(s: Series): unknown[] {
+  return [
+    s.code,
+    s.name_cn,
+    s.name_en,
+    s.release_order,
+    s.is_standard ? 1 : 0,
+    s.is_active ? 1 : 0,
+    s.base_count,
+    s.alt_count,
+    s.overnum_count,
+    s.rune_count,
+    s.token_count,
+    s.cover_image ?? null,
+    s.created_at,
+    s.updated_at,
+  ]
+}
+
 /**
- * 批量保存系列（INSERT OR REPLACE）
+ * 批量保存系列（分块多行 INSERT OR REPLACE，单语句隐式事务）
  */
 export async function saveSeries(series: Series[]): Promise<void> {
   seriesCache = null
   const db = await getDatabase()
-  for (const s of series) {
-    await db.execute(
-      `INSERT OR REPLACE INTO ${TABLES.SERIES}
-       (code, name_cn, name_en, release_order, is_standard, is_active,
-        base_count, alt_count, overnum_count, rune_count, token_count, cover_image, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        s.code,
-        s.name_cn,
-        s.name_en,
-        s.release_order,
-        s.is_standard ? 1 : 0,
-        s.is_active ? 1 : 0,
-        s.base_count,
-        s.alt_count,
-        s.overnum_count,
-        s.rune_count,
-        s.token_count,
-        s.cover_image ?? null,
-        s.created_at,
-        s.updated_at,
-      ]
-    )
+  const statements = buildUpsertStatements(TABLES.SERIES, SERIES_COLUMNS, series.map(toSeriesRow))
+  for (const stmt of statements) {
+    await db.execute(stmt.sql, stmt.params)
   }
 }
 

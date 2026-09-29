@@ -4,6 +4,7 @@
 
 import type { RuleUpdate, RuleInsert, Rule, RuleBooks } from '../types'
 import { getDatabase } from './database'
+import { buildUpsertStatements } from './batch'
 import { TABLES } from '../config/constants'
 
 export async function getRulesByDocName(name: string): Promise<Rule[]> {
@@ -52,12 +53,43 @@ export async function saveRule(rule: RuleUpdate): Promise<void> {
   )
 }
 
+/** rules 列顺序（与 saveRule 的 VALUES 一致） */
+const RULES_COLUMNS = [
+  'id',
+  'rule_number',
+  'parent_number',
+  'level',
+  'is_heading',
+  'text_en',
+  'text_zh',
+  'sort_order',
+  'rules_book',
+  'updated_at',
+]
+
+function toRuleRow(rule: RuleUpdate): unknown[] {
+  return [
+    rule.id,
+    rule.rule_number,
+    rule.parent_number,
+    rule.level,
+    rule.is_heading === null ? null : rule.is_heading ? 1 : 0,
+    rule.text_en,
+    rule.text_zh,
+    rule.sort_order,
+    rule.rules_book,
+    rule.updated_at,
+  ]
+}
+
 /**
- * 批量保存或更新信息 (全量同步时常用)
+ * 批量保存或更新信息 (全量同步时常用)：分块多行 upsert（单语句隐式事务）
  */
 export async function saveRules(rules: RuleUpdate[]): Promise<void> {
-  for (const rule of rules) {
-    await saveRule(rule)
+  const db = await getDatabase()
+  const statements = buildUpsertStatements(TABLES.RULES, RULES_COLUMNS, rules.map(toRuleRow))
+  for (const stmt of statements) {
+    await db.execute(stmt.sql, stmt.params)
   }
 }
 
