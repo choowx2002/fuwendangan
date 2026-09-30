@@ -61,11 +61,12 @@
 
     sending = true
     try {
-      await multiSpawn([...displayedCards])
-      showToast(
-        get(t)('cards.ttsBatchSent', { values: { count: displayedCards.length } }),
-        'success'
-      )
+      const sentCount = await multiSpawn([...displayedCards])
+      if (!sentCount) {
+        showToast(get(t)('cards.ttsBatchFailed'), 'error')
+        return
+      }
+      showToast(get(t)('cards.ttsBatchSent', { values: { count: sentCount } }), 'success')
     } catch (error) {
       console.error('[Cards] 批量生成失败:', error)
       showToast(get(t)('cards.ttsBatchFailed'), 'error')

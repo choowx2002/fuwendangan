@@ -39,7 +39,7 @@
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
   import { playerName } from '$lib/stores/settings'
   import { ttsState } from '$lib/stores/tts'
-  import { spawnDeckToTTS } from '$lib/services/deck-tts-service'
+  import { spawnDeckToTTS, buildDeckTTSCode } from '$lib/services/deck-tts-service'
   import { ZONE_CONFIG, getZoneConfig, resolveFormat, type ZoneKey } from '$lib/decks/zone'
   import {
     buildOwnershipText,
@@ -177,10 +177,13 @@
   let showShareModal = $state(false)
   let showOverwriteModal = $state(false)
   let overwriting = $state(false)
-  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'>('text')
+  let shareFormat = $state<'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr' | 'tts'>('text')
   let textLang = $state<'en' | 'cn'>('en')
   let exporting = $state(false)
   let exportProgress = $state(0)
+  let ttsCode = $state('')
+  let ttsCodeLoading = $state(false)
+  let ttsCodeLoaded = $state(false)
   let showEditInfoModal = $state(false)
   let editName = $state('')
   let editDescription = $state('')
@@ -1031,6 +1034,12 @@
       support: ['export', 'copy'],
     },
     {
+      id: 'tts',
+      labelKey: 'deckDetail.formatTts',
+      descriptionKey: 'deckDetail.formatTtsDesc',
+      support: ['copy'],
+    },
+    {
       id: 'pdf',
       labelKey: 'deckDetail.formatPdf',
       descriptionKey: 'deckDetail.formatPdfDesc',
@@ -1059,10 +1068,25 @@
     },
   ]
 
+  async function ensureTTSCode() {
+    if (ttsCodeLoaded || ttsCodeLoading || !page.params.deckid) return
+    ttsCodeLoading = true
+    try {
+      ttsCode = await buildDeckTTSCode(page.params.deckid)
+    } catch (error) {
+      console.error('[Deck] TTS 代码生成失败:', error)
+      ttsCode = ''
+    } finally {
+      ttsCodeLoading = false
+      ttsCodeLoaded = true
+    }
+  }
+
   function currentShareText(): string {
     if (shareFormat === 'code') return deckCodeResult.code ?? ''
     if (shareFormat === 'official') return officialText
     if (shareFormat === 'qr') return qrPayloadText
+    if (shareFormat === 'tts') return ttsCode
     return exportText
   }
 
@@ -1082,6 +1106,7 @@
     if (shareFormat === 'pdf') return selectedPdfZoneCount > 0
     if (shareFormat === 'image') return cards.length > 0
     if (shareFormat === 'qr') return qrPayloadText.length > 0
+    if (shareFormat === 'tts') return ttsCode.length > 0
     return exportText.length > 0
   }
 
@@ -2090,7 +2115,8 @@
         class="share-format-option"
         class:selected={shareFormat === format.id}
         onclick={() => {
-          shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'
+          shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr' | 'tts'
+          if (format.id === 'tts') void ensureTTSCode()
           if (format.id === 'pdf') {
             pdfZones = {
               legend: true,
@@ -2117,7 +2143,8 @@
             class="share-format-card"
             class:selected={shareFormat === format.id}
             onclick={() => {
-              shareFormat = format.id as 'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr'
+              shareFormat = format.id as
+                'text' | 'code' | 'pdf' | 'image' | 'official' | 'qr' | 'tts'
               if (format.id === 'pdf') {
                 pdfZones = {
                   legend: true,
@@ -2140,7 +2167,7 @@
     {/if}
   </div>
 
-  {#if shareFormat === 'text' || shareFormat === 'code' || shareFormat === 'official'}
+  {#if shareFormat === 'text' || shareFormat === 'code' || shareFormat === 'official' || shareFormat === 'tts'}
     <div class="text-preview-section">
       <div class="text-preview-title">{$t('deckDetail.preview')}</div>
       {#if shareFormat === 'text'}
@@ -2170,7 +2197,9 @@
         </div>
       {:else}
         <pre class="text-preview-box selectable">{currentShareText() ||
-            $t('deckDetail.noExportContent')}</pre>
+            (shareFormat === 'tts' && ttsCodeLoading
+              ? $t('deckDetail.generating')
+              : $t('deckDetail.noExportContent'))}</pre>
       {/if}
     </div>
   {/if}
@@ -2445,13 +2474,15 @@
           : $t('common.copy')}
       </button>
     {/if}
-    <button
-      class="button button-primary"
-      disabled={!currentShareTextAvailable() || exporting}
-      onclick={confirmExport}
-    >
-      {$t('common.download')}
-    </button>
+    {#if shareFormat !== 'tts'}
+      <button
+        class="button button-primary"
+        disabled={!currentShareTextAvailable() || exporting}
+        onclick={confirmExport}
+      >
+        {$t('common.download')}
+      </button>
+    {/if}
   {/snippet}
 </CommonModal>
 

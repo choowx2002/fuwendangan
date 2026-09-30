@@ -164,10 +164,13 @@ export function updateTTSMessage(message: unknown) {
 }
 
 export function multiSpawn(cards: any[]) {
-  if (!cards.length) return
+  if (!cards.length) return Promise.resolve(0)
   const list: CardWithPrint[] = []
   for (const c of cards) {
-    c.card_prints.forEach((p: any) => {
+    const scPrints = (c.card_prints ?? []).filter(
+      (p: any) => (p.language ?? '').toUpperCase() === 'SC'
+    )
+    scPrints.forEach((p: any) => {
       list.push({
         ...c,
         id: c.id,
@@ -177,5 +180,7 @@ export function multiSpawn(cards: any[]) {
     })
   }
 
-  return sendToTTSTesting(list)
+  if (!list.length) return Promise.resolve(0)
+
+  return sendToTTSTesting(list).then(() => list.length)
 }

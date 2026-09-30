@@ -12,6 +12,13 @@ export const combineCardPrints = (prints: CardPrint[]): Map<string, CardPrint[]>
   return printsMap
 }
 
+export const resolveDefaultPrint = (
+  prints: CardPrint[] | undefined,
+  cardNo: string | null | undefined
+): CardPrint | undefined =>
+  prints?.find((p) => p.is_default) ??
+  prints?.find((p) => p.card_no_extend === cardNo && (p.language ?? '').toUpperCase() === 'SC')
+
 export const sortCardPrints = (prints: CardPrint[]): CardPrint[] => {
   const sortedList = prints.toSorted((a, b) => {
     if (a.print_order !== b.print_order) {

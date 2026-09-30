@@ -6,7 +6,11 @@
   import CacheImage from './CachedImage.svelte'
   import type { CardBase, CardPrint, CardWithPrint } from '$lib/db'
   import { printCacheName } from '$lib/db/helper'
-  import { sortCardPrints, combineCardPrints } from '$lib/cards/utils/card-print-utils'
+  import {
+    sortCardPrints,
+    combineCardPrints,
+    resolveDefaultPrint,
+  } from '$lib/cards/utils/card-print-utils'
   import { renderCardEffect } from '$lib/cards/utils/card-effect-utils'
   import { showForeignCardArt, showTTSFeatures } from '$lib/stores/settings'
   import { ttsState } from '$lib/stores/tts'
@@ -69,14 +73,21 @@
       return
     }
 
-    // 优先定位到指定变体（prints 模式点击的 card_no_extend），否则默认第一个版本
-    const firstKey =
-      targetExtend && sortedMap.has(targetExtend) ? targetExtend : sortedMap.keys().next().value
-    const firstVersion = firstKey ? sortedMap.get(firstKey) : undefined
+    // 默认定位：prints 模式指定变体 > is_default（最高标准）> 与基础卡号一致的 SC 印刷 > 排序第一个
+    let targetPrint: CardPrint | undefined
+    if (targetExtend && sortedMap.has(targetExtend)) {
+      targetPrint = sortedMap.get(targetExtend)?.[0]
+    } else {
+      targetPrint = resolveDefaultPrint(card?.card_prints, card?.card_no)
+    }
 
-    if (firstVersion && firstVersion.length > 0) {
-      selectedVersion = firstVersion
-      selectedIndex = 0
+    const targetKey = targetPrint?.card_no_extend ?? sortedMap.keys().next().value
+    const targetVersion = targetKey ? sortedMap.get(targetKey) : undefined
+
+    if (targetVersion && targetVersion.length > 0) {
+      selectedVersion = targetVersion
+      const idx = targetPrint?.id ? targetVersion.findIndex((p) => p.id === targetPrint?.id) : 0
+      selectedIndex = idx >= 0 ? idx : 0
     } else {
       selectedVersion = []
       selectedIndex = 0

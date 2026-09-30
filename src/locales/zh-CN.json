@@ -841,6 +841,8 @@
     "formatOfficialDesc": "官方卡组文本格式，可导入本应用或官方工具。",
     "formatCode": "Piltover Archive卡组代码",
     "formatCodeDesc": "含主牌堆、符文、备牌与选定英雄，可导入 Piltover Archive 等工具。",
+    "formatTts": "TTS 代码",
+    "formatTtsDesc": "TTS 卡号列表（空格分隔，可直接复制粘贴）。",
     "formatPdf": "PROXY 打印 PDF",
     "formatPdfDesc": "A4 竖版 3×3 代牌，含主牌堆、战场、符文与备牌，可打印裁剪。",
     "formatImage": "卡组图案",

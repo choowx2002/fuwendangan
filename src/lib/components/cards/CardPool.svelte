@@ -22,6 +22,7 @@
   import CachedImage from './CachedImage.svelte'
   import type { ZoneKey } from '$lib/decks/zone'
   import { cardLibraryMode, settingsStoreReady } from '$lib/stores/settings'
+  import { resolveDefaultPrint } from '$lib/cards/utils/card-print-utils'
   import { t } from '$lib/i18n'
 
   type cardAndPrint = CardBase & { card_prints: CardPrint[] }
@@ -542,10 +543,7 @@
   }
 
   const getDefaultImg = (card: cardAndPrint) => {
-    return (
-      card.card_prints?.find((p) => p.is_default) ??
-      card.card_prints?.find((p) => p.card_no_extend === card.card_no && p.language === 'SC')
-    )
+    return resolveDefaultPrint(card.card_prints, card.card_no)
   }
 
   // --- 渲染卡片磁贴（base=基础卡，prints=card_no_extend）---

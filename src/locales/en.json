@@ -841,6 +841,8 @@
     "formatOfficialDesc": "Official deck text format, importable into this app or official tools.",
     "formatCode": "Piltover Archive Deck Code",
     "formatCodeDesc": "Includes main deck, runes, sideboard and chosen champion; importable into Piltover Archive and other tools.",
+    "formatTts": "TTS Code",
+    "formatTtsDesc": "TTS card code list (space-separated, ready to copy and paste).",
     "formatPdf": "PROXY Print PDF",
     "formatPdfDesc": "A4 portrait 3×3 proxies including main deck, battlefields, runes and sideboard, ready to print and cut.",
     "formatImage": "Deck Image",
