@@ -27,9 +27,7 @@ export async function updateFilterOptions(): Promise<void> {
       
       (SELECT json_group_array(val) FROM (SELECT DISTINCT series as val FROM ${TABLES.CARD_PRINTS} WHERE series IS NOT NULL)) as series,
       (SELECT json_group_array(val) FROM (SELECT DISTINCT rarity_name as val FROM ${TABLES.CARDS_BASE} WHERE rarity_name IS NOT NULL)) as rarities,
-      (SELECT json_group_array(val) FROM (SELECT DISTINCT champion_tag as val FROM ${TABLES.CARDS_BASE} WHERE champion_tag IS NOT NULL)) as champions,
-      (SELECT json_group_array(val) FROM (SELECT DISTINCT series_name as val FROM ${TABLES.CARDS_BASE} WHERE series_name IS NOT NULL)) as base_series,
-      (SELECT json_group_array(val) FROM (SELECT DISTINCT rarity_name as val FROM ${TABLES.CARD_PRINTS} WHERE rarity_name IS NOT NULL)) as print_rarities
+      (SELECT json_group_array(val) FROM (SELECT DISTINCT champion_tag as val FROM ${TABLES.CARDS_BASE} WHERE champion_tag IS NOT NULL)) as champions
     ;
   `
   const optionsRow = await db.select<any[]>(optionsSql)
@@ -57,8 +55,6 @@ export async function updateFilterOptions(): Promise<void> {
     series: JSON.parse(opts.series || '[]'),
     rarities: JSON.parse(opts.rarities || '[]'),
     champions: JSON.parse(opts.champions || '[]'),
-    base_series: JSON.parse(opts.base_series || '[]'),
-    print_rarities: JSON.parse(opts.print_rarities || '[]'),
     energy_range: { min: ranges.energy_min, max: ranges.energy_max },
     power_range: { min: ranges.power_min, max: ranges.power_max },
     return_energy_range: {

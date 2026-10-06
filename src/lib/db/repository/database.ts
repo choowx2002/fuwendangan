@@ -178,9 +178,9 @@ async function initializeTables(db: Database): Promise<void> {
   await ensureColumn(db, TABLES.CARD_PRINTS, 'series', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_cn', 'TEXT')
   await ensureColumn(db, TABLES.CARD_PRINTS, 'flavor_text_en', 'TEXT')
-  // 卡牌库 base 模式：卡牌原始所属系列（2026-09-26 重新引入，云端 cards_base 一直保留该列）
+  // 卡牌原始所属系列元数据（2026-09-26 重新引入，云端 cards_base 一直保留该列）
   await ensureColumn(db, TABLES.CARDS_BASE, 'series_name', 'TEXT')
-  // 卡牌库模式切换：base 专用系列选项 + prints 专用稀有度选项
+  // 保留旧版模式切换新增的缓存列，兼容已升级数据库；当前筛选不再使用
   await ensureColumn(db, TABLES.FILTER_OPTIONS, 'base_series', 'TEXT')
   await ensureColumn(db, TABLES.FILTER_OPTIONS, 'print_rarities', 'TEXT')
   await ensureColumn(db, TABLES.CARDS_BASE, 'deck_limit', 'INTEGER')
@@ -247,7 +247,7 @@ async function initializeTables(db: Database): Promise<void> {
     }
   }
 
-  // 老库回填 cards_base.series_name（卡牌库 base 模式系列筛选）：
+  // 老库回填 cards_base.series_name（卡牌系列元数据）：
   // 本地曾随「系列迁移到打印级」删除该列，云端 cards_base 一直保留；升级后从打印回填，
   // 仅当存在 series_name 为空且其打印有系列的基础卡时写库。
   const nullBaseSeries = await db.select<{ n: number }[]>(
@@ -346,7 +346,7 @@ async function backfillPrintSeriesFlavor(db: Database): Promise<void> {
 }
 
 /**
- * 回填 cards_base.series_name（卡牌库 base 模式系列筛选）：
+ * 回填 cards_base.series_name（卡牌系列元数据）：
  * 老库该列为空时，优先取该卡自身编号对应的打印（card_no_extend = card_no，SC 优先）的 series。
  * 仅当存在可回填的行时调用。
  * 注意：SQLite 不允许 UPDATE 子查询的 ORDER BY 引用外层表列，故在子查询内 JOIN cards_base 取 card_no。

@@ -13,7 +13,7 @@
  */
 import { writable, get } from 'svelte/store'
 import { isTauri } from '$lib/db/env'
-import type { ActiveFilter, CardLibraryMode, NumberRange, SortKeyItem } from '$lib/db/types'
+import type { ActiveFilter, NumberRange, SortKeyItem } from '$lib/db/types'
 
 const EVENT = 'rune-filter-state'
 const CHANNEL = 'rune-filter-state-broadcast'
@@ -27,8 +27,6 @@ export interface FilterSyncState {
   sortList: SortKeyItem[]
   /** 命中卡牌总数（主窗口搜索结果，供筛选窗口展示） */
   totalCards: number
-  /** 卡牌库浏览模式（base/prints）；筛选窗口按此切换系列/稀有度选项列表 */
-  mode: CardLibraryMode
 }
 
 const DEFAULT_STATE: FilterSyncState = {
@@ -39,7 +37,6 @@ const DEFAULT_STATE: FilterSyncState = {
   currentSearchText: '',
   sortList: [{ id: 1, name: 'card_no', isAsc: true, order: 1 }],
   totalCards: 0,
-  mode: 'base',
 }
 
 /** 单一事实源（writable store） */

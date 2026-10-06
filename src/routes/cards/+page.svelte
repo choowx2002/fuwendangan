@@ -2,11 +2,10 @@
 <script lang="ts">
   import CardPool from '$lib/components/cards/CardPool.svelte'
   import CardModal from '$lib/components/cards/CardModal.svelte'
-  import { getCardById, getPrintsByCardId } from '$lib/db'
-  import type { CardBase, CardPrint, VariantWithOwned } from '$lib/db/types'
+  import type { CardBase } from '$lib/db/types'
   import { ttsState } from '$lib/stores/tts'
   import { setTopbar, showToast } from '$lib/stores/ui-store.svelte'
-  import { cardLibraryMode, showTTSFeatures } from '$lib/stores/settings'
+  import { showTTSFeatures } from '$lib/stores/settings'
   import { multiSpawn } from '$lib/services/tts-communication-service'
   import { notifyFilterClose } from '$lib/services/filter-bridge'
   import { beforeNavigate, goto } from '$app/navigation'
@@ -16,8 +15,7 @@
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
 
-  let selectedCard = $state<(CardBase & { card_prints?: CardPrint[] }) | null>(null)
-  let focusCardNoExtend = $state<string | null>(null)
+  let selectedCard = $state<CardBase | null>(null)
   let displayedCards = $state<CardBase[]>([])
   let isFilterOpen = $state(false)
   let sending = $state(false)
@@ -28,21 +26,7 @@
 
   // 在卡池中点击卡牌时，打开详情弹窗
   function handleCardClick(card: CardBase) {
-    focusCardNoExtend = null
     selectedCard = card
-  }
-
-  // prints 模式：点击的是一张印刷（card_no_extend），加载基础卡详情并定位到该变体
-  async function handleVariantClick(v: VariantWithOwned) {
-    try {
-      const base = await getCardById(v.cardId)
-      if (!base) return
-      const prints = await getPrintsByCardId(v.cardId)
-      focusCardNoExtend = v.cardNoExtend
-      selectedCard = { ...base, card_prints: prints }
-    } catch (e) {
-      console.error('[Cards] 加载印刷详情失败:', e)
-    }
   }
 
   async function spawnMulti() {
@@ -124,26 +108,16 @@
   <main class="main-content">
     <CardPool
       onCardClick={handleCardClick}
-      onVariantClick={handleVariantClick}
       bind:displayedCards
       bind:isFilterOpen
       filterSyncEnabled
-      modeSwitchEnabled
     />
   </main>
 
   <!-- 详情弹窗依然留在当前页面 -->
-  <CardModal
-    card={selectedCard}
-    isOpen={!!selectedCard}
-    initialCardNoExtend={focusCardNoExtend}
-    onClose={() => {
-      selectedCard = null
-      focusCardNoExtend = null
-    }}
-  />
+  <CardModal card={selectedCard} isOpen={!!selectedCard} onClose={() => (selectedCard = null)} />
 
-  {#if $showTTSFeatures && $cardLibraryMode === 'base'}
+  {#if $showTTSFeatures}
     <button
       class="fab-btn"
       onclick={spawnMulti}
