@@ -1,4 +1,4 @@
-name: Build Windows / Linux all / Android
+name: Build Windows / Linux / Arch Linux / Android
 
 on:
   push:
@@ -7,50 +7,78 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '手动运行时使用的 Release tag'
+        description: 'Optional draft Release tag; leave empty to build artifacts only'
         required: false
-        default: 'dev'
+        default: ''
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-build-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
 jobs:
   desktop:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: windows
+          - platform: windows-x64
             os: windows-latest
-            tauri_args: --bundles nsis
-
-          # Linux all：构建当前架构下所有可用的 Linux 包格式
-          # 例如 deb / rpm / appimage / pacman 等
-          - platform: linux-all
+            bundles: nsis msi
+          - platform: linux-x64
             os: ubuntu-22.04
-            tauri_args: --bundles all
+            bundles: deb rpm appimage
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Supabase configuration
+        run: |
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure $name as a GitHub Actions variable or secret."
+              exit 1
+            fi
+          done
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'linux-all'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -67,33 +95,131 @@ jobs:
             libxdo-dev \
             patchelf \
             rpm \
-            libfuse2
+            libfuse2 \
+            xdg-utils
 
       - name: Install dependencies
-        run: pnpm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build and release with tauri-action
-        uses: tauri-apps/tauri-action@action-v1.0.0
+      - name: Build desktop bundles
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NO_STRIP: 'true'
+          TAURI_BUNDLES: ${{ matrix.bundles }}
+        run: |
+          read -r -a bundles <<< "$TAURI_BUNDLES"
+          pnpm tauri build --ci --bundles "${bundles[@]}" -- --locked
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          releaseName: Release ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          releaseBody: Automated build for ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.tauri_args }}
+          name: ${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+
+  arch:
+    name: Package Arch Linux x64
+    needs: desktop
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: archlinux:base-devel
+
+    steps:
+      - name: Install packaging tools
+        run: pacman -Syu --noconfirm --needed git python libarchive
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Linux bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: linux-bundles
+
+      - name: Prepare Arch package
+        run: |
+          mkdir -p arch-build
+          cp .github/packaging/arch/PKGBUILD arch-build/PKGBUILD
+          shopt -s nullglob
+          debs=(linux-bundles/deb/*.deb)
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo '::error::Expected exactly one Linux .deb bundle.'
+            exit 1
+          fi
+          cp "${debs[0]}" arch-build/app.deb
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = json.loads(Path('src-tauri/tauri.conf.json').read_text())['version']
+          version = version.replace('-', '_').replace('+', '_')
+          if not re.fullmatch(r'[A-Za-z0-9._]+', version):
+              raise SystemExit('Invalid Arch package version')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'RUNE_ARCHIVE_VERSION={version}\n')
+          PY
+          useradd --create-home builder
+          chown -R builder:builder arch-build
+
+      - name: Build pacman package
+        run: |
+          runuser -u builder -- bash -c \
+            'cd "$1" && makepkg --nodeps --cleanbuild --noconfirm' \
+            _ "$GITHUB_WORKSPACE/arch-build"
+
+      - name: Upload Arch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-linux-x64
+          if-no-files-found: error
+          path: arch-build/*.pkg.tar.zst
 
   android:
-    name: Build Android signed
+    name: Build Android signed APK / AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     env:
-      NDK_VERSION: 26.1.10909125
+      NDK_VERSION: 27.0.12077973
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate Supabase configuration
+        run: |
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure $name as a GitHub Actions variable or secret."
+              exit 1
+            fi
+          done
+
+      - name: Prepare Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: python3 .github/scripts/prepare-android-signing.py
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -104,73 +230,88 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android NDK
+      - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "ndk;$NDK_VERSION"
+          sdkmanager --install \
+            'platform-tools' \
+            'platforms;android-36' \
+            'build-tools;35.0.0' \
+            "ndk;$NDK_VERSION"
           echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-${{ env.NDK_VERSION }}
 
-      - name: Add Android Rust targets
-        run: |
-          rustup target add \
-            aarch64-linux-android \
-            armv7-linux-androideabi \
-            i686-linux-android \
-            x86_64-linux-android
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-
-      - name: Init Android project if missing
-        run: |
-          if [ ! -d src-tauri/gen/android ]; then
-            cargo tauri android init
-          fi
-
-      - name: Decode keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
-          else
-            echo "ANDROID_KEYSTORE_BASE64 未配置，跳过 keystore 解码"
-          fi
-
+      # The Android project is committed and contains custom MainActivity / SAFPlugin code.
       - name: Build Android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: cargo tauri android build
+        run: |
+          chmod +x src-tauri/gen/android/gradlew
+          pnpm tauri android build --ci --apk --aab -- --locked
 
-      - name: Cleanup keystore
+      - name: Cleanup signing files
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/release.keystore"
+          rm -f "$RUNNER_TEMP/release.keystore" src-tauri/gen/android/keystore.properties
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-artifacts
+          name: android
+          if-no-files-found: error
           path: |
-            src-tauri/gen/android/app/build/outputs/**/*.apk
-            src-tauri/gen/android/app/build/outputs/**/*.aab
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+
+  release:
+    name: Upload bundles to draft Release
+    needs: [desktop, arch, android]
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create draft Release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --draft \
+              --target "$RELEASE_COMMIT" \
+              --title "Rune Archive $RELEASE_TAG" \
+              --notes 'Windows, Linux, Arch Linux and signed Android builds. Download the package for your platform from the assets below.'
+          fi
+          mapfile -d '' assets < <(find release-assets -type f \( \
+            -name '*.exe' -o -name '*.msi' -o -name '*.deb' -o \
+            -name '*.rpm' -o -name '*.AppImage' -o -name '*.pkg.tar.zst' -o \
+            -name '*.apk' -o -name '*.aab' \) -print0)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo '::error::No release assets found.'
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber

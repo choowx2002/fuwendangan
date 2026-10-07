@@ -1,0 +1,30 @@
+# Repackage the Tauri Debian bundle without rebuilding its binary.
+pkgname=rune-archive
+pkgver=${RUNE_ARCHIVE_VERSION:?RUNE_ARCHIVE_VERSION must be set}
+pkgrel=1
+pkgdesc='Riftbound card collection and deck manager'
+arch=('x86_64')
+url='https://github.com/choowx2002/fuwendangan'
+license=('MIT')
+depends=(
+  'cairo'
+  'gdk-pixbuf2'
+  'glib2'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libsoup3'
+  'openssl'
+  'pango'
+  'webkit2gtk-4.1'
+  'xdotool'
+)
+options=('!strip' '!debug' '!emptydirs')
+source=('app.deb')
+sha256sums=('SKIP')
+noextract=('app.deb')
+
+package() {
+  set -o pipefail
+  # Match data.tar regardless of whether Tauri uses gzip, xz or zstd compression.
+  bsdtar -xOf "$srcdir/app.deb" 'data.tar.*' | bsdtar -xf - -C "$pkgdir"
+}

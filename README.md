@@ -360,6 +360,61 @@ src-tauri/target/release/
 
 The exact output format depends on the target platform.
 
+### GitHub Actions
+
+`.github/workflows/release.yml` 支持以下构建产物：
+
+| 平台           | 产物                                             |
+| -------------- | ------------------------------------------------ |
+| Windows x64    | NSIS 安装程序（`.exe`）、MSI 安装程序（`.msi`）  |
+| Linux x64      | `.deb`、`.rpm`、`.AppImage`                      |
+| Arch Linux x64 | pacman 安装包（`.pkg.tar.zst`）                  |
+| Android        | 包含 ARM64、ARMv7、x86、x86_64 的签名 APK 和 AAB |
+
+Arch 包在 Arch Linux 容器中通过 `makepkg` 打包，复用 Linux job 的 Debian 包内容。
+可使用 `sudo pacman -U ./rune-archive-*.pkg.tar.zst` 安装。该 workflow 不会向 AUR 发布。
+打包方式参考 [Tauri 的 Arch Linux 分发文档](https://v2.tauri.app/distribute/aur/)。
+
+运行前，在仓库 **Settings → Secrets and variables → Actions** 配置：
+
+| 名称                            | 类型               | 内容                                 |
+| ------------------------------- | ------------------ | ------------------------------------ |
+| `VITE_SUPABASE_URL`             | Variable 或 Secret | Supabase 项目 URL                    |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Variable 或 Secret | Supabase publishable key             |
+| `ANDROID_KEYSTORE_BASE64`       | Secret             | Android 签名 keystore 的 Base64 内容 |
+| `ANDROID_KEYSTORE_PASSWORD`     | Secret             | keystore 和签名私钥的密码            |
+| `ANDROID_KEY_ALIAS`             | Secret             | keystore 中签名私钥的 alias          |
+
+当前 Android Gradle 配置要求 **keystore 密码与私钥密码相同**，不使用独立的
+`ANDROID_KEY_PASSWORD`。已有发布版本时，继续使用原来的签名 keystore，才能覆盖安装更新。
+CI 自动生成 `keystore.properties`，构建后删除签名文件；不会重新初始化已提交的 Android 项目。
+
+如果还没有签名 keystore，可使用 JDK 的 `keytool` 生成，并将生成的文件保存在仓库之外：
+
+```bash
+keytool -genkeypair -v -keystore /path/outside/repository/rune-archive.jks \
+  -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias rune-archive
+```
+
+生成时为 keystore 和私钥使用同一个密码。在 Linux 上，用以下命令导出 Base64，
+将结果保存到 `ANDROID_KEYSTORE_BASE64` Secret：
+
+```bash
+base64 -w 0 /path/outside/repository/rune-archive.jks
+```
+
+构建有两种触发方式：
+
+- **手动构建**：进入 **Actions → Build Windows / Linux / Arch Linux / Android → Run workflow**。
+  `tag` 留空时只上传 workflow artifacts；填写 `tag` 时，还会将所有平台产物上传到对应的 draft Release。
+  手动构建使用界面选定的分支或 tag，输入的 `tag` 是 Release 标签，不会切换构建代码。
+- **版本发布构建**：提交并推送 `v*` tag，例如 `v1.0.0`。
+  所有平台构建成功后，将产物统一上传到 draft Release；检查后可在 GitHub 手动发布。
+
+安装包版本取自 `src-tauri/tauri.conf.json`（Arch 会转换版本中的 `-` / `+` 为 `_`）。
+发布前同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 的版本。
+Windows 安装程序目前未配置代码签名证书。
+
 ---
 
 ## Configuration
