@@ -316,6 +316,32 @@ export const preloadImage = async (url: string, name: string): Promise<string | 
 }
 
 /**
+ * 读取已缓存卡图的字节（不触发下载）。
+ *
+ * canvas 导出（toDataURL）时 asset:// 图片会污染画布，需要改为读取本地文件字节再走
+ * blob: URL 绘制，此函数是该兜底路径的数据来源。缓存文件名规则与 preloadImage 保持一致。
+ * 文件不存在或读取失败时返回 null。
+ */
+export const readCachedImageBytes = async (
+  url: string,
+  name: string
+): Promise<Uint8Array | null> => {
+  if (!url) return null
+
+  const localToken = localImgToken(url)
+  const filename = localToken || urlToFilename(url, name)
+  const absolutePath = await getAbsoluteImagePath(filename)
+
+  try {
+    if (!(await exists(absolutePath))) return null
+    return await readFile(absolutePath)
+  } catch (error) {
+    console.warn('[Cache] 读取缓存图片失败:', filename, error)
+    return null
+  }
+}
+
+/**
  * 批量预加载图片（带并发限制，默认 4 个并发）
  */
 export const preloadImages = async (imageList: ImageItem[], concurrency = 4): Promise<(string | null)[]> => {
